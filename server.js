@@ -12,6 +12,7 @@ const homeData = require('./home-data');
 const lyricsRomanizer = require('./lyrics-romanizer');
 const sunoLoginHelper = require('./suno-login-helper');
 const deviceCredits = require('./device-credits');
+const tasteFeed = require('./taste-feed');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -232,6 +233,23 @@ app.post('/api/recommendations/liked-radio', async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+// 2.8 AI Dynamic Personalized Feed & Taste Setup (First-launch & Custom Preferences)
+app.post('/api/recommendations/personalized-feed', async (req, res) => {
+  try {
+    const { name, genres, mood } = req.body || {};
+    const deviceId = req.headers['x-device-id'] || req.body?.deviceId || null;
+    const feed = await tasteFeed.generatePersonalizedFeed({ name, genres, mood, deviceId });
+    res.json(feed);
+  } catch (error) {
+    console.error('Personalized feed error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/taste/genres', (req, res) => {
+  res.json({ success: true, genres: tasteFeed.GENRES, moods: tasteFeed.MOODS });
 });
 
 // 3. Trending & Curated Playlists
@@ -675,7 +693,8 @@ app.post('/api/playlist/import', async (req, res) => {
       tracks: allTracks,
       thumbnail: allTracks[0]?.thumbnail || '/icons/icon.svg',
       createdAt: new Date().toLocaleDateString('id-ID'),
-      isImported: true
+      isImported: true,
+      deviceId: req.headers['x-device-id'] || req.body?.deviceId || null
     };
     playlistDb.addOrUpdatePlaylist(newPlaylist);
 
@@ -689,10 +708,11 @@ app.post('/api/playlist/import', async (req, res) => {
   }
 });
 
-// 7. Centralized Playlist Database Endpoints (Syncs across Laptop & HP)
+// 7. Centralized Playlist Database Endpoints (Syncs across Laptop & HP with Device Isolation)
 app.get('/api/playlists', (req, res) => {
   try {
-    const playlists = playlistDb.getPlaylistsSummary();
+    const deviceId = req.headers['x-device-id'] || req.query.deviceId || null;
+    const playlists = playlistDb.getPlaylistsSummary(deviceId);
     res.json({ success: true, count: playlists.length, playlists });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -701,7 +721,8 @@ app.get('/api/playlists', (req, res) => {
 
 app.get('/api/playlists/:id', (req, res) => {
   try {
-    const pl = playlistDb.getPlaylistById(req.params.id);
+    const deviceId = req.headers['x-device-id'] || req.query.deviceId || null;
+    const pl = playlistDb.getPlaylistById(req.params.id, deviceId);
     if (!pl) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
     res.json({ success: true, playlist: pl });
   } catch (err) {
@@ -714,13 +735,15 @@ app.post('/api/playlists', (req, res) => {
     const { title, tracks, thumbnail } = req.body;
     if (!title) return res.status(400).json({ success: false, error: 'Nama playlist diperlukan' });
     const trackList = Array.isArray(tracks) ? tracks : [];
+    const deviceId = req.headers['x-device-id'] || req.body.deviceId || null;
     const newPl = {
       id: 'pl-' + Date.now(),
       title: title.trim(),
       tracks: trackList,
       thumbnail: thumbnail || (trackList[0] ? trackList[0].thumbnail : '/icons/icon.svg'),
       createdAt: new Date().toLocaleDateString('id-ID'),
-      isImported: false
+      isImported: false,
+      deviceId
     };
     playlistDb.addOrUpdatePlaylist(newPl);
     res.json({ success: true, playlist: newPl });

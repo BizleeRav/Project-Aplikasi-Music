@@ -38,29 +38,33 @@ function persistToDisk() {
   });
 }
 
-function getAllPlaylists() {
+function getAllPlaylists(deviceId = null) {
   if (playlistsCache === null) {
     playlistsCache = loadFromDisk();
+    // Filter out any legacy hardcoded developer playlists that might linger in /tmp
+    playlistsCache = playlistsCache.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
   }
-  return playlistsCache;
+  if (!deviceId) return playlistsCache;
+  return playlistsCache.filter(p => !p.deviceId || p.deviceId === deviceId);
 }
 
 // Returns lightweight metadata (super fast for playlist card grids)
-function getPlaylistsSummary() {
-  const all = getAllPlaylists();
+function getPlaylistsSummary(deviceId = null) {
+  const all = getAllPlaylists(deviceId);
   return all.map(p => ({
     id: p.id,
     title: p.title,
     thumbnail: p.thumbnail,
     trackCount: p.tracks?.length || 0,
     createdAt: p.createdAt,
-    isImported: p.isImported
+    isImported: p.isImported,
+    deviceId: p.deviceId
   }));
 }
 
-function getPlaylistById(id) {
+function getPlaylistById(id, deviceId = null) {
   const all = getAllPlaylists();
-  return all.find(p => p.id === id) || null;
+  return all.find(p => p.id === id && (!deviceId || !p.deviceId || p.deviceId === deviceId)) || null;
 }
 
 function addOrUpdatePlaylist(playlist) {

@@ -100,6 +100,10 @@
         </div>
 
         <div class="top-bar-right">
+          <button class="btn-top-taste" id="btn-top-taste" onclick="window.app.openTasteModal()" title="Personalisasi Selera Musik (AI)">
+            <span class="top-taste-icon">🎨</span>
+            <span class="top-taste-label">Selera Musik</span>
+          </button>
           <button class="ytm-cast-btn" id="btn-top-connect" title="Hubungkan ke HP (Wi-Fi)">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11zm20-7H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
           </button>
@@ -672,11 +676,220 @@
           </div>
         </div>
 
+        <!-- Tombol Buka Pengaturan Selera AI -->
+        <button type="button" class="btn-profile-taste-link" onclick="document.getElementById('modal-profile').classList.remove('active'); window.app.openTasteModal();" style="margin-top: 12px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); padding: 10px; border-radius: 10px; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: all 0.2s ease;">
+          <span>🎨</span>
+          <span>Atur Ulang Selera Musik AI (Genre & Mood)</span>
+        </button>
+
         <!-- Tombol Simpan -->
-        <button type="submit" class="btn-generate-ai" id="btn-save-profile" style="margin-top: 20px;">
+        <button type="submit" class="btn-generate-ai" id="btn-save-profile" style="margin-top: 14px;">
           Simpan Perubahan
         </button>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal AI Taste Onboarding & Personalization -->
+  <div id="modal-taste-onboarding" class="modal-overlay">
+    <div class="modal-card modal-taste-card">
+      <div class="taste-card-glow-bg"></div>
+      <button class="modal-close-btn" id="btn-close-taste-modal" onclick="document.getElementById('modal-taste-onboarding').classList.remove('active')">✕</button>
+      
+      <div class="taste-header">
+        <div class="taste-badge-pill">
+          <span class="taste-badge-sparkle">✨</span>
+          <span>AURASOUND AI TASTE ENGINE</span>
+        </div>
+        <h2 class="taste-modal-title">Pilih Selera Musik Kamu 🎧</h2>
+        <p class="taste-modal-desc">
+          Pilih genre dan suasana favoritmu agar AI kami dapat meracik beranda lagu, stasiun radio, dan playlist personal khusus untukmu!
+        </p>
+      </div>
+
+      <div class="taste-form-body">
+        <!-- 1. Nama Panggilan -->
+        <div class="taste-field-group">
+          <label class="taste-field-label">
+            <span class="taste-step-bubble">1</span>
+            <span>Nama Panggilan Kamu</span>
+          </label>
+          <div class="taste-input-wrapper">
+            <input type="text" id="taste-input-name" class="taste-input-box" placeholder="Contoh: Devod, Rian, Maya..." maxlength="30">
+          </div>
+        </div>
+
+        <!-- 2. Genre Favorit (Multi-Select) -->
+        <div class="taste-field-group">
+          <div class="taste-field-header-row">
+            <label class="taste-field-label">
+              <span class="taste-step-bubble">2</span>
+              <span>Pilih Genre Favoritmu</span>
+            </label>
+            <span class="taste-select-counter" id="taste-genres-count">1 Dipilih</span>
+          </div>
+          <div class="taste-genre-grid" id="taste-genre-grid">
+            <div class="taste-genre-card active" data-genre="pop-indo">
+              <div class="taste-genre-icon">🇮🇩</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">Pop Indonesia</span>
+                <span class="taste-genre-sub">Mahalini, Tulus, Bernadya</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="western-pop">
+              <div class="taste-genre-icon">🌎</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">Western Pop Hits</span>
+                <span class="taste-genre-sub">Taylor Swift, Bruno Mars</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="lofi">
+              <div class="taste-genre-icon">☕</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">Lo-Fi & Chill</span>
+                <span class="taste-genre-sub">Cafe beats, rileks belajar</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="rock-indie">
+              <div class="taste-genre-icon">🎸</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">Rock & Indie</span>
+                <span class="taste-genre-sub">Hindia, Sheila on 7, Feast</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="edm-phonk">
+              <div class="taste-genre-icon">⚡</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">EDM & Phonk</span>
+                <span class="taste-genre-sub">Alan Walker, Drift Phonk</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="kpop">
+              <div class="taste-genre-icon">🌸</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">K-Pop Hits</span>
+                <span class="taste-genre-sub">NewJeans, aespa, BTS</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="jpop-anime">
+              <div class="taste-genre-icon">🎌</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">J-Pop & Anime</span>
+                <span class="taste-genre-sub">Yoasobi, Ado, Anime OST</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="koplo">
+              <div class="taste-genre-icon">💃</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">Dangdut Koplo</span>
+                <span class="taste-genre-sub">Denny Caknan, Gilga Sahid</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="hiphop-rnb">
+              <div class="taste-genre-icon">🎤</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">Hip-Hop & R&B</span>
+                <span class="taste-genre-sub">The Weeknd, Drake, Kendrick</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="akustik">
+              <div class="taste-genre-icon">🎹</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">Akustik & Galau</span>
+                <span class="taste-genre-sub">Petikan gitar & piano syahdu</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="religi">
+              <div class="taste-genre-icon">🕌</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">Religi & Sholawat</span>
+                <span class="taste-genre-sub">Opick, Maher Zain, Sholawat</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+
+            <div class="taste-genre-card" data-genre="jazz">
+              <div class="taste-genre-icon">🎷</div>
+              <div class="taste-genre-info">
+                <span class="taste-genre-name">Jazz & Soul</span>
+                <span class="taste-genre-sub">Laufey, Tompi, Cozy Jazz</span>
+              </div>
+              <div class="taste-genre-check">✓</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Suasana Hati / Mood (Single Select) -->
+        <div class="taste-field-group">
+          <label class="taste-field-label">
+            <span class="taste-step-bubble">3</span>
+            <span>Vibe / Suasana Hati Utama</span>
+          </label>
+          <div class="taste-mood-grid" id="taste-mood-grid">
+            <div class="taste-mood-chip active" data-mood="chill">
+              <span class="taste-mood-icon">🧘</span>
+              <span class="taste-mood-name">Santai & Rileks</span>
+            </div>
+            <div class="taste-mood-chip" data-mood="focus">
+              <span class="taste-mood-icon">📚</span>
+              <span class="taste-mood-name">Fokus Belajar</span>
+            </div>
+            <div class="taste-mood-chip" data-mood="energy">
+              <span class="taste-mood-icon">⚡</span>
+              <span class="taste-mood-name">Semangat & Workout</span>
+            </div>
+            <div class="taste-mood-chip" data-mood="melancholic">
+              <span class="taste-mood-icon">💔</span>
+              <span class="taste-mood-name">Melow & Galau</span>
+            </div>
+            <div class="taste-mood-chip" data-mood="party">
+              <span class="taste-mood-icon">🎉</span>
+              <span class="taste-mood-name">Party & Ceria</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Footer -->
+      <div class="taste-footer">
+        <button type="button" class="btn-taste-primary" id="btn-submit-taste">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <span id="btn-submit-taste-text">Personalisasi Musik Saya Sekarang</span>
+        </button>
+        <button type="button" class="btn-taste-ghost" id="btn-skip-taste">
+          Gunakan Rekomendasi Populer
+        </button>
+      </div>
+
+      <!-- AI Synthesis Loading Progress Overlay -->
+      <div class="taste-loading-overlay" id="taste-loading-overlay" style="display: none;">
+        <div class="taste-spinner-ring"></div>
+        <h3 class="taste-loading-title" id="taste-loading-title">🧠 Menganalisis DNA Musik Kamu...</h3>
+        <p class="taste-loading-desc" id="taste-loading-desc">Sistem AI sedang meramu lagu & playlist sesuai seleramu...</p>
+        <div class="taste-progress-track">
+          <div class="taste-progress-bar" id="taste-progress-bar"></div>
+        </div>
+      </div>
     </div>
   </div>
 
