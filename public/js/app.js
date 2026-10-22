@@ -1952,8 +1952,17 @@ class App {
         })
       });
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Gagal meracik feed personalisasi');
+      let data = null;
+      try {
+        const text = await res.text();
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        console.warn('Response from personalized-feed was not JSON:', parseErr.message);
+      }
+
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Gagal memuat feed personalisasi dari server');
+      }
 
       if (progressBar) progressBar.style.width = '95%';
       if (loadingTitle) loadingTitle.textContent = '🎧 Menyiapkan Beranda Eksklusifmu...';
@@ -1991,10 +2000,18 @@ class App {
       }, 600);
 
     } catch (err) {
-      console.error('Error submitting taste profile:', err);
+      console.warn('Taste submit error, using fallback:', err.message);
       if (loadingOverlay) loadingOverlay.style.display = 'none';
       modal.classList.remove('active');
-      this.showToast('Gagal meracik feed personal: ' + err.message, 'error');
+      // Mark as completed anyway so user is not blocked
+      localStorage.setItem('aurasound_taste_completed', 'true');
+      localStorage.setItem('aurasound_taste_profile', JSON.stringify({
+        name: chosenName,
+        genres: activeGenres,
+        mood: chosenMood,
+        updatedAt: Date.now()
+      }));
+      this.showToast(`Selamat datang di AuraSound, ${chosenName}!`, 'success');
       this.loadYTMHome('all');
     }
   }
@@ -2023,23 +2040,28 @@ class App {
         } catch (e) {}
 
         if (savedTaste && Array.isArray(savedTaste.genres) && savedTaste.genres.length > 0) {
-          const res = await fetch('/api/recommendations/personalized-feed', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-device-id': this.getDeviceId()
-            },
-            body: JSON.stringify({
-              name: this.userProfile?.name || savedTaste.name || 'Sobat Musik',
-              genres: savedTaste.genres,
-              mood: savedTaste.mood || 'chill',
-              deviceId: this.getDeviceId()
-            })
-          });
-          const feedData = await res.json();
-          if (feedData.success) {
-            this.renderPersonalizedHome(feedData);
-            return;
+          try {
+            const res = await fetch('/api/recommendations/personalized-feed', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-device-id': this.getDeviceId()
+              },
+              body: JSON.stringify({
+                name: this.userProfile?.name || savedTaste.name || 'Sobat Musik',
+                genres: savedTaste.genres,
+                mood: savedTaste.mood || 'chill',
+                deviceId: this.getDeviceId()
+              })
+            });
+            const feedText = await res.text();
+            const feedData = JSON.parse(feedText);
+            if (feedData && feedData.success) {
+              this.renderPersonalizedHome(feedData);
+              return;
+            }
+          } catch (feedErr) {
+            console.warn('Personalized feed failed, falling back to default home:', feedErr.message);
           }
         }
       }
