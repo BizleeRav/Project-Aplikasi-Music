@@ -1054,11 +1054,15 @@ app.get('/api/lyrics', async (req, res) => {
 });
 
 // Start Server
-app.listen(PORT, '0.0.0.0', () => {
-  const primaryIp = getPrimaryIp();
-  console.log(`\n======================================================`);
-  console.log(`🎵 APLIKASI MUSIK BERHASIL DIJALANKAN!`);
-  console.log(`💻 Akses di Laptop : http://localhost:${PORT}`);
-  console.log(`📱 Akses di HP     : http://${primaryIp}:${PORT}`);
-  console.log(`======================================================\n`);
-});
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    const primaryIp = getPrimaryIp();
+    console.log(`\n======================================================`);
+    console.log(`🎵 APLIKASI MUSIK BERHASIL DIJALANKAN!`);
+    console.log(`💻 Akses di Laptop : http://localhost:${PORT}`);
+    console.log(`📱 Akses di HP     : http://${primaryIp}:${PORT}`);
+    console.log(`======================================================\n`);
+  });
+}
+
+module.exports = app;

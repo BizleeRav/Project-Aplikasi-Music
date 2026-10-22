@@ -1,9 +1,20 @@
 const fs = require('fs');
 const path = require('path');
 
-const CREDITS_FILE = path.join(__dirname, 'data', 'device-credits.json');
+const CREDITS_FILE = process.env.VERCEL ? path.join('/tmp', 'data', 'device-credits.json') : path.join(__dirname, 'data', 'device-credits.json');
 const DEFAULT_DAILY_CREDITS = 50; // 5 songs per device per day
 const COST_PER_SONG = 10;
+
+// Ensure writable path exists in serverless Vercel environment
+if (process.env.VERCEL) {
+  try {
+    const tmpDir = path.dirname(CREDITS_FILE);
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    if (!fs.existsSync(CREDITS_FILE) && fs.existsSync(path.join(__dirname, 'data', 'device-credits.json'))) {
+      fs.copyFileSync(path.join(__dirname, 'data', 'device-credits.json'), CREDITS_FILE);
+    }
+  } catch (e) {}
+}
 
 function getTodayString() {
   const d = new Date();
