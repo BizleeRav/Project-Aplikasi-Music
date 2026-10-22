@@ -6,6 +6,7 @@ package-lock.json
 dist/
 android-build/
 *.apk
+!public/download/*.apk
 *.exe
 
 # Temporary files

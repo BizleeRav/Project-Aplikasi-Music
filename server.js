@@ -92,8 +92,11 @@ app.get('/api/network-info', async (req, res) => {
 });
 
 app.get('/download/apk', (req, res) => {
-  const apkPath = path.join(__dirname, 'dist', 'AuraSound.apk');
-  if (fs.existsSync(apkPath)) {
+  const distPath = path.join(__dirname, 'dist', 'AuraSound.apk');
+  const pubPath = path.join(__dirname, 'public', 'download', 'AuraSound.apk');
+  const apkPath = fs.existsSync(distPath) ? distPath : (fs.existsSync(pubPath) ? pubPath : null);
+
+  if (apkPath) {
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
     res.download(apkPath, 'AuraSound.apk');
   } else {

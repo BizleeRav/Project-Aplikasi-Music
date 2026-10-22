@@ -127,7 +127,7 @@ import android.widget.Toast;
 
 public class MainActivity extends Activity {
     private WebView webView;
-    private static final String APP_URL = "http://192.168.0.111:3000";
+    private static final String APP_URL = "https://project-aplikasi-music.vercel.app";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -161,8 +161,8 @@ public class MainActivity extends Activity {
                 if (request.isForMainFrame()) {
                     String errorHtml = "<html><body style='background:#070a12; color:#fff; font-family:sans-serif; text-align:center; padding:40px 20px;'>"
                         + "<h2 style='color:#10b981;'>AuraSound Music Hub</h2>"
-                        + "<p style='color:#94a3b8; font-size:14px;'>Tidak dapat terhubung ke laptop (<b>" + APP_URL + "</b>).</p>"
-                        + "<p style='color:#cbd5e1; font-size:13px;'>Pastikan laptop Anda menyala dan HP Anda terhubung ke Wi-Fi yang sama.</p>"
+                        + "<p style='color:#94a3b8; font-size:14px;'>Tidak dapat terhubung ke server online.</p>"
+                        + "<p style='color:#cbd5e1; font-size:13px;'>Pastikan koneksi internet (kuota data atau Wi-Fi) di HP Anda aktif.</p>"
                         + "<button onclick='location.reload()' style='background:#10b981; color:#fff; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; margin-top:20px; font-size:15px;'>Coba Sambung Lagi</button>"
                         + "</body></html>";
                     view.loadDataWithBaseURL(null, errorHtml, "text/html", "utf-8", null);
