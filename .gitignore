@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Builds & Binaries
+dist/
+android-build/
+*.apk
+*.exe
+
+# Temporary files
+scratch/
+*.log
+.DS_Store
+Thumbs.db

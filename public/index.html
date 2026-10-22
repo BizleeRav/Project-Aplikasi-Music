@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>AuraSound - YouTube Music & Suno AI Player</title>
+  <meta name="description" content="Aplikasi pemutar musik canggih terintegrasi YouTube Music, generator lagu Suno AI gratis, dan audio enhancer Dolby Access & Nahimic.">
+  <meta name="theme-color" content="#070a12">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  <link rel="stylesheet" href="/css/style.css?v=4.2.0">
+</head>
+<body>
+
+  <!-- Interactive Dynamic Ambient Aurora Parallax & Audio Reactive Mesh -->
+  <div id="aura-ambient-mesh" class="aura-ambient-mesh" aria-hidden="true">
+    <div class="aura-ambient-orb orb-1"></div>
+    <div class="aura-ambient-orb orb-2"></div>
+    <div class="aura-ambient-orb orb-3"></div>
+  </div>
+
+  <div class="app-container">
+    <!-- Desktop Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13"/>
+            <circle cx="6" cy="18" r="3"/>
+            <circle cx="18" cy="16" r="3"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">AuraSound</div>
+          <span class="brand-badge">STUDIO & PLAYER</span>
+        </div>
+      </div>
+
+      <div class="nav-section-title">Menu Utama</div>
+      <ul class="nav-list">
+        <li>
+          <a class="nav-link active" data-tab="home">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            Beranda
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-tab="suno">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+            Suno AI Studio
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-tab="playlists">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15V6M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM12 12H3M16 6H3M12 18H3"/></svg>
+            Playlist Saya
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-tab="favorites">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            Lagu Favorit
+          </a>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div class="audio-enhancer-pill" title="Audio diselaraskan untuk diproses oleh Dolby Access dan Nahimic">
+          <div class="pill-glow-dot"></div>
+          <div>
+            <div class="pill-text">Dolby & Nahimic DSP</div>
+            <div style="font-size: 0.68rem; color: #94a3b8;">Audio Enhancer Siap</div>
+          </div>
+        </div>
+
+        <button class="btn-sidebar-action btn-connect-mobile" id="btn-open-connect">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+          Buka di Handphone
+        </button>
+
+        <button class="btn-sidebar-action" id="btn-pwa-install" style="display: none;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Pasang Aplikasi
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Top Bar -->
+      <header class="top-bar">
+        <div class="search-box-wrapper ytm-search-box">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="search-input" placeholder="Search songs, albums, artists, podcasts">
+          <button class="btn-search-action" id="search-btn" title="Cari">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+        <div class="top-bar-right">
+          <button class="ytm-cast-btn" id="btn-top-connect" title="Hubungkan ke HP (Wi-Fi)">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11zm20-7H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
+          </button>
+          <div class="ytm-profile-badge" id="btn-profile-badge" title="Profil Akun">
+            <img src="/images/avatar.jpg" alt="User Avatar" class="ytm-avatar-circle" onerror="this.src='/icons/icon.svg'">
+          </div>
+        </div>
+      </header>
+
+      <!-- Views Container -->
+      <div class="views-container">
+        <!-- 1. Home / YouTube Music Feed -->
+        <section id="view-home" class="view-tab active">
+          <!-- Top Mood & Category Chips Row (YouTube Music Style) -->
+          <!-- Top Mood & Category Harmonizer Chips -->
+          <div class="ytm-chips-container" id="ytm-mood-chips">
+            <button class="ytm-chip active" data-mood="all">✨ Semua</button>
+            <button class="ytm-chip" data-mood="energize">⚡ Energize</button>
+            <button class="ytm-chip" data-mood="relax">☕ Santai & Relax</button>
+            <button class="ytm-chip" data-mood="focus">🎯 Deep Focus</button>
+            <button class="ytm-chip" data-mood="workout">💪 Workout Pump</button>
+            <button class="ytm-chip" data-mood="kpop">🎤 K-Pop Hits</button>
+            <button class="ytm-chip" data-mood="anime">🌸 Anime & J-Pop</button>
+            <button class="ytm-chip" data-mood="party">💃 Party Night</button>
+            <button class="ytm-chip" data-mood="sleep">🌙 Sleep & Ambient</button>
+            <button class="ytm-chip" data-mood="commute">🚗 Commute Flow</button>
+            <button class="ytm-chip" data-mood="feel-good">🌈 Feel Good</button>
+          </div>
+
+          <!-- YouTube Music Sections Container -->
+          <div id="ytm-home-sections" class="ytm-home-sections">
+            <div class="loading-state">
+              <div class="spinner"></div>
+              <p>Memuat beranda YouTube Music...</p>
+            </div>
+          </div>
+
+          <!-- YouTube Music Home Album & Playlist Detail View -->
+          <div id="home-album-detail-view" style="display: none;"></div>
+        </section>
+
+        <!-- 2. Search Tab -->
+        <section id="view-search" class="view-tab">
+          <div class="section-header search-view-header">
+            <div class="search-title-group">
+              <h2 class="section-title" id="search-query-display">Hasil Pencarian</h2>
+              <p class="search-meta-subtitle" id="search-meta-subtitle" style="display: none;"></p>
+            </div>
+            <div class="search-filter-pills" id="search-filter-pills">
+              <button class="search-filter-pill active" data-filter="all" onclick="window.app.setSearchFilter('all')">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <span class="filter-pill-label">Semua Versi</span>
+              </button>
+              <button class="search-filter-pill filter-pill-official" data-filter="official" onclick="window.app.setSearchFilter('official')">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span class="filter-pill-label">Official Saja</span>
+              </button>
+              <button class="search-filter-pill filter-pill-nonofficial" data-filter="nonofficial" onclick="window.app.setSearchFilter('nonofficial')" title="Cover, Remix, Lyrics, Performance Video, Festival EDM & Dance">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                <span class="filter-pill-label">Bukan Official (Cover, Remix, Lyrics, Live, Dance)</span>
+              </button>
+            </div>
+          </div>
+          <div id="search-results" class="track-list">
+            <div class="empty-state">
+              <div class="empty-icon">🎵</div>
+              <h3>Mulai Cari Musik</h3>
+              <p>Ketik judul lagu atau nama penyanyi di kolom pencarian di atas.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Suno AI Studio Tab -->
+        <section id="view-suno" class="view-tab">
+          <!-- Suno AI Engine Header Card -->
+          <div id="suno-account-card" class="suno-account-card">
+            <div class="suno-card-left">
+              <div class="suno-avatar-glow">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+              </div>
+              <div class="suno-account-info-wrap">
+                <div class="suno-account-row-1">
+                  <span id="suno-user-name" class="suno-user-name">Suno AI Music Studio</span>
+                  <span id="suno-credits-pill" class="suno-credits-pill">⚡ Auto-Engine Bebas Kuota</span>
+                </div>
+                <div class="suno-account-row-2">
+                  <span class="status-dot active"></span>
+                  <span id="suno-connection-status-text">🟢 Suno AI Auto-Engine Aktif • Siap Membuat Lagu (Tanpa Daftar & Bebas Kuota)</span>
+                </div>
+              </div>
+            </div>
+            <div class="suno-card-right" style="display: flex; gap: 8px; align-items: center;">
+              <button class="suno-act-btn btn-danger-soft" id="btn-suno-disconnect" onclick="window.sunoStudio.disconnectAccount()" title="Putuskan koneksi saat ini dan kembali ke Auto-Engine" style="display: none; background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35);">
+                🔌 Putuskan Koneksi
+              </button>
+              <button class="suno-act-btn" id="btn-suno-settings" onclick="document.getElementById('modal-token').classList.add('active')" title="Pengaturan Engine Lanjutan (Opsional)" style="background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.78rem;">
+                ⚙️ Pengaturan Engine (Opsional)
+              </button>
+            </div>
+          </div>
+
+          <!-- Studio Navigation Switcher: 2 Sub-Tabs -->
+          <div class="suno-subtabs-bar">
+            <button class="suno-subtab-chip active" id="btn-subtab-create" onclick="window.sunoStudio.switchSubTab('create')">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+              <span>✍️ Studio Buat Lagu</span>
+            </button>
+            <button class="suno-subtab-chip" id="btn-subtab-library" onclick="window.sunoStudio.switchSubTab('library')">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              <span>🎶 Koleksi Lagu Buatan Saya</span>
+              <span id="suno-library-count-badge" class="subtab-count-badge">0</span>
+            </button>
+          </div>
+
+          <!-- SUB-VIEW 1: Studio Generator -->
+          <div id="suno-subview-create" class="suno-subview active">
+            <div class="suno-generator-grid">
+              <!-- Form Panel -->
+              <div class="suno-panel generator-panel">
+                <div class="suno-panel-title">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--primary)" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+                  Buat Lagu Baru dengan AI
+                </div>
+                <div class="suno-panel-subtitle">
+                  Hasilkan lagu lengkap dengan instrumen dan vokal secara gratis langsung tersinkron ke akun Suno Anda.
+                </div>
+
+                <form id="suno-form">
+                  <div class="form-group">
+                    <label class="form-label" for="suno-title">Judul Lagu (Opsional)</label>
+                    <input type="text" id="suno-title" class="form-input" placeholder="Contoh: Senja di Pelabuhan, Fantasy Quest, dll">
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="suno-tags">Genre & Style Musik</label>
+                    <input type="text" id="suno-tags" class="form-input" placeholder="Contoh: Indonesian pop, nostalgic acoustic, emotional vocal">
+                    <div class="quick-tags-wrapper">
+                      <span class="tag-chip" data-tag="Pop Indonesia">Pop Indonesia</span>
+                      <span class="tag-chip" data-tag="Lo-Fi Chill">Lo-Fi Chill</span>
+                      <span class="tag-chip" data-tag="Fantasy Orchestral">Fantasy Orchestral</span>
+                      <span class="tag-chip" data-tag="Acoustic Guitar">Acoustic Guitar</span>
+                      <span class="tag-chip" data-tag="Cyberpunk Synthwave">Synthwave</span>
+                      <span class="tag-chip" data-tag="Dangdut Koplo Modern">Dangdut Koplo</span>
+                      <span class="tag-chip" data-tag="R&B Soul">R&B Soul</span>
+                      <span class="tag-chip" data-tag="Rock Energetic">Rock</span>
+                      <span class="tag-chip" data-tag="J-Pop Anime Opening">J-Pop Anime</span>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="suno-prompt">Deskripsi Tema / Lirik Custom</label>
+                    <textarea id="suno-prompt" class="form-textarea" placeholder="Tulis lirik Anda sendiri atau beri tahu AI: 'Lagu tenang tentang kenangan masa kecil di tengah hujan rintik-rintik...'"></textarea>
+                  </div>
+
+                  <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span style="font-size: 1.25rem;">⚡</span>
+                      <div>
+                        <div style="font-size: 0.83rem; font-weight: 600; color: #10b981;">Mesin Otomatis: Suno v6-mini</div>
+                        <div style="font-size: 0.72rem; color: #94a3b8;">Model generasi terbaru resmi • Kualitas jernih & selalu gratis</div>
+                      </div>
+                    </div>
+                    <span style="font-size: 0.68rem; padding: 3px 8px; border-radius: 999px; background: rgba(16, 185, 129, 0.2); color: #34d399; font-weight: 700; text-transform: uppercase;">Aktif</span>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-checkbox-wrapper">
+                      <input type="checkbox" id="suno-instrumental">
+                      <span>Musik Instrumental Saja (Tanpa Vokal)</span>
+                    </label>
+                  </div>
+
+                  <button type="submit" id="suno-generate-btn" class="btn-generate-ai">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Generate Lagu dengan Suno AI
+                  </button>
+                </form>
+
+                <div id="suno-status-box" class="generating-status-box">
+                  <div class="spinner" style="width: 20px; height: 20px; margin: 0; border-width: 2px;"></div>
+                  <span id="suno-status-text">Memproses pembuatan lagu AI...</span>
+                </div>
+              </div>
+
+              <!-- Quick Recent Track Preview Side Card -->
+              <div class="suno-panel recent-preview-panel">
+                <div class="suno-panel-title">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+                  Lagu Baru Saja Dibuat
+                </div>
+                <div class="suno-panel-subtitle">Hasil pembuatan terbaru siap langsung diputar.</div>
+                <div id="suno-recent-preview-container">
+                  <!-- Populated by JavaScript -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SUB-VIEW 2: Koleksi Lagu Buatan Saya -->
+          <div id="suno-subview-library" class="suno-subview" style="display: none;">
+            <div class="suno-library-header">
+              <div class="suno-library-search-wrap">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="suno-library-search-input" placeholder="Cari lagu buatan Anda..." oninput="window.sunoStudio.filterLibrary(this.value)">
+              </div>
+              <button class="btn-sidebar-action" onclick="window.sunoStudio.fetchCreations(1, true)" style="font-size: 0.8rem; padding: 8px 16px;">
+                🔄 Segarkan Koleksi
+              </button>
+            </div>
+
+            <div id="suno-library-list" class="suno-library-grid">
+              <!-- Dynamically populated songs -->
+            </div>
+
+            <!-- Library Pagination Bar -->
+            <div id="suno-library-pagination" class="suno-pagination-bar">
+              <button id="btn-suno-prev-page" class="pagination-btn" onclick="window.sunoStudio.changePage(-1)">
+                ◀ Sebelumnya
+              </button>
+              <div id="suno-page-indicator" class="pagination-indicator">
+                Halaman <span id="suno-current-page">1</span>
+              </div>
+              <button id="btn-suno-next-page" class="pagination-btn" onclick="window.sunoStudio.changePage(1)">
+                Berikutnya ▶
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. Favorites Tab -->
+        <section id="view-favorites" class="view-tab">
+          <div class="section-header">
+            <h2 class="section-title">Koleksi Lagu Favorit</h2>
+          </div>
+          <div id="favorites-list" class="track-list">
+            <!-- Dynamically populated -->
+          </div>
+        </section>
+
+        <!-- 5. Playlists Tab (Personal / Imported) -->
+        <section id="view-playlists" class="view-tab">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Playlist Akun Saya</h2>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Kelola playlist YouTube Music akun Anda dan buat koleksi lagu pribadi.</p>
+            </div>
+            <div class="playlist-header-actions">
+              <button class="btn-generate-ai" onclick="document.getElementById('modal-import-playlist').classList.add('active')" style="width: auto; padding: 10px 18px; font-size: 0.82rem;">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                + Impor dari YouTube Music
+              </button>
+              <button class="btn-sidebar-action" onclick="document.getElementById('modal-create-playlist').classList.add('active')" style="font-size: 0.82rem;">
+                + Buat Playlist Baru
+              </button>
+            </div>
+          </div>
+
+          <div id="custom-playlists-container" class="music-grid">
+            <!-- Dynamically populated -->
+          </div>
+
+          <!-- Single Playlist Detail View (shown when a playlist is clicked) -->
+          <div id="playlist-detail-view" style="display: none;"></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Persistent Bottom Player Bar (Luxury Glassmorphic Hi-Fi Dock) -->
+    <footer class="player-bar" id="master-player-bar">
+      <!-- Ambient Top Glow Beam -->
+      <div class="player-glow-beam"></div>
+
+      <!-- Left: Track Details & Album Vinyl Thumbnail -->
+      <div class="player-left">
+        <div class="player-thumb-wrap" id="player-thumb-wrap">
+          <div class="player-mini-vinyl" id="player-mini-vinyl">
+            <div class="mini-vinyl-grooves"></div>
+            <div class="mini-vinyl-center-label">
+              <img id="player-vinyl-label-img" src="/images/supermix.jpg" alt="Vinyl Label">
+            </div>
+          </div>
+          <img id="player-thumb" src="/images/supermix.jpg" alt="Track Cover" class="player-thumb-img" onerror="this.src='/images/supermix.jpg'">
+          <div class="player-thumb-glow" id="player-thumb-glow"></div>
+        </div>
+
+        <div class="player-track-info">
+          <div class="player-title-marquee-wrap">
+            <div id="player-title" class="player-title" title="Pilih Lagu untuk Diputar">Pilih Lagu untuk Diputar</div>
+          </div>
+          <div id="player-artist" class="player-artist">AuraSound Hi-Fi Audio</div>
+          <div class="player-badge-row">
+            <span id="badge-source" class="player-hifi-badge badge-yt">
+              <span class="hifi-pulse-dot"></span>
+              <span id="badge-source-text">YT MUSIC • 24-BIT</span>
+            </span>
+            <div class="player-live-eq" id="player-live-eq" title="Sedang Memutar">
+              <span class="live-eq-bar bar-1"></span>
+              <span class="live-eq-bar bar-2"></span>
+              <span class="live-eq-bar bar-3"></span>
+              <span class="live-eq-bar bar-4"></span>
+            </div>
+          </div>
+        </div>
+
+        <button id="player-fav-btn" class="player-action-icon-btn" title="Favorit (Suka Lagu)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        </button>
+      </div>
+
+      <!-- Center: Controls & High-Precision Seekbar -->
+      <div class="player-center">
+        <div class="player-controls">
+          <button id="btn-shuffle" class="btn-ctrl-secondary" title="Acak Lagu (Shuffle)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+          </button>
+
+          <button id="prev-btn" class="btn-ctrl" title="Sebelumnya">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.4"/></svg>
+          </button>
+
+          <button id="play-pause-btn" class="btn-ctrl btn-play-orb" title="Putar / Jeda">
+            <svg class="icon-play" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg class="icon-pause" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="display: none;"><rect x="6" y="4" width="4.5" height="16" rx="1.5"/><rect x="13.5" y="4" width="4.5" height="16" rx="1.5"/></svg>
+          </button>
+
+          <button id="next-btn" class="btn-ctrl" title="Berikutnya">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.4"/></svg>
+          </button>
+
+          <button id="btn-repeat" class="btn-ctrl-secondary" title="Ulangi Lagu (Repeat)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            <span class="repeat-badge"></span>
+          </button>
+        </div>
+
+        <div class="player-progress-container">
+          <span id="current-time" class="time-label">0:00</span>
+          <div class="slider-track-wrap">
+            <input type="range" id="progress-bar" class="player-seek-slider" min="0" max="100" value="0">
+            <div class="seek-fill-glow" id="seek-fill-glow"></div>
+          </div>
+          <span id="duration-time" class="time-label">0:00</span>
+        </div>
+      </div>
+
+      <!-- Right: Spectrum Visualizer & Sound FX -->
+      <div class="player-right">
+        <!-- Visualizer Spectrum Bezel -->
+        <div class="player-spectrum-bezel" title="Visualizer Spektrum Frekuensi Real-Time">
+          <canvas id="visualizer-canvas" class="visualizer-canvas" width="128" height="36"></canvas>
+          <div class="spectrum-live-badge">
+            <span class="live-dot"></span>
+            <span>SPECTRUM</span>
+          </div>
+        </div>
+
+        <!-- Studio Cinema Mode Button -->
+        <button id="btn-open-cinema" class="player-dsp-btn btn-cinema-mode" title="Mode Panggung Studio & Visualizer Layar Penuh">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+          <span class="cinema-btn-label">Studio Cinema</span>
+        </button>
+
+        <!-- Equalizer Button with Glow Indicator -->
+        <button id="btn-toggle-eq" class="player-dsp-btn" title="Audio DSP Equalizer (Dolby & Nahimic)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          <span class="dsp-active-dot"></span>
+        </button>
+
+        <!-- Volume Wrapper -->
+        <div class="player-volume-group">
+          <button id="volume-icon-btn" class="volume-btn" title="Bisukan / Nyalakan Suara">
+            <svg id="volume-icon-high" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            <svg id="volume-icon-muted" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="display: none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+          </button>
+          <div class="volume-slider-wrap">
+            <input type="range" id="volume-slider" class="volume-range-slider" min="0" max="100" value="100">
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Equalizer Drawer (Dolby Access & Nahimic Sound DSP) -->
+    <div id="eq-drawer" class="eq-drawer">
+      <div class="eq-header">
+        <div class="eq-title-group">
+          <div class="eq-title">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
+            Audio DSP Equalizer
+          </div>
+          <div class="eq-status-row">
+            <span class="eq-badge">Dolby & Nahimic Ready</span>
+            <span class="limiter-badge" title="Master Brickwall Limiter mencegah distorsi audio digital"><span class="limiter-dot"></span> Studio Limiter: Aktif</span>
+          </div>
+        </div>
+        <button id="btn-close-eq" class="icon-btn" style="padding: 4px;">✕</button>
+      </div>
+
+      <!-- Real-Time Frequency Response Curve Canvas -->
+      <div class="eq-curve-wrap">
+        <div class="eq-curve-header">
+          <span class="eq-curve-title">Respon Frekuensi Real-Time</span>
+          <span class="eq-curve-range">32-bit Floating DSP</span>
+        </div>
+        <canvas id="eq-curve-canvas" width="400" height="80"></canvas>
+        <div class="eq-curve-legend">
+          <span>32Hz</span>
+          <span>125Hz</span>
+          <span>1kHz</span>
+          <span>4kHz</span>
+          <span>16kHz</span>
+        </div>
+      </div>
+
+      <!-- Real-Time Audio Source Banner & Live DSP Tester Trigger -->
+      <div class="eq-status-banner" id="eq-source-banner">
+        <div class="eq-status-info">
+          <span class="status-indicator-dot dot-active" id="eq-status-dot"></span>
+          <span id="eq-status-text">DSP Web Audio Engine Aktif</span>
+        </div>
+        <button id="btn-test-dsp" class="eq-test-btn" title="Putar sample beat berirama untuk menguji perubahan karakter DSP secara langsung">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span id="btn-test-dsp-label">Tes Audio DSP</span>
+        </button>
+      </div>
+
+      <div class="eq-presets">
+        <button class="preset-btn active" data-preset="dolby">Dolby Atmos Enhancer</button>
+        <button class="preset-btn" data-preset="nahimic">Nahimic Bass & Clarity</button>
+        <button class="preset-btn" data-preset="bassHeavy">Bass Boost Extreme</button>
+        <button class="preset-btn" data-preset="vocal">Vocal Presence</button>
+        <button class="preset-btn" data-preset="electronic">EDM / Synth</button>
+        <button class="preset-btn" data-preset="flat">Flat / Natural</button>
+      </div>
+
+      <!-- Dual DSP Acoustic Enhancer Controls (Sub-Bass + 3D Spatial Soundstage) -->
+      <div class="eq-dual-controls">
+        <div class="bass-boost-box">
+          <div class="bass-header">
+            <span>Sub-Bass Booster</span>
+            <span id="bass-boost-val" style="color: var(--primary);">+4 dB</span>
+          </div>
+          <input type="range" id="bass-boost-slider" class="slider" min="0" max="15" value="4" step="1">
+        </div>
+
+        <div class="bass-boost-box">
+          <div class="bass-header">
+            <span>3D Spatial Soundstage</span>
+            <span id="spatial-width-val" style="color: #06b6d4;">140% (3D Surround)</span>
+          </div>
+          <input type="range" id="spatial-width-slider" class="slider" min="0" max="200" value="140" step="5">
+        </div>
+      </div>
+
+      <div class="eq-bars-container">
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-0" min="-12" max="12" value="4" oninput="audioEngine.setBandGain(0, this.value)">
+          <span class="eq-freq-label">32Hz</span>
+        </div>
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-1" min="-12" max="12" value="3" oninput="audioEngine.setBandGain(1, this.value)">
+          <span class="eq-freq-label">64Hz</span>
+        </div>
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-2" min="-12" max="12" value="2" oninput="audioEngine.setBandGain(2, this.value)">
+          <span class="eq-freq-label">125Hz</span>
+        </div>
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-3" min="-12" max="12" value="-1" oninput="audioEngine.setBandGain(3, this.value)">
+          <span class="eq-freq-label">250Hz</span>
+        </div>
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-4" min="-12" max="12" value="-1" oninput="audioEngine.setBandGain(4, this.value)">
+          <span class="eq-freq-label">500Hz</span>
+        </div>
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-5" min="-12" max="12" value="1" oninput="audioEngine.setBandGain(5, this.value)">
+          <span class="eq-freq-label">1kHz</span>
+        </div>
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-6" min="-12" max="12" value="3" oninput="audioEngine.setBandGain(6, this.value)">
+          <span class="eq-freq-label">2kHz</span>
+        </div>
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-7" min="-12" max="12" value="4" oninput="audioEngine.setBandGain(7, this.value)">
+          <span class="eq-freq-label">4kHz</span>
+        </div>
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-8" min="-12" max="12" value="5" oninput="audioEngine.setBandGain(8, this.value)">
+          <span class="eq-freq-label">8kHz</span>
+        </div>
+        <div class="eq-column">
+          <input type="range" class="vertical-slider" id="eq-slider-9" min="-12" max="12" value="5" oninput="audioEngine.setBandGain(9, this.value)">
+          <span class="eq-freq-label">16kHz</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Bottom Navigation Bar (Shown on Mobile Screen) -->
+    <nav class="mobile-bottom-nav">
+      <a class="mobile-nav-item active nav-link" data-tab="home">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Beranda
+      </a>
+      <a class="mobile-nav-item nav-link" data-tab="search">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Cari
+      </a>
+      <a class="mobile-nav-item nav-link" data-tab="suno">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+        Suno AI
+      </a>
+      <a class="mobile-nav-item nav-link" data-tab="playlists">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15V6M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM12 12H3M16 6H3M12 18H3"/></svg>
+        Playlist
+      </a>
+      <a class="mobile-nav-item nav-link" data-tab="favorites">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        Favorit
+      </a>
+      <a class="mobile-nav-item" onclick="document.getElementById('modal-connect').classList.add('active')">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+        HP Sync
+      </a>
+    </nav>
+  </div>
+
+  <!-- Modal Edit Profil Akun (Profile Settings) -->
+  <div id="modal-profile" class="modal-overlay">
+    <div class="modal-card modal-profile-card">
+      <button class="modal-close-btn" id="btn-close-profile">✕</button>
+      <div class="modal-title" id="profile-modal-title">Profil Akun</div>
+      <div class="modal-desc" id="profile-modal-desc">Kelola profil pribadi dan preferensi bahasa Anda.</div>
+
+      <form id="form-profile" class="profile-form">
+        <!-- 1. Ganti Profile Picture -->
+        <div class="profile-avatar-section">
+          <div class="profile-avatar-wrapper" id="profile-avatar-trigger" title="Klik untuk ganti foto profil">
+            <img id="profile-preview-img" src="/images/avatar.jpg" alt="Profile Avatar" onerror="this.src='/icons/icon.svg'">
+            <div class="profile-avatar-overlay">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </div>
+            <input type="file" id="profile-avatar-input" accept="image/*" style="display: none;">
+          </div>
+          <button type="button" class="btn-change-avatar" id="btn-trigger-avatar-file">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span id="label-change-photo">Pilih Foto Baru</span>
+          </button>
+        </div>
+
+        <!-- 2. Ganti Nama -->
+        <div class="form-group" style="margin-top: 18px; text-align: left;">
+          <label class="form-label" for="profile-input-name" id="label-profile-name">Nama Pengguna</label>
+          <input type="text" id="profile-input-name" class="form-input" placeholder="Masukkan nama Anda" value="" required maxlength="32">
+        </div>
+
+        <!-- 3. Pilihan Bahasa (Bahasa Indonesia / English) -->
+        <div class="form-group" style="margin-top: 14px; text-align: left;">
+          <label class="form-label" id="label-profile-lang">Pilih Bahasa</label>
+          <div class="profile-lang-selector">
+            <label class="lang-option-pill active" id="lang-pill-id">
+              <input type="radio" name="app-language" value="id" checked style="display: none;">
+              <span class="lang-flag">🇮🇩</span>
+              <span class="lang-name">Indonesia</span>
+            </label>
+            <label class="lang-option-pill" id="lang-pill-en">
+              <input type="radio" name="app-language" value="en" style="display: none;">
+              <span class="lang-flag">🇬🇧</span>
+              <span class="lang-name">English</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Tombol Simpan -->
+        <button type="submit" class="btn-generate-ai" id="btn-save-profile" style="margin-top: 20px;">
+          Simpan Perubahan
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal QR Code Mobile Connection -->
+  <div id="modal-connect" class="modal-overlay">
+    <div class="modal-card">
+      <button class="modal-close-btn" id="btn-close-connect">✕</button>
+      <div class="modal-title">Buka di Handphone Anda 📱</div>
+      <div class="modal-desc">
+        Arahkan kamera HP Anda ke QR Code di bawah (pastikan HP dan laptop terhubung ke Wi-Fi yang sama).
+      </div>
+      <div class="qr-wrapper">
+        <img id="connect-qrcode" src="" alt="QR Code Koneksi HP">
+      </div>
+      <div style="margin-top: 14px;">
+        <a href="/download/apk" download="AuraSound.apk" class="btn-generate-ai" style="text-decoration: none; justify-content: center; width: 100%; padding: 11px; font-size: 0.86rem; gap: 8px;">
+          📥 Download File AuraSound.apk (1 MB)
+        </a>
+      </div>
+      <p style="font-size: 0.78rem; color: #64748b; margin-top: 12px;">
+        💡 Bisa download langsung file APK di atas, atau buka URL di browser HP untuk install otomatis.
+      </p>
+    </div>
+  </div>
+
+  <!-- Modal Suno Connection Setup (Official Account & API Key) -->
+  <div id="modal-token" class="modal-overlay">
+    <div class="modal-card" style="max-width: 500px;">
+      <button class="modal-close-btn" onclick="document.getElementById('modal-token').classList.remove('active')">✕</button>
+      <div class="modal-title">Hubungkan Suno AI 🎵</div>
+      <div class="modal-desc">
+        Pilih metode koneksi ke Suno AI untuk membuat musik neural berkualitas studio:
+      </div>
+
+      <!-- Segmented Tab Switcher -->
+      <div class="suno-modal-tabs">
+        <button type="button" class="suno-modal-tab active" id="btn-tab-suno-official" onclick="window.sunoStudio.switchModalMode('official')">
+          👤 Akun Suno.com Pribadi
+        </button>
+        <button type="button" class="suno-modal-tab" id="btn-tab-suno-api" onclick="window.sunoStudio.switchModalMode('api')">
+          ⚡ API Key (Kie.ai)
+        </button>
+      </div>
+
+      <!-- Section A: Official Suno.com Account -->
+      <div id="section-suno-official" class="suno-modal-section">
+        <div class="suno-connect-card" style="margin-bottom: 14px; background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.25); text-align: center; padding: 18px 16px;">
+          <div style="font-size: 0.95rem; font-weight: 700; color: #a5b4fc; margin-bottom: 6px;">
+            ✨ Login Langsung ke Akun Suno
+          </div>
+          <div style="font-size: 0.8rem; color: #cbd5e1; line-height: 1.5; margin-bottom: 16px;">
+            Klik tombol di bawah untuk membuka jendela resmi Suno.com. Anda cukup login dengan akun Google atau Email Anda, lalu jendela akan tertutup sendiri dan aplikasi Anda langsung terhubung!
+          </div>
+
+          <button type="button" id="btn-start-auto-login" class="btn-generate-ai" onclick="window.sunoStudio.startAutoLoginFlow()" style="width: 100%; padding: 12px 20px; font-size: 0.9rem; justify-content: center; gap: 8px;">
+            🚀 Buka Jendela & Login ke Suno
+          </button>
+
+          <div id="auto-login-loading" style="display: none; margin-top: 14px; padding: 12px; background: rgba(99, 102, 241, 0.15); border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.3);">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #38bdf8; font-size: 0.82rem; font-weight: 600;">
+              <span class="pulse-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#38bdf8;"></span>
+              <span id="auto-login-status-text">Menunggu Anda login di jendela Suno...</span>
+            </div>
+            <div style="display: flex; justify-content: center; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap;">
+              <button type="button" onclick="window.open('https://suno.com/me', '_blank')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #38bdf8; padding: 5px 12px; border-radius: 6px; font-size: 0.74rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                🌐 Buka di Tab Baru Jika Belum Terbuka
+              </button>
+              <button type="button" onclick="window.sunoStudio.cancelAutoLogin()" style="background: none; border: none; color: #f87171; font-size: 0.74rem; cursor: pointer; text-decoration: underline;">
+                Batalkan
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <details style="font-size: 0.76rem; color: #94a3b8; margin-top: 6px;" open>
+          <summary style="cursor: pointer; padding: 4px 0; color: #818cf8; font-weight: 600;">
+            🛠️ Opsi Cadangan: Tempel Token Manual
+          </summary>
+          <div style="padding-top: 10px;">
+            <div class="form-group" style="text-align: left; margin-bottom: 10px;">
+              <textarea id="input-suno-official-token" class="form-input" rows="2" placeholder="Tempel token sesi (eyJhbGciOi...) akun Suno Anda..." style="font-family: monospace; font-size: 0.75rem; resize: vertical;"></textarea>
+            </div>
+            <button id="btn-connect-official" class="btn-sidebar-action" onclick="window.sunoStudio.saveOfficialToken()" style="width: 100%; padding: 8px; font-size: 0.78rem; justify-content: center;">
+              🔗 Hubungkan Token Manual
+            </button>
+          </div>
+        </details>
+      </div>
+
+      <!-- Section B: API Key (Kie.ai) -->
+      <div id="section-suno-api" class="suno-modal-section" style="display: none;">
+        <div class="suno-connect-card" style="margin-bottom: 14px;">
+          <div style="font-size: 0.82rem; font-weight: 700; color: #34d399; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+            <span>⚡ Mode API Key Kie.ai:</span>
+            <span style="font-size: 0.72rem; color: #38bdf8; font-weight: 600;">Aktif & Bebas CAPTCHA</span>
+          </div>
+          <div style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.5;">
+            Metode ini langsung memanggil model Suno AI tanpa login atau CAPTCHA. Akun Kie.ai Anda saat ini memiliki saldo kredit aktif.
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn-sidebar-action" onclick="window.open('https://kie.ai', '_blank')" style="padding: 4px 10px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;">
+              🌐 Buka Kie.ai (Dapat 80 Kredit)
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group" style="text-align: left; margin-bottom: 12px;">
+          <label class="form-label" for="input-suno-provider">Pilihan Provider API:</label>
+          <select id="input-suno-provider" class="form-input" onchange="window.sunoStudio.onProviderChange(this.value)" style="cursor: pointer;">
+            <option value="kie">Kie.ai Suno (Sangat Stabil & Cepat)</option>
+            <option value="goapi">GoAPI Suno Music</option>
+            <option value="custom">Custom Server Suno (Self-Hosted)</option>
+          </select>
+        </div>
+
+        <div id="group-custom-api-url" class="form-group" style="text-align: left; margin-bottom: 12px; display: none;">
+          <label class="form-label" for="input-suno-custom-url">Custom API Base URL:</label>
+          <input type="text" id="input-suno-custom-url" class="form-input" placeholder="https://api.domain-anda.com">
+        </div>
+
+        <div class="form-group" style="text-align: left; margin-bottom: 14px;">
+          <label class="form-label" for="input-suno-api-key">Suno API Key:</label>
+          <input type="password" id="input-suno-api-key" class="form-input" placeholder="Masukkan API Key Kie.ai atau GoAPI" style="font-family: monospace; font-size: 0.82rem;">
+        </div>
+
+        <button id="btn-save-suno-token" class="btn-generate-ai" onclick="window.sunoStudio.saveApiKey()" style="width: 100%; margin-bottom: 10px;">
+          💾 Simpan & Aktifkan API Key
+        </button>
+      </div>
+
+      <div id="modal-suno-status" style="display: none; margin-bottom: 10px;"></div>
+
+      <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.74rem; color: #64748b;">Hapus koneksi akun aktif?</span>
+        <button id="btn-disconnect-suno" class="btn-disconnect-suno" onclick="window.sunoStudio.disconnectAccount()" title="Putuskan koneksi dan hapus data akun" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35);">
+          🔌 Hapus & Putuskan Koneksi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Impor Playlist YouTube Music -->
+  <div id="modal-import-playlist" class="modal-overlay">
+    <div class="modal-card">
+      <button class="modal-close-btn" onclick="document.getElementById('modal-import-playlist').classList.remove('active')">✕</button>
+      <div class="modal-title">Impor Playlist YouTube Music 📥</div>
+      <div class="modal-desc">
+        Tempel tautan / URL playlist dari akun YouTube Music Anda untuk memuat semua lagu secara instan.
+      </div>
+
+      <form id="form-import-playlist" style="text-align: left;">
+        <div class="form-group">
+          <label class="form-label" for="input-playlist-url">URL atau Link Playlist</label>
+          <input type="url" id="input-playlist-url" class="form-input" placeholder="https://music.youtube.com/playlist?list=PL..." required>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 12px; font-size: 0.78rem; color: #94a3b8; margin-bottom: 20px;">
+          <strong>💡 Cara salin link playlist dari akun Anda:</strong><br>
+          1. Buka YouTube Music / YouTube di HP atau Laptop.<br>
+          2. Masuk ke menu <strong>Koleksi / Library</strong> -> Buka playlist Anda.<br>
+          3. Klik tombol <strong>Bagikan (Share)</strong> -> pilih <strong>Salin Link</strong>.<br>
+          4. <em>Catatan:</em> Pastikan privasi playlist Anda disetel ke <strong>Publik</strong> atau <strong>Tidak Terdaftar (Unlisted)</strong> agar dapat dibaca.
+        </div>
+
+        <div id="import-status-text" style="color: var(--primary); font-size: 0.85rem; margin-bottom: 12px; text-align: center;"></div>
+
+        <button type="submit" id="btn-submit-import" class="btn-generate-ai">
+          Mulai Impor Lagu
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Buat Playlist Baru -->
+  <div id="modal-create-playlist" class="modal-overlay">
+    <div class="modal-card">
+      <button class="modal-close-btn" onclick="document.getElementById('modal-create-playlist').classList.remove('active')">✕</button>
+      <div class="modal-title">Buat Playlist Baru 📁</div>
+      <div class="modal-desc">Beri nama untuk daftar putar kustom Anda.</div>
+
+      <form id="form-create-playlist" style="text-align: left;">
+        <div class="form-group">
+          <label class="form-label" for="input-playlist-name">Nama Playlist</label>
+          <input type="text" id="input-playlist-name" class="form-input" placeholder="Contoh: Lagu Kerja Santai, Lofi Malam, dll" required>
+        </div>
+
+        <button type="submit" class="btn-generate-ai" style="margin-top: 14px;">
+          Buat Playlist
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Tambah Lagu ke Playlist -->
+  <div id="modal-add-to-playlist" class="modal-overlay">
+    <div class="modal-card">
+      <button class="modal-close-btn" onclick="document.getElementById('modal-add-to-playlist').classList.remove('active')">✕</button>
+      <div class="modal-title">Tambah ke Playlist ➕</div>
+      <div class="modal-desc">Pilih playlist tempat Anda ingin menyimpan lagu ini:</div>
+
+      <div id="modal-playlist-options" style="max-height: 260px; overflow-y: auto; margin-bottom: 16px;">
+        <!-- Dynamically rendered -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function copySunoSnippet() {
+      const code = document.getElementById('suno-snippet-text')?.textContent || 'copy(document.cookie)';
+      const btn = document.getElementById('btn-copy-snippet');
+      try {
+        await navigator.clipboard.writeText(code);
+        if (btn) {
+          btn.classList.add('copied');
+          btn.innerHTML = '✓ Tersalin!';
+          setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.innerHTML = '📋 Salin Kode';
+          }, 2500);
+        }
+      } catch (e) {
+        prompt('Silakan salin kode berikut:', code);
+      }
+    }
+
+    function saveSunoTokenModal() {
+      const val = document.getElementById('input-suno-token').value.trim();
+      if (val) {
+        window.sunoStudio.saveToken(val);
+      } else {
+        alert('Silakan tempel token akun Suno Anda terlebih dahulu.');
+      }
+    }
+
+    function disconnectSunoModal() {
+      if (confirm('Apakah Anda yakin ingin memutuskan sambungan akun Suno AI?')) {
+        window.sunoStudio.disconnect();
+      }
+    }
+  </script>
+
+  <!-- Fullscreen Studio Cinema & Sing-Along Experience Modal -->
+  <div id="modal-studio-cinema" class="studio-cinema-overlay" aria-hidden="true">
+    <!-- Dynamic Ambient Backdrop & Aurora Pulse -->
+    <div class="cinema-backdrop" id="cinema-backdrop"></div>
+    <div class="cinema-ambient-orbs">
+      <div class="cinema-orb cinema-orb-1"></div>
+      <div class="cinema-orb cinema-orb-2"></div>
+    </div>
+
+    <!-- Cinema Header -->
+    <header class="cinema-header">
+      <div class="cinema-brand">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--primary)" stroke-width="2.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        <span>AURASOUND STUDIO CINEMA</span>
+      </div>
+
+      <div class="cinema-header-actions">
+        <!-- Visualizer Mode Toggle Switcher -->
+        <div class="cinema-vis-switcher" title="Ganti Mode Visualizer Real-Time">
+          <button class="vis-mode-chip active" id="btn-vis-spectrum" data-vismode="spectrum">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="3" y="10" width="3" height="11"/><rect x="9" y="4" width="3" height="17"/><rect x="15" y="8" width="3" height="13"/><rect x="21" y="2" width="3" height="19"/></svg>
+            Neon Pillars
+          </button>
+          <button class="vis-mode-chip" id="btn-vis-waveform" data-vismode="waveform">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h3l3-8 4 16 4-12 3 6h3"/></svg>
+            Cyber Wave
+          </button>
+          <button class="vis-mode-chip" id="btn-vis-stars" data-vismode="stars">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="m12 3-1.9 5.8-5.8 1.9 5.8 1.9L12 21l1.9-5.8 5.8-1.9-5.8-1.9z"/></svg>
+            Stardust Pulse
+          </button>
+        </div>
+
+        <!-- Visualizer Visibility Toggle (Visualizer vs Fullscreen Karaoke) -->
+        <button class="cinema-vis-toggle-chip" id="btn-toggle-cinema-vis" title="Beralih antara Mode Visualizer dan Fokus Lirik Karaoke Penuh">
+          <svg class="vis-toggle-icon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+          <span class="vis-toggle-label">Visualizer: ON</span>
+        </button>
+
+        <button class="cinema-close-btn" id="btn-close-cinema" title="Tutup Studio Cinema (ESC)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Cinema Main Stage -->
+    <div class="cinema-stage">
+      <!-- Left Stage: Huge 3D Spinning Vinyl Record & Tonearm -->
+      <div class="cinema-turntable-deck">
+        <div class="cinema-vinyl-wrap" id="cinema-vinyl-wrap">
+          <div class="cinema-vinyl-disc" id="cinema-vinyl-disc">
+            <div class="vinyl-groove-rings"></div>
+            <div class="vinyl-groove-rings r-2"></div>
+            <div class="vinyl-light-sheen"></div>
+            <div class="vinyl-center-label">
+              <img id="cinema-vinyl-thumb" src="/images/supermix.jpg" alt="Track Art">
+              <div class="vinyl-spindle-hole"></div>
+            </div>
+          </div>
+          <div class="cinema-turntable-arm" id="cinema-turntable-arm">
+            <div class="arm-pivot"></div>
+            <div class="arm-rod"></div>
+            <div class="arm-cartridge"></div>
+          </div>
+        </div>
+
+        <div class="cinema-track-details">
+          <div class="cinema-badge-row">
+            <span class="cinema-live-badge">STUDIO HI-RES 24-BIT</span>
+            <span class="cinema-badge-dot">•</span>
+            <span id="cinema-track-artist">AuraSound Music</span>
+          </div>
+          <h1 id="cinema-track-title" class="cinema-title">Pilih Lagu untuk Diputar</h1>
+        </div>
+      </div>
+
+      <!-- Right Stage: Interactive Full Spectrum Canvas & Synced Lyrics Sing-Along -->
+      <div class="cinema-visual-lyrics-split">
+        <!-- Visualizer Canvas Panel -->
+        <div class="cinema-canvas-wrap" title="Klik canvas untuk mengganti gaya visualizer">
+          <canvas id="cinema-visualizer-canvas" class="cinema-vis-canvas"></canvas>
+        </div>
+
+        <!-- Sing-Along Lyrics Display -->
+        <div class="cinema-lyrics-panel" id="cinema-lyrics-panel">
+          <div class="cinema-lyrics-header">
+            <div class="cinema-lyrics-header-left">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+              <span>Sing-Along & Dynamic Lyrics</span>
+            </div>
+            <div class="cinema-lyrics-header-right">
+              <button id="btn-toggle-romaji" class="cinema-romaji-chip active" style="display: none;" title="Tampilkan / Sembunyikan Fonetik Romaji/Pinyin">
+                <span class="romaji-chip-icon">🔤</span>
+                <span class="romaji-chip-label">Romaji: ON</span>
+              </button>
+              <span id="cinema-lyrics-badge" class="cinema-lyrics-badge" style="display: none;">KARAOKE SYNC</span>
+            </div>
+          </div>
+          <div class="cinema-lyrics-stream" id="cinema-lyrics-stream">
+            <div class="lyrics-loading-note">Pilih lagu untuk memuat lirik...</div>
+          </div>
+          <div class="cinema-lyrics-hint-bar">
+            <span class="lyrics-hint-text">💡 Klik baris untuk lompat • Sinkron otomatis dengan tempo lagu</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cinema Floating Controller Dock -->
+    <div class="cinema-dock-wrap">
+      <div class="cinema-dock">
+        <!-- Progress scrubber -->
+        <div class="cinema-seek-container">
+          <span id="cinema-time-current" class="cinema-time">0:00</span>
+          <div class="cinema-slider-wrap">
+            <input type="range" id="cinema-progress-bar" class="player-seek-slider cinema-seek-slider" min="0" max="100" value="0">
+          </div>
+          <span id="cinema-time-duration" class="cinema-time">0:00</span>
+        </div>
+
+        <!-- Control buttons -->
+        <div class="cinema-controls-row">
+          <button id="cinema-btn-shuffle" class="cinema-ctrl-btn" title="Acak (Shuffle)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+          </button>
+          <button id="cinema-btn-prev" class="cinema-ctrl-btn" title="Sebelumnya">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.4"/></svg>
+          </button>
+          <button id="cinema-btn-play" class="cinema-play-orb" title="Putar / Jeda">
+            <svg class="cinema-icon-play icon-play" viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg class="cinema-icon-pause icon-pause" viewBox="0 0 24 24" width="26" height="26" fill="currentColor" style="display: none;"><rect x="6" y="4" width="4.5" height="16" rx="1.5"/><rect x="13.5" y="4" width="4.5" height="16" rx="1.5"/></svg>
+          </button>
+          <button id="cinema-btn-next" class="cinema-ctrl-btn" title="Berikutnya">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.4"/></svg>
+          </button>
+          <button id="cinema-btn-fav" class="cinema-ctrl-btn" title="Suka Lagu Ini">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Application Logic Scripts -->
+  <script src="/js/audio-engine.js?v=4.2.0"></script>
+  <script src="/js/yt-player.js?v=4.2.0"></script>
+  <script src="/js/taste-engine.js?v=4.2.0"></script>
+  <script src="/js/suno-studio.js?v=4.2.0"></script>
+  <script src="/js/app.js?v=4.2.0"></script>
+</body>
+</html>

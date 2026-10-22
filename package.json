@@ -1,0 +1,58 @@
+{
+  "name": "aurasound",
+  "version": "1.0.0",
+  "description": "AuraSound - Hi-Fi Music Hub & Suno AI Music Studio",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "node server.js",
+    "app": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.aurasound.musichub",
+    "productName": "AuraSound",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "public/icons/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
+    "axios": "^1.20.0",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "kpop": "^0.1.2",
+    "kuroshiro": "^1.2.1",
+    "kuroshiro-analyzer-kuromoji": "^1.1.0",
+    "pinyin-pro": "^3.29.5",
+    "play-dl": "^1.9.7",
+    "qrcode": "^1.5.4",
+    "wanakana": "^5.3.1",
+    "youtube-sr": "^4.3.12",
+    "youtubei.js": "^18.2.0",
+    "yt-search": "^2.13.1",
+    "ytpl": "^2.3.0"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9"
+  }
+}
