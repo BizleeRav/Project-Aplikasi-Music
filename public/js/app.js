@@ -1850,14 +1850,15 @@ class App {
       submitBtn.addEventListener('click', () => this.handleTasteSubmit());
     }
 
-    // Skip Button Click Handler
+    // Skip Button Click Handler (Clean home without developer songs)
     const skipBtn = document.getElementById('btn-skip-taste');
     if (skipBtn) {
       skipBtn.addEventListener('click', () => {
         localStorage.setItem('aurasound_taste_completed', 'true');
+        localStorage.removeItem('aurasound_taste_profile');
         modal.classList.remove('active');
-        this.loadYTMHome('all');
-        this.showToast('Selamat menikmati musik di AuraSound!', 'success');
+        this.renderEmptyHome();
+        this.showToast('Beranda disetel bersih tanpa lagu bawaan pengembang. Atur selera kapan saja!', 'info');
       });
     }
   }
@@ -2063,10 +2064,14 @@ class App {
           } catch (feedErr) {
             console.warn('Personalized feed failed, falling back to default home:', feedErr.message);
           }
+        } else {
+          // If user skipped or has not chosen any taste: Keep home clean without developer tracks!
+          this.renderEmptyHome();
+          return;
         }
       }
 
-      // 2. Otherwise load category feed or default home
+      // 2. Otherwise load category/mood feed from YouTube
       const res = await fetch(`/api/home?mood=${encodeURIComponent(mood)}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to load home feed');
@@ -2075,20 +2080,131 @@ class App {
         this.homeAlbums = data.albums;
       }
 
-      if (mood === 'all' && data.sections) {
-        this.cachedSections = data.sections;
-        this.cachedUser = data.user;
-        this.renderYTMFullHome(data.sections, data.user);
-      } else if (data.moodData) {
+      if (data.moodData) {
         this.cachedMoodData = data.moodData;
         this.cachedUser = data.user;
         this.renderYTMMoodFeed(data.moodData, data.user);
+      } else if (data.sections) {
+        this.cachedSections = data.sections;
+        this.cachedUser = data.user;
+        this.renderYTMFullHome(data.sections, data.user);
       }
     } catch (err) {
       console.error('Error in loadYTMHome:', err);
       const isEn = (this.userProfile?.lang === 'en');
       container.innerHTML = `<p class="error-msg">${isEn ? 'Failed to load home feed' : 'Gagal memuat beranda'}: ${err.message}</p>`;
     }
+  }
+
+  // ==========================================
+  // CLEAN EMPTY HOME RENDERER (On Skip / Fresh Install)
+  // ==========================================
+  renderEmptyHome() {
+    const container = document.getElementById('ytm-home-sections');
+    if (!container) return;
+
+    const isEn = (this.userProfile?.lang === 'en');
+    const hour = new Date().getHours();
+    let greeting = isEn ? 'Welcome' : 'Selamat Datang';
+    let greetingIcon = '✨';
+    if (hour >= 4 && hour < 11) {
+      greeting = isEn ? 'Good Morning' : 'Selamat Pagi';
+      greetingIcon = '🌅';
+    } else if (hour >= 11 && hour < 15) {
+      greeting = isEn ? 'Good Afternoon' : 'Selamat Siang';
+      greetingIcon = '☀️';
+    } else if (hour >= 15 && hour < 18) {
+      greeting = isEn ? 'Good Evening' : 'Selamat Sore';
+      greetingIcon = '🌇';
+    } else {
+      greeting = isEn ? 'Good Night' : 'Selamat Malam';
+      greetingIcon = '🌌';
+    }
+
+    const userName = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : 'Sobat Musik';
+
+    let html = `
+      <section class="aura-hero-soundstage">
+        <div class="aura-hero-mesh-glow"></div>
+        <div class="aura-hero-inner">
+          <div class="aura-hero-left">
+            <div class="aura-greeting-capsule">
+              <span class="aura-greeting-icon">${greetingIcon}</span>
+              <span class="aura-greeting-tag">AURASOUND AI 2026</span>
+              <span class="aura-greeting-dot"></span>
+              <span class="aura-dsp-hi-res-tag">BERANDA BERSIH</span>
+            </div>
+
+            <h1 class="aura-hero-title">
+              ${greeting}, <span class="aura-title-glow">${userName}</span>
+            </h1>
+
+            <p class="aura-hero-desc">
+              ${isEn
+                ? 'Your home feed is currently clean without any default developer songs. Select your favorite music genres anytime so our AI can curate custom tracks and daily mixes for you.'
+                : 'Beranda Anda saat ini bersih tanpa lagu bawaan pengembang. Pilih genre dan suasana musik favorit Anda kapan saja agar AI dapat meracik lagu dan playlist khusus untuk Anda.'}
+            </p>
+
+            <div class="aura-hero-actions">
+              <button class="aura-btn-hero-primary" onclick="window.app.openTasteModal()">
+                <span style="font-size: 1.1rem;">🎨</span>
+                <span>${isEn ? 'Choose Music Taste' : 'Atur Selera Musik AI'}</span>
+              </button>
+
+              <button class="aura-btn-hero-glass" onclick="window.app.switchTab('search')">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <span>${isEn ? 'Search Any Song' : 'Cari Lagu Sendiri'}</span>
+              </button>
+
+              <button class="aura-btn-hero-outline" onclick="document.getElementById('eq-drawer').classList.toggle('active')">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+                <span>Nahimic 3D Studio</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="aura-hero-right">
+            <div class="aura-turntable-card" onclick="window.app.openTasteModal()" style="cursor: pointer;" title="Klik untuk mengatur selera musik">
+              <div class="aura-turntable-chassis">
+                <div class="aura-vinyl-record">
+                  <div class="aura-vinyl-grooves"></div>
+                  <div class="aura-vinyl-sheen"></div>
+                  <div class="aura-vinyl-center-label">
+                    <div style="font-size: 2rem; display: flex; align-items: center; justify-content: center; height: 100%;">🎵</div>
+                  </div>
+                </div>
+              </div>
+              <div class="aura-turntable-footer">
+                <span class="aura-turntable-text">SIAP DIPERSONALISASI • KLIK DI SINI</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Clean Neutral State Banner -->
+      <section class="aura-section-wrap" style="margin-top: 24px;">
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.14); border-radius: 20px; padding: 46px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px;">
+          <div style="width: 68px; height: 68px; border-radius: 50%; background: rgba(16, 185, 129, 0.12); color: #34d399; display: flex; align-items: center; justify-content: center; font-size: 2rem; box-shadow: 0 0 24px rgba(16, 185, 129, 0.2);">
+            🎧
+          </div>
+          <h3 style="font-size: 1.35rem; font-weight: 800; color: #fff; margin: 0;">Beranda Kamu Masih Bersih</h3>
+          <p style="font-size: 0.92rem; color: #94a3b8; max-width: 520px; line-height: 1.6; margin: 0;">
+            Kamu memilih untuk melewati setup selera musik. Beranda sengaja dikosongkan dari lagu-lagu pengembang agar kamu bisa mulai dengan bersih. Tekan tombol di bawah untuk meracik genre favoritmu kapan saja!
+          </p>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 10px;">
+            <button class="aura-btn-hero-primary" onclick="window.app.openTasteModal()" style="padding: 12px 24px; font-size: 0.9rem;">
+              <span>🎨 Atur Selera Musik (Genre & Vibe)</span>
+            </button>
+            <button class="aura-btn-hero-glass" onclick="window.app.switchTab('search')" style="padding: 12px 24px; font-size: 0.9rem;">
+              <span>🔍 Jelajahi & Cari Musik</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    `;
+
+    container.innerHTML = html;
   }
 
   // ==========================================
