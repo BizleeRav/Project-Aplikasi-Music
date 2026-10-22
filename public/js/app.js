@@ -1809,10 +1809,10 @@ class App {
     // Check if user has already completed onboarding
     const isCompleted = localStorage.getItem('aurasound_taste_completed');
     if (!isCompleted) {
-      // First-time launch: display taste setup modal after gentle 700ms delay
+      // First-time launch: immediately display taste setup modal
       setTimeout(() => {
         this.openTasteModal();
-      }, 700);
+      }, 100);
     }
 
     // Genre Cards Multi-Select Click Handler
@@ -1850,17 +1850,35 @@ class App {
       submitBtn.addEventListener('click', () => this.handleTasteSubmit());
     }
 
-    // Skip Button Click Handler (Clean home without developer songs)
+    // Close (X) & Skip Button Click Handlers (Permanently marks completed and renders clean home)
+    const closeBtn = document.getElementById('btn-close-taste-modal');
+    if (closeBtn) {
+      closeBtn.onclick = () => this.skipTasteOnboarding();
+    }
+
     const skipBtn = document.getElementById('btn-skip-taste');
     if (skipBtn) {
-      skipBtn.addEventListener('click', () => {
-        localStorage.setItem('aurasound_taste_completed', 'true');
-        localStorage.removeItem('aurasound_taste_profile');
-        modal.classList.remove('active');
-        this.renderEmptyHome();
-        this.showToast('Beranda disetel bersih tanpa lagu bawaan pengembang. Atur selera kapan saja!', 'info');
-      });
+      skipBtn.onclick = () => this.skipTasteOnboarding();
     }
+
+    // Backdrop click outside card also triggers skip & permanent dismissal
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        this.skipTasteOnboarding();
+      }
+    });
+  }
+
+  skipTasteOnboarding() {
+    const modal = document.getElementById('modal-taste-onboarding');
+    if (modal) modal.classList.remove('active');
+
+    // Permanently mark as completed so the popup NEVER shows up again on future visits
+    localStorage.setItem('aurasound_taste_completed', 'true');
+    localStorage.removeItem('aurasound_taste_profile');
+
+    this.renderEmptyHome();
+    this.showToast('Setup dilewati. Beranda disetel bersih tanpa lagu bawaan pengembang. Atur selera kapan saja!', 'info');
   }
 
   openTasteModal() {
