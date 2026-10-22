@@ -44,7 +44,21 @@ async function createMainWindow() {
     }
   });
 
-  mainWindow.loadURL('http://localhost:3000');
+  const CLOUD_URL = 'https://project-aplikasi-music.vercel.app';
+  const LOCAL_URL = 'http://localhost:3000';
+
+  // Load live cloud server by default so the desktop app is ALWAYS 100% updated 24/7
+  mainWindow.loadURL(CLOUD_URL).catch(() => {
+    console.warn('Could not connect to cloud server, falling back to local server...');
+    mainWindow.loadURL(LOCAL_URL);
+  });
+
+  // Enable F5 and Ctrl+R reload shortcuts
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {
+      mainWindow.reload();
+    }
+  });
 
   // Remove default menu bar for sleek modern desktop look
   mainWindow.setMenuBarVisibility(false);
