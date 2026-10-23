@@ -1672,7 +1672,15 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     activeArtists = Array.from(artistSet);
   }
   if (activeArtists.length === 0) {
-    activeArtists = ['NMIXX', 'Ado', 'Sakura Miko', 'aespa', 'YOASOBI', 'tuki.'];
+    return {
+      id: 'deck-supermix',
+      type: 'mix',
+      badge: 'SMART SUPERMIX',
+      title: 'My Supermix',
+      subtitle: 'Putar lagu untuk meracik supermix Anda',
+      thumbnail: '/images/supermix.jpg',
+      tracks: []
+    };
   }
   activeArtists = activeArtists.slice(0, 5);
 

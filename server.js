@@ -248,6 +248,17 @@ app.post('/api/recommendations/personalized-feed', async (req, res) => {
   }
 });
 
+app.post('/api/recommendations/hypermix', async (req, res) => {
+  try {
+    const { history, favorites } = req.body || {};
+    const result = await tasteFeed.generateHypermix({ history, favorites });
+    res.json(result);
+  } catch (error) {
+    console.error('Hypermix recommendation error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.get('/api/taste/genres', (req, res) => {
   res.json({ success: true, genres: tasteFeed.GENRES, moods: tasteFeed.MOODS });
 });

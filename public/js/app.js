@@ -1658,6 +1658,9 @@ class App {
       this.renderPlaylists();
     } else if (tabName === 'home') {
       this.closeHomeAlbumDetail();
+      if (!this.hasChosenTaste()) {
+        this.renderHomeForSkippedUser();
+      }
     }
   }
 
@@ -1821,13 +1824,7 @@ class App {
 
     genreCards.forEach(card => {
       card.addEventListener('click', () => {
-        const currentlyActive = modal.querySelectorAll('.taste-genre-card.active');
-        if (card.classList.contains('active') && currentlyActive.length <= 1) {
-          this.showToast('Pilih minimal 1 genre musik favoritmu!', 'info');
-          return;
-        }
         card.classList.toggle('active');
-
         const newActiveCount = modal.querySelectorAll('.taste-genre-card.active').length;
         if (counterEl) {
           counterEl.textContent = `${newActiveCount} Dipilih`;
@@ -1869,16 +1866,78 @@ class App {
     });
   }
 
+  // ==========================================
+  // PLAY HISTORY & TASTE HELPERS
+  // ==========================================
+  getPlayHistory() {
+    try {
+      const saved = localStorage.getItem('aurasound_play_history');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  }
+
+  recordTrackToHistory(track) {
+    if (!track || !track.id) return;
+    try {
+      let history = this.getPlayHistory();
+      // Deduplicate by ID
+      history = history.filter(h => h.id !== track.id);
+      const artistName = track.artist || (track.author ? track.author.name : 'AuraSound');
+      history.unshift({
+        id: track.id,
+        title: track.title,
+        artist: artistName,
+        duration: track.duration || '3:30',
+        thumbnail: track.thumbnail || '/images/supermix.jpg',
+        type: track.type || 'youtube',
+        playedAt: Date.now()
+      });
+      if (history.length > 50) history = history.slice(0, 50);
+      localStorage.setItem('aurasound_play_history', JSON.stringify(history));
+
+      // Also notify tasteEngine
+      if (window.tasteEngine) {
+        window.tasteEngine.recordTrackStart(track);
+      }
+
+      // If user is currently viewing Home and has skipped taste setup,
+      // dynamically update the home screen so the new track & hypermix progress appears immediately!
+      if (this.activeTab === 'home' && !this.hasChosenTaste()) {
+        this.renderHomeForSkippedUser();
+      }
+    } catch (e) {
+      console.warn('Failed to record track history:', e);
+    }
+  }
+
+  hasChosenTaste() {
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem('aurasound_chosen_taste') || localStorage.getItem('aurasound_taste_profile') || 'null');
+    } catch (e) {}
+    return !!(saved && Array.isArray(saved.genres) && saved.genres.length > 0);
+  }
+
+  getChosenTaste() {
+    try {
+      return JSON.parse(localStorage.getItem('aurasound_chosen_taste') || localStorage.getItem('aurasound_taste_profile') || 'null');
+    } catch (e) {
+      return null;
+    }
+  }
+
   skipTasteOnboarding() {
     const modal = document.getElementById('modal-taste-onboarding');
     if (modal) modal.classList.remove('active');
 
     // Permanently mark as completed so the popup NEVER shows up again on future visits
     localStorage.setItem('aurasound_taste_completed', 'true');
+    localStorage.removeItem('aurasound_chosen_taste');
     localStorage.removeItem('aurasound_taste_profile');
 
-    this.renderEmptyHome();
-    this.showToast('Setup dilewati. Beranda disetel bersih tanpa lagu bawaan pengembang. Atur selera kapan saja!', 'info');
+    this.renderHomeForSkippedUser();
+    this.showToast('Setup dilewati. Beranda disetel bersih. Mulai putar lagu apa saja untuk meracik Hypermix!', 'info');
   }
 
   openTasteModal() {
@@ -1892,10 +1951,8 @@ class App {
     }
 
     // Pre-select existing genres & mood if saved
-    let saved = null;
-    try {
-      saved = JSON.parse(localStorage.getItem('aurasound_taste_profile') || 'null');
-    } catch (e) {}
+    const saved = this.getChosenTaste();
+    const counterEl = document.getElementById('taste-genres-count');
 
     if (saved && Array.isArray(saved.genres) && saved.genres.length > 0) {
       modal.querySelectorAll('.taste-genre-card').forEach(c => {
@@ -1907,8 +1964,10 @@ class App {
         }
       });
       const activeCount = modal.querySelectorAll('.taste-genre-card.active').length;
-      const counterEl = document.getElementById('taste-genres-count');
       if (counterEl) counterEl.textContent = `${activeCount} Dipilih`;
+    } else {
+      modal.querySelectorAll('.taste-genre-card').forEach(c => c.classList.remove('active'));
+      if (counterEl) counterEl.textContent = '0 Dipilih';
     }
 
     if (saved && saved.mood) {
@@ -1994,12 +2053,14 @@ class App {
       }
 
       // Save taste profile & mark onboarding completed
-      localStorage.setItem('aurasound_taste_profile', JSON.stringify({
+      const chosenTaste = {
         name: chosenName,
         genres: activeGenres,
         mood: chosenMood,
         updatedAt: Date.now()
-      }));
+      };
+      localStorage.setItem('aurasound_chosen_taste', JSON.stringify(chosenTaste));
+      localStorage.setItem('aurasound_taste_profile', JSON.stringify(chosenTaste));
       localStorage.setItem('aurasound_taste_completed', 'true');
 
       // Auto-save AI Starter Playlist to user's playlists if returned
@@ -2022,14 +2083,15 @@ class App {
       console.warn('Taste submit error, using fallback:', err.message);
       if (loadingOverlay) loadingOverlay.style.display = 'none';
       modal.classList.remove('active');
-      // Mark as completed anyway so user is not blocked
-      localStorage.setItem('aurasound_taste_completed', 'true');
-      localStorage.setItem('aurasound_taste_profile', JSON.stringify({
+      const fallbackTaste = {
         name: chosenName,
         genres: activeGenres,
         mood: chosenMood,
         updatedAt: Date.now()
-      }));
+      };
+      localStorage.setItem('aurasound_chosen_taste', JSON.stringify(fallbackTaste));
+      localStorage.setItem('aurasound_taste_profile', JSON.stringify(fallbackTaste));
+      localStorage.setItem('aurasound_taste_completed', 'true');
       this.showToast(`Selamat datang di AuraSound, ${chosenName}!`, 'success');
       this.loadYTMHome('all');
     }
@@ -2051,14 +2113,10 @@ class App {
     `;
 
     try {
-      // 1. If mood is 'all', check for user's personalized taste profile
+      // 1. If mood is 'all', check for user's personalized taste profile vs skipped/dynamic home
       if (mood === 'all') {
-        let savedTaste = null;
-        try {
-          savedTaste = JSON.parse(localStorage.getItem('aurasound_taste_profile') || 'null');
-        } catch (e) {}
-
-        if (savedTaste && Array.isArray(savedTaste.genres) && savedTaste.genres.length > 0) {
+        if (this.hasChosenTaste()) {
+          const savedTaste = this.getChosenTaste();
           try {
             const res = await fetch('/api/recommendations/personalized-feed', {
               method: 'POST',
@@ -2083,8 +2141,8 @@ class App {
             console.warn('Personalized feed failed, falling back to default home:', feedErr.message);
           }
         } else {
-          // If user skipped or has not chosen any taste: Keep home clean without developer tracks!
-          this.renderEmptyHome();
+          // If user skipped or has not chosen any taste: render dynamically based on listening history
+          await this.renderHomeForSkippedUser();
           return;
         }
       }
@@ -2115,29 +2173,47 @@ class App {
   }
 
   // ==========================================
-  // CLEAN EMPTY HOME RENDERER (On Skip / Fresh Install)
+  // DYNAMIC SKIPPED USER CONTROLLER (HISTORY & HYPERMIX)
   // ==========================================
+  async renderHomeForSkippedUser() {
+    const container = document.getElementById('ytm-home-sections');
+    if (!container) return;
+
+    const history = this.getPlayHistory();
+
+    // SCENARIO A: Pengguna belum pernah memutar lagu apapun (0 lagu)
+    if (history.length === 0) {
+      this.renderEmptyCleanHome();
+      return;
+    }
+
+    // SCENARIO B: Baru mulai mendengar 1 atau 2 lagu (< 3 lagu)
+    if (history.length < 3) {
+      this.renderListeningProgressHome(history);
+      return;
+    }
+
+    // SCENARIO C: Sudah lumayan banyak didengar (>= 3 lagu) -> HYPERMIX MUNCUL!
+    await this.renderHypermixHome(history);
+  }
+
   renderEmptyHome() {
+    this.renderHomeForSkippedUser();
+  }
+
+  // Pure clean state for 0 history plays
+  renderEmptyCleanHome() {
     const container = document.getElementById('ytm-home-sections');
     if (!container) return;
 
     const isEn = (this.userProfile?.lang === 'en');
     const hour = new Date().getHours();
-    let greeting = isEn ? 'Welcome' : 'Selamat Datang';
+    let greeting = 'Selamat Datang';
     let greetingIcon = '✨';
-    if (hour >= 4 && hour < 11) {
-      greeting = isEn ? 'Good Morning' : 'Selamat Pagi';
-      greetingIcon = '🌅';
-    } else if (hour >= 11 && hour < 15) {
-      greeting = isEn ? 'Good Afternoon' : 'Selamat Siang';
-      greetingIcon = '☀️';
-    } else if (hour >= 15 && hour < 18) {
-      greeting = isEn ? 'Good Evening' : 'Selamat Sore';
-      greetingIcon = '🌇';
-    } else {
-      greeting = isEn ? 'Good Night' : 'Selamat Malam';
-      greetingIcon = '🌌';
-    }
+    if (hour >= 4 && hour < 11) { greeting = 'Selamat Pagi'; greetingIcon = '🌅'; }
+    else if (hour >= 11 && hour < 15) { greeting = 'Selamat Siang'; greetingIcon = '☀️'; }
+    else if (hour >= 15 && hour < 18) { greeting = 'Selamat Sore'; greetingIcon = '🌇'; }
+    else { greeting = 'Selamat Malam'; greetingIcon = '🌌'; }
 
     const userName = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : 'Sobat Musik';
 
@@ -2158,20 +2234,18 @@ class App {
             </h1>
 
             <p class="aura-hero-desc">
-              ${isEn
-                ? 'Your home feed is currently clean without any default developer songs. Select your favorite music genres anytime so our AI can curate custom tracks and daily mixes for you.'
-                : 'Beranda Anda saat ini bersih tanpa lagu bawaan pengembang. Pilih genre dan suasana musik favorit Anda kapan saja agar AI dapat meracik lagu dan playlist khusus untuk Anda.'}
+              Beranda Anda saat ini bersih tanpa lagu bawaan pengembang. Putar lagu apa saja lewat pencarian, atau atur selera musikmu agar AI dapat meracikkan playlist personal.
             </p>
 
             <div class="aura-hero-actions">
               <button class="aura-btn-hero-primary" onclick="window.app.openTasteModal()">
                 <span style="font-size: 1.1rem;">🎨</span>
-                <span>${isEn ? 'Choose Music Taste' : 'Atur Selera Musik AI'}</span>
+                <span>Atur Selera Musik AI</span>
               </button>
 
               <button class="aura-btn-hero-glass" onclick="window.app.switchTab('search')">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <span>${isEn ? 'Search Any Song' : 'Cari Lagu Sendiri'}</span>
+                <span>Cari Lagu Sendiri</span>
               </button>
 
               <button class="aura-btn-hero-outline" onclick="document.getElementById('eq-drawer').classList.toggle('active')">
@@ -2200,7 +2274,7 @@ class App {
         </div>
       </section>
 
-      <!-- Clean Neutral State Banner -->
+      <!-- Clean Neutral State Guidance Banner -->
       <section class="aura-section-wrap" style="margin-top: 24px;">
         <div style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.14); border-radius: 20px; padding: 46px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px;">
           <div style="width: 68px; height: 68px; border-radius: 50%; background: rgba(16, 185, 129, 0.12); color: #34d399; display: flex; align-items: center; justify-content: center; font-size: 2rem; box-shadow: 0 0 24px rgba(16, 185, 129, 0.2);">
@@ -2208,14 +2282,14 @@ class App {
           </div>
           <h3 style="font-size: 1.35rem; font-weight: 800; color: #fff; margin: 0;">Beranda Kamu Masih Bersih</h3>
           <p style="font-size: 0.92rem; color: #94a3b8; max-width: 520px; line-height: 1.6; margin: 0;">
-            Kamu memilih untuk melewati setup selera musik. Beranda sengaja dikosongkan dari lagu-lagu pengembang agar kamu bisa mulai dengan bersih. Tekan tombol di bawah untuk meracik genre favoritmu kapan saja!
+            Kamu memilih untuk melewati setup selera musik. Beranda sengaja dikosongkan dari lagu-lagu pengembang. Mulai putar lagu favoritmu lewat pencarian, dan stasiun <strong>Hypermix AI</strong> akan otomatis terbuka setelah kamu mendengarkan beberapa lagu!
           </p>
           <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 10px;">
-            <button class="aura-btn-hero-primary" onclick="window.app.openTasteModal()" style="padding: 12px 24px; font-size: 0.9rem;">
-              <span>🎨 Atur Selera Musik (Genre & Vibe)</span>
-            </button>
-            <button class="aura-btn-hero-glass" onclick="window.app.switchTab('search')" style="padding: 12px 24px; font-size: 0.9rem;">
+            <button class="aura-btn-hero-primary" onclick="window.app.switchTab('search')" style="padding: 12px 24px; font-size: 0.9rem;">
               <span>🔍 Jelajahi & Cari Musik</span>
+            </button>
+            <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" style="padding: 12px 24px; font-size: 0.9rem;">
+              <span>🎨 Atur Selera Musik (Genre & Vibe)</span>
             </button>
           </div>
         </div>
@@ -2225,8 +2299,444 @@ class App {
     container.innerHTML = html;
   }
 
+  // Listening progress state for 1-2 played tracks
+  renderListeningProgressHome(history) {
+    const container = document.getElementById('ytm-home-sections');
+    if (!container) return;
+
+    const isEn = (this.userProfile?.lang === 'en');
+    const userName = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : 'Sobat Musik';
+    const isAudioPlaying = (this.nativeAudio && !this.nativeAudio.paused) || (window.ytPlayer && window.ytPlayer.isPlaying);
+    const heroThumb = history[0]?.thumbnail || '/images/supermix.jpg';
+    const latestSongTitle = history[0]?.title || 'Lagu Baru';
+
+    // Register history tracks in registry for instant playback
+    this.registerTrackList('recently-played', history);
+
+    const hour = new Date().getHours();
+    let greeting = 'Selamat Datang';
+    let greetingIcon = '✨';
+    if (hour >= 4 && hour < 11) { greeting = 'Selamat Pagi'; greetingIcon = '🌅'; }
+    else if (hour >= 11 && hour < 15) { greeting = 'Selamat Siang'; greetingIcon = '☀️'; }
+    else if (hour >= 15 && hour < 18) { greeting = 'Selamat Sore'; greetingIcon = '🌇'; }
+    else { greeting = 'Selamat Malam'; greetingIcon = '🌌'; }
+
+    let html = `
+      <section class="aura-hero-soundstage">
+        <div class="aura-hero-mesh-glow"></div>
+        <div class="aura-hero-inner">
+          <div class="aura-hero-left">
+            <div class="aura-greeting-capsule">
+              <span class="aura-greeting-icon">${greetingIcon}</span>
+              <span class="aura-greeting-tag">AKTIVITAS MENDENGAR</span>
+              <span class="aura-greeting-dot"></span>
+              <span class="aura-dsp-hi-res-tag">${history.length}/3 LAGU MENUJU HYPERMIX</span>
+            </div>
+
+            <h1 class="aura-hero-title">
+              ${greeting}, <span class="aura-title-glow">${userName}</span>
+            </h1>
+
+            <p class="aura-hero-desc">
+              Resonansi musik Anda mulai terbentuk dari lagu yang Anda dengarkan. Sistem sedang memproses selera musik unik Anda untuk meracik stasiun Hypermix otomatis.
+            </p>
+
+            <div class="aura-hero-actions">
+              <button class="aura-btn-hero-primary" onclick="window.app.playFromRegistry('recently-played', 0)">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <span>Lanjutkan Putar Lagu Terakhir</span>
+              </button>
+
+              <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" title="Atur Selera Musik">
+                <span style="font-size: 1rem;">🎨</span>
+                <span>Atur Selera Musik</span>
+              </button>
+
+              <button class="aura-btn-hero-outline" onclick="window.app.switchTab('search')">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <span>Cari Lagu Lain</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="aura-hero-right">
+            <div class="aura-turntable-card" onclick="window.app.playFromRegistry('recently-played', 0)">
+              <div class="aura-turntable-chassis">
+                <div class="aura-vinyl-record ${isAudioPlaying ? 'is-spinning' : ''}">
+                  <div class="aura-vinyl-grooves"></div>
+                  <div class="aura-vinyl-sheen"></div>
+                  <div class="aura-vinyl-center-label">
+                    <img src="${heroThumb}" alt="Vinyl Label" class="aura-vinyl-label-thumb" onerror="this.src='/images/supermix.jpg'">
+                    <div class="aura-vinyl-hole"></div>
+                  </div>
+                </div>
+                <div class="aura-turntable-tonearm ${isAudioPlaying ? 'on-record' : ''}">
+                  <div class="aura-tonearm-head"></div>
+                </div>
+              </div>
+              <div class="aura-turntable-footer">
+                <span class="aura-turntable-text">TERAKHIR DIPUTAR: ${latestSongTitle.slice(0, 24)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Hypermix Unlocking Progress Banner -->
+      <section class="aura-section-wrap" style="margin-top: 20px;">
+        <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 182, 212, 0.1)); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 18px; padding: 22px 26px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(16, 185, 129, 0.2); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0; box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);">
+              ⚡
+            </div>
+            <div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: #fff; margin-bottom: 4px;">
+                AI Hypermix Sedang Mengamati Seleramu (${history.length}/3 Lagu Didengarkan)
+              </div>
+              <div style="font-size: 0.85rem; color: #94a3b8; line-height: 1.4;">
+                Dengarkan ${3 - history.length} lagu lagi agar AI AuraSound dapat meracikkan stasiun Hypermix eksklusif secara otomatis!
+              </div>
+            </div>
+          </div>
+          <button class="aura-btn-hero-glass" onclick="window.app.switchTab('search')" style="padding: 10px 18px; font-size: 0.84rem; white-space: nowrap;">
+            <span>🔍 Cari & Putar Lagu Lagi</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Section: Baru Saja Didengarkan -->
+      <section class="aura-section-wrap">
+        <div class="aura-section-header-wrap">
+          <div class="aura-section-title-box">
+            <span class="aura-kicker-tag">RIWAYAT AKTIVITAS</span>
+            <h2 class="aura-modern-section-title">🕒 Baru Saja Didengarkan</h2>
+          </div>
+          <span class="aura-section-subtext">Lagu yang baru saja Anda nikmati di AuraSound</span>
+        </div>
+        <div class="aura-resonance-grid" id="carousel-recently-played">
+          ${history.map((track, idx) => {
+            const isCurrent = this.currentTrack?.id === track.id;
+            const isFav = this.isFavorited(track.id);
+            return `
+              <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('recently-played', ${idx})">
+                <div class="aura-resonance-num">
+                  <span>${(idx + 1).toString().padStart(2, '0')}</span>
+                </div>
+                <div class="aura-resonance-thumb-box">
+                  <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+                  <div class="aura-resonance-play-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                  </div>
+                </div>
+                <div class="aura-resonance-info">
+                  <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
+                  <div class="aura-resonance-meta">${track.artist}</div>
+                </div>
+                <div class="aura-resonance-right">
+                  <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('recently-played', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                  </button>
+                  <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </section>
+    `;
+
+    container.innerHTML = html;
+  }
+
+  // Full AI Hypermix home when history >= 3
+  async renderHypermixHome(history) {
+    const container = document.getElementById('ytm-home-sections');
+    if (!container) return;
+
+    const isEn = (this.userProfile?.lang === 'en');
+    const userName = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : 'Sobat Musik';
+
+    // Fetch dynamic Hypermix recommendations based on user's real listening history
+    let hypermixData = null;
+    try {
+      const res = await fetch('/api/recommendations/hypermix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ history, favorites: this.favorites || [] })
+      });
+      hypermixData = await res.json();
+    } catch (e) {
+      console.warn('Hypermix fetch failed:', e.message);
+    }
+
+    const hypermixTracks = (hypermixData && hypermixData.tracks && hypermixData.tracks.length > 0)
+      ? hypermixData.tracks
+      : history;
+
+    // Register track collections
+    this.registerTrackList('hypermix-picks', hypermixTracks);
+    this.registerTrackList('recently-played', history);
+
+    const isAudioPlaying = (this.nativeAudio && !this.nativeAudio.paused) || (window.ytPlayer && window.ytPlayer.isPlaying);
+    const heroThumb = hypermixTracks[0]?.thumbnail || history[0]?.thumbnail || '/images/supermix.jpg';
+    const topArtistNames = (hypermixData?.artists && hypermixData.artists.length > 0)
+      ? hypermixData.artists.join(' • ')
+      : history.slice(0, 3).map(h => h.artist).join(' • ');
+
+    const hour = new Date().getHours();
+    let greeting = 'Selamat Datang';
+    let greetingIcon = '✨';
+    if (hour >= 4 && hour < 11) { greeting = 'Selamat Pagi'; greetingIcon = '🌅'; }
+    else if (hour >= 11 && hour < 15) { greeting = 'Selamat Siang'; greetingIcon = '☀️'; }
+    else if (hour >= 15 && hour < 18) { greeting = 'Selamat Sore'; greetingIcon = '🌇'; }
+    else { greeting = 'Selamat Malam'; greetingIcon = '🌌'; }
+
+    let html = `
+      <!-- 1. SIGNATURE HYPERMIX HERO -->
+      <section class="aura-hero-soundstage">
+        <div class="aura-hero-mesh-glow"></div>
+        <div class="aura-hero-inner">
+          <div class="aura-hero-left">
+            <div class="aura-greeting-capsule">
+              <span class="aura-greeting-icon">⚡</span>
+              <span class="aura-greeting-tag">AI HYPERMIX PRIBADI 2026</span>
+              <span class="aura-greeting-dot"></span>
+              <span class="aura-dsp-hi-res-tag">24-BIT / 96kHz HI-FI</span>
+            </div>
+
+            <h1 class="aura-hero-title">
+              ${greeting}, <span class="aura-title-glow">${userName}</span>
+            </h1>
+
+            <p class="aura-hero-desc">
+              Algoritma AI telah meracik <strong>Hypermix Personal</strong> berdasarkan ${history.length} lagu yang sering kamu dengar. Suara dioptimalkan secara live untuk <strong>Dolby Atmos & Nahimic DSP</strong>.
+            </p>
+
+            <div class="aura-dna-bar">
+              <div class="aura-dna-tag" title="Taste DNA terbentuk dari riwayat lagumu">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
+                <span>Hypermix DNA: <strong>${topArtistNames}</strong></span>
+              </div>
+              <div class="aura-dna-match-tag">
+                <span class="aura-dna-pulse-dot"></span>
+                <span>AI Hypermix Aktif</span>
+              </div>
+            </div>
+
+            <div class="aura-hero-actions">
+              <button class="aura-btn-hero-primary" onclick="window.app.playFromRegistry('hypermix-picks', 0)">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <span>Putar Hypermix Saya</span>
+              </button>
+
+              <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" title="Atur Selera Musik">
+                <span style="font-size: 1rem;">🎨</span>
+                <span>Atur Selera Musik</span>
+              </button>
+
+              <button class="aura-btn-hero-outline" onclick="document.getElementById('eq-drawer').classList.toggle('active')">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+                <span>Nahimic 3D Studio</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="aura-hero-right">
+            <div class="aura-turntable-card" onclick="window.app.playFromRegistry('hypermix-picks', 0)">
+              <div class="aura-turntable-chassis">
+                <div class="aura-vinyl-record ${isAudioPlaying ? 'is-spinning' : ''}">
+                  <div class="aura-vinyl-grooves"></div>
+                  <div class="aura-vinyl-sheen"></div>
+                  <div class="aura-vinyl-center-label">
+                    <img src="${heroThumb}" alt="Center Label" class="aura-vinyl-label-thumb" onerror="this.src='/images/supermix.jpg'">
+                    <div class="aura-vinyl-hole"></div>
+                  </div>
+                </div>
+                <div class="aura-turntable-tonearm ${isAudioPlaying ? 'on-record' : ''}">
+                  <div class="aura-tonearm-head"></div>
+                </div>
+              </div>
+              <div class="aura-turntable-footer">
+                <div class="aura-live-eq-wave">
+                  <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <span class="aura-turntable-text">AI HYPERMIX • HI-FI</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. SONIC BENTO GRID -->
+      <section class="aura-bento-section">
+        <div class="aura-section-header-wrap">
+          <div class="aura-section-title-box">
+            <span class="aura-kicker-tag">ALGORITMA & SOUNDSTAGE</span>
+            <h2 class="aura-modern-section-title">Sonic Pods Pintar</h2>
+          </div>
+          <span class="aura-section-subtext">Kurasi Otomatis & Tuning Akustik Nahimic</span>
+        </div>
+
+        <div class="aura-bento-grid">
+          <!-- Pod 1: Hypermix -->
+          <div class="aura-bento-card aura-bento-supermix" onclick="window.app.playFromRegistry('hypermix-picks', 0)">
+            <div class="aura-bento-bg" style="background-image: url('${heroThumb}');"></div>
+            <div class="aura-bento-mesh"></div>
+            <div class="aura-bento-top">
+              <span class="aura-pill-badge aura-pill-emerald">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+                AI HYPERMIX 2026
+              </span>
+              <div class="aura-mini-equalizer"><span></span><span></span><span></span><span></span><span></span></div>
+            </div>
+            <div class="aura-bento-body">
+              <span class="aura-bento-subtitle">Racikan Berdasarkan Riwayat Putar</span>
+              <h3 class="aura-bento-title">My Hypermix</h3>
+              <p class="aura-bento-desc">
+                Diramu otomatis dari lagu dan artis yang sering kamu dengar (${topArtistNames}).
+              </p>
+              <div class="aura-bento-actions">
+                <button class="aura-btn-circle-play" onclick="event.stopPropagation(); window.app.playFromRegistry('hypermix-picks', 0)" title="Putar Sekarang">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                </button>
+                <span class="aura-bento-action-label">Putar Stasiun Hypermix →</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pod 2: Liked Music -->
+          <div class="aura-bento-card aura-bento-liked" onclick="window.app.openLikedMusicDetail()">
+            <div class="aura-bento-mesh-ruby"></div>
+            <div class="aura-bento-top">
+              <span class="aura-pill-badge aura-pill-ruby">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                KAPSUL HATI
+              </span>
+              <span class="aura-bento-stat-num" id="bento-liked-count">${this.favorites ? this.favorites.length : 0}</span>
+            </div>
+            <div class="aura-bento-body">
+              <h3 class="aura-bento-title">Lagu yang Disukai</h3>
+              <p class="aura-bento-desc">Stasiun radio tanpa henti dari kompilasi lagu favorit yang Anda sukai.</p>
+              <div class="aura-bento-actions">
+                <button class="aura-btn-circle-play aura-btn-ruby" onclick="event.stopPropagation(); window.app.playLikedRadio()" title="Putar Radio Favorit">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                </button>
+                <span class="aura-bento-action-label">Putar Radio Favorit →</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pod 3: DSP Studio -->
+          <div class="aura-bento-card aura-bento-dsp">
+            <div class="aura-bento-mesh-dsp"></div>
+            <div class="aura-bento-top">
+              <span class="aura-pill-badge aura-pill-cyan">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
+                NAHIMIC & DOLBY
+              </span>
+              <span class="aura-dsp-status-dot">DSP AKTIF</span>
+            </div>
+            <div class="aura-bento-body">
+              <h3 class="aura-bento-title">Studio Spasial 3D</h3>
+              <p class="aura-bento-desc">Ganti profil akustik langsung dengan satu klik:</p>
+              <div class="aura-dsp-pills-row">
+                <button class="aura-dsp-pill active" onclick="event.stopPropagation(); window.app.applyDspPreset('dolby')">Dolby Atmos</button>
+                <button class="aura-dsp-pill" onclick="event.stopPropagation(); window.app.applyDspPreset('bass')">Bass Boost</button>
+                <button class="aura-dsp-pill" onclick="event.stopPropagation(); window.app.applyDspPreset('vocal')">Vocal Clear</button>
+                <button class="aura-dsp-pill" onclick="event.stopPropagation(); window.app.applyDspPreset('club')">Club DJ</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. HYPERMIX TRACKS RECOMMENDATION -->
+      <section class="aura-section-wrap">
+        <div class="aura-section-header-wrap">
+          <div class="aura-section-title-box">
+            <span class="aura-kicker-tag">HYPERMIX ENGINE</span>
+            <h2 class="aura-modern-section-title">⚡ Rekomendasi Hypermix Kamu</h2>
+          </div>
+          <div class="ytm-section-actions">
+            <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('hypermix-picks', 0)">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              Putar Semua
+            </button>
+          </div>
+        </div>
+        <div class="aura-resonance-grid" id="carousel-hypermix-picks">
+          ${hypermixTracks.map((track, idx) => {
+            const isCurrent = this.currentTrack?.id === track.id;
+            const isFav = this.isFavorited(track.id);
+            return `
+              <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('hypermix-picks', ${idx})">
+                <div class="aura-resonance-num"><span>${(idx + 1).toString().padStart(2, '0')}</span></div>
+                <div class="aura-resonance-thumb-box">
+                  <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+                  <div class="aura-resonance-play-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                  </div>
+                </div>
+                <div class="aura-resonance-info">
+                  <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
+                  <div class="aura-resonance-meta">${track.artist}</div>
+                </div>
+                <div class="aura-resonance-right">
+                  <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('hypermix-picks', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                  </button>
+                  <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </section>
+
+      <!-- 4. SECTION: BARU SAJA DIDENGARKAN -->
+      <section class="aura-section-wrap">
+        <div class="aura-section-header-wrap">
+          <div class="aura-section-title-box">
+            <span class="aura-kicker-tag">RIWAYAT AKTIVITAS</span>
+            <h2 class="aura-modern-section-title">🕒 Baru Saja Didengarkan</h2>
+          </div>
+          <span class="aura-section-subtext">Lagu yang telah kamu nikmati di AuraSound</span>
+        </div>
+        <div class="aura-resonance-grid" id="carousel-recently-played">
+          ${history.map((track, idx) => {
+            const isCurrent = this.currentTrack?.id === track.id;
+            const isFav = this.isFavorited(track.id);
+            return `
+              <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('recently-played', ${idx})">
+                <div class="aura-resonance-num"><span>${(idx + 1).toString().padStart(2, '0')}</span></div>
+                <div class="aura-resonance-thumb-box">
+                  <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+                  <div class="aura-resonance-play-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                  </div>
+                </div>
+                <div class="aura-resonance-info">
+                  <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
+                  <div class="aura-resonance-meta">${track.artist}</div>
+                </div>
+                <div class="aura-resonance-right">
+                  <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('recently-played', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                  </button>
+                  <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </section>
+    `;
+
+    container.innerHTML = html;
+  }
+
   // ==========================================
-  // PERSONALIZED AI HOME FEED RENDERER
+  // PERSONALIZED AI HOME FEED RENDERER (PRIORITIZES CHOSEN GENRES ON TOP)
   // ==========================================
   renderPersonalizedHome(feed) {
     const container = document.getElementById('ytm-home-sections');
@@ -2244,6 +2754,9 @@ class App {
     }
     if (feed.moodShelf?.tracks) {
       this.registerTrackList('shelf-mood', feed.moodShelf.tracks);
+    }
+    if (feed.discoveryShelf?.tracks) {
+      this.registerTrackList('shelf-discovery', feed.discoveryShelf.tracks);
     }
 
     // Time-based greeting
@@ -2267,7 +2780,7 @@ class App {
     const userName = feed.user?.name || this.userProfile?.name || 'Sobat Musik';
     const isAudioPlaying = (this.nativeAudio && !this.nativeAudio.paused) || (window.ytPlayer && window.ytPlayer.isPlaying);
     const heroThumb = feed.quickPicks?.[0]?.thumbnail || '/images/supermix.jpg';
-    const tasteSummary = feed.tasteSummary || 'Pop Indonesia • Lo-Fi • Santai';
+    const tasteSummary = feed.tasteSummary || 'Musik Favorit Pilihanmu';
 
     let html = '';
 
@@ -2350,7 +2863,132 @@ class App {
       </section>
     `;
 
-    // 2. SIGNATURE SONIC PODS BENTO GRID
+    // 2. LANGSUNG DI ATAS: GENRE PILIHAN UTAMA! (Curated for user's selected genres)
+    if (feed.genreShelves && feed.genreShelves.length > 0) {
+      feed.genreShelves.forEach((shelf, sIdx) => {
+        const shelfKey = `shelf-genre-${sIdx}`;
+        html += `
+          <section class="aura-section-wrap">
+            <div class="aura-section-header-wrap">
+              <div class="aura-section-title-box">
+                <span class="aura-kicker-tag">GENRE PILIHAN UTAMA</span>
+                <h2 class="aura-modern-section-title">${shelf.title}</h2>
+              </div>
+              <div class="ytm-section-actions">
+                <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('${shelfKey}', 0)">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                  ${isEn ? 'Play All' : 'Putar Semua'}
+                </button>
+                <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('shelf-g-${sIdx}', -1)">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                </button>
+                <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('shelf-g-${sIdx}', 1)">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="aura-resonance-grid" id="carousel-shelf-g-${sIdx}">
+              ${shelf.tracks.map((track, tIdx) => {
+                const isCurrent = this.currentTrack?.id === track.id;
+                const isFav = this.isFavorited(track.id);
+                return `
+                  <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('${shelfKey}', ${tIdx})">
+                    <div class="aura-resonance-num">
+                      <span>${(tIdx + 1).toString().padStart(2, '0')}</span>
+                    </div>
+
+                    <div class="aura-resonance-thumb-box">
+                      <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+                      <div class="aura-resonance-play-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                      </div>
+                    </div>
+
+                    <div class="aura-resonance-info">
+                      <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
+                      <div class="aura-resonance-meta">${track.artist}</div>
+                    </div>
+
+                    <div class="aura-resonance-right">
+                      <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('${shelfKey}', ${tIdx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                      </button>
+                      <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </section>
+        `;
+      });
+    }
+
+    // 3. RESONANSI MUSIK CEPAT (Quick-Picks Grid from chosen genres)
+    if (feed.quickPicks && feed.quickPicks.length > 0) {
+      html += `
+        <section class="aura-section-wrap">
+          <div class="aura-section-header-wrap">
+            <div class="aura-section-title-box">
+              <span class="aura-kicker-tag">RESONANSI CEPAT PILIHAN</span>
+              <h2 class="aura-modern-section-title">${isEn ? 'Quick Music Picks For You' : 'Resonansi Cepat Genre Pilihanmu'}</h2>
+            </div>
+            <div class="ytm-section-actions">
+              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-quick-picks', 0)">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                ${isEn ? 'Play All' : 'Putar Semua'}
+              </button>
+              <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('quick-picks', -1)">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+              </button>
+              <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('quick-picks', 1)">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="aura-resonance-grid" id="carousel-quick-picks">
+            ${feed.quickPicks.map((track, idx) => {
+              const isCurrent = this.currentTrack?.id === track.id;
+              const isFav = this.isFavorited(track.id);
+              return `
+                <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('ytm-quick-picks', ${idx})">
+                  <div class="aura-resonance-num">
+                    ${isCurrent ? `
+                      <div class="aura-mini-equalizer inline-eq"><span></span><span></span><span></span></div>
+                    ` : `
+                      <span>${(idx + 1).toString().padStart(2, '0')}</span>
+                    `}
+                  </div>
+
+                  <div class="aura-resonance-thumb-box">
+                    <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+                    <div class="aura-resonance-play-icon">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                  </div>
+
+                  <div class="aura-resonance-info">
+                    <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
+                    <div class="aura-resonance-meta">${track.artist}</div>
+                  </div>
+
+                  <div class="aura-resonance-right">
+                    <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('ytm-quick-picks', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    </button>
+                    <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    // 4. SIGNATURE SONIC PODS BENTO GRID
     html += `
       <section class="aura-bento-section">
         <div class="aura-section-header-wrap">
@@ -2437,131 +3075,6 @@ class App {
       </section>
     `;
 
-    // 3. RESONANSI MUSIK CEPAT (Quick-Picks Grid)
-    if (feed.quickPicks && feed.quickPicks.length > 0) {
-      html += `
-        <section class="aura-section-wrap">
-          <div class="aura-section-header-wrap">
-            <div class="aura-section-title-box">
-              <span class="aura-kicker-tag">INSTANT RESONANCE</span>
-              <h2 class="aura-modern-section-title">${isEn ? 'Quick Music Picks For You' : 'Resonansi Cepat Pilihan Untukmu'}</h2>
-            </div>
-            <div class="ytm-section-actions">
-              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-quick-picks', 0)">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                ${isEn ? 'Play All' : 'Putar Semua'}
-              </button>
-              <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('quick-picks', -1)">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-              </button>
-              <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('quick-picks', 1)">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-              </button>
-            </div>
-          </div>
-
-          <div class="aura-resonance-grid" id="carousel-quick-picks">
-            ${feed.quickPicks.map((track, idx) => {
-              const isCurrent = this.currentTrack?.id === track.id;
-              const isFav = this.isFavorited(track.id);
-              return `
-                <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('ytm-quick-picks', ${idx})">
-                  <div class="aura-resonance-num">
-                    ${isCurrent ? `
-                      <div class="aura-mini-equalizer inline-eq"><span></span><span></span><span></span></div>
-                    ` : `
-                      <span>${(idx + 1).toString().padStart(2, '0')}</span>
-                    `}
-                  </div>
-
-                  <div class="aura-resonance-thumb-box">
-                    <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
-                    <div class="aura-resonance-play-icon">
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    </div>
-                  </div>
-
-                  <div class="aura-resonance-info">
-                    <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                    <div class="aura-resonance-meta">${track.artist}</div>
-                  </div>
-
-                  <div class="aura-resonance-right">
-                    <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('ytm-quick-picks', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                    </button>
-                    <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </section>
-      `;
-    }
-
-    // 4. DYNAMIC GENRE SHELVES (Curated for user's selected genres)
-    if (feed.genreShelves && feed.genreShelves.length > 0) {
-      feed.genreShelves.forEach((shelf, sIdx) => {
-        const shelfKey = `shelf-genre-${sIdx}`;
-        html += `
-          <section class="aura-section-wrap">
-            <div class="aura-section-header-wrap">
-              <div class="aura-section-title-box">
-                <span class="aura-kicker-tag">REKOMENDASI GENRE PILIHAN</span>
-                <h2 class="aura-modern-section-title">${shelf.title}</h2>
-              </div>
-              <div class="ytm-section-actions">
-                <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('${shelfKey}', 0)">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                  ${isEn ? 'Play All' : 'Putar Semua'}
-                </button>
-                <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('shelf-g-${sIdx}', -1)">
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-                </button>
-                <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('shelf-g-${sIdx}', 1)">
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </button>
-              </div>
-            </div>
-
-            <div class="aura-resonance-grid" id="carousel-shelf-g-${sIdx}">
-              ${shelf.tracks.map((track, tIdx) => {
-                const isCurrent = this.currentTrack?.id === track.id;
-                const isFav = this.isFavorited(track.id);
-                return `
-                  <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('${shelfKey}', ${tIdx})">
-                    <div class="aura-resonance-num">
-                      <span>${(tIdx + 1).toString().padStart(2, '0')}</span>
-                    </div>
-
-                    <div class="aura-resonance-thumb-box">
-                      <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
-                      <div class="aura-resonance-play-icon">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                      </div>
-                    </div>
-
-                    <div class="aura-resonance-info">
-                      <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                      <div class="aura-resonance-meta">${track.artist}</div>
-                    </div>
-
-                    <div class="aura-resonance-right">
-                      <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('${shelfKey}', ${tIdx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                      </button>
-                      <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          </section>
-        `;
-      });
-    }
-
     // 5. DYNAMIC MOOD SHELF
     if (feed.moodShelf && feed.moodShelf.tracks?.length > 0) {
       const moodShelfKey = 'shelf-mood';
@@ -2576,12 +3089,6 @@ class App {
               <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('${moodShelfKey}', 0)">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 ${isEn ? 'Play All' : 'Putar Semua'}
-              </button>
-              <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('shelf-mood', -1)">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-              </button>
-              <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('shelf-mood', 1)">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
               </button>
             </div>
           </div>
@@ -2610,6 +3117,55 @@ class App {
 
                   <div class="aura-resonance-right">
                     <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('${moodShelfKey}', ${mIdx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    </button>
+                    <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    // 6. DI PALING BAWAH DAN SEDIKIT AJA (HANYA 4-5 LAGU DI LUAR PILIHAN)
+    if (feed.discoveryShelf && feed.discoveryShelf.tracks?.length > 0) {
+      const discKey = 'shelf-discovery';
+      html += `
+        <section class="aura-section-wrap" style="opacity: 0.94; margin-top: 10px;">
+          <div class="aura-section-header-wrap">
+            <div class="aura-section-title-box">
+              <span class="aura-kicker-tag" style="color: #94a3b8; border-color: rgba(255,255,255,0.15);">EKSPLORASI TAMBAHAN</span>
+              <h2 class="aura-modern-section-title" style="font-size: 1.35rem;">${feed.discoveryShelf.title}</h2>
+            </div>
+            <span class="aura-section-subtext">${feed.discoveryShelf.subtitle}</span>
+          </div>
+
+          <div class="aura-resonance-grid" id="carousel-shelf-discovery">
+            ${feed.discoveryShelf.tracks.map((track, dIdx) => {
+              const isCurrent = this.currentTrack?.id === track.id;
+              const isFav = this.isFavorited(track.id);
+              return `
+                <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('${discKey}', ${dIdx})">
+                  <div class="aura-resonance-num">
+                    <span>${(dIdx + 1).toString().padStart(2, '0')}</span>
+                  </div>
+
+                  <div class="aura-resonance-thumb-box">
+                    <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+                    <div class="aura-resonance-play-icon">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                  </div>
+
+                  <div class="aura-resonance-info">
+                    <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
+                    <div class="aura-resonance-meta">${track.artist}</div>
+                  </div>
+
+                  <div class="aura-resonance-right">
+                    <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('${discKey}', ${dIdx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                     </button>
                     <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
@@ -4008,7 +4564,7 @@ class App {
       return;
     }
 
-    // Record playback metrics in TasteEngine
+    // Record playback metrics in TasteEngine and Play History
     if (window.tasteEngine) {
       if (this.currentTrackPlayStartTime && this.lastPlayedTrack) {
         const timePlayed = Math.floor((Date.now() - this.currentTrackPlayStartTime) / 1000);
@@ -4018,6 +4574,7 @@ class App {
       this.currentTrackPlayStartTime = Date.now();
       window.tasteEngine.recordTrackStart(track);
     }
+    this.recordTrackToHistory(track);
 
     if (!track.type) {
       track.type = 'youtube';

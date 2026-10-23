@@ -7,7 +7,7 @@
 
 class TasteEngine {
   constructor() {
-    this.storageKey = 'aurasound_taste_profile';
+    this.storageKey = 'aurasound_taste_metrics';
     this.taste = this.loadTasteProfile();
     this.currentTrack = null;
     this.currentPlayStart = null;
