@@ -18,6 +18,9 @@ class App {
     this.currentTrack = null;
     this.queue = [];
     this.queueIndex = -1;
+    this.currentUser = null;
+    this.checkCleanReset();
+    this.initGoogleAuth();
     this.favorites = this.loadFavorites();
     this.playlists = this.loadPlaylists();
     this.currentPlaylistDetail = null;
@@ -100,64 +103,302 @@ class App {
     this.currentLyricsTrackId = null;
   }
 
+  checkCleanReset() {
+    try {
+      const resetKey = 'aurasound_reset_v4_clean_google';
+      if (localStorage.getItem(resetKey) !== 'true') {
+        console.log('[AuraSound] Performing clean account & data reset as requested.');
+        localStorage.removeItem('aurasound_user_profile');
+        localStorage.removeItem('aurasound_google_user');
+        localStorage.removeItem('aurasound_device_id');
+        localStorage.removeItem('aurasound_playlists');
+        localStorage.removeItem('aurasound_favs');
+        localStorage.removeItem('aurasound_taste_profile');
+        localStorage.removeItem('aurasound_taste_onboarded');
+        // Clear all previous user-specific keys
+        Object.keys(localStorage).forEach(k => {
+          if (k.startsWith('aurasound_playlists_') || k.startsWith('aurasound_favs_')) {
+            localStorage.removeItem(k);
+          }
+        });
+        localStorage.setItem(resetKey, 'true');
+      }
+    } catch (e) {
+      console.warn('checkCleanReset error:', e);
+    }
+  }
+
+  getUserKey() {
+    if (this.currentUser && this.currentUser.email) {
+      return 'usr_' + this.currentUser.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
+    }
+    return this.getDeviceId();
+  }
+
+  initGoogleAuth() {
+    try {
+      this.currentUser = JSON.parse(localStorage.getItem('aurasound_google_user') || 'null');
+    } catch (e) {
+      this.currentUser = null;
+    }
+
+    try {
+      if (window.google && window.google.accounts && window.google.accounts.id) {
+        window.google.accounts.id.initialize({
+          client_id: '1047291823901-placeholder.apps.googleusercontent.com',
+          callback: (res) => this.handleGoogleCredentialResponse(res),
+          auto_select: false
+        });
+      }
+    } catch (e) {
+      console.log('GSI initialize info:', e);
+    }
+
+    this.syncGoogleUI();
+  }
+
+  handleGoogleCredentialResponse(response) {
+    try {
+      if (!response || !response.credential) return;
+      const base64Url = response.credential.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      const payload = JSON.parse(jsonPayload);
+      if (payload && payload.email) {
+        this.loginWithGoogle({
+          email: payload.email,
+          name: payload.name || payload.email.split('@')[0],
+          avatar: payload.picture || `https://unavatar.io/google/${payload.email}`,
+          provider: 'google',
+          googleId: payload.sub
+        });
+      }
+    } catch (err) {
+      console.error('Error parsing Google credential:', err);
+    }
+  }
+
+  submitQuickGoogleLogin() {
+    const emailInput = document.getElementById('google-input-email');
+    const nameInput = document.getElementById('google-input-name');
+    if (!emailInput || !emailInput.value.trim()) {
+      this.showToast('Silakan masukkan email Google (Gmail) Anda', 'error');
+      return;
+    }
+    const email = emailInput.value.trim().toLowerCase();
+    if (!email.includes('@') || !email.includes('.')) {
+      this.showToast('Format email tidak valid. Masukkan email Gmail Anda.', 'error');
+      return;
+    }
+
+    let name = nameInput ? nameInput.value.trim() : '';
+    if (!name) {
+      const rawUser = email.split('@')[0];
+      name = rawUser.charAt(0).toUpperCase() + rawUser.slice(1);
+    }
+
+    const googleUser = {
+      email,
+      name,
+      avatar: `https://unavatar.io/google/${email}`,
+      provider: 'google',
+      loggedInAt: Date.now()
+    };
+
+    this.loginWithGoogle(googleUser);
+  }
+
+  loginWithGoogle(googleUser) {
+    if (!googleUser || !googleUser.email) return;
+    this.currentUser = googleUser;
+    try {
+      localStorage.setItem('aurasound_google_user', JSON.stringify(googleUser));
+    } catch (e) {}
+
+    this.userProfile = {
+      name: googleUser.name || 'User',
+      avatar: googleUser.avatar || '/images/avatar.jpg',
+      lang: this.userProfile?.lang || 'id'
+    };
+    try {
+      localStorage.setItem('aurasound_user_profile', JSON.stringify(this.userProfile));
+    } catch (e) {}
+
+    // Reload user-isolated playlists and favorites
+    this.favorites = this.loadFavorites();
+    this.playlists = this.loadPlaylists();
+    this.syncPlaylistsFromServer();
+
+    this.syncProfileUI();
+    this.syncGoogleUI();
+
+    const modal = document.getElementById('modal-google-auth');
+    if (modal) modal.classList.remove('active');
+
+    const heroTitleGlow = document.querySelector('.aura-title-glow');
+    if (heroTitleGlow) {
+      heroTitleGlow.textContent = this.userProfile.name;
+    }
+
+    if (this.activeTab === 'favorites') {
+      this.renderFavorites();
+    } else if (this.activeTab === 'playlists') {
+      this.renderPlaylists();
+    }
+
+    this.showToast(this.userProfile?.lang === 'en'
+      ? `Logged in as ${googleUser.name} (${googleUser.email})! ✨`
+      : `Akun Google aktif: ${googleUser.name} (${googleUser.email})! ✨`, 'success');
+  }
+
+  logoutGoogle() {
+    const isEn = this.userProfile?.lang === 'en';
+    const msg = isEn ? 'Are you sure you want to log out of your Google account?' : 'Yakin ingin keluar dari akun Google ini?';
+    if (!confirm(msg)) return;
+
+    try {
+      localStorage.removeItem('aurasound_google_user');
+    } catch (e) {}
+    this.currentUser = null;
+
+    this.userProfile = {
+      name: 'User',
+      avatar: '/images/avatar.jpg',
+      lang: this.userProfile?.lang || 'id'
+    };
+    try {
+      localStorage.setItem('aurasound_user_profile', JSON.stringify(this.userProfile));
+    } catch (e) {}
+
+    this.favorites = this.loadFavorites();
+    this.playlists = this.loadPlaylists();
+    this.syncPlaylistsFromServer();
+
+    this.syncProfileUI();
+    this.syncGoogleUI();
+
+    const modal = document.getElementById('modal-google-auth');
+    if (modal) modal.classList.remove('active');
+
+    if (this.activeTab === 'favorites') {
+      this.renderFavorites();
+    } else if (this.activeTab === 'playlists') {
+      this.renderPlaylists();
+    }
+
+    this.showToast(isEn ? 'Logged out from Google account' : 'Berhasil keluar dari akun Google', 'info');
+  }
+
+  syncGoogleUI() {
+    const btnGoogleLogin = document.getElementById('btn-google-login');
+    const googleLoginBtnText = document.getElementById('google-login-btn-text');
+    const googleBadgeDot = document.getElementById('google-verified-badge');
+    const activeCard = document.getElementById('google-active-user-card');
+    const loginOptions = document.getElementById('google-login-options');
+    const activeName = document.getElementById('google-active-name');
+    const activeEmail = document.getElementById('google-active-email');
+    const activeAvatar = document.getElementById('google-active-avatar');
+    const profileGoogleEmail = document.getElementById('profile-google-email-text');
+
+    if (this.currentUser && this.currentUser.email) {
+      if (btnGoogleLogin) {
+        btnGoogleLogin.title = `Akun Google: ${this.currentUser.email}`;
+        btnGoogleLogin.classList.add('google-logged-in');
+      }
+      if (googleLoginBtnText) {
+        googleLoginBtnText.textContent = this.currentUser.name || this.currentUser.email.split('@')[0];
+      }
+      if (googleBadgeDot) {
+        googleBadgeDot.style.display = 'block';
+        googleBadgeDot.title = `Akun Google Aktif: ${this.currentUser.email}`;
+      }
+      if (activeCard) activeCard.style.display = 'block';
+      if (loginOptions) loginOptions.style.display = 'none';
+      if (activeName) activeName.textContent = this.currentUser.name || 'User';
+      if (activeEmail) activeEmail.textContent = this.currentUser.email;
+      if (activeAvatar) {
+        activeAvatar.src = this.currentUser.avatar || '/images/avatar.jpg';
+        activeAvatar.onerror = () => { activeAvatar.src = '/images/avatar.jpg'; };
+      }
+      if (profileGoogleEmail) {
+        profileGoogleEmail.textContent = this.currentUser.email;
+      }
+    } else {
+      if (btnGoogleLogin) {
+        btnGoogleLogin.title = 'Masuk dengan Akun Google Anda';
+        btnGoogleLogin.classList.remove('google-logged-in');
+      }
+      if (googleLoginBtnText) {
+        googleLoginBtnText.textContent = 'Masuk Google';
+      }
+      if (googleBadgeDot) {
+        googleBadgeDot.style.display = 'none';
+      }
+      if (activeCard) activeCard.style.display = 'none';
+      if (loginOptions) loginOptions.style.display = 'block';
+      if (profileGoogleEmail) {
+        profileGoogleEmail.textContent = 'Akun Google Belum Masuk';
+      }
+    }
+  }
+
+  openGoogleLoginModal() {
+    this.syncGoogleUI();
+    const modal = document.getElementById('modal-google-auth');
+    if (modal) modal.classList.add('active');
+  }
+
+  promptGoogleSwitch() {
+    const activeCard = document.getElementById('google-active-user-card');
+    const loginOptions = document.getElementById('google-login-options');
+    if (activeCard) activeCard.style.display = 'none';
+    if (loginOptions) {
+      loginOptions.style.display = 'block';
+      const emailInput = document.getElementById('google-input-email');
+      if (emailInput) {
+        emailInput.value = '';
+        emailInput.focus();
+      }
+    }
+  }
+
+  openProfileModal() {
+    this.syncProfileUI();
+    this.syncGoogleUI();
+    const modal = document.getElementById('modal-profile');
+    if (modal) modal.classList.add('active');
+  }
+
   initProfile() {
     let saved = null;
     try {
       saved = JSON.parse(localStorage.getItem('aurasound_user_profile') || 'null');
     } catch (e) {}
 
-    // In Electron Desktop App: automatically isolate and restore the Laptop's Bizlee account
-    const isElectron = !!(window.process && window.process.type) || navigator.userAgent.includes('Electron');
-    if (isElectron) {
-      if (!saved || saved.name === 'User' || saved.name === 'Devod') {
-        const laptopProfile = {
-          name: 'Bizlee',
-          avatar: '/images/avatar.jpg',
-          lang: 'id'
-        };
-        saved = laptopProfile;
-        localStorage.setItem('aurasound_user_profile', JSON.stringify(laptopProfile));
-        localStorage.setItem('aurasound_device_id', 'dev_cbz2no1ft_17926875522346');
+    if (this.currentUser) {
+      this.userProfile = {
+        name: this.currentUser.name || 'User',
+        avatar: this.currentUser.avatar || '/images/avatar.jpg',
+        lang: saved?.lang || 'id'
+      };
+    } else {
+      const savedName = (saved && typeof saved.name === 'string' && saved.name.trim())
+        ? saved.name.trim()
+        : 'User';
 
-        // Restore laptop favorites if empty
-        const existingFavs = JSON.parse(localStorage.getItem('aurasound_favs') || '[]');
-        if (!existingFavs || existingFavs.length === 0) {
-          const laptopFavs = [
-            {
-              id: 'NffeFmn0vvQ',
-              title: 'tuki. - HYURIRAPAPPA (Live)',
-              artist: 'tuki.(17)',
-              duration: '3:29',
-              thumbnail: 'https://i.ytimg.com/vi/NffeFmn0vvQ/mqdefault.jpg',
-              type: 'youtube'
-            },
-            {
-              id: 'ZRtdQ81jPUQ',
-              title: 'YOASOBI「アイドル」(Idol) Official Music Video',
-              artist: 'Ayase / YOASOBI',
-              duration: '3:46',
-              thumbnail: 'https://i.ytimg.com/vi/ZRtdQ81jPUQ/mqdefault.jpg',
-              type: 'youtube'
-            }
-          ];
-          localStorage.setItem('aurasound_favs', JSON.stringify(laptopFavs));
-          this.favorites = laptopFavs;
-        }
-      }
+      this.userProfile = {
+        name: savedName,
+        avatar: saved?.avatar || '/images/avatar.jpg',
+        lang: saved?.lang || 'id'
+      };
     }
 
-    const savedName = (saved && typeof saved.name === 'string' && saved.name.trim())
-      ? saved.name.trim()
-      : 'User';
-
-    this.userProfile = {
-      name: savedName,
-      avatar: saved?.avatar || '/images/avatar.jpg',
-      lang: saved?.lang || 'id'
-    };
     this.tempAvatarDataUrl = null;
 
     this.syncProfileUI();
+    this.syncGoogleUI();
     this.applyLanguage(this.userProfile.lang, false);
   }
 
@@ -1834,16 +2075,11 @@ class App {
     }
   }
 
-  // ==========================================
-  // DEVICE ID & ISOLATION
-  // ==========================================
   getDeviceId() {
-    let id = localStorage.getItem('aurasound_device_id');
-    const isElectron = !!(window.process && window.process.type) || navigator.userAgent.includes('Electron');
-    if (isElectron && (!id || id === 'dev_6gju1e4v_mvjm4r4d')) {
-      id = 'dev_cbz2no1ft_17926875522346';
-      localStorage.setItem('aurasound_device_id', id);
+    if (this.currentUser && this.currentUser.email) {
+      return 'usr_' + this.currentUser.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
     }
+    let id = localStorage.getItem('aurasound_device_id');
     if (!id) {
       id = 'dev_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
       localStorage.setItem('aurasound_device_id', id);
@@ -4282,13 +4518,22 @@ class App {
     }
 
     try {
+      const userKey = this.getUserKey();
       const res = await fetch('/api/playlists', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': this.currentUser?.email || '',
+          'x-user-id': userKey,
+          'x-device-id': userKey
+        },
         body: JSON.stringify({
           title: album.title,
           tracks: album.tracks || [],
-          thumbnail: album.thumbnail
+          thumbnail: album.thumbnail,
+          userEmail: this.currentUser?.email || '',
+          userId: userKey,
+          deviceId: userKey
         })
       });
       const data = await res.json();
@@ -4911,12 +5156,15 @@ class App {
   }
 
   // ==========================================
-  // PLAYLIST MANAGEMENT (Centralized Server DB with Device Isolation)
+  // PLAYLIST MANAGEMENT (Centralized Server DB with Google Account & Device Isolation)
   // ==========================================
+  getPlaylistsStorageKey() {
+    return 'aurasound_playlists_' + this.getUserKey();
+  }
+
   loadPlaylists() {
     try {
-      const list = JSON.parse(localStorage.getItem('aurasound_playlists')) || [];
-      // Sanitize out any developer legacy playlists from localhost
+      const list = JSON.parse(localStorage.getItem(this.getPlaylistsStorageKey())) || [];
       return list.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
     } catch (e) {
       return [];
@@ -4925,15 +5173,19 @@ class App {
 
   savePlaylists() {
     try {
-      localStorage.setItem('aurasound_playlists', JSON.stringify(this.playlists));
+      localStorage.setItem(this.getPlaylistsStorageKey(), JSON.stringify(this.playlists));
     } catch (e) {}
   }
 
   async syncPlaylistsFromServer() {
     try {
-      const deviceId = this.getDeviceId();
-      const res = await fetch(`/api/playlists?deviceId=${encodeURIComponent(deviceId)}`, {
-        headers: { 'x-device-id': deviceId }
+      const userKey = this.getUserKey();
+      const res = await fetch(`/api/playlists?userId=${encodeURIComponent(userKey)}`, {
+        headers: {
+          'x-user-email': this.currentUser?.email || '',
+          'x-user-id': userKey,
+          'x-device-id': userKey
+        }
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.playlists)) {
@@ -4960,14 +5212,21 @@ class App {
     if (statusText) statusText.textContent = 'Menghubungkan ke YouTube Music dan mengambil daftar lagu...';
 
     try {
-      const deviceId = this.getDeviceId();
+      const userKey = this.getUserKey();
       const res = await fetch('/api/playlist/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': deviceId
+          'x-user-email': this.currentUser?.email || '',
+          'x-user-id': userKey,
+          'x-device-id': userKey
         },
-        body: JSON.stringify({ url, deviceId })
+        body: JSON.stringify({
+          url,
+          userEmail: this.currentUser?.email || '',
+          userId: userKey,
+          deviceId: userKey
+        })
       });
       const data = await res.json();
 
@@ -4998,14 +5257,21 @@ class App {
 
   async createCustomPlaylist(name) {
     try {
-      const deviceId = this.getDeviceId();
+      const userKey = this.getUserKey();
       const res = await fetch('/api/playlists', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-device-id': deviceId
+          'x-user-email': this.currentUser?.email || '',
+          'x-user-id': userKey,
+          'x-device-id': userKey
         },
-        body: JSON.stringify({ title: name, deviceId })
+        body: JSON.stringify({
+          title: name,
+          userEmail: this.currentUser?.email || '',
+          userId: userKey,
+          deviceId: userKey
+        })
       });
       const data = await res.json();
 
@@ -5382,9 +5648,13 @@ class App {
   }
 
   // Favorites management
+  getFavsStorageKey() {
+    return 'aurasound_favs_' + this.getUserKey();
+  }
+
   loadFavorites() {
     try {
-      return JSON.parse(localStorage.getItem('aurasound_favs')) || [];
+      return JSON.parse(localStorage.getItem(this.getFavsStorageKey())) || [];
     } catch (e) {
       return [];
     }
@@ -5422,7 +5692,7 @@ class App {
       }
       this.spawnHeartBurst(burstX, burstY);
     }
-    localStorage.setItem('aurasound_favs', JSON.stringify(this.favorites));
+    localStorage.setItem(this.getFavsStorageKey(), JSON.stringify(this.favorites));
     this.updateFavButtonState();
 
     // Dynamically sync all favorite heart buttons in active lists with pop animation

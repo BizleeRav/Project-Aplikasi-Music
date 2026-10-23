@@ -38,19 +38,22 @@ function persistToDisk() {
   });
 }
 
-function getAllPlaylists(deviceId = null) {
+function getAllPlaylists(userKey = null) {
   if (playlistsCache === null) {
     playlistsCache = loadFromDisk();
-    // Filter out any legacy hardcoded developer playlists that might linger in /tmp
     playlistsCache = playlistsCache.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
   }
-  if (!deviceId) return playlistsCache;
-  return playlistsCache.filter(p => !p.deviceId || p.deviceId === deviceId);
+  if (!userKey) return playlistsCache;
+  const cleanKey = String(userKey).trim().toLowerCase();
+  return playlistsCache.filter(p => {
+    const pOwner = String(p.userEmail || p.userId || p.deviceId || '').trim().toLowerCase();
+    return pOwner === cleanKey;
+  });
 }
 
 // Returns lightweight metadata (super fast for playlist card grids)
-function getPlaylistsSummary(deviceId = null) {
-  const all = getAllPlaylists(deviceId);
+function getPlaylistsSummary(userKey = null) {
+  const all = getAllPlaylists(userKey);
   return all.map(p => ({
     id: p.id,
     title: p.title,
@@ -58,13 +61,20 @@ function getPlaylistsSummary(deviceId = null) {
     trackCount: p.tracks?.length || 0,
     createdAt: p.createdAt,
     isImported: p.isImported,
+    userEmail: p.userEmail,
     deviceId: p.deviceId
   }));
 }
 
-function getPlaylistById(id, deviceId = null) {
+function getPlaylistById(id, userKey = null) {
   const all = getAllPlaylists();
-  return all.find(p => p.id === id && (!deviceId || !p.deviceId || p.deviceId === deviceId)) || null;
+  const cleanKey = userKey ? String(userKey).trim().toLowerCase() : null;
+  return all.find(p => {
+    if (p.id !== id) return false;
+    if (!cleanKey) return true;
+    const pOwner = String(p.userEmail || p.userId || p.deviceId || '').trim().toLowerCase();
+    return pOwner === cleanKey;
+  }) || null;
 }
 
 function addOrUpdatePlaylist(playlist) {

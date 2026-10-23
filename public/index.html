@@ -11,6 +11,7 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
   <link rel="stylesheet" href="/css/style.css?v=4.2.0">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -107,8 +108,21 @@
           <button class="ytm-cast-btn" id="btn-top-connect" title="Hubungkan ke HP (Wi-Fi)">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11zm20-7H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>
           </button>
-          <div class="ytm-profile-badge" id="btn-profile-badge" title="Profil Akun">
-            <img src="/images/avatar.jpg" alt="User Avatar" class="ytm-avatar-circle" onerror="this.src='/icons/icon.svg'">
+
+          <!-- Google Sign-In Pill Button -->
+          <button id="btn-google-login" class="btn-google-auth-pill" onclick="window.app.openGoogleLoginModal()" title="Masuk dengan Akun Google Anda">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span id="google-login-btn-text">Masuk Google</span>
+          </button>
+
+          <div class="ytm-profile-badge" id="btn-profile-badge" title="Profil Akun" onclick="window.app.openProfileModal()">
+            <img id="top-user-avatar" src="/images/avatar.jpg" alt="User Avatar" class="ytm-avatar-circle" onerror="this.src='/icons/icon.svg'">
+            <div id="google-verified-badge" class="google-badge-dot" title="Akun Google Terhubung" style="display: none;"></div>
           </div>
         </div>
       </header>
@@ -630,12 +644,96 @@
     </nav>
   </div>
 
+  <!-- Modal Google Account & Login -->
+  <div id="modal-google-auth" class="modal-overlay">
+    <div class="modal-card modal-google-card" style="max-width: 440px; text-align: center;">
+      <button class="modal-close-btn" onclick="document.getElementById('modal-google-auth').classList.remove('active')">✕</button>
+      
+      <div style="margin: 0 auto 12px; width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <svg viewBox="0 0 24 24" width="30" height="30">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+      </div>
+
+      <div class="modal-title" style="font-size: 1.25rem;">Akun Pribadi Google</div>
+      <div class="modal-desc" style="font-size: 0.82rem; margin-bottom: 20px;">
+        Gunakan akun Google agar playlist, lagu favorit, dan histori tersimpan aman di akun Anda sendiri (tidak bercampur antar perangkat).
+      </div>
+
+      <!-- State A: Currently Logged In as Google User -->
+      <div id="google-active-user-card" style="display: none; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); border-radius: 14px; padding: 16px; margin-bottom: 18px; text-align: left;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <img id="google-active-avatar" src="/images/avatar.jpg" alt="Google Avatar" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid #10b981;">
+          <div style="flex: 1; overflow: hidden;">
+            <div id="google-active-name" style="font-weight: 700; color: #fff; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">User</div>
+            <div id="google-active-email" style="font-size: 0.8rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">user@gmail.com</div>
+          </div>
+          <span style="font-size: 0.72rem; background: rgba(16, 185, 129, 0.15); color: #34d399; padding: 4px 8px; border-radius: 20px; font-weight: 700;">Aktif</span>
+        </div>
+        <div style="margin-top: 14px; display: flex; gap: 8px;">
+          <button type="button" class="btn-google-switch" onclick="window.app.promptGoogleSwitch()" style="flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
+            🔄 Ganti Akun Google
+          </button>
+          <button type="button" class="btn-google-logout" onclick="window.app.logoutGoogle()" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #fca5a5; padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
+            Keluar
+          </button>
+        </div>
+      </div>
+
+      <!-- State B: Login Options -->
+      <div id="google-login-options">
+        <form id="form-google-quick-login" onsubmit="event.preventDefault(); window.app.submitQuickGoogleLogin();" style="text-align: left;">
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" for="google-input-email" style="font-size: 0.78rem;">Email Google Anda (Gmail)</label>
+            <input type="email" id="google-input-email" class="form-input" placeholder="contoh: akun.anda@gmail.com" required style="font-size: 0.86rem; padding: 10px 14px;">
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label" for="google-input-name" style="font-size: 0.78rem;">Nama Pengguna / Panggilan</label>
+            <input type="text" id="google-input-name" class="form-input" placeholder="contoh: Devod atau Bizlee" style="font-size: 0.86rem; padding: 10px 14px;">
+          </div>
+
+          <button type="submit" class="btn-generate-ai" style="width: 100%; padding: 12px; font-size: 0.9rem; justify-content: center; gap: 8px;">
+            <svg viewBox="0 0 24 24" width="18" height="18">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span>Masuk & Kunci Akun Saya</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal Edit Profil Akun (Profile Settings) -->
   <div id="modal-profile" class="modal-overlay">
     <div class="modal-card modal-profile-card">
       <button class="modal-close-btn" id="btn-close-profile">✕</button>
       <div class="modal-title" id="profile-modal-title">Profil Akun</div>
       <div class="modal-desc" id="profile-modal-desc">Kelola profil pribadi dan preferensi bahasa Anda.</div>
+
+      <!-- Google Connected Status Bar -->
+      <div id="profile-google-badge-box" style="background: rgba(66, 133, 244, 0.09); border: 1px solid rgba(66, 133, 244, 0.25); border-radius: 12px; padding: 12px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+          <svg viewBox="0 0 24 24" width="20" height="20" style="flex-shrink: 0;">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          <div style="overflow: hidden; text-align: left;">
+            <div id="profile-google-email-text" style="font-size: 0.82rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Akun Google Belum Masuk</div>
+            <div style="font-size: 0.7rem; color: #94a3b8;">Data tersimpan aman per akun Google</div>
+          </div>
+        </div>
+        <button type="button" onclick="document.getElementById('modal-profile').classList.remove('active'); window.app.openGoogleLoginModal();" style="flex-shrink: 0; background: #2563eb; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer;">
+          Kelola
+        </button>
+      </div>
 
       <form id="form-profile" class="profile-form">
         <!-- 1. Ganti Profile Picture -->

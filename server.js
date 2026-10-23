@@ -800,11 +800,11 @@ app.post('/api/playlist/import', async (req, res) => {
   }
 });
 
-// 7. Centralized Playlist Database Endpoints (Syncs across Laptop & HP with Device Isolation)
+// 7. Centralized Playlist Database Endpoints (User Google Account & Device Isolation)
 app.get('/api/playlists', (req, res) => {
   try {
-    const deviceId = req.headers['x-device-id'] || req.query.deviceId || null;
-    const playlists = playlistDb.getPlaylistsSummary(deviceId);
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.userEmail || req.headers['x-device-id'] || req.query.deviceId || null;
+    const playlists = playlistDb.getPlaylistsSummary(userKey);
     res.json({ success: true, count: playlists.length, playlists });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -813,8 +813,8 @@ app.get('/api/playlists', (req, res) => {
 
 app.get('/api/playlists/:id', (req, res) => {
   try {
-    const deviceId = req.headers['x-device-id'] || req.query.deviceId || null;
-    const pl = playlistDb.getPlaylistById(req.params.id, deviceId);
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.userEmail || req.headers['x-device-id'] || req.query.deviceId || null;
+    const pl = playlistDb.getPlaylistById(req.params.id, userKey);
     if (!pl) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
     res.json({ success: true, playlist: pl });
   } catch (err) {
@@ -827,6 +827,8 @@ app.post('/api/playlists', (req, res) => {
     const { title, tracks, thumbnail } = req.body;
     if (!title) return res.status(400).json({ success: false, error: 'Nama playlist diperlukan' });
     const trackList = Array.isArray(tracks) ? tracks : [];
+    const userEmail = req.headers['x-user-email'] || req.body.userEmail || null;
+    const userId = req.headers['x-user-id'] || req.body.userId || null;
     const deviceId = req.headers['x-device-id'] || req.body.deviceId || null;
     const newPl = {
       id: 'pl-' + Date.now(),
@@ -835,7 +837,9 @@ app.post('/api/playlists', (req, res) => {
       thumbnail: thumbnail || (trackList[0] ? trackList[0].thumbnail : '/icons/icon.svg'),
       createdAt: new Date().toLocaleDateString('id-ID'),
       isImported: false,
-      deviceId
+      userEmail,
+      userId,
+      deviceId: userEmail || userId || deviceId
     };
     playlistDb.addOrUpdatePlaylist(newPl);
     res.json({ success: true, playlist: newPl });

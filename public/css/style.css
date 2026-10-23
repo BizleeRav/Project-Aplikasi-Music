@@ -8097,5 +8097,56 @@ body.music-playing .cinema-turntable-arm {
   }
 }
 
+/* Google Sign-In & Multi-User Account Switcher UI */
+.btn-google-auth-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
 
+.btn-google-auth-pill:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(66, 133, 244, 0.6);
+  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.3);
+  transform: translateY(-1px);
+}
 
+.ytm-profile-badge {
+  position: relative;
+  cursor: pointer;
+}
+
+.google-badge-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #10b981;
+  border: 2px solid #070a12;
+  box-shadow: 0 0 6px #10b981;
+}
+
+.google-badge-dot.unverified {
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+}
+
+.btn-google-switch:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.btn-google-logout:hover {
+  background: rgba(239, 68, 68, 0.25) !important;
+}
