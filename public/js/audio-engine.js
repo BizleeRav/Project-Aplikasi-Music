@@ -191,32 +191,6 @@ class AudioEngine {
     }
   }
 
-  syncDspToSubsystems() {
-    const config = {
-      eq: [...this.currentGains],
-      bass: this.currentBass,
-      width: this.spatialWidth
-    };
-
-    // 1. Electron Desktop IPC Bridge
-    if (window.electronAPI && typeof window.electronAPI.updateDspSettings === 'function') {
-      window.electronAPI.updateDspSettings(config);
-    }
-
-    // 2. HTML5 postMessage to YouTube IFrame
-    try {
-      const iframe = document.getElementById('yt-iframe-player');
-      if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({
-          type: 'AURA_UPDATE_DSP',
-          config
-        }, '*');
-      }
-    } catch (e) {
-      // Ignored
-    }
-  }
-
   setBandGain(bandIndex, gainValue) {
     const val = parseFloat(gainValue);
     this.currentGains[bandIndex] = val;
@@ -224,7 +198,6 @@ class AudioEngine {
       this.eqFilters[bandIndex].gain.setTargetAtTime(val, this.audioCtx?.currentTime || 0, 0.05);
     }
     this.drawEqCurve();
-    this.syncDspToSubsystems();
   }
 
   setBassBoost(gainValue) {
@@ -234,7 +207,6 @@ class AudioEngine {
       this.bassBoostNode.gain.setTargetAtTime(val, this.audioCtx?.currentTime || 0, 0.05);
     }
     this.drawEqCurve();
-    this.syncDspToSubsystems();
   }
 
   setSpatialWidth(widthMultiplier) {
@@ -243,7 +215,6 @@ class AudioEngine {
     if (this.spatialWidthGain && this.audioCtx) {
       this.spatialWidthGain.gain.setTargetAtTime(val, this.audioCtx.currentTime || 0, 0.05);
     }
-    this.syncDspToSubsystems();
   }
 
   setSpatialPan(panValue) {
@@ -282,7 +253,6 @@ class AudioEngine {
     }
 
     this.drawEqCurve();
-    this.syncDspToSubsystems();
   }
 
   // Draw Real-Time Frequency Response Curve on Canvas

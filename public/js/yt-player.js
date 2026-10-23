@@ -133,20 +133,10 @@ class YTPlayerManager {
       this.startProgressTracker();
       this.updateMediaSession(track);
 
-      // Trigger Visualizer and Synchronize DSP Engine
+      // Trigger Visualizer
       if (window.audioEngine) {
         window.audioEngine.isSimulatedVisualizer = true;
         window.audioEngine.resume();
-        setTimeout(() => {
-          if (window.audioEngine && typeof window.audioEngine.syncDspToSubsystems === 'function') {
-            window.audioEngine.syncDspToSubsystems();
-          }
-        }, 500);
-        setTimeout(() => {
-          if (window.audioEngine && typeof window.audioEngine.syncDspToSubsystems === 'function') {
-            window.audioEngine.syncDspToSubsystems();
-          }
-        }, 1500);
       }
     } catch (err) {
       console.error('Failed to load YouTube track:', err);
@@ -211,12 +201,7 @@ class YTPlayerManager {
     // YT.PlayerState: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
     if (playerState === 1) {
       this.isPlaying = true;
-      if (window.audioEngine) {
-        window.audioEngine.isSimulatedVisualizer = true;
-        if (typeof window.audioEngine.syncDspToSubsystems === 'function') {
-          window.audioEngine.syncDspToSubsystems();
-        }
-      }
+      if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = true;
       if (this.onStateChangeCallback) this.onStateChangeCallback(true);
     } else if (playerState === 2 || playerState === 0) {
       this.isPlaying = false;

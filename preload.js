@@ -12,6 +12,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateDownloaded: (callback) => {
     ipcRenderer.on('update-downloaded', (_event, info) => callback(info));
   },
-  restartAndInstallUpdate: () => ipcRenderer.send('restart-app'),
-  updateDspSettings: (config) => ipcRenderer.send('update-dsp-settings', config)
+  restartAndInstallUpdate: () => ipcRenderer.send('restart-app')
 });
