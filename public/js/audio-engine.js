@@ -9,13 +9,21 @@ class AudioEngine {
     this.sourceNode = null;
     this.analyser = null;
     this.gainNode = null;
-    this.limiterNode = null;
-    this.softClipperNode = null;
-    this.bassBoostNode = null;
+    this.glueCompressor = null;   // SSL-style Studio Bus Glue Compressor for cohesive master polish
+    this.peakLimiter = null;      // Transparent True-Peak Limiter
+    this.softClipperNode = null;  // Analog Tape Soft-Clipper
+    this.subBassDeepNode = null;  // Seismic Sub-Bass Foundation (50Hz)
+    this.subBassPunchNode = null; // Kick Drum Slam & Body (85Hz)
     this.stereoPanner = null;
     this.splitter = null;
     this.merger = null;
+    this.midGainL = null;
+    this.midGainR = null;
     this.spatialWidthGain = null;
+    this.binauralDelayL = null;
+    this.binauralDelayR = null;
+    this.binauralFilter = null;
+    this.sideInverter = null;
     this.eqFilters = [];
     this.frequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
     this.isInitialized = false;
@@ -53,22 +61,22 @@ class AudioEngine {
     this.presets.club = this.presets.electronic;
   }
 
-  // Transparent soft-clipper to catch extreme peaks without digital distortion
+  // Smooth analog tape saturation curve to catch peaks without digital harshness
   createSoftClipCurve() {
     const samples = 4096;
     const curve = new Float32Array(samples);
     for (let i = 0; i < samples; i++) {
       const x = (i * 2) / (samples - 1) - 1; // -1.0 to 1.0
-      // 100% transparent and linear up to 0.85
-      // Smoothly rounds the top 15% to eliminate digital DAC clipping/pecah
+      // 100% linear and transparent up to 0.82
+      // Smooth hyperbolic tangent soft saturation for the top 18% to eliminate digital clipping
       if (x < -1) {
         curve[i] = -0.99;
       } else if (x > 1) {
         curve[i] = 0.99;
-      } else if (x > 0.85) {
-        curve[i] = 0.85 + 0.14 * Math.tanh((x - 0.85) / 0.15);
-      } else if (x < -0.85) {
-        curve[i] = -0.85 + 0.14 * Math.tanh((x + 0.85) / 0.15);
+      } else if (x > 0.82) {
+        curve[i] = 0.82 + 0.17 * Math.tanh((x - 0.82) / 0.17);
+      } else if (x < -0.82) {
+        curve[i] = -0.82 + 0.17 * Math.tanh((x + 0.82) / 0.17);
       } else {
         curve[i] = x;
       }
@@ -83,31 +91,24 @@ class AudioEngine {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       this.audioCtx = new AudioContextClass();
 
-      // Master Gain
+      // Master Output Gain
       this.gainNode = this.audioCtx.createGain();
       this.gainNode.gain.value = 1.0;
 
-      // Master Studio Limiter (Compressor configured as musical brickwall limiter)
-      // Fix for "pecah": attack is 0.020s (20ms) so 40-50Hz sub-bass sine cycles are not clipped into square waves!
-      this.limiterNode = this.audioCtx.createDynamicsCompressor();
-      this.limiterNode.threshold.value = -2.5; // dB
-      this.limiterNode.knee.value = 8;         // dB smooth analog-style transition
-      this.limiterNode.ratio.value = 20;       // Brickwall limiter ratio
-      this.limiterNode.attack.value = 0.020;   // 20ms musical envelope detector (preserves sub-bass waveform integrity)
-      this.limiterNode.release.value = 0.18;   // 180ms smooth release
+      // 1. DUAL-STAGE SUB-BASS ENGINE (Deep Foundation + Punch Slam)
+      // Produces deep chest-thumping subwoofer rumble without muddy boxiness
+      this.subBassDeepNode = this.audioCtx.createBiquadFilter();
+      this.subBassDeepNode.type = 'lowshelf';
+      this.subBassDeepNode.frequency.value = 50; // Deep 808 sub-bass foundation
+      this.subBassDeepNode.gain.value = this.currentBass * 0.75;
 
-      // Soft-Clipper WaveShaper: Prevents any digital DAC hard-clipping
-      this.softClipperNode = this.audioCtx.createWaveShaper();
-      this.softClipperNode.curve = this.createSoftClipCurve();
-      this.softClipperNode.oversample = '2x';
+      this.subBassPunchNode = this.audioCtx.createBiquadFilter();
+      this.subBassPunchNode.type = 'peaking';
+      this.subBassPunchNode.frequency.value = 85; // Snappy kick drum punch
+      this.subBassPunchNode.Q.value = 1.6;
+      this.subBassPunchNode.gain.value = this.currentBass * 0.55;
 
-      // Bass Boost (Low-shelf filter @ 90Hz)
-      this.bassBoostNode = this.audioCtx.createBiquadFilter();
-      this.bassBoostNode.type = 'lowshelf';
-      this.bassBoostNode.frequency.value = 90;
-      this.bassBoostNode.gain.value = this.currentBass;
-
-      // 10-Band EQ Filters
+      // 2. 10-BAND PRECISION AUDIOPHILE EQ FILTERS
       this.eqFilters = this.frequencies.map((freq, index) => {
         const filter = this.audioCtx.createBiquadFilter();
         if (index === 0) {
@@ -116,65 +117,106 @@ class AudioEngine {
           filter.type = 'highshelf';
         } else {
           filter.type = 'peaking';
-          filter.Q.value = 1.4;
+          filter.Q.value = (freq === 64 || freq === 125) ? 1.5 : (freq >= 2000 ? 1.3 : 1.2);
         }
         filter.frequency.value = freq;
         filter.gain.value = this.currentGains[index] || 0;
         return filter;
       });
 
-      // 3D Spatial Soundstage Mid-Side Matrix (Original setup that user loved)
+      // 3. TRUE 3D BINAURAL HOLOGRAPHIC SPATIALIZER
+      // Center-anchored to preserve punchy vocals and kick drum, while expanding the stereo soundstage in 3D
       this.splitter = this.audioCtx.createChannelSplitter(2);
       this.merger = this.audioCtx.createChannelMerger(2);
 
-      // Mid Gain nodes: Mid = (L + R) * 0.5
-      const midGainL = this.audioCtx.createGain();
-      midGainL.gain.value = 0.5;
-      const midGainR = this.audioCtx.createGain();
-      midGainR.gain.value = 0.5;
+      // Mid Channel (Center Anchor - dry vocals, kick & bass kept 100% solid & intact)
+      this.midGainL = this.audioCtx.createGain();
+      this.midGainR = this.audioCtx.createGain();
+      this.midGainL.gain.value = 0.5;
+      this.midGainR.gain.value = 0.5;
 
-      // Side Gain nodes: Side = (L - R) * 0.5
+      // Side Channel (Stereo Ambience)
       const sideGainL = this.audioCtx.createGain();
-      sideGainL.gain.value = 0.5;
       const sideGainR = this.audioCtx.createGain();
+      sideGainL.gain.value = 0.5;
       sideGainR.gain.value = -0.5;
 
-      // Side Width multiplier (0 = mono, 1.0 = stereo, 1.4+ = wide 3D soundstage)
+      // Spatial Width Multiplier
       this.spatialWidthGain = this.audioCtx.createGain();
       this.spatialWidthGain.gain.value = this.spatialWidth;
 
-      // Inverted Side for Right channel
-      const sideInverter = this.audioCtx.createGain();
-      sideInverter.gain.value = -1.0;
+      // Binaural Haas Micro-Delay for Out-of-Head 3D Depth
+      this.binauralDelayL = this.audioCtx.createDelay(0.05);
+      this.binauralDelayL.delayTime.value = 0.012; // 12ms acoustic Haas depth
+      this.binauralDelayR = this.audioCtx.createDelay(0.05);
+      this.binauralDelayR.delayTime.value = 0.012;
 
-      // Connect Mid-Side matrix
-      this.splitter.connect(midGainL, 0);
-      this.splitter.connect(midGainR, 1);
+      this.binauralFilter = this.audioCtx.createBiquadFilter();
+      this.binauralFilter.type = 'lowpass';
+      this.binauralFilter.frequency.value = 8500; // Head-shadow acoustic dispersion
+
+      this.sideInverter = this.audioCtx.createGain();
+      this.sideInverter.gain.value = -1.0;
+
+      // Connect Mid-Side Matrix
+      this.splitter.connect(this.midGainL, 0);
+      this.splitter.connect(this.midGainR, 1);
       this.splitter.connect(sideGainL, 0);
       this.splitter.connect(sideGainR, 1);
 
       sideGainL.connect(this.spatialWidthGain);
       sideGainR.connect(this.spatialWidthGain);
 
-      // Recombine into Merger:
-      // Left = Mid + (Width * Side)
-      midGainL.connect(this.merger, 0, 0);
-      midGainR.connect(this.merger, 0, 0);
+      // Recombine Mid + Direct Side
+      this.midGainL.connect(this.merger, 0, 0);
+      this.midGainR.connect(this.merger, 0, 0);
       this.spatialWidthGain.connect(this.merger, 0, 0);
 
-      // Right = Mid - (Width * Side)
-      midGainL.connect(this.merger, 0, 1);
-      midGainR.connect(this.merger, 0, 1);
-      this.spatialWidthGain.connect(sideInverter);
-      sideInverter.connect(this.merger, 0, 1);
+      this.midGainL.connect(this.merger, 0, 1);
+      this.midGainR.connect(this.merger, 0, 1);
+      this.spatialWidthGain.connect(this.sideInverter);
+      this.sideInverter.connect(this.merger, 0, 1);
 
-      // Spatial Stereo Balance Panner (if supported)
+      // Add Binaural Depth Crossfeed
+      this.spatialWidthGain.connect(this.binauralFilter);
+      this.binauralFilter.connect(this.binauralDelayL);
+      this.binauralFilter.connect(this.binauralDelayR);
+      const crossfeedGain = this.audioCtx.createGain();
+      crossfeedGain.gain.value = 0.22;
+      this.binauralDelayL.connect(crossfeedGain);
+      this.binauralDelayR.connect(crossfeedGain);
+      crossfeedGain.connect(this.merger, 0, 0);
+      crossfeedGain.connect(this.merger, 0, 1);
+
+      // 4. SPATIAL BALANCE PANNER (if supported)
       if (this.audioCtx.createStereoPanner) {
         this.stereoPanner = this.audioCtx.createStereoPanner();
         this.stereoPanner.pan.value = 0;
       }
 
-      // Analyser for Spectrum Visualizer
+      // 5. STUDIO BUS GLUE COMPRESSOR (The Secret to Polished Mastered Sound)
+      // Smooth 2.4:1 ratio with 35ms attack lets drums snap cleanly while gluing the mix together
+      this.glueCompressor = this.audioCtx.createDynamicsCompressor();
+      this.glueCompressor.threshold.value = -14.0; // dB
+      this.glueCompressor.knee.value = 16.0;        // 16 dB ultra-soft analog knee
+      this.glueCompressor.ratio.value = 2.4;        // 2.4:1 gentle musical glue
+      this.glueCompressor.attack.value = 0.035;     // 35ms allows punchy drum transients to snap through
+      this.glueCompressor.release.value = 0.22;     // 220ms smooth, breathing musical release
+
+      // 6. TRUE-PEAK SAFETY LIMITER (Transparent Ceiling)
+      this.peakLimiter = this.audioCtx.createDynamicsCompressor();
+      this.peakLimiter.threshold.value = -1.5;      // dB catches true-peak overshoots
+      this.peakLimiter.knee.value = 6.0;
+      this.peakLimiter.ratio.value = 16.0;
+      this.peakLimiter.attack.value = 0.015;        // 15ms safety catch
+      this.peakLimiter.release.value = 0.15;
+
+      // 7. ANALOG TAPE SOFT-CLIPPER WAVESHAPER (Rounds off rogue peaks softly, zero DAC crackle)
+      this.softClipperNode = this.audioCtx.createWaveShaper();
+      this.softClipperNode.curve = this.createSoftClipCurve();
+      this.softClipperNode.oversample = '2x';
+
+      // 8. SPECTRUM VISUALIZER ANALYSER
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.85;
@@ -183,17 +225,17 @@ class AudioEngine {
       if (audioElement) {
         this.sourceNode = this.audioCtx.createMediaElementSource(audioElement);
 
-        // Chain: source -> bassBoost -> 10-Band EQ -> Mid-Side 3D Widener -> Panner -> Analyser -> Limiter -> SoftClipper -> Gain -> Destination
-        let prevNode = this.sourceNode;
-        prevNode.connect(this.bassBoostNode);
-        prevNode = this.bassBoostNode;
+        // Chain: source -> subBassDeep -> subBassPunch -> 10-Band EQ -> Mid-Side 3D Spatializer -> Panner -> Glue Compressor -> Analyser -> Peak Limiter -> SoftClipper -> Gain -> Destination
+        this.sourceNode.connect(this.subBassDeepNode);
+        this.subBassDeepNode.connect(this.subBassPunchNode);
 
+        let prevNode = this.subBassPunchNode;
         this.eqFilters.forEach(filter => {
           prevNode.connect(filter);
           prevNode = filter;
         });
 
-        // Pipe into Mid-Side 3D Widener
+        // Pipe into Mid-Side 3D Spatializer
         prevNode.connect(this.splitter);
 
         let postMerger = this.merger;
@@ -202,15 +244,17 @@ class AudioEngine {
           postMerger = this.stereoPanner;
         }
 
-        postMerger.connect(this.analyser);
-        this.analyser.connect(this.limiterNode);
-        this.limiterNode.connect(this.softClipperNode);
+        // Pipe through Studio Bus Glue Compressor -> Analyser -> True Peak Limiter -> Soft Clipper -> Master Gain
+        postMerger.connect(this.glueCompressor);
+        this.glueCompressor.connect(this.analyser);
+        this.analyser.connect(this.peakLimiter);
+        this.peakLimiter.connect(this.softClipperNode);
         this.softClipperNode.connect(this.gainNode);
         this.gainNode.connect(this.audioCtx.destination);
       }
 
       this.isInitialized = true;
-      console.log('AuraSound Audio DSP Engine initialized with Studio Limiter & Soft Clipper.');
+      console.log('AuraSound Full-Potential Studio DSP Engine initialized (Dual-Stage Bass, 3D Binaural, SSL Glue & Soft-Clipper).');
 
       // Draw initial EQ curve
       setTimeout(() => this.drawEqCurve(), 100);
@@ -237,8 +281,11 @@ class AudioEngine {
   setBassBoost(gainValue) {
     const val = parseFloat(gainValue);
     this.currentBass = val;
-    if (this.bassBoostNode) {
-      this.bassBoostNode.gain.setTargetAtTime(val, this.audioCtx?.currentTime || 0, 0.05);
+    if (this.subBassDeepNode && this.audioCtx) {
+      this.subBassDeepNode.gain.setTargetAtTime(val * 0.75, this.audioCtx.currentTime || 0, 0.05);
+    }
+    if (this.subBassPunchNode && this.audioCtx) {
+      this.subBassPunchNode.gain.setTargetAtTime(val * 0.55, this.audioCtx.currentTime || 0, 0.05);
     }
     this.drawEqCurve();
   }
@@ -248,6 +295,11 @@ class AudioEngine {
     this.spatialWidth = val;
     if (this.spatialWidthGain && this.audioCtx) {
       this.spatialWidthGain.gain.setTargetAtTime(val, this.audioCtx.currentTime || 0, 0.05);
+    }
+    if (this.binauralDelayL && this.binauralDelayR && this.audioCtx) {
+      const delayAmount = val > 1.0 ? Math.min(0.018, 0.008 + (val - 1.0) * 0.012) : 0.005;
+      this.binauralDelayL.delayTime.setTargetAtTime(delayAmount, this.audioCtx.currentTime || 0, 0.05);
+      this.binauralDelayR.delayTime.setTargetAtTime(delayAmount, this.audioCtx.currentTime || 0, 0.05);
     }
   }
 
