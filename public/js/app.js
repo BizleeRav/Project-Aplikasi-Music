@@ -23,6 +23,7 @@ class App {
     this.currentPlaylistDetail = null;
     this.trackToAddToPlaylist = null;
     this.nativeAudio = null;
+    this.currentAudioMode = 'native'; // 'native' (full DSP EQ) | 'yt' (iframe fallback)
     this.activeTab = 'home';
     this.networkInfo = null;
     this.playlistCurrentPage = 1;
@@ -518,7 +519,7 @@ class App {
 
     // Native audio events
     this.nativeAudio.addEventListener('timeupdate', () => {
-      if (this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
+      if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
         const cur = this.nativeAudio.currentTime;
         const dur = this.nativeAudio.duration || 1;
         this.updateProgress(cur, dur);
@@ -544,13 +545,15 @@ class App {
     // YouTube Player Callbacks
     if (window.ytPlayer) {
       window.ytPlayer.onProgressCallback = (current, duration) => {
-        if (!this.currentTrack || this.currentTrack.type === 'youtube' || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local')) {
+        if (this.currentAudioMode !== 'native' && (!this.currentTrack || this.currentTrack.type === 'youtube' || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'))) {
           this.updateProgress(current, duration);
         }
       };
 
       window.ytPlayer.onStateChangeCallback = (isPlaying) => {
-        this.updatePlayState(isPlaying);
+        if (this.currentAudioMode !== 'native') {
+          this.updatePlayState(isPlaying);
+        }
       };
     }
   }
@@ -615,7 +618,7 @@ class App {
         if (this.currentTimeEl) {
           this.currentTimeEl.textContent = this.formatTime(seekTime);
         }
-        if (this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
+        if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
           if (this.nativeAudio) this.nativeAudio.currentTime = seekTime;
         } else {
           if (window.ytPlayer) window.ytPlayer.seekTo(seekTime);
@@ -743,7 +746,7 @@ class App {
         if (this.currentTimeEl) {
           this.currentTimeEl.textContent = this.formatTime(seekTime);
         }
-        if (this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
+        if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
           if (this.nativeAudio) this.nativeAudio.currentTime = seekTime;
         } else {
           if (window.ytPlayer) window.ytPlayer.seekTo(seekTime);
@@ -1276,7 +1279,7 @@ class App {
   }
 
   isPlayingState() {
-    if (this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
+    if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
       return this.nativeAudio && !this.nativeAudio.paused;
     }
     if (window.ytPlayer) {
@@ -1567,14 +1570,14 @@ class App {
   }
 
   getCurrentPlaybackTime() {
-    if (this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
+    if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
       return this.nativeAudio ? (this.nativeAudio.currentTime || 0) : 0;
     }
     return window.ytPlayer ? (window.ytPlayer.getCurrentTime() || 0) : 0;
   }
 
   seekToTimestamp(seekTime) {
-    if (this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
+    if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
       if (this.nativeAudio) {
         this.nativeAudio.currentTime = seekTime;
         if (this.nativeAudio.paused) this.nativeAudio.play().catch(() => {});
@@ -4484,6 +4487,7 @@ class App {
 
     // Route playback based on type
     if (track.type === 'suno' || track.type === 'local') {
+      this.currentAudioMode = 'native';
       // Pause YouTube player
       if (window.ytPlayer) window.ytPlayer.pause();
 
@@ -4503,9 +4507,35 @@ class App {
 
       this.updateMediaSession(track);
     } else {
-      // YouTube Music track
-      if (this.nativeAudio) this.nativeAudio.pause();
-      window.ytPlayer.loadAndPlay(track);
+      // YouTube Music track -> Route through /api/stream-audio for 100% Web Audio DSP processing
+      if (window.ytPlayer) window.ytPlayer.pause();
+      this.currentAudioMode = 'native';
+
+      const streamUrl = `/api/stream-audio?id=${encodeURIComponent(track.id)}`;
+      this.nativeAudio.src = streamUrl;
+
+      const playPromise = this.nativeAudio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(err => {
+          console.warn('Direct audio stream error, falling back to YouTube player:', err);
+          this.currentAudioMode = 'yt';
+          if (this.nativeAudio) this.nativeAudio.pause();
+          window.ytPlayer.loadAndPlay(track);
+          this.updateEqStatusBanner();
+        });
+      }
+
+      this.nativeAudio.onerror = (e) => {
+        if (this.currentAudioMode === 'native' && track.type !== 'suno' && track.type !== 'local') {
+          console.warn('Native audio error event, falling back to YouTube player:', e);
+          this.currentAudioMode = 'yt';
+          this.nativeAudio.onerror = null;
+          window.ytPlayer.loadAndPlay(track);
+          this.updateEqStatusBanner();
+        }
+      };
+
+      this.updateMediaSession(track);
     }
 
     if (track.id !== 'dsp-test-demo') {
@@ -4525,13 +4555,13 @@ class App {
     const isEn = (this.userProfile?.lang === 'en');
 
     if (this.isDspTesting) {
-      textEl.textContent = isEn ? 'DSP Test Mode Active (100% Modified)' : 'Mode Tes DSP Aktif (100% Termodifikasi)';
+      textEl.textContent = isEn ? 'DSP Test Mode Active (100% Live Filter)' : 'Mode Tes DSP Aktif (100% Termodifikasi)';
       if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
-    } else if (this.currentTrack && (this.currentTrack.type === 'suno' || this.currentTrack.type === 'local')) {
-      textEl.textContent = isEn ? 'DSP Web Audio Engine Active (100% Modified)' : 'DSP Web Audio Engine Aktif (100% Termodifikasi)';
+    } else if (this.currentAudioMode === 'native') {
+      textEl.textContent = isEn ? 'DSP Web Audio Engine Active (100% Live Filter)' : 'DSP Web Audio Engine Aktif (100% Termodifikasi)';
       if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
     } else {
-      textEl.textContent = isEn ? 'YouTube Hi-Fi Direct Master Stream' : 'YouTube Hi-Fi Direct Master Stream';
+      textEl.textContent = isEn ? 'YouTube Hi-Fi Direct Stream' : 'YouTube Hi-Fi Direct Stream';
       if (dotEl) dotEl.className = 'status-indicator-dot dot-yt';
     }
   }
@@ -4584,7 +4614,7 @@ class App {
       return;
     }
 
-    if (this.currentTrack.type === 'suno' || this.currentTrack.type === 'local') {
+    if (this.currentAudioMode === 'native' || this.currentTrack.type === 'suno' || this.currentTrack.type === 'local') {
       if (this.nativeAudio.paused) {
         this.nativeAudio.play();
       } else {
@@ -4693,10 +4723,10 @@ class App {
     // If current song is already playing > 3 seconds, restart current track
     const currentTime = this.progressBar ? parseFloat(this.progressBar.value) : 0;
     if (currentTime > 3) {
-      if (this.currentTrack?.type === 'youtube') {
+      if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
+        if (this.nativeAudio) this.nativeAudio.currentTime = 0;
+      } else if (window.ytPlayer) {
         window.ytPlayer.seekTo(0);
-      } else if (this.nativeAudio) {
-        this.nativeAudio.currentTime = 0;
       }
       return;
     }

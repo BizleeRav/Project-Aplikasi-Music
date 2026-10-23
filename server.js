@@ -13,6 +13,9 @@ const lyricsRomanizer = require('./lyrics-romanizer');
 const sunoLoginHelper = require('./suno-login-helper');
 const deviceCredits = require('./device-credits');
 const tasteFeed = require('./taste-feed');
+const { Ytdl, chooseFormat } = require('@distube/ytdl-core');
+const ytdl = new Ytdl();
+const streamUrlCache = new Map(); // videoId -> { url, mimeType, contentLength, expiresAt }
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -569,6 +572,84 @@ app.get('/api/proxy-audio', async (req, res) => {
     console.warn('Proxy audio error:', err.message);
     if (!res.headersSent) {
       res.status(502).send('Failed to stream audio');
+    }
+  }
+});
+
+// 5b. Direct YouTube Music Audio Stream for Full Web Audio DSP Equalizer Processing
+app.get('/api/stream-audio', async (req, res) => {
+  const videoId = req.query.id;
+  if (!videoId) {
+    return res.status(400).json({ success: false, error: 'Video ID is required' });
+  }
+
+  try {
+    let cached = streamUrlCache.get(videoId);
+    if (!cached || Date.now() > cached.expiresAt) {
+      const info = await ytdl.getInfo(videoId);
+      let format;
+      try {
+        format = chooseFormat(info.formats, { filter: f => f.hasAudio && !f.hasVideo, quality: 'highestaudio' });
+      } catch (e) {
+        try {
+          format = chooseFormat(info.formats, { filter: 'audioonly' });
+        } catch (e2) {
+          format = (info.formats || []).find(f => f.hasAudio);
+        }
+      }
+
+      if (!format || !format.url) {
+        return res.status(404).json({ success: false, error: 'Audio stream format not available' });
+      }
+
+      cached = {
+        url: format.url,
+        mimeType: format.mimeType || 'audio/webm',
+        contentLength: format.contentLength,
+        expiresAt: Date.now() + 3 * 3600 * 1000 // 3 hours cache
+      };
+      streamUrlCache.set(videoId, cached);
+    }
+
+    const reqHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+      'Accept': '*/*'
+    };
+    if (req.headers.range) {
+      reqHeaders['Range'] = req.headers.range;
+    }
+
+    const audioRes = await axios.get(cached.url, {
+      headers: reqHeaders,
+      responseType: 'stream',
+      timeout: 25000,
+      validateStatus: (status) => (status >= 200 && status < 300) || status === 206
+    });
+
+    res.status(audioRes.status);
+    res.setHeader('Content-Type', cached.mimeType || 'audio/webm');
+    res.setHeader('Accept-Ranges', 'bytes');
+    if (audioRes.headers['content-range']) {
+      res.setHeader('Content-Range', audioRes.headers['content-range']);
+    }
+    if (audioRes.headers['content-length']) {
+      res.setHeader('Content-Length', audioRes.headers['content-length']);
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    audioRes.data.pipe(res);
+
+    req.on('close', () => {
+      if (audioRes.data && typeof audioRes.data.destroy === 'function') {
+        audioRes.data.destroy();
+      }
+    });
+  } catch (err) {
+    // If upstream token expired, evict cache
+    streamUrlCache.delete(videoId);
+    console.warn(`[Stream-Audio] Error for ${videoId}:`, err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: err.message });
     }
   }
 });

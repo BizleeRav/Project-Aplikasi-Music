@@ -44,13 +44,11 @@ async function createMainWindow() {
     }
   });
 
-  const CLOUD_URL = 'https://project-aplikasi-music.vercel.app';
   const LOCAL_URL = 'http://localhost:3000';
 
-  // Load live cloud server by default so the desktop app is ALWAYS 100% updated 24/7
-  mainWindow.loadURL(CLOUD_URL).catch(() => {
-    console.warn('Could not connect to cloud server, falling back to local server...');
-    mainWindow.loadURL(LOCAL_URL);
+  // Load native local server for direct low-latency audio streaming & Web Audio DSP processing
+  mainWindow.loadURL(LOCAL_URL).catch((err) => {
+    console.error('Failed to load local server in Electron window:', err);
   });
 
   // Enable F5 and Ctrl+R reload shortcuts

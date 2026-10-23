@@ -41,10 +41,8 @@ class AudioEngine {
     this.presets = {
       flat: { eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bass: 0, width: 1.0 },
       dolby: { eq: [8, 6, 2, -3, -2, 3, 6, 8, 10, 11], bass: 6, width: 1.8 }, // Expansive 180% 3D Surround & Cinema Sub-Bass
-      dolbyUltra: { eq: [11, 9, 5, -2, -1, 5, 8, 10, 12, 13], bass: 8, width: 2.0 }, // Dolby Atmos Ultra 3D (200% Extreme Soundstage)
       nahimic: { eq: [9, 8, 4, 1, 4, 5, 7, 10, 9, 7], bass: 8, width: 1.35 }, // Punchy gaming, kick bass & crisp upper details
       bassHeavy: { eq: [12, 11, 8, 4, -2, -3, -1, 1, 3, 4], bass: 12, width: 1.1 }, // Maximum deep 808 & Subwoofer shake (+12dB)
-      bassEarthquake: { eq: [14, 13, 10, 5, -1, -2, 0, 2, 4, 5], bass: 14, width: 1.25 }, // Bass Earthquake (+14dB Subwoofer Shake)
       vocal: { eq: [-6, -5, -3, 2, 8, 9, 8, 4, 1, -2], bass: 0, width: 1.0 }, // Crisp vocal clarity & forward presence
       electronic: { eq: [9, 8, 5, -3, -4, 2, 6, 9, 10, 11], bass: 8, width: 1.6 } // High-energy V-Curve with sparkling synth
     };
