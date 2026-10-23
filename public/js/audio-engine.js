@@ -272,8 +272,10 @@ class AudioEngine {
   setBandGain(bandIndex, gainValue) {
     const val = parseFloat(gainValue);
     this.currentGains[bandIndex] = val;
-    if (this.eqFilters[bandIndex]) {
-      this.eqFilters[bandIndex].gain.setTargetAtTime(val, this.audioCtx?.currentTime || 0, 0.05);
+    if (this.eqFilters[bandIndex] && this.audioCtx) {
+      const now = this.audioCtx.currentTime || 0;
+      this.eqFilters[bandIndex].gain.cancelScheduledValues(now);
+      this.eqFilters[bandIndex].gain.setTargetAtTime(val, now, 0.05);
     }
     this.drawEqCurve();
   }
@@ -281,11 +283,16 @@ class AudioEngine {
   setBassBoost(gainValue) {
     const val = parseFloat(gainValue);
     this.currentBass = val;
-    if (this.subBassDeepNode && this.audioCtx) {
-      this.subBassDeepNode.gain.setTargetAtTime(val * 0.75, this.audioCtx.currentTime || 0, 0.05);
-    }
-    if (this.subBassPunchNode && this.audioCtx) {
-      this.subBassPunchNode.gain.setTargetAtTime(val * 0.55, this.audioCtx.currentTime || 0, 0.05);
+    if (this.audioCtx) {
+      const now = this.audioCtx.currentTime || 0;
+      if (this.subBassDeepNode) {
+        this.subBassDeepNode.gain.cancelScheduledValues(now);
+        this.subBassDeepNode.gain.setTargetAtTime(val * 0.75, now, 0.05);
+      }
+      if (this.subBassPunchNode) {
+        this.subBassPunchNode.gain.cancelScheduledValues(now);
+        this.subBassPunchNode.gain.setTargetAtTime(val * 0.55, now, 0.05);
+      }
     }
     this.drawEqCurve();
   }
@@ -293,19 +300,27 @@ class AudioEngine {
   setSpatialWidth(widthMultiplier) {
     const val = Math.max(0, Math.min(2.0, parseFloat(widthMultiplier)));
     this.spatialWidth = val;
-    if (this.spatialWidthGain && this.audioCtx) {
-      this.spatialWidthGain.gain.setTargetAtTime(val, this.audioCtx.currentTime || 0, 0.05);
-    }
-    if (this.binauralDelayL && this.binauralDelayR && this.audioCtx) {
-      const delayAmount = val > 1.0 ? Math.min(0.018, 0.008 + (val - 1.0) * 0.012) : 0.005;
-      this.binauralDelayL.delayTime.setTargetAtTime(delayAmount, this.audioCtx.currentTime || 0, 0.05);
-      this.binauralDelayR.delayTime.setTargetAtTime(delayAmount, this.audioCtx.currentTime || 0, 0.05);
+    if (this.audioCtx) {
+      const now = this.audioCtx.currentTime || 0;
+      if (this.spatialWidthGain) {
+        this.spatialWidthGain.gain.cancelScheduledValues(now);
+        this.spatialWidthGain.gain.setTargetAtTime(val, now, 0.05);
+      }
+      if (this.binauralDelayL && this.binauralDelayR) {
+        const delayAmount = val > 1.0 ? Math.min(0.018, 0.008 + (val - 1.0) * 0.012) : 0.005;
+        this.binauralDelayL.delayTime.cancelScheduledValues(now);
+        this.binauralDelayR.delayTime.cancelScheduledValues(now);
+        this.binauralDelayL.delayTime.setTargetAtTime(delayAmount, now, 0.05);
+        this.binauralDelayR.delayTime.setTargetAtTime(delayAmount, now, 0.05);
+      }
     }
   }
 
   setSpatialPan(panValue) {
-    if (this.stereoPanner) {
-      this.stereoPanner.pan.setTargetAtTime(panValue, this.audioCtx?.currentTime || 0, 0.05);
+    if (this.stereoPanner && this.audioCtx) {
+      const now = this.audioCtx.currentTime || 0;
+      this.stereoPanner.pan.cancelScheduledValues(now);
+      this.stereoPanner.pan.setTargetAtTime(panValue, now, 0.05);
     }
   }
 
