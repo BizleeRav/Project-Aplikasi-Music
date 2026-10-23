@@ -4068,9 +4068,20 @@ class App {
   applyDspPreset(presetName) {
     if (window.audioEngine) {
       window.audioEngine.applyPreset(presetName);
-      this.showToast(`DSP Preset: ${presetName.toUpperCase()} diaktifkan! 🎚️`, 'info');
+      const presetNames = {
+        dolby: 'Dolby Atmos Enhancer',
+        nahimic: 'Nahimic Bass & Clarity',
+        bassHeavy: 'Bass Boost Extreme',
+        bass: 'Bass Boost Extreme',
+        vocal: 'Vocal Presence',
+        electronic: 'EDM / Synth',
+        club: 'EDM / Synth',
+        flat: 'Flat / Natural'
+      };
+      const title = presetNames[presetName] || presetName.toUpperCase();
+      this.showToast(`DSP Preset: ${title} diaktifkan! 🎚️`, 'info');
       document.querySelectorAll('.preset-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-preset') === presetName);
+        btn.classList.toggle('active', btn.getAttribute('data-preset') === presetName || (presetName === 'bass' && btn.getAttribute('data-preset') === 'bassHeavy') || (presetName === 'club' && btn.getAttribute('data-preset') === 'electronic'));
       });
       document.querySelectorAll('.aura-dsp-pill').forEach(pill => {
         pill.classList.toggle('active', pill.getAttribute('onclick')?.includes(presetName));

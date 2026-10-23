@@ -42,18 +42,18 @@ class AudioEngine {
     this.cinemaPeaks = new Float32Array(54);
     this.cinemaPeakHold = new Int8Array(54);
 
-    // Track active DSP values for real-time curve and feedback (Original user-preferred sound)
-    this.currentGains = [4, 3, 2, -1, -1, 1, 3, 4, 5, 5];
+    // Default active DSP gains (aligned with Dolby Atmos Enhancer)
+    this.currentGains = [5, 6, 2, -1, -2, 0, 2, 4, 6, 5];
     this.currentBass = 4;
-    this.spatialWidth = 1.4;
+    this.spatialWidth = 1.45;
 
     this.presets = {
-      flat: { eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bass: 0, width: 1.0 },
-      dolby: { eq: [8, 6, 2, -3, -2, 3, 6, 8, 10, 11], bass: 6, width: 1.8 }, // Expansive 180% 3D Surround & Cinema Sub-Bass
-      nahimic: { eq: [9, 8, 4, 1, 4, 5, 7, 10, 9, 7], bass: 8, width: 1.35 }, // Punchy gaming, kick bass & crisp upper details
+      flat: { eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bass: 0, width: 1.0 }, // Audiophile Bit-Perfect Reference (Flat / Natural)
+      dolby: { eq: [5, 6, 2, -1, -2, 0, 2, 4, 6, 5], bass: 4, width: 1.45 }, // Dolby Atmos Holographic 3D (Cinematic depth, spatial air, zero harshness)
+      nahimic: { eq: [2, 6, 4, 0, -1, 0, 3, 5, 3, 1], bass: 5, width: 1.25 }, // Nahimic Bass & Clarity (Punchy transient slam & razor-sharp vocal detail)
       bassHeavy: { eq: [8, 9, 6, 0, -2, -1, 1, 2, 4, 3], bass: 8, width: 1.15 }, // Music Video Club Bass Boost Extreme (Deep 808s, punchy kick, mud-free, sparkling highs)
       vocal: { eq: [-4, -2, 0, -2, -1, 1, 3, 5, 3, 2], bass: 0, width: 1.05 }, // Studio Music Video Vocal Presence (Intimate, forward, silky clarity, zero nasal harshness)
-      electronic: { eq: [9, 8, 5, -3, -4, 2, 6, 9, 10, 11], bass: 8, width: 1.6 } // High-energy V-Curve with sparkling synth
+      electronic: { eq: [6, 7, 4, -1, -3, -1, 2, 4, 6, 5], bass: 7, width: 1.40 } // Festival EDM / Synth V-Curve (Punchy drops, soaring synths & bright sizzle)
     };
 
     // Quick Aliases for Bento & Home feed preset pills
@@ -314,8 +314,8 @@ class AudioEngine {
     if (!preset) return;
 
     const values = Array.isArray(preset) ? preset : preset.eq;
-    const bassVal = (typeof preset.bass === 'number') ? preset.bass : (presetName === 'dolby' ? 6 : (presetName === 'nahimic' ? 8 : (presetName === 'bassHeavy' ? 8 : 0)));
-    const widthVal = (typeof preset.width === 'number') ? preset.width : (presetName === 'dolby' ? 1.8 : (presetName === 'nahimic' ? 1.35 : 1.0));
+    const bassVal = (typeof preset.bass === 'number') ? preset.bass : (presetName === 'dolby' ? 4 : (presetName === 'nahimic' ? 5 : (presetName === 'bassHeavy' || presetName === 'bass' ? 8 : (presetName === 'electronic' || presetName === 'club' ? 7 : 0))));
+    const widthVal = (typeof preset.width === 'number') ? preset.width : (presetName === 'dolby' ? 1.45 : (presetName === 'nahimic' ? 1.25 : (presetName === 'electronic' || presetName === 'club' ? 1.40 : 1.0)));
 
     values.forEach((val, idx) => {
       this.setBandGain(idx, val);
