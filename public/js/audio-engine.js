@@ -51,8 +51,8 @@ class AudioEngine {
       flat: { eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bass: 0, width: 1.0 },
       dolby: { eq: [8, 6, 2, -3, -2, 3, 6, 8, 10, 11], bass: 6, width: 1.8 }, // Expansive 180% 3D Surround & Cinema Sub-Bass
       nahimic: { eq: [9, 8, 4, 1, 4, 5, 7, 10, 9, 7], bass: 8, width: 1.35 }, // Punchy gaming, kick bass & crisp upper details
-      bassHeavy: { eq: [12, 11, 8, 4, -2, -3, -1, 1, 3, 4], bass: 12, width: 1.1 }, // Maximum deep 808 & Subwoofer shake (+12dB)
-      vocal: { eq: [-6, -5, -3, 2, 8, 9, 8, 4, 1, -2], bass: 0, width: 1.0 }, // Crisp vocal clarity & forward presence
+      bassHeavy: { eq: [8, 9, 6, 0, -2, -1, 1, 2, 4, 3], bass: 8, width: 1.15 }, // Music Video Club Bass Boost Extreme (Deep 808s, punchy kick, mud-free, sparkling highs)
+      vocal: { eq: [-4, -2, 0, -2, -1, 1, 3, 5, 3, 2], bass: 0, width: 1.05 }, // Studio Music Video Vocal Presence (Intimate, forward, silky clarity, zero nasal harshness)
       electronic: { eq: [9, 8, 5, -3, -4, 2, 6, 9, 10, 11], bass: 8, width: 1.6 } // High-energy V-Curve with sparkling synth
     };
 
@@ -314,7 +314,7 @@ class AudioEngine {
     if (!preset) return;
 
     const values = Array.isArray(preset) ? preset : preset.eq;
-    const bassVal = (typeof preset.bass === 'number') ? preset.bass : (presetName === 'dolby' ? 6 : (presetName === 'nahimic' ? 8 : (presetName === 'bassHeavy' ? 12 : 0)));
+    const bassVal = (typeof preset.bass === 'number') ? preset.bass : (presetName === 'dolby' ? 6 : (presetName === 'nahimic' ? 8 : (presetName === 'bassHeavy' ? 8 : 0)));
     const widthVal = (typeof preset.width === 'number') ? preset.width : (presetName === 'dolby' ? 1.8 : (presetName === 'nahimic' ? 1.35 : 1.0));
 
     values.forEach((val, idx) => {
