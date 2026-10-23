@@ -162,29 +162,6 @@ class AudioEngine {
           prevNode = filter;
         });
 
-        // Psychoacoustic Sub-Bass Harmonic Exciter (IMAX Deep Resonance)
-        this.exciterFilter = this.audioCtx.createBiquadFilter();
-        this.exciterFilter.type = 'lowpass';
-        this.exciterFilter.frequency.value = 110;
-
-        this.exciterShaper = this.audioCtx.createWaveShaper();
-        const nSamples = 256;
-        const curve = new Float32Array(nSamples);
-        for (let i = 0; i < nSamples; i++) {
-          const x = (i * 2) / nSamples - 1;
-          curve[i] = (Math.PI + 4) * x / (Math.PI + 4 * Math.abs(x));
-        }
-        this.exciterShaper.curve = curve;
-        this.exciterShaper.oversample = '2x';
-
-        this.exciterGain = this.audioCtx.createGain();
-        this.exciterGain.gain.value = 0.28;
-
-        prevNode.connect(this.exciterFilter);
-        this.exciterFilter.connect(this.exciterShaper);
-        this.exciterShaper.connect(this.exciterGain);
-        this.exciterGain.connect(this.splitter);
-
         // Pipe into Mid-Side 3D Widener
         prevNode.connect(this.splitter);
 
