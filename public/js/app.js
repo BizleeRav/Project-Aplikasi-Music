@@ -50,6 +50,7 @@ class App {
     try { this.syncFavoritesFromDb(); } catch (e) { console.error('Error syncing favorites from db:', e); }
     try { this.fetchNetworkInfo(); } catch (e) { console.error('Error fetching network info:', e); }
     try { this.checkPWAInstall(); } catch (e) { console.error('Error checking PWA install:', e); }
+    try { this.initEntranceAnimation(); } catch (e) { console.error('Error in entrance animation:', e); }
   }
 
   initElements() {
@@ -127,6 +128,71 @@ class App {
     } catch (e) {
       console.warn('checkCleanReset error:', e);
     }
+  }
+
+  // ==========================================
+  // ENTRANCE SPLASH & ONBOARDING FLOW (Splash -> Google Login -> Taste Selection)
+  // ==========================================
+  initEntranceAnimation() {
+    const splash = document.getElementById('app-splash-screen');
+    const statusEl = document.getElementById('splash-status-text');
+    const fillEl = document.getElementById('splash-progress-fill');
+    if (!splash) {
+      this.triggerPostSplashFlow();
+      return;
+    }
+
+    // Stage 1 (150ms): Starting Hi-Fi Studio
+    setTimeout(() => {
+      if (fillEl) fillEl.style.width = '35%';
+      if (statusEl) statusEl.textContent = 'Menyiapkan Studio Audio Hi-Fi...';
+    }, 150);
+
+    // Stage 2 (850ms): Calibrating DSP Equalizer & Accounts
+    setTimeout(() => {
+      if (fillEl) fillEl.style.width = '75%';
+      if (statusEl) statusEl.textContent = 'Menyelaraskan DSP Equalizer & Akun...';
+    }, 850);
+
+    // Stage 3 (1650ms): Ready & Welcome
+    setTimeout(() => {
+      if (fillEl) fillEl.style.width = '100%';
+      if (statusEl) statusEl.textContent = 'Selamat Datang di AuraSound ✨';
+    }, 1650);
+
+    // Stage 4 (2150ms): Smooth aperture/scale-fade exit
+    setTimeout(() => {
+      splash.classList.add('splash-hiding');
+    }, 2150);
+
+    // Stage 5 (2650ms): Remove splash and trigger Step 2 (Google Login) -> Step 3 (Pilih Selera Musik)
+    setTimeout(() => {
+      splash.style.display = 'none';
+      this.triggerPostSplashFlow();
+    }, 2650);
+  }
+
+  triggerPostSplashFlow() {
+    // Step 2: Show Google Login Modal
+    if (!this.currentUser || !this.currentUser.email) {
+      this.openGoogleLoginModal();
+    } else {
+      // User already logged into Google, check if taste selection is needed
+      const isTasteCompleted = localStorage.getItem('aurasound_taste_completed');
+      if (!isTasteCompleted) {
+        setTimeout(() => {
+          this.openTasteModal();
+        }, 350);
+      }
+    }
+  }
+
+  dismissGoogleModalToTaste() {
+    const modal = document.getElementById('modal-google-auth');
+    if (modal) modal.classList.remove('active');
+    setTimeout(() => {
+      this.openTasteModal();
+    }, 350);
   }
 
   getUserKey() {
@@ -352,6 +418,11 @@ class App {
     this.showToast(this.userProfile?.lang === 'en'
       ? `Logged in as ${this.userProfile.name} (${googleUser.email})! ✨`
       : `Akun Google aktif: ${this.userProfile.name} (${googleUser.email})! ✨`, 'success');
+
+    // Step 3: Seamless transition to Pilih Selera Musik
+    setTimeout(() => {
+      this.openTasteModal();
+    }, 400);
   }
 
   logoutGoogle() {
@@ -2215,14 +2286,7 @@ class App {
     const modal = document.getElementById('modal-taste-onboarding');
     if (!modal) return;
 
-    // Check if user has already completed onboarding
-    const isCompleted = localStorage.getItem('aurasound_taste_completed');
-    if (!isCompleted) {
-      // First-time launch: immediately display taste setup modal
-      setTimeout(() => {
-        this.openTasteModal();
-      }, 100);
-    }
+    // Event handlers are initialized here; opening is orchestrated by post-splash flow
 
     // Genre Cards Multi-Select Click Handler
     const genreCards = modal.querySelectorAll('.taste-genre-card');
@@ -2365,10 +2429,11 @@ class App {
     const modal = document.getElementById('modal-taste-onboarding');
     if (!modal) return;
 
-    // Pre-fill user name if available
+    // Pre-fill user name from Google account or profile
     const nameInput = document.getElementById('taste-input-name');
     if (nameInput) {
-      nameInput.value = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : '';
+      const preferredName = (this.currentUser?.name) || (this.userProfile?.name && this.userProfile.name !== 'User' ? this.userProfile.name : '');
+      if (preferredName) nameInput.value = preferredName;
     }
 
     // Pre-select existing genres & mood if saved

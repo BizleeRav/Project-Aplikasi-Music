@@ -15,6 +15,56 @@
 </head>
 <body>
 
+  <!-- Cinematic Splash Entrance Screen (Mobile & Laptop) -->
+  <div id="app-splash-screen" class="app-splash-screen" aria-label="AuraSound Splash Intro">
+    <div class="splash-backdrop-glow">
+      <div class="splash-pulse-ring ring-1"></div>
+      <div class="splash-pulse-ring ring-2"></div>
+      <div class="splash-pulse-ring ring-3"></div>
+      <div class="splash-aurora-glow"></div>
+    </div>
+    
+    <div class="splash-content">
+      <!-- Animated Emblem with Glowing Vinyl Record & Soundwave Pulse -->
+      <div class="splash-emblem-wrap">
+        <div class="splash-vinyl-glow"></div>
+        <div class="splash-vinyl-disc">
+          <div class="splash-vinyl-grooves"></div>
+          <div class="splash-vinyl-center">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18V5l12-2v13"/>
+              <circle cx="6" cy="18" r="3"/>
+              <circle cx="18" cy="16" r="3"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Brand Typography -->
+      <h1 class="splash-brand-title">AuraSound</h1>
+      <div class="splash-brand-sub">STUDIO &amp; HI-FI AUDIO HUB</div>
+
+      <!-- Animated Soundwave Spectrum Bars -->
+      <div class="splash-soundwave-bars">
+        <span class="sw-bar bar-1"></span>
+        <span class="sw-bar bar-2"></span>
+        <span class="sw-bar bar-3"></span>
+        <span class="sw-bar bar-4"></span>
+        <span class="sw-bar bar-5"></span>
+        <span class="sw-bar bar-6"></span>
+        <span class="sw-bar bar-7"></span>
+      </div>
+
+      <!-- Status Text & Shimmer Progress -->
+      <div class="splash-status-wrap">
+        <div id="splash-status-text" class="splash-status-text">Menyiapkan Studio Audio Hi-Fi...</div>
+        <div class="splash-progress-track">
+          <div class="splash-progress-fill" id="splash-progress-fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Interactive Dynamic Ambient Aurora Parallax & Audio Reactive Mesh -->
   <div id="aura-ambient-mesh" class="aura-ambient-mesh" aria-hidden="true">
     <div class="aura-ambient-orb orb-1"></div>
@@ -673,13 +723,19 @@
           </div>
           <span style="font-size: 0.72rem; background: rgba(16, 185, 129, 0.15); color: #34d399; padding: 4px 8px; border-radius: 20px; font-weight: 700;">Aktif</span>
         </div>
-        <div style="margin-top: 14px; display: flex; gap: 8px;">
-          <button type="button" class="btn-google-switch" onclick="window.app.promptGoogleSwitch()" style="flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
-            🔄 Ganti Akun Google
+        <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 8px;">
+          <button type="button" class="btn-google-continue" onclick="window.app.dismissGoogleModalToTaste()" style="width: 100%; background: #2563eb; color: #fff; border: none; padding: 10px 14px; border-radius: 10px; font-size: 0.86rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);">
+            <span>Lanjutkan ke Pilih Selera Musik</span>
+            <span>→</span>
           </button>
-          <button type="button" class="btn-google-logout" onclick="window.app.logoutGoogle()" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #fca5a5; padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
-            Keluar
-          </button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn-google-switch" onclick="window.app.promptGoogleSwitch()" style="flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
+              🔄 Ganti Akun
+            </button>
+            <button type="button" class="btn-google-logout" onclick="window.app.logoutGoogle()" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #fca5a5; padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
+              Keluar
+            </button>
+          </div>
         </div>
       </div>
 
@@ -703,6 +759,10 @@
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
             </svg>
             <span>Masuk & Kunci Akun Saya</span>
+          </button>
+
+          <button type="button" class="btn-skip-google-login" onclick="window.app.dismissGoogleModalToTaste()" style="width: 100%; margin-top: 10px; background: transparent; border: none; color: #94a3b8; font-size: 0.82rem; font-weight: 500; cursor: pointer; padding: 6px; text-decoration: underline; text-align: center;">
+            Lewati & Lanjutkan ke Pilihan Selera Musik →
           </button>
         </form>
       </div>
