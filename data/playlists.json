@@ -1,5 +1,77 @@
 [
   {
+    "id": "pl-ai-bizlee-laptop",
+    "title": "Mix Favorit Bizlee 🎵",
+    "description": "Diramu spesial oleh AI AuraSound berdasarkan selera pilihanmu: Pop Indonesia, K-Pop Hits, & Japanese Indie.",
+    "tracks": [
+      {
+        "id": "NffeFmn0vvQ",
+        "title": "tuki. - HYURIRAPAPPA (Live)",
+        "artist": "tuki.(17)",
+        "duration": "3:29",
+        "views": "25.0M views",
+        "thumbnail": "https://i.ytimg.com/vi/NffeFmn0vvQ/mqdefault.jpg",
+        "type": "youtube",
+        "genreTag": "J-Pop & Indie"
+      },
+      {
+        "id": "ZRtdQ81jPUQ",
+        "title": "YOASOBI「アイドル」(Idol) Official Music Video",
+        "artist": "Ayase / YOASOBI",
+        "duration": "3:46",
+        "views": "450.0M views",
+        "thumbnail": "https://i.ytimg.com/vi/ZRtdQ81jPUQ/mqdefault.jpg",
+        "type": "youtube",
+        "genreTag": "J-Pop & Anime"
+      },
+      {
+        "id": "pyLDM9NeRnQ",
+        "title": "Yovie Widianto, HIVI! - Semenjak Ada Dirimu",
+        "artist": "Yovie Widianto",
+        "duration": "4:21",
+        "views": "35.0M views",
+        "thumbnail": "https://i.ytimg.com/vi/pyLDM9NeRnQ/mqdefault.jpg",
+        "type": "youtube",
+        "genreTag": "Pop Indonesia"
+      },
+      {
+        "id": "vs-gfy3Pv1c",
+        "title": "Akhir Tak Bahagia - Misellia",
+        "artist": "Misellia",
+        "duration": "3:06",
+        "views": "81.9M views",
+        "thumbnail": "https://i.ytimg.com/vi/vs-gfy3Pv1c/mqdefault.jpg",
+        "type": "youtube",
+        "genreTag": "Pop Indonesia"
+      },
+      {
+        "id": "D-VytLhH-KE",
+        "title": "Jaz - Bersamamu",
+        "artist": "JAZ",
+        "duration": "3:56",
+        "views": "120.2M views",
+        "thumbnail": "https://i.ytimg.com/vi/D-VytLhH-KE/mqdefault.jpg",
+        "type": "youtube",
+        "genreTag": "Pop Indonesia"
+      },
+      {
+        "id": "N0zZKq3RCQo",
+        "title": "tuki. - Saitei Kaiwai (Official Music Video)",
+        "artist": "tuki.(17)",
+        "duration": "3:20",
+        "views": "18.0M views",
+        "thumbnail": "https://i.ytimg.com/vi/N0zZKq3RCQo/mqdefault.jpg",
+        "type": "youtube",
+        "genreTag": "J-Pop & Indie"
+      }
+    ],
+    "thumbnail": "https://i.ytimg.com/vi/NffeFmn0vvQ/mqdefault.jpg",
+    "createdAt": "23/10/2026",
+    "isImported": false,
+    "isAiMix": true,
+    "deviceId": "dev_cbz2no1ft_17926875522346"
+  },
+  {
     "id": "pl-ai-1792686231921",
     "title": "Mix Favorit Devod 🎵",
     "description": "Diramu spesial oleh AI AuraSound berdasarkan selera pilihanmu: Pop Indonesia, Rock & Indie.",

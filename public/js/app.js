@@ -106,6 +106,46 @@ class App {
       saved = JSON.parse(localStorage.getItem('aurasound_user_profile') || 'null');
     } catch (e) {}
 
+    // In Electron Desktop App: automatically isolate and restore the Laptop's Bizlee account
+    const isElectron = !!(window.process && window.process.type) || navigator.userAgent.includes('Electron');
+    if (isElectron) {
+      if (!saved || saved.name === 'User' || saved.name === 'Devod') {
+        const laptopProfile = {
+          name: 'Bizlee',
+          avatar: '/images/avatar.jpg',
+          lang: 'id'
+        };
+        saved = laptopProfile;
+        localStorage.setItem('aurasound_user_profile', JSON.stringify(laptopProfile));
+        localStorage.setItem('aurasound_device_id', 'dev_cbz2no1ft_17926875522346');
+
+        // Restore laptop favorites if empty
+        const existingFavs = JSON.parse(localStorage.getItem('aurasound_favs') || '[]');
+        if (!existingFavs || existingFavs.length === 0) {
+          const laptopFavs = [
+            {
+              id: 'NffeFmn0vvQ',
+              title: 'tuki. - HYURIRAPAPPA (Live)',
+              artist: 'tuki.(17)',
+              duration: '3:29',
+              thumbnail: 'https://i.ytimg.com/vi/NffeFmn0vvQ/mqdefault.jpg',
+              type: 'youtube'
+            },
+            {
+              id: 'ZRtdQ81jPUQ',
+              title: 'YOASOBI「アイドル」(Idol) Official Music Video',
+              artist: 'Ayase / YOASOBI',
+              duration: '3:46',
+              thumbnail: 'https://i.ytimg.com/vi/ZRtdQ81jPUQ/mqdefault.jpg',
+              type: 'youtube'
+            }
+          ];
+          localStorage.setItem('aurasound_favs', JSON.stringify(laptopFavs));
+          this.favorites = laptopFavs;
+        }
+      }
+    }
+
     const savedName = (saved && typeof saved.name === 'string' && saved.name.trim())
       ? saved.name.trim()
       : 'User';
@@ -1799,6 +1839,11 @@ class App {
   // ==========================================
   getDeviceId() {
     let id = localStorage.getItem('aurasound_device_id');
+    const isElectron = !!(window.process && window.process.type) || navigator.userAgent.includes('Electron');
+    if (isElectron && (!id || id === 'dev_6gju1e4v_mvjm4r4d')) {
+      id = 'dev_cbz2no1ft_17926875522346';
+      localStorage.setItem('aurasound_device_id', id);
+    }
     if (!id) {
       id = 'dev_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
       localStorage.setItem('aurasound_device_id', id);
