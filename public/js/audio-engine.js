@@ -530,32 +530,58 @@ class AudioEngine {
     let isPlaying = false;
     let songTime = 0;
 
-    // Check YouTube player state
-    if (window.ytPlayer) {
+    // 1. Direct check on window.app
+    if (window.app) {
+      if (typeof window.app.isPlayingState === 'function') {
+        isPlaying = Boolean(window.app.isPlayingState());
+      } else if (typeof window.app.isPlaying === 'boolean') {
+        isPlaying = window.app.isPlaying;
+      }
+    }
+
+    // 2. Direct check on DOM body class (toggled by updatePlayState)
+    if (!isPlaying && document.body && document.body.classList.contains('music-playing')) {
+      isPlaying = true;
+    }
+
+    // 3. Check YouTube player state
+    if (!isPlaying && window.ytPlayer) {
       if (typeof window.ytPlayer.isPlayingState === 'function') {
-        isPlaying = window.ytPlayer.isPlayingState();
+        isPlaying = Boolean(window.ytPlayer.isPlayingState());
       } else if (typeof window.ytPlayer.getPlayerState === 'function') {
-        isPlaying = (window.ytPlayer.getPlayerState() === 1);
+        try {
+          const s = window.ytPlayer.getPlayerState();
+          isPlaying = (s === 1 || s === 3);
+        } catch (e) {}
       } else {
         isPlaying = Boolean(window.ytPlayer.isPlaying);
       }
-      if (typeof window.ytPlayer.getCurrentTime === 'function') {
-        songTime = window.ytPlayer.getCurrentTime() || 0;
-      }
     }
 
-    // Check Native/Suno HTML Audio element
-    if (!isPlaying && window.app && window.app.audioPlayer) {
-      if (!window.app.audioPlayer.paused && !window.app.audioPlayer.ended) {
-        isPlaying = true;
-        songTime = window.app.audioPlayer.currentTime || 0;
-      }
+    // 4. Check Native/Suno HTML Audio element
+    if (!isPlaying && window.app && window.app.nativeAudio) {
+      const na = window.app.nativeAudio;
+      isPlaying = (!na.paused && !na.ended && (na.currentTime > 0 || na.readyState > 1));
     }
 
-    // Fallback if simulation flag set without active player
+    // Fallback simulation flag
     if (!isPlaying && this.isSimulatedVisualizer) {
       isPlaying = true;
-      songTime = Date.now() / 1000;
+    }
+
+    // Song time retrieval
+    if (window.ytPlayer) {
+      try {
+        if (typeof window.ytPlayer.getCurrentTime === 'function') {
+          songTime = window.ytPlayer.getCurrentTime() || 0;
+        }
+      } catch (e) {}
+    }
+    if (songTime === 0 && window.app && window.app.nativeAudio) {
+      songTime = window.app.nativeAudio.currentTime || 0;
+    }
+    if (songTime === 0) {
+      songTime = (Date.now() / 1000);
     }
 
     // Check if singing is active in synchronized lyrics
@@ -583,10 +609,21 @@ class AudioEngine {
 
     let dataArray = null;
     let bufferLength = 0;
-    if (this.isInitialized && this.analyser && isPlaying && !this.isSimulatedVisualizer) {
+    let hasRealAudioSignal = false;
+
+    if (this.isInitialized && this.analyser && isPlaying) {
       bufferLength = this.analyser.frequencyBinCount;
       dataArray = new Uint8Array(bufferLength);
       this.analyser.getByteFrequencyData(dataArray);
+
+      let sum = 0;
+      for (let j = 0; j < bufferLength; j += 4) {
+        sum += dataArray[j];
+        if (sum > 20) {
+          hasRealAudioSignal = true;
+          break;
+        }
+      }
     }
 
     // Musical Beat & Rhythm parameters (~124 BPM)
@@ -606,7 +643,7 @@ class AudioEngine {
     for (let i = 0; i < barCount; i++) {
       let targetPct = 0.05;
 
-      if (dataArray) {
+      if (hasRealAudioSignal) {
         const dataIndex = Math.floor(i * (bufferLength / barCount));
         targetPct = ((dataArray[dataIndex] || 0) / 255);
       } else if (isPlaying) {
@@ -624,6 +661,9 @@ class AudioEngine {
           targetPct = (hihatEnvelope * trebWeight * 0.75) + (Math.sin(songTime * 4.5 + i) * 0.1 + 0.14);
         }
         targetPct = Math.min(0.95, Math.max(0.04, targetPct));
+      } else {
+        // Subtle ambient idle breathing when paused (looks alive and premium)
+        targetPct = 0.05 + Math.sin((Date.now() / 1000) * 1.5 + i * 0.22) * 0.025;
       }
 
       // Smooth inertia
@@ -641,7 +681,7 @@ class AudioEngine {
       gradient.addColorStop(0.5, '#06b6d4');
       gradient.addColorStop(1, '#8b5cf6');
 
-      ctx.fillStyle = isPlaying ? gradient : 'rgba(255, 255, 255, 0.08)';
+      ctx.fillStyle = isPlaying ? gradient : 'rgba(6, 182, 212, 0.25)';
       ctx.beginPath();
       ctx.roundRect(x, height - barHeight, Math.max(barWidth, 2), barHeight, [4, 4, 0, 0]);
       ctx.fill();
@@ -653,8 +693,18 @@ class AudioEngine {
   drawCinemaVisualizer() {
     if (!this.cinemaCanvas || !this.cinemaCanvasCtx) return;
 
-    const width = this.cinemaCanvas.width;
-    const height = this.cinemaCanvas.height;
+    let width = this.cinemaCanvas.width;
+    let height = this.cinemaCanvas.height;
+
+    // Auto-sync canvas internal resolution with its CSS display dimensions
+    const rect = this.cinemaCanvas.getBoundingClientRect();
+    if (rect.width > 20 && (Math.abs(this.cinemaCanvas.width - rect.width) > 4 || Math.abs(this.cinemaCanvas.height - rect.height) > 4)) {
+      this.cinemaCanvas.width = rect.width;
+      this.cinemaCanvas.height = rect.height;
+      width = rect.width;
+      height = rect.height;
+    }
+
     const ctx = this.cinemaCanvasCtx;
     const mode = this.cinemaVisMode || 'spectrum';
 
@@ -702,16 +752,27 @@ class AudioEngine {
 
       let dataArray = null;
       let bufferLength = 0;
-      if (this.isInitialized && this.analyser && isPlaying && !this.isSimulatedVisualizer) {
+      let hasRealAudioSignal = false;
+
+      if (this.isInitialized && this.analyser && isPlaying) {
         bufferLength = this.analyser.frequencyBinCount;
         dataArray = new Uint8Array(bufferLength);
         this.analyser.getByteFrequencyData(dataArray);
+
+        let sum = 0;
+        for (let j = 0; j < bufferLength; j += 4) {
+          sum += dataArray[j];
+          if (sum > 20) {
+            hasRealAudioSignal = true;
+            break;
+          }
+        }
       }
 
       for (let i = 0; i < barCount; i++) {
         let targetPct = 0.04;
 
-        if (dataArray) {
+        if (hasRealAudioSignal) {
           const idx = Math.floor(i * (bufferLength / barCount));
           targetPct = (dataArray[idx] || 0) / 255;
         } else if (isPlaying) {
@@ -736,6 +797,9 @@ class AudioEngine {
           // Subtle organic jitter
           const jitter = (Math.sin(i * 13.7 + songTime * 19.3) * 0.5 + 0.5) * 0.07;
           targetPct = Math.min(0.96, Math.max(0.04, targetPct + jitter));
+        } else {
+          // Subtle resting ambient pulse when paused
+          targetPct = 0.045 + Math.sin((Date.now() / 1000) * 1.8 + i * 0.16) * 0.02;
         }
 
         // Real Physical Inertia (Instant Attack + Exponential Gravity Decay)

@@ -1695,6 +1695,11 @@ class App {
 
     if (window.audioEngine && this.cinemaVisCanvas) {
       window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
+      setTimeout(() => {
+        if (window.audioEngine && this.cinemaVisCanvas) {
+          window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
+        }
+      }, 100);
     }
 
     this.syncCinemaTrackInfo();
@@ -5244,6 +5249,10 @@ class App {
   }
 
   updatePlayState(isPlaying) {
+    this.isPlaying = Boolean(isPlaying);
+    if (isPlaying && window.audioEngine) {
+      window.audioEngine.resume();
+    }
     if (!this.playPauseBtn) return;
     const playIcon = this.playPauseBtn.querySelector('.icon-play');
     const pauseIcon = this.playPauseBtn.querySelector('.icon-pause');
