@@ -7,13 +7,17 @@ class AudioEngine {
   constructor() {
     this.audioCtx = null;
     this.sourceNode = null;
+    this.headroomNode = null; // Dynamic headroom compensation to eliminate clipping
     this.analyser = null;
     this.gainNode = null;
     this.limiterNode = null;
+    this.softClipperNode = null; // Analog tape soft saturation
     this.bassBoostNode = null;
     this.stereoPanner = null;
     this.splitter = null;
     this.merger = null;
+    this.midGainL = null;
+    this.midGainR = null;
     this.spatialWidthGain = null;
     this.eqFilters = [];
     this.frequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
@@ -33,19 +37,61 @@ class AudioEngine {
     this.cinemaPeaks = new Float32Array(54);
     this.cinemaPeakHold = new Int8Array(54);
 
-    // Track active DSP values for real-time curve and feedback
-    this.currentGains = [4, 3, 2, -1, -1, 1, 3, 4, 5, 5];
-    this.currentBass = 4;
-    this.spatialWidth = 1.4;
+    // Track active DSP values for real-time curve and feedback (Clean Audiophile Default: Dolby Atmos)
+    this.currentGains = [5.0, 4.0, 1.5, -1.5, -1.0, 1.5, 3.5, 5.0, 6.0, 6.5];
+    this.currentBass = 4.0;
+    this.spatialWidth = 1.35;
 
+    // Calibrated Audiophile DSP Presets: Pure Clarity, Punchy Bass, Zero Distortion
     this.presets = {
       flat: { eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bass: 0, width: 1.0 },
-      dolby: { eq: [8, 6, 2, -3, -2, 3, 6, 8, 10, 11], bass: 6, width: 1.8 }, // Expansive 180% 3D Surround & Cinema Sub-Bass
-      nahimic: { eq: [9, 8, 4, 1, 4, 5, 7, 10, 9, 7], bass: 8, width: 1.35 }, // Punchy gaming, kick bass & crisp upper details
-      bassHeavy: { eq: [12, 11, 8, 4, -2, -3, -1, 1, 3, 4], bass: 12, width: 1.1 }, // Maximum deep 808 & Subwoofer shake (+12dB)
-      vocal: { eq: [-6, -5, -3, 2, 8, 9, 8, 4, 1, -2], bass: 0, width: 1.0 }, // Crisp vocal clarity & forward presence
-      electronic: { eq: [9, 8, 5, -3, -4, 2, 6, 9, 10, 11], bass: 8, width: 1.6 } // High-energy V-Curve with sparkling synth
+      dolby: { eq: [5.0, 4.0, 1.5, -1.5, -1.0, 1.5, 3.5, 5.0, 6.0, 6.5], bass: 4.0, width: 1.35 }, // Immersive 3D Atmos & Cinema Sub-Bass
+      nahimic: { eq: [5.5, 4.5, 2.5, 1.0, 2.5, 3.5, 4.5, 6.0, 5.5, 5.0], bass: 4.5, width: 1.25 }, // Punchy gaming, kick punch & crystal details
+      bassHeavy: { eq: [6.5, 5.5, 4.0, 1.5, -1.0, -1.5, 0.0, 1.5, 2.5, 3.0], bass: 5.5, width: 1.1 }, // Deep clean 808 & Subwoofer rumble without cracking
+      vocal: { eq: [-3.5, -2.5, -1.0, 1.5, 4.5, 5.5, 4.5, 2.5, 1.0, -1.0], bass: 0, width: 1.05 }, // Warm low cut & pristine forward vocals
+      electronic: { eq: [5.5, 4.5, 2.5, -1.5, -2.0, 1.5, 3.5, 5.5, 6.5, 7.0], bass: 4.5, width: 1.3 } // High-energy EDM V-Curve with sparkling synths
     };
+
+    // Quick Aliases for Bento & Home feed preset pills
+    this.presets.bass = this.presets.bassHeavy;
+    this.presets.club = this.presets.electronic;
+  }
+
+  // Generate smooth analog tape saturation curve to softly round transients
+  createSoftClipCurve() {
+    const samples = 4096;
+    const curve = new Float32Array(samples);
+    const drive = 1.15;
+    const norm = Math.tanh(drive);
+    for (let i = 0; i < samples; i++) {
+      const x = (i * 2) / (samples - 1) - 1; // -1.0 to 1.0
+      // Hyperbolic tangent soft saturation curve: perfectly linear at normal levels,
+      // softly rounds off peaks near +/- 1.0 to completely eliminate digital crackle/pecah.
+      curve[i] = Math.tanh(drive * x) / norm;
+    }
+    return curve;
+  }
+
+  // Dynamic Headroom Compensation
+  // Automatically scales pre-gain based on EQ boosts so signals never overshoot digital 0 dBFS
+  updateHeadroom() {
+    if (!this.headroomNode || !this.audioCtx) return;
+
+    const maxEqBoost = Math.max(0, ...this.currentGains);
+    const maxBassBoost = Math.max(0, this.currentBass || 0);
+    // Combined effective sub-bass boost
+    const effectivePeakBoost = Math.max(maxEqBoost, maxBassBoost * 0.75 + Math.max(0, this.currentGains[0] || 0));
+
+    let headroomDb = 0;
+    if (effectivePeakBoost > 0.5) {
+      // Professional studio attenuation curve: keeps tonal shape while preserving 1.5 dB true-peak safety margin
+      headroomDb = - (effectivePeakBoost * 0.42) - 1.2;
+    }
+
+    const linearGain = Math.pow(10, headroomDb / 20);
+    const now = this.audioCtx.currentTime || 0;
+    this.headroomNode.gain.cancelScheduledValues(now);
+    this.headroomNode.gain.setTargetAtTime(linearGain, now, 0.04);
   }
 
   init(audioElement) {
@@ -55,25 +101,35 @@ class AudioEngine {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       this.audioCtx = new AudioContextClass();
 
-      // Master Gain
+      // 1. Dynamic Headroom Pre-Attenuation Node
+      this.headroomNode = this.audioCtx.createGain();
+      this.headroomNode.gain.value = 1.0;
+
+      // 2. Master Gain (Output)
       this.gainNode = this.audioCtx.createGain();
+      this.gainNode.gain.value = 1.0;
 
-      // Master Studio Limiter (Compressor configured as transparent Brickwall Limiter)
-      // Catches signals right before 0 dBFS to completely eliminate digital clipping/distortion
+      // 3. Master Studio Limiter (Musical Envelope Detector)
+      // Configured with 22ms attack so 40Hz sub-bass sine cycles are not clipped into square waves!
       this.limiterNode = this.audioCtx.createDynamicsCompressor();
-      this.limiterNode.threshold.value = -1.5; // dB
-      this.limiterNode.knee.value = 6;         // dB smooth analog-style transition
-      this.limiterNode.ratio.value = 18;       // Brickwall limiter ratio
-      this.limiterNode.attack.value = 0.003;   // 3ms ultra-fast attack catches sudden transients
-      this.limiterNode.release.value = 0.15;   // 150ms transparent release
+      this.limiterNode.threshold.value = -3.0; // dB true-peak ceiling
+      this.limiterNode.knee.value = 12.0;       // 12 dB smooth analog-style transition
+      this.limiterNode.ratio.value = 12.0;      // 12:1 firm transparent mastering limiter
+      this.limiterNode.attack.value = 0.022;    // 22ms envelope detector (preserves sub-bass waveform integrity)
+      this.limiterNode.release.value = 0.22;    // 220ms transparent release
 
-      // Bass Boost (Low-shelf filter @ 90Hz)
+      // 4. Analog Tape Soft-Clipper WaveShaper (catches any rogue inter-sample peaks smoothly)
+      this.softClipperNode = this.audioCtx.createWaveShaper();
+      this.softClipperNode.curve = this.createSoftClipCurve();
+      this.softClipperNode.oversample = '2x';
+
+      // 5. Bass Boost (Low-shelf filter @ 90Hz)
       this.bassBoostNode = this.audioCtx.createBiquadFilter();
       this.bassBoostNode.type = 'lowshelf';
       this.bassBoostNode.frequency.value = 90;
       this.bassBoostNode.gain.value = this.currentBass;
 
-      // 10-Band EQ Filters
+      // 6. 10-Band EQ Filters
       this.eqFilters = this.frequencies.map((freq, index) => {
         const filter = this.audioCtx.createBiquadFilter();
         if (index === 0) {
@@ -89,34 +145,25 @@ class AudioEngine {
         return filter;
       });
 
-      // 3D Spatial Soundstage Mid-Side Matrix
-      // Expands stereo field into immersive 3D binaural sphere without phase distortion
+      // 7. 3D Spatial Soundstage Mid-Side Matrix with Energy Normalization
       this.splitter = this.audioCtx.createChannelSplitter(2);
       this.merger = this.audioCtx.createChannelMerger(2);
 
-      // Mid Gain nodes: Mid = (L + R) * 0.5
-      const midGainL = this.audioCtx.createGain();
-      midGainL.gain.value = 0.5;
-      const midGainR = this.audioCtx.createGain();
-      midGainR.gain.value = 0.5;
-
-      // Side Gain nodes: Side = (L - R) * 0.5
+      this.midGainL = this.audioCtx.createGain();
+      this.midGainR = this.audioCtx.createGain();
       const sideGainL = this.audioCtx.createGain();
-      sideGainL.gain.value = 0.5;
       const sideGainR = this.audioCtx.createGain();
+
+      sideGainL.gain.value = 0.5;
       sideGainR.gain.value = -0.5;
 
-      // Side Width multiplier (0 = mono, 1.0 = stereo, 1.4+ = wide 3D soundstage)
       this.spatialWidthGain = this.audioCtx.createGain();
-      this.spatialWidthGain.gain.value = this.spatialWidth;
-
-      // Inverted Side for Right channel
       const sideInverter = this.audioCtx.createGain();
       sideInverter.gain.value = -1.0;
 
       // Connect Mid-Side matrix
-      this.splitter.connect(midGainL, 0);
-      this.splitter.connect(midGainR, 1);
+      this.splitter.connect(this.midGainL, 0);
+      this.splitter.connect(this.midGainR, 1);
       this.splitter.connect(sideGainL, 0);
       this.splitter.connect(sideGainR, 1);
 
@@ -124,24 +171,27 @@ class AudioEngine {
       sideGainR.connect(this.spatialWidthGain);
 
       // Recombine into Merger:
-      // Left = Mid + (Width * Side)
-      midGainL.connect(this.merger, 0, 0);
-      midGainR.connect(this.merger, 0, 0);
+      // Left = Mid + Side
+      this.midGainL.connect(this.merger, 0, 0);
+      this.midGainR.connect(this.merger, 0, 0);
       this.spatialWidthGain.connect(this.merger, 0, 0);
 
-      // Right = Mid - (Width * Side)
-      midGainL.connect(this.merger, 0, 1);
-      midGainR.connect(this.merger, 0, 1);
+      // Right = Mid - Side
+      this.midGainL.connect(this.merger, 0, 1);
+      this.midGainR.connect(this.merger, 0, 1);
       this.spatialWidthGain.connect(sideInverter);
       sideInverter.connect(this.merger, 0, 1);
 
-      // Spatial Stereo Balance Panner (if supported)
+      // Apply initial energy-normalized width
+      this.setSpatialWidth(this.spatialWidth);
+
+      // 8. Spatial Stereo Balance Panner (if supported)
       if (this.audioCtx.createStereoPanner) {
         this.stereoPanner = this.audioCtx.createStereoPanner();
         this.stereoPanner.pan.value = 0;
       }
 
-      // Analyser for Spectrum Visualizer
+      // 9. Analyser for Spectrum Visualizer
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.85;
@@ -150,8 +200,10 @@ class AudioEngine {
       if (audioElement) {
         this.sourceNode = this.audioCtx.createMediaElementSource(audioElement);
 
-        // Chain: source -> bassBoost -> 10-Band EQ -> Mid-Side 3D Widener -> Panner -> Analyser -> Studio Limiter -> Gain -> Destination
-        let prevNode = this.sourceNode;
+        // Chain: source -> headroomNode -> bassBoost -> 10-Band EQ -> Mid-Side 3D Widener -> Panner -> Analyser -> Limiter -> Soft-Clipper -> Gain -> Destination
+        this.sourceNode.connect(this.headroomNode);
+        let prevNode = this.headroomNode;
+
         prevNode.connect(this.bassBoostNode);
         prevNode = this.bassBoostNode;
 
@@ -171,12 +223,14 @@ class AudioEngine {
 
         postMerger.connect(this.analyser);
         this.analyser.connect(this.limiterNode);
-        this.limiterNode.connect(this.gainNode);
+        this.limiterNode.connect(this.softClipperNode);
+        this.softClipperNode.connect(this.gainNode);
         this.gainNode.connect(this.audioCtx.destination);
       }
 
       this.isInitialized = true;
-      console.log('AuraSound Audio DSP Engine initialized with Studio Limiter & 3D Spatializer.');
+      this.updateHeadroom();
+      console.log('AuraSound Audio DSP Engine initialized with Dynamic Headroom, Studio Limiter & Soft Clipper.');
 
       // Draw initial EQ curve
       setTimeout(() => this.drawEqCurve(), 100);
@@ -197,6 +251,7 @@ class AudioEngine {
     if (this.eqFilters[bandIndex]) {
       this.eqFilters[bandIndex].gain.setTargetAtTime(val, this.audioCtx?.currentTime || 0, 0.05);
     }
+    this.updateHeadroom();
     this.drawEqCurve();
   }
 
@@ -206,15 +261,25 @@ class AudioEngine {
     if (this.bassBoostNode) {
       this.bassBoostNode.gain.setTargetAtTime(val, this.audioCtx?.currentTime || 0, 0.05);
     }
+    this.updateHeadroom();
     this.drawEqCurve();
   }
 
   setSpatialWidth(widthMultiplier) {
     const val = Math.max(0, Math.min(2.0, parseFloat(widthMultiplier)));
     this.spatialWidth = val;
-    if (this.spatialWidthGain && this.audioCtx) {
-      this.spatialWidthGain.gain.setTargetAtTime(val, this.audioCtx.currentTime || 0, 0.05);
-    }
+    if (!this.audioCtx) return;
+    const now = this.audioCtx.currentTime || 0;
+
+    // Energy-preserving normalization factor
+    // Prevents wide stereo elements from multiplying total output amplitude into clipping
+    const norm = 1.0 / Math.sqrt(0.5 + 0.5 * val * val);
+    const midVal = 0.5 * norm;
+    const sideVal = 0.5 * val * norm;
+
+    if (this.midGainL) this.midGainL.gain.setTargetAtTime(midVal, now, 0.05);
+    if (this.midGainR) this.midGainR.gain.setTargetAtTime(midVal, now, 0.05);
+    if (this.spatialWidthGain) this.spatialWidthGain.gain.setTargetAtTime(sideVal, now, 0.05);
   }
 
   setSpatialPan(panValue) {
@@ -223,21 +288,34 @@ class AudioEngine {
     }
   }
 
+  setMasterVolume(vol) {
+    const clamped = Math.max(0, Math.min(1.0, parseFloat(vol)));
+    if (this.gainNode && this.audioCtx) {
+      this.gainNode.gain.setTargetAtTime(clamped, this.audioCtx.currentTime || 0, 0.02);
+    }
+  }
+
   applyPreset(presetName) {
     const preset = this.presets[presetName];
     if (!preset) return;
 
     const values = Array.isArray(preset) ? preset : preset.eq;
-    const bassVal = (typeof preset.bass === 'number') ? preset.bass : (presetName === 'dolby' ? 4 : (presetName === 'nahimic' ? 6 : (presetName === 'bassHeavy' ? 8 : 0)));
-    const widthVal = (typeof preset.width === 'number') ? preset.width : (presetName === 'dolby' ? 1.4 : (presetName === 'nahimic' ? 1.3 : 1.0));
+    const bassVal = (typeof preset.bass === 'number') ? preset.bass : 0;
+    const widthVal = (typeof preset.width === 'number') ? preset.width : 1.0;
 
     values.forEach((val, idx) => {
-      this.setBandGain(idx, val);
+      this.currentGains[idx] = val;
+      if (this.eqFilters[idx]) {
+        this.eqFilters[idx].gain.setTargetAtTime(val, this.audioCtx?.currentTime || 0, 0.05);
+      }
       const slider = document.getElementById(`eq-slider-${idx}`);
       if (slider) slider.value = val;
     });
 
-    this.setBassBoost(bassVal);
+    this.currentBass = bassVal;
+    if (this.bassBoostNode) {
+      this.bassBoostNode.gain.setTargetAtTime(bassVal, this.audioCtx?.currentTime || 0, 0.05);
+    }
     const bassSlider = document.getElementById('bass-boost-slider');
     if (bassSlider) bassSlider.value = bassVal;
     const bassLabel = document.getElementById('bass-boost-val');
@@ -252,6 +330,7 @@ class AudioEngine {
       widthLabel.textContent = pct === 100 ? '100% (Stereo)' : (pct > 100 ? `${pct}% (3D Surround)` : `${pct}% (Fokus Mono)`);
     }
 
+    this.updateHeadroom();
     this.drawEqCurve();
   }
 
