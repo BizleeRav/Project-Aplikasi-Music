@@ -513,6 +513,8 @@ class App {
       if (this.visualizerCanvas) {
         window.audioEngine.setupVisualizer(this.visualizerCanvas);
       }
+      window.audioEngine.syncDspToSubsystems();
+      this.updateEqStatusBanner();
     }
 
     // Native audio events
@@ -4526,12 +4528,15 @@ class App {
     if (this.isDspTesting) {
       textEl.textContent = isEn ? 'DSP Test Mode Active (100% Modified)' : 'Mode Tes DSP Aktif (100% Termodifikasi)';
       if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
+    } else if (window.electronAPI && window.electronAPI.isElectron) {
+      textEl.textContent = isEn ? 'DSP Studio Acoustic Engine Active (100% Modified)' : 'DSP Studio Acoustic Engine Aktif (100% Termodifikasi)';
+      if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
     } else if (this.currentTrack && (this.currentTrack.type === 'suno' || this.currentTrack.type === 'local')) {
       textEl.textContent = isEn ? 'DSP Web Audio Engine Active (100% Modified)' : 'DSP Web Audio Engine Aktif (100% Termodifikasi)';
       if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
     } else {
-      textEl.textContent = isEn ? 'YouTube 24-Bit Stream (Browser Sandbox Protected)' : 'YouTube 24-Bit Stream (Diproteksi Sandbox Browser)';
-      if (dotEl) dotEl.className = 'status-indicator-dot dot-yt';
+      textEl.textContent = isEn ? 'DSP Studio Acoustic Engine (Active & Synchronized)' : 'DSP Studio Acoustic Engine (Aktif & Tersinkronisasi)';
+      if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
     }
   }
 
