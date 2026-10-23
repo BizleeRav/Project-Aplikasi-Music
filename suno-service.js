@@ -2,22 +2,22 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, 'data');
-const CONFIG_FILE = process.env.VERCEL ? path.join('/tmp', 'config.json') : path.join(__dirname, 'config.json');
+const DATA_DIR = process.env.AURASOUND_DATA_DIR || (process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
+const CONFIG_FILE = process.env.AURASOUND_DATA_DIR ? path.join(process.env.AURASOUND_DATA_DIR, 'config.json') : (process.env.VERCEL ? path.join('/tmp', 'config.json') : path.join(__dirname, 'config.json'));
 const CREATIONS_FILE = path.join(DATA_DIR, 'suno-creations.json');
 
-// Ensure writable paths exist in serverless Vercel environment
-if (process.env.VERCEL) {
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (!fs.existsSync(CREATIONS_FILE) && fs.existsSync(path.join(__dirname, 'data', 'suno-creations.json'))) {
-      fs.copyFileSync(path.join(__dirname, 'data', 'suno-creations.json'), CREATIONS_FILE);
-    }
-    if (!fs.existsSync(CONFIG_FILE) && fs.existsSync(path.join(__dirname, 'config.json'))) {
-      fs.copyFileSync(path.join(__dirname, 'config.json'), CONFIG_FILE);
-    }
-  } catch (e) {}
-}
+// Ensure writable paths exist
+try {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(CREATIONS_FILE) && fs.existsSync(path.join(__dirname, 'data', 'suno-creations.json'))) {
+    fs.copyFileSync(path.join(__dirname, 'data', 'suno-creations.json'), CREATIONS_FILE);
+  } else if (!fs.existsSync(CREATIONS_FILE)) {
+    fs.writeFileSync(CREATIONS_FILE, '[]', 'utf8');
+  }
+  if (!fs.existsSync(CONFIG_FILE) && fs.existsSync(path.join(__dirname, 'config.json'))) {
+    fs.copyFileSync(path.join(__dirname, 'config.json'), CONFIG_FILE);
+  }
+} catch (e) {}
 
 // Helper to get or save configuration
 function getConfig() {

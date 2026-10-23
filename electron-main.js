@@ -1,6 +1,18 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
+
+// Ensure persistent user data directory in user's OS AppData folder (isolated per machine & Windows user)
+try {
+  const userDataDir = path.join(app.getPath('userData'), 'data');
+  if (!fs.existsSync(userDataDir)) {
+    fs.mkdirSync(userDataDir, { recursive: true });
+  }
+  process.env.AURASOUND_DATA_DIR = userDataDir;
+} catch (e) {
+  console.warn('Could not set AURASOUND_DATA_DIR in electron:', e);
+}
 
 let mainWindow = null;
 let sunoLoginWin = null;

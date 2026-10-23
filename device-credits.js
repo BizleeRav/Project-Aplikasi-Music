@@ -1,20 +1,20 @@
 const fs = require('fs');
 const path = require('path');
 
-const CREDITS_FILE = process.env.VERCEL ? path.join('/tmp', 'data', 'device-credits.json') : path.join(__dirname, 'data', 'device-credits.json');
+const DATA_DIR = process.env.AURASOUND_DATA_DIR || (process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
+const CREDITS_FILE = path.join(DATA_DIR, 'device-credits.json');
 const DEFAULT_DAILY_CREDITS = 50; // 5 songs per device per day
 const COST_PER_SONG = 10;
 
-// Ensure writable path exists in serverless Vercel environment
-if (process.env.VERCEL) {
-  try {
-    const tmpDir = path.dirname(CREDITS_FILE);
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-    if (!fs.existsSync(CREDITS_FILE) && fs.existsSync(path.join(__dirname, 'data', 'device-credits.json'))) {
-      fs.copyFileSync(path.join(__dirname, 'data', 'device-credits.json'), CREDITS_FILE);
-    }
-  } catch (e) {}
-}
+// Ensure writable path exists
+try {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(CREDITS_FILE) && fs.existsSync(path.join(__dirname, 'data', 'device-credits.json'))) {
+    fs.copyFileSync(path.join(__dirname, 'data', 'device-credits.json'), CREDITS_FILE);
+  } else if (!fs.existsSync(CREDITS_FILE)) {
+    fs.writeFileSync(CREDITS_FILE, '{}', 'utf8');
+  }
+} catch (e) {}
 
 function getTodayString() {
   const d = new Date();

@@ -1,20 +1,18 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, 'data');
+const DATA_DIR = process.env.AURASOUND_DATA_DIR || (process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
 const DB_FILE = path.join(DATA_DIR, 'playlists.json');
 
 // Ensure data directory exists
-if (process.env.VERCEL) {
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (!fs.existsSync(DB_FILE) && fs.existsSync(path.join(__dirname, 'data', 'playlists.json'))) {
-      fs.copyFileSync(path.join(__dirname, 'data', 'playlists.json'), DB_FILE);
-    }
-  } catch (e) {}
-} else if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+try {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(DB_FILE) && fs.existsSync(path.join(__dirname, 'data', 'playlists.json'))) {
+    fs.copyFileSync(path.join(__dirname, 'data', 'playlists.json'), DB_FILE);
+  } else if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, '[]', 'utf8');
+  }
+} catch (e) {}
 
 // In-Memory Cache for 0ms ultra-fast response
 let playlistsCache = null;
