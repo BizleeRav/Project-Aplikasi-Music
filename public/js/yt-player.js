@@ -129,6 +129,13 @@ class YTPlayerManager {
       if (this.player.setPlaybackQuality) {
         this.player.setPlaybackQuality('hd1080');
       }
+      if (this.player.unMute) {
+        this.player.unMute();
+      }
+      if (this.player.setVolume) {
+        const currentVol = (window.app && window.app.currentVolume !== undefined) ? Math.round(window.app.currentVolume * 100) : 100;
+        this.player.setVolume(currentVol);
+      }
       this.player.playVideo();
       this.startProgressTracker();
       this.updateMediaSession(track);

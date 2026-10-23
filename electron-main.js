@@ -2,6 +2,12 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 
+// Hardware 96kHz / 24-Bit Studio Master Audio Engine & Ultra-Low Jitter Buffer
+app.commandLine.appendSwitch('audio-output-sample-rate', '96000');
+app.commandLine.appendSwitch('audio-buffer-size', '512');
+app.commandLine.appendSwitch('force-wave-audio', 'false');
+app.commandLine.appendSwitch('high-dpi-support', '1');
+
 let mainWindow = null;
 let sunoLoginWin = null;
 
