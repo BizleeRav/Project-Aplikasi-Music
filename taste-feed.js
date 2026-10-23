@@ -351,18 +351,17 @@ async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-i
 }
 
 /**
- * AI Hypermix Generator for users who skipped taste onboarding.
- * Activates when the user has listened to >= 3 tracks.
- * Seamlessly derives mix from user's actual playback history without developer biases.
+ * AI Related Music & Hypermix Generator for users who skipped taste onboarding.
+ * Activates immediately once the user starts listening to any music (>= 1 track).
+ * Derives related tracks directly from what the user listened to without developer biases.
  */
 async function generateHypermix({ history = [], favorites = [] } = {}) {
   const validHistory = Array.isArray(history) ? history.filter(Boolean) : [];
-  if (validHistory.length < 3) {
+  if (validHistory.length === 0) {
     return {
       success: true,
       isReady: false,
-      count: validHistory.length,
-      needed: 3,
+      count: 0,
       tracks: []
     };
   }
@@ -382,18 +381,25 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     }
   });
 
-  const sortedArtists = Object.keys(artistCounts)
+  let sortedArtists = Object.keys(artistCounts)
     .sort((a, b) => artistCounts[b] - artistCounts[a])
     .slice(0, 4);
 
-  // Parallel query YouTube for each top artist's official hits
+  // If no artist could be cleanly parsed, fallback to latest song artist or title
+  if (sortedArtists.length === 0 && historyTracks.length > 0) {
+    const fallback = historyTracks[0].artist || historyTracks[0].title;
+    if (fallback) sortedArtists = [fallback];
+  }
+
+  // Parallel query YouTube for each artist's official hits & related music
   const relatedPromises = sortedArtists.map(async (art) => {
-    return await fetchCategoryTracks(`"${art}" top songs official music video`, 4);
+    return await fetchCategoryTracks(`"${art}" official music video`, 6);
   });
 
   const relatedResults = await Promise.all(relatedPromises);
-  const mixTracks = [...historyTracks.slice(0, 6)];
+  const mixTracks = [];
 
+  // Add related tracks first
   relatedResults.forEach(artistTracks => {
     artistTracks.forEach(t => {
       if (!seenIds.has(t.id)) {
@@ -403,15 +409,22 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     });
   });
 
-  const artistLabel = sortedArtists.length > 0 ? sortedArtists.join(', ') : 'lagu favoritmu';
+  // Also include the tracks from history so user has a rich playlist
+  historyTracks.forEach(t => {
+    if (!mixTracks.some(m => m.id === t.id)) {
+      mixTracks.push(t);
+    }
+  });
+
+  const artistLabel = sortedArtists.length > 0 ? sortedArtists.join(', ') : 'lagu yang kamu dengar';
 
   return {
     success: true,
     isReady: true,
     count: validHistory.length,
     artists: sortedArtists,
-    title: 'AI Hypermix Pribadi',
-    description: `Diramu spesial oleh AI AuraSound dari artis dan lagu yang sering kamu dengar (${artistLabel}).`,
+    title: '✨ Lagu yang Berkaitan',
+    description: `Diramu otomatis berdasarkan musik yang kamu dengarkan (${artistLabel}).`,
     tracks: mixTracks.slice(0, 20)
   };
 }
