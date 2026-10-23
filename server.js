@@ -8,6 +8,7 @@ const ytSearch = require('yt-search');
 const axios = require('axios');
 const sunoService = require('./suno-service');
 const playlistDb = require('./playlist-db');
+const userDb = require('./user-db');
 const homeData = require('./home-data');
 const lyricsRomanizer = require('./lyrics-romanizer');
 const sunoLoginHelper = require('./suno-login-helper');
@@ -874,6 +875,146 @@ app.delete('/api/playlists/:id/tracks/:trackId', (req, res) => {
     const updated = playlistDb.removeTrackFromPlaylist(req.params.id, req.params.trackId);
     if (!updated) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
     res.json({ success: true, playlist: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// USER ACCOUNT & DATABASE ENDPOINTS (Lightweight Server Database)
+// ==========================================
+
+// 1. Login or register user with Google credentials
+app.post('/api/user/login', (req, res) => {
+  try {
+    const { email, name, avatar, provider, googleId } = req.body;
+    if (!email && !googleId) {
+      return res.status(400).json({ success: false, error: 'Email atau ID Google diperlukan' });
+    }
+    const user = userDb.loginOrRegisterUser({ email, name, avatar, provider, googleId });
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2. Get user profile
+app.get('/api/user/profile', (req, res) => {
+  try {
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId;
+    if (!userKey) {
+      return res.status(400).json({ success: false, error: 'userKey diperlukan' });
+    }
+    const user = userDb.getUser(userKey);
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. Update user profile (name, avatar, lang)
+app.post('/api/user/profile', (req, res) => {
+  try {
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
+    if (!userKey) {
+      return res.status(400).json({ success: false, error: 'userKey diperlukan' });
+    }
+    const { name, avatar, lang, tasteProfile } = req.body;
+    const updated = userDb.updateUserProfile(userKey, { name, avatar, lang, tasteProfile });
+    res.json({ success: true, user: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4. Get user favorites
+app.get('/api/user/favorites', (req, res) => {
+  try {
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId;
+    if (!userKey) {
+      return res.json({ success: true, favorites: [] });
+    }
+    const favorites = userDb.getUserFavorites(userKey);
+    res.json({ success: true, favorites });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. Toggle user favorite
+app.post('/api/user/favorites/toggle', (req, res) => {
+  try {
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
+    const { track } = req.body;
+    if (!userKey || !track) {
+      return res.status(400).json({ success: false, error: 'userKey dan track diperlukan' });
+    }
+    const result = userDb.toggleUserFavorite(userKey, track);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Batch sync user favorites
+app.post('/api/user/favorites/sync', (req, res) => {
+  try {
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
+    const { favorites } = req.body;
+    if (!userKey || !Array.isArray(favorites)) {
+      return res.status(400).json({ success: false, error: 'userKey dan array favorites diperlukan' });
+    }
+    const updated = userDb.setUserFavorites(userKey, favorites);
+    res.json({ success: true, favorites: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. Get play history
+app.get('/api/user/history', (req, res) => {
+  try {
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId;
+    if (!userKey) return res.json({ success: true, history: [] });
+    const history = userDb.getUserHistory(userKey);
+    res.json({ success: true, history });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 8. Add track to play history
+app.post('/api/user/history', (req, res) => {
+  try {
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
+    const { track } = req.body;
+    if (!userKey || !track) return res.status(400).json({ success: false, error: 'userKey dan track diperlukan' });
+    const history = userDb.addTrackToHistory(userKey, track);
+    res.json({ success: true, history });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 9. AI Taste Profile
+app.get('/api/user/taste', (req, res) => {
+  try {
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId;
+    if (!userKey) return res.json({ success: true, tasteProfile: null });
+    const tasteProfile = userDb.getUserTaste(userKey);
+    res.json({ success: true, tasteProfile });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/user/taste', (req, res) => {
+  try {
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
+    const { tasteProfile } = req.body;
+    if (!userKey) return res.status(400).json({ success: false, error: 'userKey diperlukan' });
+    userDb.saveUserTaste(userKey, tasteProfile);
+    res.json({ success: true, tasteProfile });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

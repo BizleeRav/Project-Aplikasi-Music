@@ -47,6 +47,7 @@ class App {
     try { this.initTasteOnboarding(); } catch (e) { console.error('Error initializing taste onboarding:', e); }
     try { this.loadYTMHome('all'); } catch (e) { console.error('Error loading YTM Home:', e); }
     try { this.syncPlaylistsFromServer(); } catch (e) { console.error('Error syncing playlists:', e); }
+    try { this.syncFavoritesFromDb(); } catch (e) { console.error('Error syncing favorites from db:', e); }
     try { this.fetchNetworkInfo(); } catch (e) { console.error('Error fetching network info:', e); }
     try { this.checkPWAInstall(); } catch (e) { console.error('Error checking PWA install:', e); }
   }
@@ -142,6 +143,10 @@ class App {
       this.currentUser = null;
     }
 
+    if (this.currentUser && this.currentUser.email) {
+      this.syncUserFromDb();
+    }
+
     try {
       if (window.google && window.google.accounts && window.google.accounts.id) {
         window.google.accounts.id.initialize({
@@ -155,6 +160,65 @@ class App {
     }
 
     this.syncGoogleUI();
+  }
+
+  async syncUserFromDb() {
+    if (!this.currentUser || !this.currentUser.email) return;
+    try {
+      const userKey = this.getUserKey();
+      const res = await fetch(`/api/user/profile?userId=${encodeURIComponent(userKey)}`, {
+        headers: {
+          'x-user-email': this.currentUser.email,
+          'x-user-id': userKey,
+          'x-device-id': userKey
+        }
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        this.currentUser = { ...this.currentUser, ...data.user };
+        this.userProfile = {
+          name: data.user.name || this.userProfile?.name || 'User',
+          avatar: data.user.avatar || this.userProfile?.avatar || '/images/avatar.jpg',
+          lang: data.user.lang || this.userProfile?.lang || 'id'
+        };
+        if (Array.isArray(data.user.favorites)) {
+          this.favorites = data.user.favorites;
+          try {
+            localStorage.setItem(this.getFavsStorageKey(), JSON.stringify(this.favorites));
+          } catch (e) {}
+          this.updateFavButtonState();
+          if (this.activeTab === 'favorites') this.renderFavorites();
+        }
+        this.syncProfileUI();
+        this.syncGoogleUI();
+      }
+    } catch (e) {
+      console.warn('syncUserFromDb warning:', e);
+    }
+  }
+
+  async syncFavoritesFromDb() {
+    try {
+      const userKey = this.getUserKey();
+      const res = await fetch(`/api/user/favorites?userId=${encodeURIComponent(userKey)}`, {
+        headers: {
+          'x-user-email': this.currentUser?.email || '',
+          'x-user-id': userKey,
+          'x-device-id': userKey
+        }
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.favorites)) {
+        this.favorites = data.favorites;
+        try {
+          localStorage.setItem(this.getFavsStorageKey(), JSON.stringify(this.favorites));
+        } catch (e) {}
+        this.updateFavButtonState();
+        if (this.activeTab === 'favorites') this.renderFavorites();
+      }
+    } catch (e) {
+      console.warn('syncFavoritesFromDb error:', e);
+    }
   }
 
   handleGoogleCredentialResponse(response) {
@@ -210,11 +274,17 @@ class App {
     this.loginWithGoogle(googleUser);
   }
 
-  loginWithGoogle(googleUser) {
+  async loginWithGoogle(googleUser) {
     if (!googleUser || !googleUser.email) return;
+
     this.currentUser = googleUser;
     try {
-      localStorage.setItem('aurasound_google_user', JSON.stringify(googleUser));
+      localStorage.setItem('aurasound_google_user', JSON.stringify({
+        email: googleUser.email,
+        name: googleUser.name,
+        avatar: googleUser.avatar,
+        provider: 'google'
+      }));
     } catch (e) {}
 
     this.userProfile = {
@@ -226,8 +296,39 @@ class App {
       localStorage.setItem('aurasound_user_profile', JSON.stringify(this.userProfile));
     } catch (e) {}
 
-    // Reload user-isolated playlists and favorites
-    this.favorites = this.loadFavorites();
+    // Persist & sync into Server Database
+    try {
+      const res = await fetch('/api/user/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: googleUser.email,
+          name: googleUser.name,
+          avatar: googleUser.avatar,
+          provider: googleUser.provider || 'google',
+          googleId: googleUser.googleId
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        this.currentUser = data.user;
+        this.userProfile = {
+          name: data.user.name || googleUser.name || 'User',
+          avatar: data.user.avatar || googleUser.avatar || '/images/avatar.jpg',
+          lang: data.user.lang || this.userProfile?.lang || 'id'
+        };
+        if (Array.isArray(data.user.favorites)) {
+          this.favorites = data.user.favorites;
+          try {
+            localStorage.setItem(this.getFavsStorageKey(), JSON.stringify(this.favorites));
+          } catch (e) {}
+        }
+      }
+    } catch (err) {
+      console.warn('Sync login to server DB error:', err);
+    }
+
+    // Reload user-isolated playlists from server
     this.playlists = this.loadPlaylists();
     this.syncPlaylistsFromServer();
 
@@ -249,8 +350,8 @@ class App {
     }
 
     this.showToast(this.userProfile?.lang === 'en'
-      ? `Logged in as ${googleUser.name} (${googleUser.email})! ✨`
-      : `Akun Google aktif: ${googleUser.name} (${googleUser.email})! ✨`, 'success');
+      ? `Logged in as ${this.userProfile.name} (${googleUser.email})! ✨`
+      : `Akun Google aktif: ${this.userProfile.name} (${googleUser.email})! ✨`, 'success');
   }
 
   logoutGoogle() {
@@ -1240,6 +1341,26 @@ class App {
         console.warn('Failed to save user profile:', err);
       }
 
+      // Persist to Server Database
+      try {
+        const userKey = this.getUserKey();
+        fetch('/api/user/profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-email': this.currentUser?.email || '',
+            'x-user-id': userKey,
+            'x-device-id': userKey
+          },
+          body: JSON.stringify({
+            name: newName,
+            avatar: this.userProfile.avatar,
+            lang: newLang,
+            userKey
+          })
+        }).catch(err => console.warn('Save profile to DB warning:', err));
+      } catch (e) {}
+
       this.syncProfileUI();
       this.applyLanguage(newLang, true);
 
@@ -2180,6 +2301,21 @@ class App {
       });
       if (history.length > 50) history = history.slice(0, 50);
       localStorage.setItem('aurasound_play_history', JSON.stringify(history));
+
+      // Persist to Server Database asynchronously
+      try {
+        const userKey = this.getUserKey();
+        fetch('/api/user/history', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-email': this.currentUser?.email || '',
+            'x-user-id': userKey,
+            'x-device-id': userKey
+          },
+          body: JSON.stringify({ track, userKey })
+        }).catch(err => console.warn('Record history DB warning:', err));
+      } catch (e) {}
 
       // Also notify tasteEngine
       if (window.tasteEngine) {
@@ -5694,6 +5830,21 @@ class App {
     }
     localStorage.setItem(this.getFavsStorageKey(), JSON.stringify(this.favorites));
     this.updateFavButtonState();
+
+    // Persist to Server Database
+    try {
+      const userKey = this.getUserKey();
+      fetch('/api/user/favorites/toggle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': this.currentUser?.email || '',
+          'x-user-id': userKey,
+          'x-device-id': userKey
+        },
+        body: JSON.stringify({ track, userKey })
+      }).catch(err => console.warn('Sync favorite to DB warning:', err));
+    } catch (e) {}
 
     // Dynamically sync all favorite heart buttons in active lists with pop animation
     document.querySelectorAll(`[data-fav-track-id="${track.id}"]`).forEach(btn => {
