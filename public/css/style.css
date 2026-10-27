@@ -2583,6 +2583,28 @@ body::after {
     flex-shrink: 0 !important;
   }
 
+  /* Studio Cinema Button in Top Bar (Mobile) */
+  .btn-top-cinema {
+    height: 34px !important;
+    padding: 0 10px !important;
+    border-radius: 9999px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.22), rgba(99, 102, 241, 0.28)) !important;
+    border: 1px solid rgba(236, 72, 153, 0.5) !important;
+    color: #ffffff !important;
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 0 12px rgba(236, 72, 153, 0.3) !important;
+    white-space: nowrap !important;
+  }
+
+  .btn-top-cinema .top-cinema-label {
+    display: inline !important;
+  }
+
   /* Selera Musik icon button */
   .btn-top-taste {
     width: 34px !important;
@@ -2845,19 +2867,32 @@ body::after {
   }
 
   .btn-cinema-mode {
-    width: 34px !important;
-    height: 34px !important;
-    padding: 0 !important;
-    border-radius: 50% !important;
-    display: flex !important;
+    width: auto !important;
+    min-width: 38px !important;
+    height: 36px !important;
+    padding: 0 10px !important;
+    border-radius: 9999px !important;
+    display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    background: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    gap: 5px !important;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.22), rgba(99, 102, 241, 0.28)) !important;
+    border: 1px solid rgba(236, 72, 153, 0.5) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 14px rgba(236, 72, 153, 0.3) !important;
+    cursor: pointer !important;
+  }
+
+  .cinema-icon-badge {
+    font-size: 0.95rem !important;
+    line-height: 1 !important;
   }
 
   .cinema-btn-label {
-    display: none !important;
+    display: inline !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    color: #fbcfe8 !important;
   }
 
   #btn-toggle-eq {
@@ -2916,19 +2951,144 @@ body::after {
     filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.6)) !important;
   }
 
+  /* Cinema Nav Item Highlight in Bottom Nav */
+  .mobile-nav-cinema {
+    color: #ec4899 !important;
+    position: relative !important;
+  }
+
+  .mobile-cinema-glow-icon {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(99, 102, 241, 0.3)) !important;
+    border: 1px solid rgba(236, 72, 153, 0.55) !important;
+    box-shadow: 0 0 12px rgba(236, 72, 153, 0.4) !important;
+    transition: all 0.25s ease !important;
+  }
+
+  .mobile-nav-cinema-emoji {
+    font-size: 0.95rem !important;
+    line-height: 1 !important;
+  }
+
+  .cinema-nav-pulse {
+    position: absolute !important;
+    top: -2px !important;
+    right: -2px !important;
+    width: 7px !important;
+    height: 7px !important;
+    border-radius: 50% !important;
+    background: #ec4899 !important;
+    box-shadow: 0 0 8px #ec4899 !important;
+    animation: cinemaPulseDot 1.8s infinite ease-in-out !important;
+  }
+
+  .mobile-nav-cinema-text {
+    font-size: 0.68rem !important;
+    font-weight: 800 !important;
+    color: #f472b6 !important;
+  }
+
+  .mobile-player-cinema-hint {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    font-size: 0.65rem !important;
+    font-weight: 700 !important;
+    color: #34d399 !important;
+    margin-top: 1px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .cinema-hint-dot {
+    width: 5px !important;
+    height: 5px !important;
+    border-radius: 50% !important;
+    background: #10b981 !important;
+    box-shadow: 0 0 6px #10b981 !important;
+    animation: cinemaPulseDot 1.6s infinite ease-in-out !important;
+    flex-shrink: 0 !important;
+  }
+
+  @keyframes cinemaPulseDot {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.35); opacity: 1; filter: drop-shadow(0 0 6px #ec4899); }
+  }
+
   /* Fullscreen Studio Cinema on Mobile */
+  .studio-cinema-overlay,
   .cinema-modal {
     padding-top: max(8px, env(safe-area-inset-top, 0px)) !important;
     padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .cinema-header {
-    height: 48px !important;
-    padding: 4px 14px !important;
+    height: auto !important;
+    min-height: 48px !important;
+    padding: 6px 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
   }
 
   .cinema-brand {
-    font-size: 0.82rem !important;
+    font-size: 0.78rem !important;
+    gap: 6px !important;
+    white-space: nowrap !important;
+  }
+
+  .cinema-brand svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .cinema-header-actions {
+    gap: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  .cinema-vis-switcher {
+    padding: 2px !important;
+    gap: 2px !important;
+  }
+
+  .vis-mode-chip {
+    padding: 4px 7px !important;
+    font-size: 0.66rem !important;
+    gap: 3px !important;
+  }
+
+  .vis-mode-chip svg {
+    width: 11px !important;
+    height: 11px !important;
+  }
+
+  .cinema-vis-toggle-chip {
+    padding: 4px 7px !important;
+    font-size: 0.66rem !important;
+  }
+
+  .cinema-dsp-chip {
+    padding: 4px 7px !important;
+    font-size: 0.66rem !important;
+  }
+
+  .cinema-close-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    color: #ffffff !important;
   }
 
   .cinema-stage {
@@ -8621,6 +8781,35 @@ body.music-playing .cinema-turntable-arm {
 /* =========================================================================
    AURA TASTE ONBOARDING & TOP BAR STYLES 2026
    ========================================================================= */
+
+.btn-top-cinema {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.18), rgba(99, 102, 241, 0.22));
+  color: #f472b6;
+  border: 1px solid rgba(236, 72, 153, 0.4);
+  padding: 7px 14px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 14px rgba(236, 72, 153, 0.2);
+  white-space: nowrap;
+}
+
+.btn-top-cinema:hover {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.35), rgba(99, 102, 241, 0.35));
+  color: #ffffff;
+  border-color: #ec4899;
+  box-shadow: 0 0 20px rgba(236, 72, 153, 0.45);
+  transform: translateY(-1px);
+}
+
+.top-cinema-icon {
+  font-size: 0.95rem;
+}
 
 .btn-top-taste {
   display: inline-flex;

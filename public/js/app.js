@@ -1538,6 +1538,13 @@ class App {
       }
     });
 
+    // Android hardware/gesture back button handler to gracefully close Studio Cinema
+    window.addEventListener('popstate', (e) => {
+      if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
+        this.closeStudioCinema(true);
+      }
+    });
+
     // Initialize rich micro-animations & parallax
     this.initInteractiveInteractions();
 
@@ -2116,6 +2123,13 @@ class App {
     this.cinemaModal.classList.add('active');
     document.body.classList.add('cinema-mode-active');
 
+    // Android Back Button / Gesture support via history state
+    try {
+      if (!window.history.state || window.history.state.modal !== 'cinema') {
+        window.history.pushState({ modal: 'cinema' }, '');
+      }
+    } catch (e) {}
+
     if (window.audioEngine) {
       if (this.cinemaVisCanvas) {
         window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
@@ -2166,12 +2180,21 @@ class App {
     this.updatePlayState(this.isPlayingState());
   }
 
-  closeStudioCinema() {
+  closeStudioCinema(fromPopState = false) {
     if (!this.cinemaModal) return;
     this.cinemaModal.classList.remove('active');
     document.body.classList.remove('cinema-mode-active');
     const cinemaEqDrawer = document.getElementById('cinema-eq-drawer');
     if (cinemaEqDrawer) cinemaEqDrawer.classList.remove('active');
+
+    // Sync history state if user clicked on-screen close button ✕
+    if (!fromPopState) {
+      try {
+        if (window.history.state && window.history.state.modal === 'cinema') {
+          window.history.back();
+        }
+      } catch (e) {}
+    }
   }
 
   toggleCinemaVisualizer() {
