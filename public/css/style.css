@@ -2327,130 +2327,541 @@ body::after {
 
 @media (max-width: 768px) {
   :root {
-    --player-height: 80px;
+    --player-height: 62px;
+    --mobile-nav-height: 56px;
+  }
+
+  /* Prevent horizontal bounce / overflow on mobile */
+  html, body {
+    overflow-x: hidden;
+    position: relative;
+    width: 100%;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .app-container {
+    height: 100dvh;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   .sidebar {
-    display: none;
+    display: none !important;
   }
 
+  /* Main Content clearance for floating player + bottom nav */
   .main-content {
-    padding-bottom: calc(var(--player-height) + 68px);
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(var(--player-height) + var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 26px) !important;
   }
 
+  /* Top Bar Header on Mobile */
   .top-bar {
-    padding: 14px 18px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    padding: max(10px, env(safe-area-inset-top, 0px)) 12px 10px !important;
+    gap: 8px !important;
+    background: rgba(7, 10, 18, 0.90) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  }
+
+  /* Hide laptop-only cast button on phone */
+  .top-bar .ytm-cast-btn,
+  #btn-top-connect {
+    display: none !important;
   }
 
   .search-box-wrapper {
-    max-width: 100%;
+    flex: 1 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 38px !important;
+    padding: 2px 4px 2px 12px !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 9999px !important;
   }
 
+  .search-box-wrapper input {
+    font-size: 0.84rem !important;
+    padding: 4px 6px !important;
+  }
+
+  .search-box-wrapper input::placeholder {
+    font-size: 0.8rem !important;
+  }
+
+  .btn-search-action {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+  }
+
+  .top-bar-right {
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Selera Musik icon button */
+  .btn-top-taste {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 1rem !important;
+  }
+
+  .btn-top-taste .top-taste-label {
+    display: none !important;
+  }
+
+  /* Google Sign-in button */
+  #btn-google-login {
+    height: 34px !important;
+    padding: 0 10px !important;
+    border-radius: 9999px !important;
+    font-size: 0.75rem !important;
+    gap: 6px !important;
+  }
+
+  #google-login-btn-text {
+    max-width: 65px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .ytm-profile-badge {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  .ytm-avatar-circle {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  /* Views Container */
   .views-container {
-    padding: 18px 16px 24px;
+    padding: 10px 12px 24px !important;
   }
 
-  .music-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 14px;
+  /* Mood & Filter Chips */
+  .ytm-chips-container {
+    margin: 0 -12px 14px !important;
+    padding: 2px 12px 10px !important;
+    gap: 8px !important;
   }
 
-  .suno-container {
-    grid-template-columns: 1fr;
+  .ytm-chip {
+    padding: 6px 14px !important;
+    font-size: 0.76rem !important;
   }
 
-  /* Player bar on mobile */
+  /* Mobile Carousels */
+  .ytm-carousel {
+    margin: 0 -12px !important;
+    padding: 0 12px 10px !important;
+    gap: 12px !important;
+  }
+
+  .ytm-video-card {
+    flex: 0 0 195px !important;
+    gap: 8px !important;
+  }
+
+  .ytm-square-card {
+    flex: 0 0 135px !important;
+    gap: 8px !important;
+  }
+
+  .ytm-3row-grid {
+    margin: 0 -12px !important;
+    padding: 0 12px 6px !important;
+    grid-auto-columns: minmax(260px, 82vw) !important;
+    gap: 6px 12px !important;
+  }
+
+  .ytm-row-item {
+    padding: 4px 6px !important;
+  }
+
+  .ytm-row-thumb {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 6px !important;
+  }
+
+  .ytm-row-title {
+    font-size: 0.85rem !important;
+  }
+
+  .ytm-row-subtitle {
+    font-size: 0.72rem !important;
+  }
+
+  /* Tactile Vinyl Shelf 2-columns on mobile */
+  .aura-vinyl-shelf {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 14px 10px !important;
+    padding: 4px 0 16px !important;
+  }
+
+  .aura-vinyl-title {
+    font-size: 0.82rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .aura-vinyl-artist {
+    font-size: 0.72rem !important;
+  }
+
+  /* Floating Island Mini-Player on Mobile (Spotify / Apple Music Style) */
   .player-bar {
-    bottom: 64px;
-    padding: 0 16px;
-    height: 72px;
-    background: rgba(12, 16, 28, 0.95);
+    position: fixed !important;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 6px) !important;
+    height: var(--player-height) !important;
+    padding: 0 10px 0 8px !important;
+    background: rgba(13, 19, 33, 0.96) !important;
+    backdrop-filter: blur(28px) !important;
+    -webkit-backdrop-filter: blur(28px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.75), 0 0 1px rgba(255, 255, 255, 0.2) inset !important;
+    z-index: 60 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+
+  /* Thin live progress line on top edge of floating mini-player */
+  .player-glow-beam {
+    height: 2px !important;
+    top: 0 !important;
+    border-radius: 14px 14px 0 0 !important;
+    background: linear-gradient(90deg, var(--primary) 0%, #06b6d4 100%) !important;
   }
 
   .player-left {
-    width: auto;
-    max-width: 55%;
-    gap: 10px;
+    flex: 1 !important;
+    min-width: 0 !important;
+    max-width: calc(100% - 140px) !important;
+    gap: 8px !important;
+    cursor: pointer !important;
+  }
+
+  .player-thumb-wrap {
+    width: 44px !important;
+    height: 44px !important;
+    flex-shrink: 0 !important;
+    border-radius: 8px !important;
   }
 
   .player-thumb-img {
-    width: 44px;
-    height: 44px;
-    border-radius: 8px;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 8px !important;
+  }
+
+  .player-mini-vinyl {
+    display: none !important;
+  }
+
+  .player-track-info {
+    flex: 1 !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    cursor: pointer !important;
   }
 
   .player-title {
-    font-size: 0.85rem;
+    font-size: 0.84rem !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    color: #ffffff !important;
   }
 
   .player-artist {
-    font-size: 0.72rem;
+    font-size: 0.72rem !important;
+    color: #94a3b8 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
-  .player-progress-container,
-  .player-right .volume-wrapper,
-  .player-right .visualizer-canvas {
-    display: none;
+  .player-badge-row {
+    display: none !important;
   }
 
+  #player-fav-btn {
+    display: none !important;
+  }
+
+  /* Center Controls on Mobile */
   .player-center {
-    flex: initial;
+    flex: initial !important;
+    display: flex !important;
+    align-items: center !important;
   }
 
-  /* Mobile Bottom Navigation Bar */
+  .player-controls {
+    gap: 6px !important;
+  }
+
+  #btn-shuffle,
+  #btn-repeat,
+  .player-progress-container {
+    display: none !important;
+  }
+
+  .btn-ctrl {
+    width: 32px !important;
+    height: 32px !important;
+    padding: 0 !important;
+  }
+
+  .btn-ctrl svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .btn-play-orb {
+    width: 38px !important;
+    height: 38px !important;
+    background: linear-gradient(135deg, var(--primary) 0%, #059669 100%) !important;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.45) !important;
+  }
+
+  .btn-play-orb svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  /* Right Controls on Mobile */
+  .player-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .player-spectrum-bezel,
+  .player-volume-group {
+    display: none !important;
+  }
+
+  .btn-cinema-mode {
+    width: 34px !important;
+    height: 34px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  }
+
+  .cinema-btn-label {
+    display: none !important;
+  }
+
+  #btn-toggle-eq {
+    display: none !important;
+  }
+
+  /* Bottom Navigation Bar on Mobile */
   .mobile-bottom-nav {
-    display: flex;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100vw;
-    height: 64px;
-    background: rgba(8, 12, 22, 0.98);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-top: 1px solid var(--border-subtle);
-    z-index: 55;
-    justify-content: space-around;
-    align-items: center;
+    display: flex !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    background: rgba(7, 10, 18, 0.94) !important;
+    backdrop-filter: blur(28px) !important;
+    -webkit-backdrop-filter: blur(28px) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+    z-index: 55 !important;
+    justify-content: space-around !important;
+    align-items: center !important;
   }
 
   .mobile-nav-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    text-decoration: none;
-    color: var(--text-subtle);
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 6px 12px;
-    transition: var(--transition);
-  }
-
-  .mobile-nav-item.active {
-    color: var(--primary);
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    color: #64748b !important;
+    font-size: 0.68rem !important;
+    font-weight: 700 !important;
+    padding: 6px 0 !important;
+    text-decoration: none !important;
+    transition: all 0.2s ease !important;
+    cursor: pointer !important;
   }
 
   .mobile-nav-item svg {
-    transition: var(--transition);
+    width: 20px !important;
+    height: 20px !important;
+    stroke-width: 2.2 !important;
+    transition: all 0.2s ease !important;
+  }
+
+  .mobile-nav-item.active {
+    color: #10b981 !important;
   }
 
   .mobile-nav-item.active svg {
-    filter: drop-shadow(0 0 6px var(--primary-glow));
+    color: #10b981 !important;
+    stroke: #10b981 !important;
+    transform: translateY(-2px) scale(1.1) !important;
+    filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.6)) !important;
   }
 
+  /* Fullscreen Studio Cinema on Mobile */
+  .cinema-modal {
+    padding-top: max(8px, env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .cinema-header {
+    height: 48px !important;
+    padding: 4px 14px !important;
+  }
+
+  .cinema-brand {
+    font-size: 0.82rem !important;
+  }
+
+  .cinema-stage {
+    grid-template-columns: 1fr !important;
+    overflow-y: auto !important;
+    gap: 12px !important;
+    padding: 4px 14px 10px !important;
+  }
+
+  .cinema-vinyl-wrap {
+    width: 160px !important;
+    height: 160px !important;
+  }
+
+  .cinema-vinyl-disc {
+    width: 150px !important;
+    height: 150px !important;
+  }
+
+  .cinema-title {
+    font-size: 1.15rem !important;
+    line-height: 1.3 !important;
+  }
+
+  .cinema-canvas-wrap {
+    height: 60px !important;
+  }
+
+  .cinema-lyrics-panel {
+    height: 260px !important;
+    border-radius: 14px !important;
+    padding: 12px 10px !important;
+  }
+
+  .cinema-lyrics-line {
+    font-size: 1.05rem !important;
+    padding: 6px 2px !important;
+  }
+
+  .cinema-dock-wrap {
+    padding: 4px 10px max(8px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .cinema-dock {
+    padding: 8px 12px !important;
+    border-radius: 18px !important;
+  }
+
+  .cinema-play-orb {
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  /* Equalizer Drawer bottom sheet on Mobile */
+  .cinema-eq-drawer,
   .eq-drawer {
-    right: 12px;
-    left: 12px;
-    width: auto;
-    bottom: calc(var(--player-height) + 70px);
-    padding: 16px;
-    max-height: 82vh;
-    overflow-y: auto;
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    max-height: 85vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    padding: 14px 14px max(24px, env(safe-area-inset-bottom, 0px)) !important;
+    border-bottom: none !important;
+    z-index: 100000 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.9) !important;
   }
 
-  .eq-dual-controls {
-    grid-template-columns: 1fr;
+  .cinema-eq-drawer::before,
+  .eq-drawer::before {
+    content: '' !important;
+    display: block !important;
+    width: 44px !important;
+    height: 4px !important;
+    background: rgba(255, 255, 255, 0.25) !important;
+    border-radius: 2px !important;
+    margin: 0 auto 12px !important;
+  }
+
+  .cinema-eq-presets,
+  .eq-presets {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    padding-bottom: 6px !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .cinema-preset-btn,
+  .preset-btn {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .cinema-eq-bars-container {
+    overflow-x: auto !important;
+    gap: 4px !important;
+    padding: 10px 2px !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .cinema-eq-column {
+    min-width: 28px !important;
   }
 }
 

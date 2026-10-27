@@ -1356,6 +1356,14 @@ class App {
     if (this.btnOpenCinema) {
       this.btnOpenCinema.addEventListener('click', () => this.openStudioCinema());
     }
+    const playerTrackInfo = document.querySelector('.player-track-info');
+    if (playerTrackInfo) {
+      playerTrackInfo.addEventListener('click', () => this.openStudioCinema());
+    }
+    const playerThumbWrapEl = document.getElementById('player-thumb-wrap');
+    if (playerThumbWrapEl) {
+      playerThumbWrapEl.addEventListener('click', () => this.openStudioCinema());
+    }
     if (this.btnCloseCinema) {
       this.btnCloseCinema.addEventListener('click', () => this.closeStudioCinema());
     }
