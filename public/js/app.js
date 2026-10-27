@@ -175,55 +175,20 @@ class App {
   // ==========================================
   initEntranceAnimation() {
     const splash = document.getElementById('app-splash-screen');
-    const statusEl = document.getElementById('splash-status-text');
-    const fillEl = document.getElementById('splash-progress-fill');
     if (!splash) {
       this.triggerPostSplashFlow();
       return;
     }
 
-    // Fast smooth exit for active session (zero lag / zero reset appearance)
-    if (this.currentUser && this.currentUser.email) {
-      if (fillEl) fillEl.style.width = '100%';
-      if (statusEl) statusEl.textContent = `Selamat Datang, ${this.userProfile?.name || 'Sobat Musik'} ✨`;
-      setTimeout(() => {
-        splash.classList.add('splash-hiding');
-      }, 250);
-      setTimeout(() => {
-        splash.style.display = 'none';
-        this.triggerPostSplashFlow();
-      }, 550);
-      return;
-    }
-
-    // Stage 1 (100ms): Starting Hi-Fi Studio
-    setTimeout(() => {
-      if (fillEl) fillEl.style.width = '40%';
-      if (statusEl) statusEl.textContent = 'Menyiapkan Studio Audio Hi-Fi...';
-    }, 100);
-
-    // Stage 2 (420ms): Calibrating DSP Equalizer & Accounts
-    setTimeout(() => {
-      if (fillEl) fillEl.style.width = '80%';
-      if (statusEl) statusEl.textContent = 'Menyelaraskan DSP Equalizer & Akun...';
-    }, 420);
-
-    // Stage 3 (750ms): Ready & Welcome
-    setTimeout(() => {
-      if (fillEl) fillEl.style.width = '100%';
-      if (statusEl) statusEl.textContent = 'Selamat Datang di AuraSound ✨';
-    }, 750);
-
-    // Stage 4 (980ms): Smooth aperture/scale-fade exit
+    // Fast, clean, elegant exit (600ms)
     setTimeout(() => {
       splash.classList.add('splash-hiding');
-    }, 980);
+    }, 600);
 
-    // Stage 5 (1280ms): Remove splash
     setTimeout(() => {
       splash.style.display = 'none';
       this.triggerPostSplashFlow();
-    }, 1280);
+    }, 950);
   }
 
   async triggerPostSplashFlow() {
@@ -2684,36 +2649,13 @@ class App {
     }
   }
 
-  renderLoadingState(text = 'Memuat...', showSkeleton = true, count = 4) {
-    let html = `
+  renderLoadingState(text = 'Memuat...') {
+    return `
       <div class="loading-state">
-        <div class="audio-wave-loader" aria-hidden="true">
-          <span class="aw-bar"></span>
-          <span class="aw-bar"></span>
-          <span class="aw-bar"></span>
-          <span class="aw-bar"></span>
-          <span class="aw-bar"></span>
-        </div>
+        <div class="simple-pulse-spinner" aria-hidden="true"></div>
         <p>${text}</p>
       </div>
     `;
-    if (showSkeleton) {
-      html += '<div class="skeleton-container" aria-hidden="true">';
-      for (let i = 0; i < count; i++) {
-        html += `
-          <div class="skeleton-track-row">
-            <div class="skeleton-thumb"></div>
-            <div class="skeleton-meta">
-              <div class="skeleton-line line-title"></div>
-              <div class="skeleton-line line-sub"></div>
-            </div>
-            <div class="skeleton-pill"></div>
-          </div>
-        `;
-      }
-      html += '</div>';
-    }
-    return html;
   }
 
   async searchMusic(query, filter = this.currentSearchFilter || 'all') {
