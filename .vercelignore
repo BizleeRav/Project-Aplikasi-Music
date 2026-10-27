@@ -1,0 +1,22 @@
+# Build outputs and large executables
+dist/
+android-build/
+*.exe
+*.apk
+*.zip
+*.asar
+
+# Local scratch and logs
+scratch/
+scratch_*
+*.log
+.agents/
+
+# Local dependencies & caches
+node_modules/
+.env.local
+.git/
+
+# Data backups
+data/avatars/
+data/*.backup.json

@@ -23,8 +23,23 @@ function getLyricsRomanizer() {
 const sunoLoginHelper = require('./suno-login-helper');
 const deviceCredits = require('./device-credits');
 const tasteFeed = require('./taste-feed');
-const { Ytdl, chooseFormat } = require('@distube/ytdl-core');
-const ytdl = new Ytdl();
+let ytdlInstance = null;
+let chooseFormatFn = null;
+async function getYtdl() {
+  if (!ytdlInstance) {
+    try {
+      const mod = await import('@distube/ytdl-core');
+      const YtdlClass = mod.Ytdl || mod.default?.Ytdl;
+      chooseFormatFn = mod.chooseFormat || mod.default?.chooseFormat;
+      if (YtdlClass) {
+        ytdlInstance = new YtdlClass();
+      }
+    } catch (err) {
+      console.warn('[ytdl] Could not load @distube/ytdl-core:', err.message);
+    }
+  }
+  return { ytdl: ytdlInstance, chooseFormat: chooseFormatFn };
+}
 const streamUrlCache = new Map(); // videoId -> { url, mimeType, contentLength, expiresAt }
 
 const app = express();
@@ -791,10 +806,14 @@ app.get('/api/stream-audio', async (req, res) => {
   try {
     let cached = streamUrlCache.get(videoId);
     if (!cached || Date.now() > cached.expiresAt) {
+      const { ytdl, chooseFormat } = await getYtdl();
+      if (!ytdl) {
+        return res.status(503).json({ success: false, error: 'Audio extractor not available on this server' });
+      }
       const info = await ytdl.getInfo(videoId);
       let format;
       try {
-        format = chooseFormat(info.formats, { filter: f => f.hasAudio && !f.hasVideo, quality: 'highestaudio' });
+        format = chooseFormat ? chooseFormat(info.formats, { filter: f => f.hasAudio && !f.hasVideo, quality: 'highestaudio' }) : null;
       } catch (e) {
         try {
           format = chooseFormat(info.formats, { filter: 'audioonly' });
