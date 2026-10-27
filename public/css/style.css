@@ -2705,7 +2705,7 @@ body::after {
     font-size: 0.72rem !important;
   }
 
-  /* Floating Island Mini-Player on Mobile (Spotify / Apple Music Style) */
+  /* Floating Island Mini-Player on Mobile (Spotify / Apple Music Luxury Glassmorphic Style) */
   .player-bar {
     position: fixed !important;
     left: 8px !important;
@@ -2724,7 +2724,9 @@ body::after {
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
-    gap: 8px !important;
+    gap: 6px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
   }
 
   /* Thin live progress line on top edge of floating mini-player */
@@ -2735,25 +2737,38 @@ body::after {
     background: linear-gradient(90deg, var(--primary) 0%, #06b6d4 100%) !important;
   }
 
+  /* Left: Track Thumbnail & Marquee Track Info */
   .player-left {
-    flex: 1 !important;
+    flex: 1 1 auto !important;
     min-width: 0 !important;
-    max-width: calc(100% - 140px) !important;
+    max-width: none !important;
+    width: auto !important;
+    display: flex !important;
+    align-items: center !important;
     gap: 8px !important;
     cursor: pointer !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
   }
 
   .player-thumb-wrap {
-    width: 44px !important;
-    height: 44px !important;
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
     flex-shrink: 0 !important;
-    border-radius: 8px !important;
+    border-radius: 10px !important;
+    position: relative !important;
+    overflow: hidden !important;
   }
 
   .player-thumb-img {
-    width: 44px !important;
-    height: 44px !important;
-    border-radius: 8px !important;
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 10px !important;
+    object-fit: cover !important;
+    display: block !important;
   }
 
   .player-mini-vinyl {
@@ -2761,22 +2776,31 @@ body::after {
   }
 
   .player-track-info {
-    flex: 1 !important;
+    flex: 1 1 auto !important;
     min-width: 0 !important;
     display: flex !important;
     flex-direction: column !important;
     justify-content: center !important;
     gap: 2px !important;
     cursor: pointer !important;
+    overflow: hidden !important;
+  }
+
+  .player-title-marquee-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
   }
 
   .player-title {
-    font-size: 0.84rem !important;
+    font-size: 0.85rem !important;
     font-weight: 700 !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     color: #ffffff !important;
+    line-height: 1.25 !important;
   }
 
   .player-artist {
@@ -2785,6 +2809,7 @@ body::after {
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    line-height: 1.2 !important;
   }
 
   .player-badge-row {
@@ -2797,13 +2822,23 @@ body::after {
 
   /* Center Controls on Mobile */
   .player-center {
-    flex: initial !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
     display: flex !important;
+    flex-direction: row !important;
     align-items: center !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   .player-controls {
-    gap: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   #btn-shuffle,
@@ -2814,9 +2849,18 @@ body::after {
   }
 
   .btn-ctrl {
-    width: 32px !important;
-    height: 32px !important;
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
     padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: transparent !important;
+    border: none !important;
+    color: #cbd5e1 !important;
+    flex-shrink: 0 !important;
   }
 
   .btn-ctrl svg {
@@ -2825,23 +2869,38 @@ body::after {
   }
 
   .btn-play-orb {
-    width: 38px !important;
-    height: 38px !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    border-radius: 50% !important;
     background: linear-gradient(135deg, var(--primary) 0%, #059669 100%) !important;
-    box-shadow: 0 0 16px rgba(16, 185, 129, 0.45) !important;
+    box-shadow: 0 2px 12px rgba(16, 185, 129, 0.45) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    border: none !important;
   }
 
   .btn-play-orb svg {
-    width: 20px !important;
-    height: 20px !important;
+    width: 19px !important;
+    height: 19px !important;
   }
 
-  /* Right Controls on Mobile: Dedicated Cinema Tab Pill */
+  /* Right Controls on Mobile: Aesthetic Cinema Tab Pill */
   .player-right {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
     display: flex !important;
     align-items: center !important;
+    justify-content: flex-end !important;
     flex-shrink: 0 !important;
-    margin-left: 6px !important;
+    margin: 0 0 0 4px !important;
+    padding: 0 !important;
+    gap: 0 !important;
   }
 
   .player-spectrum-bezel,
@@ -2850,43 +2909,46 @@ body::after {
     display: none !important;
   }
 
-  .btn-cinema-mode,
-  .mobile-bar-cinema-tab {
-    height: 38px !important;
-    padding: 0 13px !important;
+  .btn-cinema-mode.mobile-bar-cinema-tab,
+  #btn-open-cinema {
+    height: 34px !important;
+    padding: 0 11px 0 9px !important;
     border-radius: 9999px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 6px !important;
-    background: linear-gradient(135deg, rgba(236, 72, 153, 0.3), rgba(99, 102, 241, 0.35)) !important;
-    border: 1px solid rgba(236, 72, 153, 0.7) !important;
+    gap: 5px !important;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.22) 0%, rgba(99, 102, 241, 0.3) 100%) !important;
+    border: 1px solid rgba(236, 72, 153, 0.6) !important;
     color: #ffffff !important;
-    box-shadow: 0 0 16px rgba(236, 72, 153, 0.4) !important;
+    box-shadow: 0 0 12px rgba(236, 72, 153, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.15) !important;
     cursor: pointer !important;
     flex-shrink: 0 !important;
     white-space: nowrap !important;
     touch-action: manipulation !important;
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease !important;
+    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease !important;
   }
 
-  .btn-cinema-mode:active,
-  .mobile-bar-cinema-tab:active {
+  .btn-cinema-mode.mobile-bar-cinema-tab:active,
+  #btn-open-cinema:active {
     transform: scale(0.93) !important;
-    box-shadow: 0 0 8px rgba(236, 72, 153, 0.6) !important;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.45) 0%, rgba(99, 102, 241, 0.5) 100%) !important;
+    box-shadow: 0 0 8px rgba(236, 72, 153, 0.5) !important;
   }
 
   .cinema-icon-badge {
-    font-size: 1rem !important;
+    font-size: 0.95rem !important;
     line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
   }
 
   .cinema-btn-label {
     display: inline !important;
-    font-size: 0.78rem !important;
+    font-size: 0.74rem !important;
     font-weight: 800 !important;
     color: #ffffff !important;
-    letter-spacing: 0.4px !important;
+    letter-spacing: 0.3px !important;
   }
 
   /* Bottom Navigation Bar on Mobile */
@@ -6373,13 +6435,16 @@ body.music-playing .live-eq-bar.bar-4 {
 }
 
 @media (max-width: 900px) {
-  .cinema-btn-label {
-    display: none;
+  /* Preserve Cinema Pill label in mobile bottom bar */
+  .mobile-bar-cinema-tab .cinema-btn-label,
+  #btn-open-cinema .cinema-btn-label {
+    display: inline !important;
   }
-  .btn-cinema-mode {
-    padding: 0 8px;
-    width: 36px;
-    height: 36px;
+  .btn-cinema-mode.mobile-bar-cinema-tab,
+  #btn-open-cinema {
+    width: auto !important;
+    height: 34px !important;
+    padding: 0 11px 0 9px !important;
   }
 }
 
@@ -9703,15 +9768,208 @@ body.music-playing .cinema-turntable-arm {
     font-size: 1rem !important;
   }
 
-  /* 8. Touch Micro-Interactions */
-  .btn-ctrl:active,
-  .btn-play-orb:active,
-  .mobile-nav-item:active,
-  .search-filter-pill:active,
-  .ytm-chip:active,
-  .track-row:active {
-    transform: scale(0.96) !important;
-    transition: transform 0.08s ease !important;
+  /* 9. Mobile Player Bar Layout Perfection & Aesthetic Cinema Capsule */
+  #master-player-bar.player-bar {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+    padding: 0 8px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    width: auto !important;
+  }
+
+  #master-player-bar .player-left {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  #master-player-bar .player-thumb-wrap {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+    flex-shrink: 0 !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    position: relative !important;
+  }
+
+  #master-player-bar .player-thumb-img {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 10px !important;
+    object-fit: cover !important;
+    display: block !important;
+  }
+
+  #master-player-bar .player-mini-vinyl {
+    display: none !important;
+  }
+
+  #master-player-bar .player-track-info {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    cursor: pointer !important;
+    overflow: hidden !important;
+  }
+
+  #master-player-bar .player-title-marquee-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+  }
+
+  #master-player-bar .player-title {
+    display: block !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    color: #ffffff !important;
+    line-height: 1.25 !important;
+  }
+
+  #master-player-bar .player-artist {
+    display: block !important;
+    font-size: 0.72rem !important;
+    color: #94a3b8 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    line-height: 1.2 !important;
+  }
+
+  #master-player-bar .player-center {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  #master-player-bar .player-controls {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  #master-player-bar .btn-play-orb {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, var(--primary) 0%, #059669 100%) !important;
+    box-shadow: 0 2px 10px rgba(16, 185, 129, 0.45) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    border: none !important;
+  }
+
+  #master-player-bar .btn-play-orb svg {
+    width: 19px !important;
+    height: 19px !important;
+  }
+
+  #master-player-bar #next-btn {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: transparent !important;
+    border: none !important;
+    color: #cbd5e1 !important;
+    flex-shrink: 0 !important;
+  }
+
+  #master-player-bar #next-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  #master-player-bar .player-right {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex-shrink: 0 !important;
+    margin: 0 0 0 4px !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  #master-player-bar #btn-open-cinema.mobile-bar-cinema-tab,
+  #master-player-bar .btn-cinema-mode {
+    height: 34px !important;
+    width: auto !important;
+    padding: 0 11px 0 9px !important;
+    border-radius: 9999px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.24) 0%, rgba(99, 102, 241, 0.32) 100%) !important;
+    border: 1px solid rgba(236, 72, 153, 0.65) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 14px rgba(236, 72, 153, 0.32), inset 0 1px 1px rgba(255, 255, 255, 0.2) !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    touch-action: manipulation !important;
+  }
+
+  #master-player-bar #btn-open-cinema:active {
+    transform: scale(0.93) !important;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.5) 0%, rgba(99, 102, 241, 0.55) 100%) !important;
+    box-shadow: 0 0 8px rgba(236, 72, 153, 0.6) !important;
+  }
+
+  #master-player-bar #btn-open-cinema .cinema-icon-badge {
+    font-size: 0.95rem !important;
+    line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+
+  #master-player-bar #btn-open-cinema .cinema-btn-label {
+    display: inline !important;
+    font-size: 0.74rem !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    letter-spacing: 0.3px !important;
   }
 }
+
 
