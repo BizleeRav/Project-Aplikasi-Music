@@ -325,6 +325,40 @@ async function searchYouTubeMusicSongs(query, limit = 25, page = 1) {
   }
 }
 
+function sortTracksByRelevance(tracks, query) {
+  if (!query || !Array.isArray(tracks) || tracks.length <= 1) return tracks;
+  const qClean = query.toLowerCase().trim();
+  const qWords = qClean.split(/\s+/).filter(w => w.length > 1);
+
+  return [...tracks].sort((a, b) => {
+    const aTitle = (a.title || '').toLowerCase();
+    const bTitle = (b.title || '').toLowerCase();
+    const aArtist = (a.artist || '').toLowerCase();
+    const bArtist = (b.artist || '').toLowerCase();
+
+    const getScore = (title, artist) => {
+      let score = 0;
+      // Exact title match (Highest priority)
+      if (title === qClean) score += 200;
+      else if (title.startsWith(qClean)) score += 100;
+      else if (title.includes(qClean)) score += 60;
+
+      // Artist exact match
+      if (artist === qClean) score += 80;
+      else if (artist.includes(qClean)) score += 40;
+
+      // Word-by-word matches
+      for (const w of qWords) {
+        if (title.includes(w)) score += 20;
+        if (artist.includes(w)) score += 15;
+      }
+      return score;
+    };
+
+    return getScore(bTitle, bArtist) - getScore(aTitle, aArtist);
+  });
+}
+
 // 2. Search Music on YouTube Music & Official Studio Catalogs (Unlimited Global Catalog)
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
@@ -347,10 +381,11 @@ app.get('/api/search', async (req, res) => {
         for (const s of ytmSongs) {
           if (!s.id || seenIds.has(s.id)) continue;
           const titleKey = homeData.normalizeTrackKey ? homeData.normalizeTrackKey(s.title, s.artist) : s.title.toLowerCase();
-          if (titleKey && titleKey.length >= 2 && seenTitles.has(titleKey)) continue;
+          const dedupKey = `${(s.artist || '').toLowerCase()}:::${titleKey}`;
+          if (titleKey && titleKey.length >= 2 && seenTitles.has(dedupKey)) continue;
 
           seenIds.add(s.id);
-          if (titleKey && titleKey.length >= 2) seenTitles.add(titleKey);
+          if (titleKey && titleKey.length >= 2) seenTitles.add(dedupKey);
           tracks.push(s);
 
           if (tracks.length >= 25) break;
@@ -360,9 +395,10 @@ app.get('/api/search', async (req, res) => {
       }
     }
 
-    // Step B: If YouTube Music returned plenty of results, return immediately
-    if (tracks.length >= 10 && filter !== 'nonofficial') {
-      return res.json({ success: true, count: tracks.length, filter, page, hasMore: tracks.length >= 10, tracks, source: 'ytmusic' });
+    // Step B: If YouTube Music returned plenty of results, sort by relevance and return
+    if (tracks.length >= 8 && filter !== 'nonofficial') {
+      const sorted = sortTracksByRelevance(tracks, query);
+      return res.json({ success: true, count: sorted.length, filter, page, hasMore: sorted.length >= 8, tracks: sorted, source: 'ytmusic' });
     }
 
     // Step C: Fallback / Secondary Search or Non-Official Search (Covers, Remixes, Live)
@@ -448,7 +484,8 @@ app.get('/api/search', async (req, res) => {
       }
     }
 
-    res.json({ success: true, count: tracks.length, filter, page, hasMore: tracks.length >= 10, tracks });
+    const finalTracks = sortTracksByRelevance(tracks, query);
+    res.json({ success: true, count: finalTracks.length, filter, page, hasMore: finalTracks.length >= 8, tracks: finalTracks });
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ success: false, error: 'Failed to search music' });

@@ -5799,33 +5799,17 @@ class App {
 
   playTrackList(tracks, startIndex = 0) {
     if (!Array.isArray(tracks) || tracks.length === 0) return;
-    const cleanKey = (str) => (str || '').toLowerCase().replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
-    const seenIds = new Set();
-    const seenTitles = new Set();
-    const uniqueTracks = [];
-    let adjustedStartIndex = startIndex;
 
-    for (let i = 0; i < tracks.length; i++) {
-      const t = tracks[i];
-      if (!t) continue;
-      const id = t.id || t.videoId;
-      const k = cleanKey(t.title);
-      const isDup = (id && seenIds.has(id)) || (k.length >= 2 && seenTitles.has(k));
-      if (!isDup) {
-        if (id) seenIds.add(id);
-        if (k.length >= 2) seenTitles.add(k);
-        uniqueTracks.push(t);
-      } else {
-        if (i < startIndex && adjustedStartIndex > 0) {
-          adjustedStartIndex--;
-        }
-      }
-    }
-
-    this.queue = uniqueTracks.length > 0 ? uniqueTracks : [...tracks];
-    this.queueIndex = Math.min(Math.max(0, adjustedStartIndex), this.queue.length - 1);
+    // Directly preserve the exact tracks array and exact clicked index
+    this.queue = [...tracks];
+    const safeIndex = Math.min(Math.max(0, startIndex), this.queue.length - 1);
+    this.queueIndex = safeIndex;
     this.persistPlaybackState();
-    this.playTrack(this.queue[this.queueIndex]);
+
+    const selectedTrack = this.queue[this.queueIndex];
+    if (selectedTrack) {
+      this.playTrack(selectedTrack);
+    }
   }
 
   addToQueue(track) {

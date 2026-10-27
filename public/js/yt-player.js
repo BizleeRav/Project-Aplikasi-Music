@@ -86,12 +86,13 @@ class YTPlayerManager {
       console.log(`[YTPlayer] Error ${errorCode}. Searching playable audio for: "${this.currentTrack.title}"...`);
 
       try {
-        const query = `${this.currentTrack.title} ${this.currentTrack.artist || ''} audio`;
+        const query = `${this.currentTrack.title} ${this.currentTrack.artist || ''} official audio`;
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
         const data = await res.json();
+        const candidateTracks = data.tracks || data.results || [];
 
-        if (data.success && data.results && data.results.length > 0) {
-          const altTrack = data.results.find(r => r.id !== this.currentTrack.id);
+        if (data.success && candidateTracks.length > 0) {
+          const altTrack = candidateTracks.find(r => r.id !== this.currentTrack.id);
           if (altTrack) {
             console.log(`[YTPlayer] Found alternative: "${altTrack.title}" (${altTrack.id}), playing...`);
             this.currentTrack.id = altTrack.id;
