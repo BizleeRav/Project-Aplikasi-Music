@@ -1238,25 +1238,112 @@ class App {
       });
     });
 
-    // Search Input
+    // Search Inputs (Top Bar & Dedicated Page Hero)
+    const searchForm = document.getElementById('search-form');
     const searchInput = document.getElementById('search-input');
     const searchBtn = document.getElementById('search-btn');
+    const searchClearBtn = document.getElementById('btn-search-clear');
 
-    const handleSearch = () => {
-      const q = searchInput.value.trim();
-      if (q) {
-        this.switchTab('search');
-        this.searchMusic(q);
-      }
+    const searchPageForm = document.getElementById('search-page-form');
+    const searchPageInput = document.getElementById('search-page-input');
+    const searchPageBtn = document.getElementById('search-page-btn');
+    const searchPageClearBtn = document.getElementById('btn-search-page-clear');
+
+    const executeSearch = (rawQuery) => {
+      const q = (rawQuery !== undefined ? rawQuery : (searchInput ? searchInput.value : '')).trim();
+      if (!q) return;
+
+      // Sync both input fields
+      if (searchInput && searchInput.value !== q) searchInput.value = q;
+      if (searchPageInput && searchPageInput.value !== q) searchPageInput.value = q;
+
+      // Hide mobile keyboard immediately to reveal search results
+      if (searchInput) searchInput.blur();
+      if (searchPageInput) searchPageInput.blur();
+
+      this.switchTab('search');
+      this.searchMusic(q);
     };
 
-    if (searchInput) {
-      searchInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') handleSearch();
+    const updateClearButtons = (val) => {
+      const hasText = Boolean(val && val.trim().length > 0);
+      if (searchClearBtn) searchClearBtn.style.display = hasText ? 'flex' : 'none';
+      if (searchPageClearBtn) searchPageClearBtn.style.display = hasText ? 'flex' : 'none';
+    };
+
+    // 1. Top Bar Search Form & Input
+    if (searchForm) {
+      searchForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        executeSearch(searchInput ? searchInput.value : '');
       });
     }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        if (searchPageInput && searchPageInput.value !== searchInput.value) {
+          searchPageInput.value = searchInput.value;
+        }
+        updateClearButtons(searchInput.value);
+      });
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.keyCode === 13) {
+          e.preventDefault();
+          executeSearch(searchInput.value);
+        }
+      });
+    }
+
     if (searchBtn) {
-      searchBtn.addEventListener('click', handleSearch);
+      searchBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        executeSearch(searchInput ? searchInput.value : '');
+      });
+    }
+
+    if (searchClearBtn) {
+      searchClearBtn.addEventListener('click', () => {
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.focus();
+        }
+        if (searchPageInput) searchPageInput.value = '';
+        updateClearButtons('');
+      });
+    }
+
+    // 2. In-Page Search Hero (Search Tab)
+    if (searchPageForm) {
+      searchPageForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        executeSearch(searchPageInput ? searchPageInput.value : '');
+      });
+    }
+
+    if (searchPageInput) {
+      searchPageInput.addEventListener('input', () => {
+        if (searchInput && searchInput.value !== searchPageInput.value) {
+          searchInput.value = searchPageInput.value;
+        }
+        updateClearButtons(searchPageInput.value);
+      });
+      searchPageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.keyCode === 13) {
+          e.preventDefault();
+          executeSearch(searchPageInput.value);
+        }
+      });
+    }
+
+    if (searchPageClearBtn) {
+      searchPageClearBtn.addEventListener('click', () => {
+        if (searchPageInput) {
+          searchPageInput.value = '';
+          searchPageInput.focus();
+        }
+        if (searchInput) searchInput.value = '';
+        updateClearButtons('');
+      });
     }
 
     // Player Controls
@@ -2600,7 +2687,38 @@ class App {
       if (!this.hasChosenTaste()) {
         this.renderHomeForSkippedUser();
       }
+    } else if (tabName === 'search') {
+      const searchPageInput = document.getElementById('search-page-input');
+      const searchInput = document.getElementById('search-input');
+      if (searchPageInput && !searchPageInput.value) {
+        setTimeout(() => {
+          try { searchPageInput.focus(); } catch (e) {}
+        }, 150);
+      } else if (searchInput && !searchInput.value) {
+        setTimeout(() => {
+          try { searchInput.focus(); } catch (e) {}
+        }, 150);
+      }
     }
+  }
+
+  quickSearch(query) {
+    if (!query) return;
+    const searchInput = document.getElementById('search-input');
+    const searchPageInput = document.getElementById('search-page-input');
+    if (searchInput) searchInput.value = query;
+    if (searchPageInput) searchPageInput.value = query;
+
+    const searchClearBtn = document.getElementById('btn-search-clear');
+    const searchPageClearBtn = document.getElementById('btn-search-page-clear');
+    if (searchClearBtn) searchClearBtn.style.display = 'flex';
+    if (searchPageClearBtn) searchPageClearBtn.style.display = 'flex';
+
+    if (searchInput) searchInput.blur();
+    if (searchPageInput) searchPageInput.blur();
+
+    this.switchTab('search');
+    this.searchMusic(query);
   }
 
   async fetchNetworkInfo() {
