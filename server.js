@@ -10,7 +10,16 @@ const sunoService = require('./suno-service');
 const playlistDb = require('./playlist-db');
 const userDb = require('./user-db');
 const homeData = require('./home-data');
-const lyricsRomanizer = require('./lyrics-romanizer');
+let lyricsRomanizer = require('./lyrics-romanizer');
+function getLyricsRomanizer() {
+  try {
+    delete require.cache[require.resolve('./lyrics-romanizer')];
+    lyricsRomanizer = require('./lyrics-romanizer');
+  } catch (e) {
+    // Keep existing instance if cache busting fails
+  }
+  return lyricsRomanizer;
+}
 const sunoLoginHelper = require('./suno-login-helper');
 const deviceCredits = require('./device-credits');
 const tasteFeed = require('./taste-feed');
@@ -21,8 +30,115 @@ const streamUrlCache = new Map(); // videoId -> { url, mimeType, contentLength, 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+function getUnifiedDataDir() {
+  if (process.env.AURASOUND_DATA_DIR && fs.existsSync(process.env.AURASOUND_DATA_DIR)) {
+    return process.env.AURASOUND_DATA_DIR;
+  }
+  if (process.env.APPDATA) {
+    const mainDir = path.join(process.env.APPDATA, 'AuraSound', 'data');
+    if (!fs.existsSync(mainDir)) {
+      try { fs.mkdirSync(mainDir, { recursive: true }); } catch (e) {}
+    }
+    return mainDir;
+  }
+  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT || process.env.NOW_REGION);
+  return (isServerless ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
+}
+const DATA_DIR = getUnifiedDataDir();
+const AVATARS_DIR = path.join(DATA_DIR, 'avatars');
+try {
+  if (!fs.existsSync(AVATARS_DIR)) fs.mkdirSync(AVATARS_DIR, { recursive: true });
+} catch (e) {}
+
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Pre-hydrated Server Session & Playback Injection for Desktop Application (instant startup with 0ms reset)
+app.get(['/', '/index.html'], (req, res) => {
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  try {
+    let html = fs.readFileSync(indexPath, 'utf8');
+    const user = userDb.getActiveSession();
+    let sessionScript = '';
+    if (user && user.email) {
+      const safeUser = {
+        email: user.email,
+        name: user.name || user.email.split('@')[0],
+        avatar: user.avatar || `https://unavatar.io/google/${user.email}`,
+        lang: user.lang || 'id',
+        provider: user.provider || 'google',
+        favorites: Array.isArray(user.favorites) ? user.favorites : [],
+        playHistory: Array.isArray(user.playHistory) ? user.playHistory : [],
+        tasteProfile: user.tasteProfile || null
+      };
+      sessionScript += `window.__AURASOUND_SERVER_SESSION__ = ${JSON.stringify(safeUser)};\n`;
+    }
+
+    // Playback state injection (disk fallback for zero reset)
+    try {
+      const pPath = path.join(DATA_DIR, 'playback.json');
+      if (fs.existsSync(pPath)) {
+        const pb = JSON.parse(fs.readFileSync(pPath, 'utf8'));
+        if (pb && (pb.currentTrack || pb.track)) {
+          sessionScript += `window.__AURASOUND_PLAYBACK_STATE__ = ${JSON.stringify(pb)};\n`;
+        }
+      }
+    } catch (pe) {}
+
+    if (sessionScript) {
+      const injection = `
+  <script id="aurasound-server-session-data">
+    ${sessionScript}
+  </script>`;
+      html = html.replace('</head>', `${injection}\n</head>`);
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.send(html);
+  } catch (err) {
+    console.warn('Error serving injected index.html:', err);
+    return res.sendFile(indexPath, (sendErr) => {
+      if (sendErr && !res.headersSent) {
+        res.status(500).send('<html><body style="background:#070a12;color:#fff;text-align:center;padding:50px;font-family:sans-serif;"><h2>AuraSound Music Hub</h2><p>Menyiapkan sistem server...</p><script>setTimeout(()=>location.reload(), 1500);</script></body></html>');
+      }
+    });
+  }
+});
+
+app.use(express.static(path.join(__dirname, 'public'), {
+  index: false,
+  setHeaders: (res, filePath) => {
+    if (/\.(jpg|jpeg|png|webp|svg|ico|mp3|wav|ogg)$/i.test(filePath)) {
+      res.set('Cache-Control', 'public, max-age=604800, immutable');
+    } else {
+      res.set('Cache-Control', 'no-cache');
+    }
+  }
+}));
+
+// Persistent Playback State API (disk persistence fallback)
+app.get('/api/user/playback-state', (req, res) => {
+  try {
+    const pPath = path.join(DATA_DIR, 'playback.json');
+    if (fs.existsSync(pPath)) {
+      const data = JSON.parse(fs.readFileSync(pPath, 'utf8'));
+      return res.json({ success: true, state: data });
+    }
+  } catch (e) {}
+  return res.json({ success: false });
+});
+
+app.post('/api/user/playback-state', (req, res) => {
+  try {
+    const pPath = path.join(DATA_DIR, 'playback.json');
+    fs.writeFileSync(pPath, JSON.stringify(req.body, null, 2), 'utf8');
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (/\.(jpg|jpeg|png|webp|svg|ico|mp3|wav|ogg)$/i.test(filePath)) {
@@ -109,6 +225,66 @@ app.get('/download/apk', (req, res) => {
   }
 });
 
+// Native YouTube Music Search Client (via Innertube)
+let innertubeClient = null;
+let innertubeInitPromise = null;
+
+async function getInnertube() {
+  if (innertubeClient) return innertubeClient;
+  if (innertubeInitPromise) return innertubeInitPromise;
+
+  innertubeInitPromise = (async () => {
+    try {
+      const { Innertube } = await import('youtubei.js');
+      innertubeClient = await Innertube.create({ retrieve_player: false });
+      return innertubeClient;
+    } catch (e) {
+      console.warn('Innertube init warning:', e.message);
+      innertubeClient = null;
+      return null;
+    }
+  })();
+
+  return innertubeInitPromise;
+}
+
+async function searchYouTubeMusicSongs(query, limit = 15) {
+  try {
+    const yt = await getInnertube();
+    if (!yt || !yt.music) return [];
+
+    const res = await yt.music.search(query, { type: 'song' });
+    const shelf = res.contents?.[0];
+    const items = shelf?.contents || [];
+
+    return items.slice(0, limit).map(s => {
+      const id = s.id;
+      if (!id) return null;
+      const title = s.title || '';
+      const artist = s.artists?.map(a => a.name).join(', ') || 'Unknown Artist';
+      const duration = s.duration?.text || '0:00';
+      const seconds = s.duration?.seconds || 0;
+
+      return {
+        id,
+        title,
+        artist,
+        album: s.album?.name || '',
+        duration,
+        seconds,
+        thumbnail: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+        views: 0,
+        ago: '',
+        type: 'youtube',
+        isOfficial: true,
+        tag: 'OFFICIAL'
+      };
+    }).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+}
+
 // 2. Search Music on YouTube / YouTube Music
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
@@ -119,21 +295,49 @@ app.get('/api/search', async (req, res) => {
   const filter = (req.query.filter || 'all').toLowerCase(); // 'all' | 'official' | 'nonofficial'
 
   try {
-    let searchQueries = [query];
-    if (filter === 'official') {
-      searchQueries = [`${query} official music video`, `${query} official audio`, `${query} official`, query];
-    } else if (filter === 'nonofficial') {
-      searchQueries = [`${query} cover remix lyrics dance`, `${query} live performance`, `${query} festival edm remix`, `${query} cover`];
-    }
-
     const seenIds = new Set();
     const seenTitles = new Set();
     const tracks = [];
+
+    let searchQueries = [query];
+    if (filter === 'official') {
+      searchQueries = [
+        `${query} official audio`,
+        `${query} audio`,
+        `${query} topic`,
+        `${query} official`,
+        query
+      ];
+    } else if (filter === 'nonofficial') {
+      searchQueries = [`${query} cover remix lyrics dance`, `${query} live performance`, `${query} festival edm remix`, `${query} cover`];
+    }
 
     for (const sq of searchQueries) {
       if (tracks.length >= 25) break;
       const results = await ytSearch(sq);
       const candidates = results.videos || [];
+
+      // Sort candidates to prioritize official clean studio audio (Topic / Audio) over MVs with intro bumpers
+      if (filter === 'official') {
+        candidates.sort((a, b) => {
+          const aAuthor = (a.author?.name || '').toLowerCase();
+          const bAuthor = (b.author?.name || '').toLowerCase();
+          const aTitle = (a.title || '').toLowerCase();
+          const bTitle = (b.title || '').toLowerCase();
+
+          const aIsAudio = aAuthor.includes('topic') || aTitle.includes('official audio') || aTitle.includes('audio');
+          const bIsAudio = bAuthor.includes('topic') || bTitle.includes('official audio') || bTitle.includes('audio');
+          if (aIsAudio && !bIsAudio) return -1;
+          if (!aIsAudio && bIsAudio) return 1;
+
+          const aIsMv = /official\s*(?:music\s*video|mv)|m\/v/i.test(aTitle);
+          const bIsMv = /official\s*(?:music\s*video|mv)|m\/v/i.test(bTitle);
+          if (aIsMv && !bIsMv) return 1;
+          if (!aIsMv && bIsMv) return -1;
+
+          return 0;
+        });
+      }
 
       for (const v of candidates) {
         if (v.seconds < 30 || v.seconds > 1200) continue; // skip 10 hour loops or <30s shorts
@@ -804,7 +1008,8 @@ app.post('/api/playlist/import', async (req, res) => {
 // 7. Centralized Playlist Database Endpoints (User Google Account & Device Isolation)
 app.get('/api/playlists', (req, res) => {
   try {
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.userEmail || req.headers['x-device-id'] || req.query.deviceId || null;
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.userEmail || req.headers['x-device-id'] || req.query.deviceId || defaultUserKey;
     const playlists = playlistDb.getPlaylistsSummary(userKey);
     res.json({ success: true, count: playlists.length, playlists });
   } catch (err) {
@@ -814,7 +1019,8 @@ app.get('/api/playlists', (req, res) => {
 
 app.get('/api/playlists/:id', (req, res) => {
   try {
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.userEmail || req.headers['x-device-id'] || req.query.deviceId || null;
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.userEmail || req.headers['x-device-id'] || req.query.deviceId || defaultUserKey;
     const pl = playlistDb.getPlaylistById(req.params.id, userKey);
     if (!pl) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
     res.json({ success: true, playlist: pl });
@@ -892,7 +1098,62 @@ app.post('/api/user/login', (req, res) => {
       return res.status(400).json({ success: false, error: 'Email atau ID Google diperlukan' });
     }
     const user = userDb.loginOrRegisterUser({ email, name, avatar, provider, googleId });
+    if (user && user.email) {
+      userDb.setActiveSession(user);
+    }
     res.json({ success: true, user });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 1b. Get active session across app restarts (persistent desktop session)
+app.get(['/api/user/session', '/api/auth/session'], (req, res) => {
+  try {
+    const user = userDb.getActiveSession();
+    if (user) {
+      res.json({ success: true, user });
+    } else {
+      res.json({ success: false, user: null });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 1c. Clear active session on explicit logout
+app.post(['/api/user/logout', '/api/auth/logout'], (req, res) => {
+  try {
+    userDb.clearActiveSession();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 1d. Server-backed Playback State Persistence (Current Track, Queue, Position)
+const PLAYBACK_FILE = path.join(DATA_DIR, 'playback.json');
+
+app.get('/api/playback/state', (req, res) => {
+  try {
+    if (fs.existsSync(PLAYBACK_FILE)) {
+      const state = JSON.parse(fs.readFileSync(PLAYBACK_FILE, 'utf8'));
+      return res.json({ success: true, state });
+    }
+    res.json({ success: false, state: null });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/playback/state', (req, res) => {
+  try {
+    const state = req.body;
+    if (state && typeof state === 'object') {
+      fs.writeFileSync(PLAYBACK_FILE, JSON.stringify(state, null, 2), 'utf8');
+      return res.json({ success: true });
+    }
+    res.json({ success: false });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -919,7 +1180,24 @@ app.post('/api/user/profile', (req, res) => {
     if (!userKey) {
       return res.status(400).json({ success: false, error: 'userKey diperlukan' });
     }
-    const { name, avatar, lang, tasteProfile } = req.body;
+    let { name, avatar, lang, tasteProfile } = req.body;
+
+    // If an image was uploaded as Base64, save it permanently to disk!
+    if (avatar && typeof avatar === 'string' && avatar.startsWith('data:image/')) {
+      try {
+        const matches = avatar.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const buffer = Buffer.from(matches[2], 'base64');
+          const cleanKey = userDb.normalizeUserKey ? userDb.normalizeUserKey(userKey) : String(userKey).replace(/[^a-zA-Z0-9_-]/g, '_');
+          const avatarPath = path.join(AVATARS_DIR, `${cleanKey}.png`);
+          fs.writeFileSync(avatarPath, buffer);
+          avatar = `/api/user/avatar?userId=${encodeURIComponent(cleanKey)}&v=${Date.now()}`;
+        }
+      } catch (avErr) {
+        console.error('Error saving avatar image to disk:', avErr);
+      }
+    }
+
     const updated = userDb.updateUserProfile(userKey, { name, avatar, lang, tasteProfile });
     res.json({ success: true, user: updated });
   } catch (err) {
@@ -927,10 +1205,34 @@ app.post('/api/user/profile', (req, res) => {
   }
 });
 
+// 3b. Serve persistent user profile avatar
+app.get('/api/user/avatar', (req, res) => {
+  try {
+    const userKey = req.query.userId || req.query.email || req.headers['x-user-email'];
+    if (!userKey) {
+      return res.sendFile(path.join(__dirname, 'public', 'images', 'avatar.jpg'));
+    }
+    const cleanKey = userDb.normalizeUserKey ? userDb.normalizeUserKey(userKey) : String(userKey).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const avatarPath = path.join(AVATARS_DIR, `${cleanKey}.png`);
+    if (fs.existsSync(avatarPath)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.sendFile(avatarPath);
+    }
+    const user = userDb.getUser(userKey);
+    if (user && user.avatar && user.avatar.startsWith('http') && !user.avatar.includes('/api/user/avatar')) {
+      return res.redirect(user.avatar);
+    }
+    res.sendFile(path.join(__dirname, 'public', 'images', 'avatar.jpg'));
+  } catch (e) {
+    res.sendFile(path.join(__dirname, 'public', 'images', 'avatar.jpg'));
+  }
+});
+
 // 4. Get user favorites
 app.get('/api/user/favorites', (req, res) => {
   try {
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId;
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId || defaultUserKey;
     if (!userKey) {
       return res.json({ success: true, favorites: [] });
     }
@@ -944,7 +1246,8 @@ app.get('/api/user/favorites', (req, res) => {
 // 5. Toggle user favorite
 app.post('/api/user/favorites/toggle', (req, res) => {
   try {
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId || defaultUserKey;
     const { track } = req.body;
     if (!userKey || !track) {
       return res.status(400).json({ success: false, error: 'userKey dan track diperlukan' });
@@ -959,7 +1262,8 @@ app.post('/api/user/favorites/toggle', (req, res) => {
 // 6. Batch sync user favorites
 app.post('/api/user/favorites/sync', (req, res) => {
   try {
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId || defaultUserKey;
     const { favorites } = req.body;
     if (!userKey || !Array.isArray(favorites)) {
       return res.status(400).json({ success: false, error: 'userKey dan array favorites diperlukan' });
@@ -974,7 +1278,8 @@ app.post('/api/user/favorites/sync', (req, res) => {
 // 7. Get play history
 app.get('/api/user/history', (req, res) => {
   try {
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId;
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId || defaultUserKey;
     if (!userKey) return res.json({ success: true, history: [] });
     const history = userDb.getUserHistory(userKey);
     res.json({ success: true, history });
@@ -986,7 +1291,8 @@ app.get('/api/user/history', (req, res) => {
 // 8. Add track to play history
 app.post('/api/user/history', (req, res) => {
   try {
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId || defaultUserKey;
     const { track } = req.body;
     if (!userKey || !track) return res.status(400).json({ success: false, error: 'userKey dan track diperlukan' });
     const history = userDb.addTrackToHistory(userKey, track);
@@ -1020,6 +1326,85 @@ app.post('/api/user/taste', (req, res) => {
   }
 });
 
+// 10. Playlists CRUD & Server Persistence
+app.get('/api/playlists', (req, res) => {
+  try {
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId || defaultUserKey;
+    const playlists = playlistDb.getAllPlaylists(userKey);
+    res.json({ success: true, playlists });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/playlists/:id', (req, res) => {
+  try {
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId || defaultUserKey;
+    const playlist = playlistDb.getPlaylistById(req.params.id, userKey);
+    if (!playlist) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
+    res.json({ success: true, playlist });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/playlists', (req, res) => {
+  try {
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId || defaultUserKey;
+    const { id, title, tracks, thumbnail, isImported } = req.body;
+    if (!title) return res.status(400).json({ success: false, error: 'Judul playlist diperlukan' });
+    const pl = {
+      id: id || ('pl_' + Date.now()),
+      title,
+      tracks: Array.isArray(tracks) ? tracks : [],
+      thumbnail: thumbnail || (tracks && tracks[0] && tracks[0].thumbnail) || '/images/supermix.jpg',
+      createdAt: new Date().toLocaleDateString('id-ID'),
+      isImported: !!isImported,
+      userEmail: req.headers['x-user-email'] || (userDb.getActiveSession()?.email) || '',
+      userId: userKey || '',
+      deviceId: userKey || ''
+    };
+    const saved = playlistDb.addOrUpdatePlaylist(pl);
+    res.json({ success: true, playlist: saved });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/playlists/:id', (req, res) => {
+  try {
+    playlistDb.deletePlaylist(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/playlists/:id/tracks', (req, res) => {
+  try {
+    const { track } = req.body;
+    if (!track) return res.status(400).json({ success: false, error: 'Track diperlukan' });
+    const pl = playlistDb.addTrackToPlaylist(req.params.id, track);
+    if (!pl) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
+    res.json({ success: true, playlist: pl });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/playlists/:id/tracks/:trackId', (req, res) => {
+  try {
+    const pl = playlistDb.removeTrackFromPlaylist(req.params.id, req.params.trackId);
+    if (!pl) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
+    res.json({ success: true, playlist: pl });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ==========================================
 // 8. REAL-TIME SYNCHRONIZED LYRICS API (LRCLIB Proxy with In-Memory Caching)
 // ==========================================
@@ -1042,8 +1427,8 @@ function stripTagsAndParens(text) {
         if (depth > 0) tagContent += text[i];
         i++;
       }
-      if (/feat|ft\.|featuring|official|video|audio|mv|remaster|hd|hq|4k|lyric|prod/i.test(tagContent) ||
-          /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f\uac00-\ud7af]/.test(tagContent)) {
+      // Only drop junk tags (feat, official, mv, video, anime, ost, movie, etc.)
+      if (/feat|ft\.|featuring|official|video|audio|mv|m\/v|remaster|hd|hq|4k|lyric|prod|clip|teaser|trailer|from\s+|ost|theme|anime|film|movie|ver\b|version|side\s+[a-z0-9]|part\s*\d+|with\s+|collaboration|主題歌|挿入歌|エンディング|オープニング|主题曲|片尾曲|插曲|歌いました/i.test(tagContent)) {
         // Drop it
       } else {
         res += ' ' + tagContent + ' ';
@@ -1056,128 +1441,954 @@ function stripTagsAndParens(text) {
   return res;
 }
 
+const LABEL_CHANNEL_REGEX = /^(?:hybe\s*labels?|1thek(?:\s*\(.*?\))?|smtown|jyp\s*entertainment|yg\s*entertainment|stone\s*music(?:\s*entertainment)?|starshiptv|starship|woollim|pledis|cube|fnc|kq\s*entertainment|theblacklabel|wm\s*entertainment|rbw|wakeone|mnet|kbs\s*kpop|mbc\s*kpop|sbs\s*kpop|genie\s*music|warner\s*music(?:\s*\w+)?|sony\s*music(?:\s*\w+)?|universal\s*music(?:\s*\w+)?|vevo|youtube(?:\s*music)?|nagaswara|aquarius\s*musikindo|musica\s*studios|trinity\s*optima(?:\s*production)?|avex|king\s*records|ponycanyon|topic|gemblog)$/i;
+
+const KPOP_ARTIST_ALIASES = [
+  { match: /(?:\(여자\)아이들|\(g\)i-dle|gi-dle|i-dle)/i, latin: '(G)I-DLE', hangul: '(여자)아이들' },
+  { match: /(?:newjeans|뉴진스)/i, latin: 'NewJeans', hangul: '뉴진스' },
+  { match: /(?:illit|아일릿)/i, latin: 'ILLIT', hangul: '아일릿' },
+  { match: /(?:aespa|에스파)/i, latin: 'aespa', hangul: '에스파' },
+  { match: /(?:le\s*sserafim|르세라핌)/i, latin: 'LE SSERAFIM', hangul: '르세라핌' },
+  { match: /(?:ive|아이브)/i, latin: 'IVE', hangul: '아이브' },
+  { match: /(?:stray\s*kids|스트레이\s*키즈|skz)/i, latin: 'Stray Kids', hangul: '스트레이 키즈' },
+  { match: /(?:bts|방탄소년단|bangtan)/i, latin: 'BTS', hangul: '방탄소년단' },
+  { match: /(?:blackpink|블랙핑크)/i, latin: 'BLACKPINK', hangul: '블랙핑크' },
+  { match: /(?:twice|트와이스)/i, latin: 'TWICE', hangul: '트와이스' },
+  { match: /(?:seventeen|세븐틴|svt)/i, latin: 'SEVENTEEN', hangul: '세븐틴' },
+  { match: /(?:red\s*velvet|레드벨벳)/i, latin: 'Red Velvet', hangul: '레드벨벳' },
+  { match: /(?:itzy|있지)/i, latin: 'ITZY', hangul: '있지' },
+  { match: /(?:nmixx|엔믹스)/i, latin: 'NMIXX', hangul: '엔믹스' },
+  { match: /(?:babymonster|베이비몬스터)/i, latin: 'BABYMONSTER', hangul: '베이비몬스터' },
+  { match: /(?:hearts2hearts|하츠투하츠)/i, latin: 'Hearts2Hearts', hangul: '하츠투하츠' },
+  { match: /(?:exo|엑소)/i, latin: 'EXO', hangul: '엑소' },
+  { match: /(?:jungkook|jung\s*kook|정국)/i, latin: 'Jung Kook', hangul: '정국' },
+  { match: /(?:jimin|지민)/i, latin: 'Jimin', hangul: '지민' },
+  { match: /(?:bts\s*v\b|\bv\s*(?:of\s*bts|\(bts\))|taehyung|뷔|태형)/i, latin: 'V', hangul: '뷔' },
+  { match: /(?:rm\b|namjoon|남준)/i, latin: 'RM', hangul: 'RM' },
+  { match: /(?:suga|agust\s*d|슈가)/i, latin: 'SUGA', hangul: '슈가' },
+  { match: /(?:j-hope|jhope|제이홉)/i, latin: 'j-hope', hangul: '제이홉' },
+  { match: /(?:jin\b|seokjin|진|석진)/i, latin: 'Jin', hangul: '진' },
+  { match: /(?:taeyeon|태연)/i, latin: 'TAEYEON', hangul: '태연' },
+  { match: /(?:iu\b|이지은|아이유)/i, latin: 'IU', hangul: '아이유' },
+  { match: /(?:enhypen|엔하이픈)/i, latin: 'ENHYPEN', hangul: '엔하이픈' },
+  { match: /(?:txt|tomorrow\s*x\s*together|투모로우바이투게더)/i, latin: 'TOMORROW X TOGETHER', hangul: '투모로우바이투게더' },
+  { match: /(?:riize|라이즈)/i, latin: 'RIIZE', hangul: '라이즈' },
+  { match: /(?:tws|투어스)/i, latin: 'TWS', hangul: '투어스' },
+  { match: /(?:nct\s*127|엔시티\s*127)/i, latin: 'NCT 127', hangul: '엔시티 127' },
+  { match: /(?:nct\s*dream|엔시티\s*드림)/i, latin: 'NCT DREAM', hangul: '엔시티 드림' },
+  { match: /(?:nct\s*u|엔시티\s*유)/i, latin: 'NCT U', hangul: '엔시티 유' },
+  { match: /(?:nct|엔시티)/i, latin: 'NCT', hangul: '엔시티' },
+  { match: /(?:treasure|트레저)/i, latin: 'TREASURE', hangul: '트레저' },
+  { match: /(?:stayc|스테이씨)/i, latin: 'STAYC', hangul: '스테이씨' },
+  { match: /(?:kiss\s*of\s*life|키스오브라이프)/i, latin: 'KISS OF LIFE', hangul: '키스오브라이프' },
+  { match: /(?:zerobaseone|zb1|제로베이스원)/i, latin: 'ZEROBASEONE', hangul: '제로베이스원' },
+  { match: /(?:boynextdoor|보이넥스트도어)/i, latin: 'BOYNEXTDOOR', hangul: '보이넥스트도어' },
+  { match: /(?:ateez|에이티즈)/i, latin: 'ATEEZ', hangul: '에이티즈' },
+  { match: /(?:the\s*boyz|더보이즈)/i, latin: 'THE BOYZ', hangul: '더보이즈' },
+  { match: /(?:monsta\s*x|몬스타엑스)/i, latin: 'MONSTA X', hangul: '몬스타엑스' }
+];
+
+function normalizeForCompare(str) {
+  return (str || '')
+    .toLowerCase()
+    .replace(/[\s\-_:–—|()（）[\]【】'\"“”‘’·/.,]/g, '')
+    .trim();
+}
+
 function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   let title = (rawTitle || '').trim();
   let artist = (rawArtist || '').trim();
 
-  // 1. Handle Asian bracket pattern: 'Artist【 Song Title 】Extra' or '【 Song Title 】Artist'
-  const bracketMatch = title.match(/^(.+?)\s*[【《「『]([^】》」』]+)[】》」』](.*)$/);
-  if (bracketMatch) {
-    const before = bracketMatch[1].trim();
-    const inside = bracketMatch[2].trim();
-    const isTag = /^(?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|mv|hd|4k|live|remix|lyrics?|full\s*audio|visualizer)$/i.test(inside);
-    if (!isTag && inside.length > 0) {
-      title = inside;
-      if (before.length > 1) artist = before;
+  // 1. Strip obvious junk tags in brackets at start/end
+  const junkPattern = /\s*[\[(【](?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|audio|mv|m\/v|hd|4k|full\s*audio|visualizer|teaser|trailer|clip|special\s*clip|performance\s*video|dance\s*practice)[\])】]/gi;
+  title = title.replace(junkPattern, ' ').trim();
+  artist = artist.replace(junkPattern, ' ').trim();
+
+  // Strip leading video tags like 【MV】, 【Official Video】, [MV]
+  title = title.replace(/^\s*[【\[](?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|audio|mv|m\/v|hd|4k)[】\]]\s*/i, '').trim();
+
+  const isChannelPublisher = !artist || LABEL_CHANNEL_REGEX.test(artist) || /labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(artist);
+
+  // 1. Handle leading Chinese book title bracket 《Title》 at start of string (e.g. 《芒种》音阙诗听/赵方婧)
+  const leadingBookTitle = title.match(/^\s*《([^》]+)》\s*(.*)$/);
+  if (leadingBookTitle && !/official|mv|audio|video|hd|4k|remix|live/i.test(leadingBookTitle[1])) {
+    title = leadingBookTitle[1].trim();
+    const rest = leadingBookTitle[2].trim();
+    if (!artist || isChannelPublisher || artist.length < 2) {
+      const restArtistMatch = rest.match(/^([^\s|丨/]+(?:\/[^\s|丨/]+)?)/);
+      if (restArtistMatch) {
+        artist = restArtistMatch[1].trim();
+      }
+    }
+  } else {
+    // 2. Check leading artist tag: 【Artist】 Title (e.g. 【Ado】新時代, 【Eve】廻廻奇譚)
+    const leadingArtistMatch = title.match(/^\s*[【\[]([^】\]]+)[】\]]\s*(.+)$/);
+    if (leadingArtistMatch && !/official|mv|audio|video|hd|4k|remix|live/i.test(leadingArtistMatch[1])) {
+      artist = leadingArtistMatch[1].trim();
+      title = leadingArtistMatch[2].trim();
+    } else {
+      // 3. Handle matching quotes pattern: Artist "Song Title" or Artist 'Song Title'
+      let matchedInside = null;
+      let matchedBefore = null;
+
+      // Double quotes (safely allows internal apostrophes like "I CAN'T STOP ME")
+      const doubleQuoteMatch = title.match(/^(.+?)\s*["“”]([^"“”]+)["“”](.*)$/);
+      if (doubleQuoteMatch && doubleQuoteMatch[2].trim().length > 0) {
+        matchedBefore = doubleQuoteMatch[1].trim();
+        matchedInside = doubleQuoteMatch[2].trim();
+      } else {
+        // Single quotes
+        const singleQuoteMatch = title.match(/^(.+?)\s*['‘’]([^'‘’]+)['‘’](.*)$/);
+        if (singleQuoteMatch && singleQuoteMatch[2].trim().length > 0) {
+          matchedBefore = singleQuoteMatch[1].trim();
+          matchedInside = singleQuoteMatch[2].trim();
+        } else {
+          // Asian corner brackets after artist: Artist「Title」, Artist『Title』, Artist【Title】
+          const cornerBracketMatch = title.match(/^(.+?)\s*[「『【《]([^」』】》]+)[」』】》](.*)$/);
+          if (cornerBracketMatch && cornerBracketMatch[2].trim().length > 0) {
+            const inside = cornerBracketMatch[2].trim();
+            if (!/^(?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|mv|hd|4k|live|remix|lyrics?|full\s*audio|visualizer)$/i.test(inside)) {
+              matchedBefore = cornerBracketMatch[1].trim();
+              matchedInside = inside;
+            }
+          }
+        }
+      }
+
+      if (matchedInside) {
+        title = matchedInside;
+        if (matchedBefore && matchedBefore.length > 0) {
+          if (isChannelPublisher || !artist || matchedBefore.length < 50 || /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(matchedBefore)) {
+            artist = matchedBefore;
+          }
+        }
+      } else if (title.includes(' _ ')) {
+        const parts = title.split(' _ ');
+        title = parts.slice(1).join(' _ ').trim();
+        if (parts[0].trim().length > 1 && isChannelPublisher) artist = parts[0].trim();
+      } else if (title.includes(' - ')) {
+        const parts = title.split(' - ');
+        title = parts.slice(1).join(' - ').trim();
+        if (parts[0].trim().length > 1 && isChannelPublisher) artist = parts[0].trim();
+      }
     }
   }
 
-  // 2. Handle 'Artist - Song Title'
-  if (title.includes(' - ')) {
-    const parts = title.split(' - ');
-    const left = parts[0].trim();
-    const right = parts.slice(1).join(' - ').trim();
-    if (right.length > 0) {
-      title = right;
-      if (left.length > 1) artist = left;
-    }
-  }
+  // Remove pipes and trailing info
+  title = title.replace(/\|.*$/g, '').replace(/丨.*$/g, '').trim();
 
-  // 3. Remove pipes and trailing info: | Official Music Video ...
-  title = title.replace(/\|.*$/g, '');
+  // Extract Asian characters (Hangul, Hanzi, Kana)
+  const asianTitleMatches = title.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g);
+  const nativeTitle = asianTitleMatches ? asianTitleMatches.join(' ').trim() : '';
 
-  // 4. Strip tags and parens like (feat. ...), (Official Music Video), etc.
+  const asianArtistMatches = artist.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g);
+  const nativeArtist = asianArtistMatches ? asianArtistMatches.join(' ').trim() : '';
+
+  // Clean tags and parens like (feat. ...), (Official Music Video), etc.
   title = stripTagsAndParens(title);
 
-  // 5. Strip standalone suffix words
+  // Strip standalone suffix words
   title = title.replace(/\b(?:official\s*(?:music\s*video|video|audio|mv|lyric\s*video)?|music\s*video|lyric\s*video|visualizer|m\/v|mv)\b/gi, '');
 
-  // 6. Clean bracket artifacts
-  title = title.replace(/[【】《》「」『』'\"“”‘’]/g, ' ').replace(/\s+/g, ' ').trim();
+  // Clean bracket artifacts while keeping internal contraction apostrophes (e.g. CAN'T, DON'T)
+  title = title
+    .replace(/[【】《》「」『』"“”]/g, ' ')
+    .replace(/(?:^|\s)['‘’]|['‘’](?:\s|$)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-  // 7. Clean artist
+  // Extract clean Latin Title for bilingual titles like "클락션 (Klaxon)"
+  const latinTitleMatches = title.match(/[A-Za-z0-9\s'-]+/g);
+  let titleLatin = latinTitleMatches ? latinTitleMatches.join(' ').replace(/\s+/g, ' ').trim() : '';
+  if (titleLatin.length < 2) titleLatin = '';
+
+  // Clean artist
   artist = stripTagsAndParens(artist);
   artist = artist
     .replace(/\s*-\s*Topic$/i, '')
     .replace(/\s*VEVO$/i, '')
-    .replace(/\b(?:official|channel|music|records|label|entertainment)\b/gi, '')
+    .replace(/[【】《》「」『』'\"“”‘’]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  artist = artist.replace(/[\s\-_:–—|丨]+$/, '').replace(/^[\s\-_:–—|丨]+/, '').trim();
 
-  return { title, artist };
+  // Check known aliases for 100% accurate canonical matching
+  let artistLatin = '';
+  let artistHangul = '';
+
+  for (const alias of KPOP_ARTIST_ALIASES) {
+    if (alias.match.test(artist) || (isChannelPublisher && alias.match.test(rawTitle || ''))) {
+      artistLatin = alias.latin;
+      artistHangul = alias.hangul;
+      break;
+    }
+  }
+
+  // If not in aliases, extract clean Latin and Korean separately
+  if (!artistLatin) {
+    artistLatin = (artist.match(/[A-Za-z0-9&/.-]+/g) || []).join(' ').replace(/\s+/g, ' ').trim();
+    if (artistLatin.length < 2) artistLatin = '';
+  }
+  if (!artistHangul) {
+    artistHangul = (artist.match(/[\uac00-\ud7af\u1100-\u11ff]+/g) || []).join(' ').replace(/\s+/g, ' ').trim();
+    if (artistHangul.length < 2) artistHangul = '';
+  }
+
+  return { title, artist, artistLatin, artistHangul, nativeTitle, nativeArtist, titleLatin };
 }
 
-function buildSearchCandidates(title, artist) {
+function isCreditOrHeaderLine(text, time, titleHints = []) {
+  if (!text) return true;
+  if (time > 45) return false;
+
+  const t = text.trim();
+  // Filter "Title - Artist" header lines that QQ/Kugou/NetEase inject before the vocals
+  if (/\s[-–—]\s/.test(t) && t.length < 90) {
+    if (time < 12) return true;
+  }
+
+  // Universal Credit / Studio Prefix: If string before : or ： matches any music production role
+  const colonMatch = t.match(/^([^:：]{1,25})\s*[:：]/);
+  if (colonMatch) {
+    const prefix = colonMatch[1];
+    if (/(?:作词|作曲|编曲|制作|演唱|混音|母带|录音|人声|弦乐|管乐|吉他|贝斯|鼓|和音|和声|伴唱|配唱|监制|企划|出品|发行|原唱|翻唱|版权|管理|录音棚|录音室|录音师|混音师|母带师|编辑|工程|小提琴|大提琴|笛子|二胡|古筝|琵琶|钢琴|vocal|mixed|mastered|recorded|producer|arranged|written|composed|lyrics|guitar|bass|drums|piano)/i.test(prefix)) {
+      return true;
+    }
+  }
+
+  // Chinese & Asian credit markers
+  const asianCreditRegex = /^(?:作\s*词|作\s*曲|编\s*曲|制\s*作(?:人)?|演\s*唱(?:者)?|混\s*音(?:师|室|工程)?|母\s*带(?:工程|处理|后期|师)?|录\s*音(?:师|室|棚|工程)?|人\s*声(?:录音|编辑|工程)(?:师|室|棚)?|弦\s*乐\s*监\s*制|吉\s*他(?:编写)?|贝\s*斯(?:编写)?|鼓\s*手?|弦\s*乐(?:编写)?|管\s*乐(?:编写)?|和\s*音(?:编写|设计)?|和\s*声(?:编写|设计)?|伴\s*唱|配\s*唱(?:制作人)?|古\s*筝(?:编写)?|二\s*胡|笛\s*子|琵\s*琶|小\s*提\s*琴(?:编写)?|大\s*提\s*琴(?:编写)?|钢\s*琴|监\s*制|企\s*划|出\s*品(?:人)?|发\s*行(?:人|方)?|原\s*唱|翻\s*唱|美\s*工|题\s*字|插\s*画|视\s*频|动\s*态|文\s*案|统\s*筹|词|曲|OP|SP)\s*[:：]/i;
+  if (asianCreditRegex.test(t)) return true;
+
+  // Korean credit markers
+  const koreanCreditRegex = /^(?:작\s*사|작\s*곡|편\s*곡|프\s*로\s*듀\s*서|기\s*획|노\s*래|보\s*컬|코\s*러\s*스|믹\s*싱|마\s*스\s*터\s*링)\s*[:：]/i;
+  if (koreanCreditRegex.test(t)) return true;
+
+  // English & Studio credit markers
+  const enCreditRegex = /^(?:(?:(?:original|sub|co)[- ]\s*)?publishers?|written\s*by|composed\s*by|arranged\s*by|produced\s*by|lyrics\s*by|music\s*by|mixed\s*by|mastered\s*by|vocals?\s*by|background\s*vocals?(?:\s*by)?|all\s*instrumentals?(?:\s*by)?|(?:acoustic\s*|electric\s*)?guitars?(?:\s*by)?|bass(?:\s*by)?|drums?(?:\s*by)?|strings?(?:\s*by)?|keys?(?:\s*by)?|synthesizer(?:\s*by)?|piano(?:\s*by)?|recorded\s*by|recording\s*studios?|mixing\s*studios?|vocal\s*(?:directed|director|editing|edite?|editor|engineer|production|producer|coach|design)(?:\s*by)?|digital\s*editing\s*by|digital\s*edit(?:ed|ing)\s*by|engineered\s*by|keyboard|executive\s*producers?)\b\s*[:：]?/i;
+  if (enCreditRegex.test(t)) return true;
+
+  // Kugou/NetEase/QQ LRC software artifacts
+  if (/^(?:qq|lrc|by|hash|sign|offset|ti|ar|al)\s*[:：]/i.test(t)) return true;
+
+  return false;
+}
+
+function buildSearchCandidates(title, artist, nativeTitle, nativeArtist, artistLatin, artistHangul, titleLatin) {
   const candidates = [];
 
-  const artistEn = (artist.match(/[A-Za-z0-9\s/&.-]+/g) || []).join(' ').trim();
-  const artistAsian = (artist.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g) || []).join(' ').trim();
+  const mainLatin = artistLatin || (artist.match(/[A-Za-z0-9\s/&.-]+/g) || []).join(' ').trim();
+  const mainAsian = artistHangul || nativeArtist || (artist.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g) || []).join(' ').trim();
 
-  const titleAsian = (title.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g) || []).join('').trim();
-  const titleEn = (title.match(/[A-Za-z0-9\s/&.-]+/g) || []).join(' ').trim();
+  const titleAsian = nativeTitle || (title.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g) || []).join('').trim();
+  const mainTitleLatin = titleLatin || (title.match(/[A-Za-z0-9\s/&.-]+/g) || []).join(' ').trim();
 
   // 1. Exact get candidates
+  if (mainTitleLatin && mainLatin) candidates.push({ type: 'get', track: mainTitleLatin, artist: mainLatin });
+  if (title && mainLatin) candidates.push({ type: 'get', track: title, artist: mainLatin });
+  if (titleAsian && mainLatin) candidates.push({ type: 'get', track: titleAsian, artist: mainLatin });
+  if (titleAsian && mainAsian) candidates.push({ type: 'get', track: titleAsian, artist: mainAsian });
   if (title && artist) candidates.push({ type: 'get', track: title, artist: artist });
-  if (titleAsian && artistEn) candidates.push({ type: 'get', track: titleAsian, artist: artistEn });
-  if (title && artistEn && artistEn !== artist) candidates.push({ type: 'get', track: title, artist: artistEn });
-  if (titleAsian && artistAsian && artistAsian !== artist) candidates.push({ type: 'get', track: titleAsian, artist: artistAsian });
-  if (titleEn && artistEn && titleEn !== title) candidates.push({ type: 'get', track: titleEn, artist: artistEn });
 
   // 2. Search queries
-  if (title && artistEn) candidates.push({ type: 'search', q: `${title} ${artistEn}` });
-  if (titleAsian && artistEn) candidates.push({ type: 'search', q: `${titleAsian} ${artistEn}` });
+  if (mainLatin && mainTitleLatin) candidates.push({ type: 'search', q: `${mainLatin} ${mainTitleLatin}` });
+  if (mainLatin && title) candidates.push({ type: 'search', q: `${mainLatin} ${title}` });
+  if (titleAsian && mainLatin) candidates.push({ type: 'search', q: `${titleAsian} ${mainLatin}` });
+  if (titleAsian && mainAsian) candidates.push({ type: 'search', q: `${titleAsian} ${mainAsian}` });
   if (title && artist) candidates.push({ type: 'search', q: `${title} ${artist}` });
+  if (mainTitleLatin) candidates.push({ type: 'search', q: mainTitleLatin });
   if (titleAsian) candidates.push({ type: 'search', q: titleAsian });
   if (title) candidates.push({ type: 'search', q: title });
 
   return candidates;
 }
 
-function pickBestLyrics(items, targetDuration, targetArtist) {
+function pickBestLyrics(items, targetDuration, targetArtist, targetTitle = '', isMv = false) {
   if (!Array.isArray(items) || items.length === 0) return null;
   const valid = items.filter(x => x && (x.syncedLyrics || x.plainLyrics));
   if (valid.length === 0) return null;
 
-  const cleanTarget = (targetArtist || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+  const cleanTargetArtist = normalizeForCompare(targetArtist);
+  const cleanTargetTitle = normalizeForCompare(targetTitle);
 
   const scored = valid.map(item => {
     let score = 0;
-    const itemArtist = (item.artistName || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+    const itemArtist = normalizeForCompare(item.artistName);
+    const itemTrack = normalizeForCompare(item.trackName);
 
-    if (cleanTarget && itemArtist) {
-      if (itemArtist.includes(cleanTarget) || cleanTarget.includes(itemArtist)) {
+    if (cleanTargetArtist && itemArtist) {
+      if (itemArtist.includes(cleanTargetArtist) || cleanTargetArtist.includes(itemArtist)) {
         score += 80;
+      } else {
+        score -= 50;
       }
     }
 
-    if (item.syncedLyrics) score += 40;
+    if (cleanTargetTitle && itemTrack) {
+      if (itemTrack.includes(cleanTargetTitle) || cleanTargetTitle.includes(itemTrack)) {
+        score += 100;
+      } else {
+        score -= 120;
+      }
+    }
+
+    if (item.syncedLyrics) score += 50;
     if (!item.instrumental) score += 20;
 
     if (targetDuration && targetDuration > 0 && item.duration) {
       const diff = Math.abs(item.duration - targetDuration);
-      if (diff <= 3) score += 30;
-      else if (diff <= 8) score += 15;
-      else if (diff <= 20) score += 5;
+      if (diff <= 2) {
+        score += 80;
+      } else if (diff <= 4) {
+        score += 40;
+      } else if (diff <= 8) {
+        score += 15;
+      } else if (isMv && item.duration < targetDuration && (targetDuration - item.duration) <= 90) {
+        score += 45;
+      } else if (!isMv && diff > 12) {
+        score -= 80;
+      }
     }
 
     return { item, score };
   });
 
   scored.sort((a, b) => b.score - a.score);
-  return scored[0]?.item || valid[0];
+  const best = scored[0];
+  if (!best || best.score < 30) {
+    return null;
+  }
+  if (!isMv && targetDuration > 0 && best.item?.duration && Math.abs(best.item.duration - targetDuration) > 12) {
+    return null;
+  }
+  return best.item;
+}
+
+async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv) {
+  const queries = [
+    artistLatin && title ? `${artistLatin} ${title}` : null,
+    artistHangul && nativeTitle ? `${artistHangul} ${nativeTitle}` : null,
+    artistHangul && title ? `${artistHangul} ${title}` : null,
+    nativeTitle && artist ? `${artist} ${nativeTitle}` : null,
+    titleLatin && artistLatin ? `${artistLatin} ${titleLatin}` : null,
+    nativeTitle ? nativeTitle : null,
+    `${artist} ${title}`,
+    title
+  ].filter(Boolean);
+
+  for (const q of queries) {
+    try {
+      const neSearchUrl = `https://music.163.com/api/search/get?s=${encodeURIComponent(q)}&type=1&limit=8`;
+      const neRes = await axios.get(neSearchUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        timeout: 3500
+      });
+      const songs = neRes.data?.result?.songs || [];
+      if (!songs.length) continue;
+
+      const scored = songs.map(song => {
+        let score = 0;
+        const durSec = Math.round((song.duration || 0) / 1000);
+        const name = (song.name || '').toLowerCase();
+        const artistName = (song.artists?.[0]?.name || '').toLowerCase();
+        const cleanTargetArtist = (artist || '').toLowerCase();
+
+        if (/cover|翻唱|伴奏|instrumental|dj版|karaoke/i.test(name)) score -= 80;
+        if (/remix|热爱版|改编/i.test(name) && !/remix|热爱版|改编/i.test(title)) score -= 50;
+        if (/live|现场|演唱会/i.test(name) && !/live/i.test(title)) score -= 30;
+
+        const normSinger = normalizeForCompare(artistName);
+        const normTarget = normalizeForCompare(artist);
+        const normLatin = normalizeForCompare(artistLatin);
+        const normHangul = normalizeForCompare(artistHangul);
+        const isArtistMatch = Boolean(
+          (normSinger && normTarget && (normSinger.includes(normTarget) || normTarget.includes(normSinger))) ||
+          (normSinger && normLatin && (normSinger.includes(normLatin) || normLatin.includes(normSinger))) ||
+          (normSinger && normHangul && (normSinger.includes(normHangul) || normHangul.includes(normSinger))) ||
+          (normSinger && normLatin && normLatin.replace(/^g/, '') && normSinger.includes(normLatin.replace(/^g/, '')))
+        );
+
+        if (isArtistMatch) {
+          score += 70;
+        } else if (cleanTargetArtist && !isArtistMatch) {
+          score -= 150;
+        }
+
+        const normSongName = normalizeForCompare(name);
+        const normTargetTitle = normalizeForCompare(title);
+        const normTitleLatin = normalizeForCompare(titleLatin);
+        const normNativeTitle = normalizeForCompare(nativeTitle);
+
+        const isTitleMatch = Boolean(
+          (normSongName && normTargetTitle && (normSongName.includes(normTargetTitle) || normTargetTitle.includes(normSongName))) ||
+          (normSongName && normTitleLatin && (normSongName.includes(normTitleLatin) || normTitleLatin.includes(normSongName))) ||
+          (normSongName && normNativeTitle && (normSongName.includes(normNativeTitle) || normNativeTitle.includes(normSongName)))
+        );
+
+        if (isTitleMatch) {
+          score += 100;
+        } else {
+          score -= 150;
+        }
+
+        if (targetDuration > 0 && durSec > 0) {
+          const diff = Math.abs(durSec - targetDuration);
+          if (diff <= 2) score += 60;
+          else if (diff <= 4) score += 35;
+          else if (diff <= 8) score += 15;
+          else if (isMv && durSec < targetDuration && (targetDuration - durSec) <= 90) score += 45;
+          else if (!isMv && diff > 15) score -= 40;
+        }
+
+        return { song, durSec, score };
+      });
+
+      scored.sort((a, b) => b.score - a.score);
+      const best = scored[0];
+      if (best && best.song?.id && best.score >= 30) {
+        const neLyrUrl = `https://music.163.com/api/song/lyric?os=pc&id=${best.song.id}&lv=-1&kv=-1&tv=-1`;
+        const neLyrRes = await axios.get(neLyrUrl, { timeout: 3500 });
+        const rawLrc = neLyrRes.data?.lrc?.lyric;
+        if (rawLrc && typeof rawLrc === 'string' && rawLrc.includes('[') && !/暂无歌词|纯音乐|没有填词/i.test(rawLrc)) {
+          return {
+            id: `ne_${best.song.id}`,
+            sourceName: 'NetEase Music',
+            trackName: best.song.name || title,
+            artistName: best.song.artists?.[0]?.name || artistLatin || artist,
+            duration: best.durSec,
+            syncedLyrics: rawLrc
+          };
+        }
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv) {
+  const queries = [
+    artistLatin && title ? `${artistLatin} ${title}` : null,
+    artistHangul && nativeTitle ? `${artistHangul} ${nativeTitle}` : null,
+    artistHangul && title ? `${artistHangul} ${title}` : null,
+    nativeTitle && artist ? `${artist} ${nativeTitle}` : null,
+    titleLatin && artistLatin ? `${artistLatin} ${titleLatin}` : null,
+    nativeTitle ? nativeTitle : null,
+    `${artist} ${title}`,
+    title
+  ].filter(Boolean);
+
+  for (const q of queries) {
+    try {
+      const kgSearchUrl = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(q)}&page=1&pagesize=8`;
+      const kgRes = await axios.get(kgSearchUrl, { timeout: 3500 });
+      const songs = kgRes.data?.data?.info || [];
+      if (!songs.length) continue;
+
+      const scoredSongs = songs.map(s => {
+        let score = 0;
+        const dur = parseInt(s.duration, 10) || 0;
+        const sName = (s.songname || '').toLowerCase();
+        const sSinger = (s.singername || '').toLowerCase();
+        const cleanArtist = (artist || '').toLowerCase();
+
+        if (/cover|翻唱|伴奏|instrumental|dj版|karaoke/i.test(sName)) score -= 80;
+        if (/remix/i.test(sName) && !/remix/i.test(title)) score -= 50;
+        if (/live|现场|演唱会/i.test(sName) && !/live/i.test(title)) score -= 30;
+
+        const normSinger = normalizeForCompare(sSinger);
+        const normTarget = normalizeForCompare(artist);
+        const normLatin = normalizeForCompare(artistLatin);
+        const normHangul = normalizeForCompare(artistHangul);
+        const isArtistMatch = Boolean(
+          (normSinger && normTarget && (normSinger.includes(normTarget) || normTarget.includes(normSinger))) ||
+          (normSinger && normLatin && (normSinger.includes(normLatin) || normLatin.includes(normSinger))) ||
+          (normSinger && normHangul && (normSinger.includes(normHangul) || normHangul.includes(normSinger))) ||
+          (normSinger && normLatin && normLatin.replace(/^g/, '') && normSinger.includes(normLatin.replace(/^g/, '')))
+        );
+
+        if (isArtistMatch) {
+          score += 70;
+        } else if (cleanArtist && !isArtistMatch) {
+          score -= 150; // Heavy penalty: never accept a song by a different artist!
+        }
+
+        const normSongName = normalizeForCompare(sName);
+        const normTargetTitle = normalizeForCompare(title);
+        const normTitleLatin = normalizeForCompare(titleLatin);
+        const normNativeTitle = normalizeForCompare(nativeTitle);
+
+        const isTitleMatch = Boolean(
+          (normSongName && normTargetTitle && (normSongName.includes(normTargetTitle) || normTargetTitle.includes(normSongName))) ||
+          (normSongName && normTitleLatin && (normSongName.includes(normTitleLatin) || normTitleLatin.includes(normSongName))) ||
+          (normSongName && normNativeTitle && (normSongName.includes(normNativeTitle) || normNativeTitle.includes(normSongName)))
+        );
+
+        if (isTitleMatch) {
+          score += 100;
+        } else {
+          score -= 150;
+        }
+
+        if (targetDuration > 0 && dur > 0) {
+          const diff = Math.abs(dur - targetDuration);
+          if (diff <= 2) score += 60;
+          else if (diff <= 4) score += 35;
+          else if (diff <= 8) score += 15;
+          else if (isMv && dur < targetDuration && (targetDuration - dur) <= 90) score += 45;
+          else if (!isMv && diff > 15) score -= 40;
+        }
+
+        return { song: s, score };
+      });
+
+      scoredSongs.sort((a, b) => b.score - a.score);
+
+      for (const { song, score } of scoredSongs.slice(0, 3)) {
+        if (!song.hash || score < 35) continue;
+        const candUrl = `http://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword=&duration=&hash=${song.hash}`;
+        const candRes = await axios.get(candUrl, { timeout: 3500 });
+        const cands = candRes.data?.candidates || [];
+        if (!cands.length) continue;
+
+        cands.sort((a, b) => {
+          const durA = Math.round((a.duration || 0) / 1000);
+          const durB = Math.round((b.duration || 0) / 1000);
+          const diffA = targetDuration > 0 && durA > 0 ? Math.abs(durA - targetDuration) : 0;
+          const diffB = targetDuration > 0 && durB > 0 ? Math.abs(durB - targetDuration) : 0;
+          const scoreA = (a.score || 0) - diffA * 5;
+          const scoreB = (b.score || 0) - diffB * 5;
+          return scoreB - scoreA;
+        });
+
+        const bestCand = cands[0];
+        const dlUrl = `http://krcs.kugou.com/download?ver=1&client=mobi&id=${bestCand.id}&accesskey=${bestCand.accesskey}&fmt=lrc&charset=utf8`;
+        const dlRes = await axios.get(dlUrl, { timeout: 3500 });
+        if (dlRes.data?.content) {
+          const decodedLrc = Buffer.from(dlRes.data.content, 'base64').toString('utf8');
+          if (decodedLrc.includes('[')) {
+            return {
+              id: `kg_${bestCand.id}`,
+              sourceName: 'Kugou Music',
+              trackName: song.songname || title,
+              artistName: song.singername || artistLatin || artist,
+              duration: song.duration,
+              adjustOffsetMs: bestCand.adjust || 0,
+              syncedLyrics: decodedLrc
+            };
+          }
+        }
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv) {
+  const queries = [
+    artistLatin && title ? `${artistLatin} ${title}` : null,
+    artistHangul && nativeTitle ? `${artistHangul} ${nativeTitle}` : null,
+    artistHangul && title ? `${artistHangul} ${title}` : null,
+    nativeTitle && artist ? `${artist} ${nativeTitle}` : null,
+    titleLatin && artistLatin ? `${artistLatin} ${titleLatin}` : null,
+    nativeTitle ? nativeTitle : null,
+    `${artist} ${title}`,
+    title
+  ].filter(Boolean);
+
+  for (const q of queries) {
+    try {
+      const qqSearchUrl = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=8&w=${encodeURIComponent(q)}&format=json`;
+      const qqRes = await axios.get(qqSearchUrl, {
+        headers: { 'Referer': 'https://y.qq.com', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        timeout: 3500
+      });
+      const songList = qqRes.data?.data?.song?.list || [];
+      if (!songList.length) continue;
+
+      const scored = songList.map(s => {
+        let score = 0;
+        const dur = s.interval || 0;
+        const sName = (s.songname || '').toLowerCase();
+        const sSinger = (s.singer?.map(si => si.name).join(' ') || '').toLowerCase();
+        const cleanArtist = (artist || '').toLowerCase();
+
+        if (/cover|翻唱|伴奏|instrumental|dj版|karaoke/i.test(sName)) score -= 80;
+        if (/remix/i.test(sName) && !/remix/i.test(title)) score -= 50;
+        if (/live|现场|演唱会/i.test(sName) && !/live/i.test(title)) score -= 30;
+
+        const normSinger = normalizeForCompare(sSinger);
+        const normTarget = normalizeForCompare(artist);
+        const normLatin = normalizeForCompare(artistLatin);
+        const normHangul = normalizeForCompare(artistHangul);
+        const isArtistMatch = Boolean(
+          (normSinger && normTarget && (normSinger.includes(normTarget) || normTarget.includes(normSinger))) ||
+          (normSinger && normLatin && (normSinger.includes(normLatin) || normLatin.includes(normSinger))) ||
+          (normSinger && normHangul && (normSinger.includes(normHangul) || normHangul.includes(normSinger))) ||
+          (normSinger && normLatin && normLatin.replace(/^g/, '') && normSinger.includes(normLatin.replace(/^g/, '')))
+        );
+
+        if (isArtistMatch) {
+          score += 70;
+        } else if (cleanArtist && !isArtistMatch) {
+          score -= 150; // Heavy penalty: never accept a song by a different artist!
+        }
+
+        const normSongName = normalizeForCompare(sName);
+        const normTargetTitle = normalizeForCompare(title);
+        const normTitleLatin = normalizeForCompare(titleLatin);
+        const normNativeTitle = normalizeForCompare(nativeTitle);
+
+        const isTitleMatch = Boolean(
+          (normSongName && normTargetTitle && (normSongName.includes(normTargetTitle) || normTargetTitle.includes(normSongName))) ||
+          (normSongName && normTitleLatin && (normSongName.includes(normTitleLatin) || normTitleLatin.includes(normSongName))) ||
+          (normSongName && normNativeTitle && (normSongName.includes(normNativeTitle) || normNativeTitle.includes(normSongName)))
+        );
+
+        if (isTitleMatch) {
+          score += 100;
+        } else {
+          score -= 150;
+        }
+
+        if (targetDuration > 0 && dur > 0) {
+          const diff = Math.abs(dur - targetDuration);
+          if (diff <= 2) score += 60;
+          else if (diff <= 4) score += 35;
+          else if (diff <= 8) score += 15;
+          else if (isMv && dur < targetDuration && (targetDuration - dur) <= 90) score += 45;
+          else if (!isMv && diff > 15) score -= 40;
+        }
+
+        return { song: s, score };
+      });
+
+      scored.sort((a, b) => b.score - a.score);
+      const best = scored[0];
+      if (best && best.song?.songmid && best.score >= 35) {
+        const lyrUrl = `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${best.song.songmid}&format=json&nobase64=1`;
+        const lyrRes = await axios.get(lyrUrl, {
+          headers: { 'Referer': 'https://y.qq.com', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+          timeout: 3500
+        });
+        let rawLrc = lyrRes.data?.lyric;
+        if (rawLrc && typeof rawLrc === 'string' && rawLrc.includes('[')) {
+          rawLrc = rawLrc
+            .replace(/&apos;/g, "'")
+            .replace(/&quot;/g, '"')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>');
+
+          return {
+            id: `qq_${best.song.songmid}`,
+            sourceName: 'QQ Music',
+            trackName: best.song.songname || title,
+            artistName: best.song.singer?.map(si => si.name).join(' / ') || artistLatin || artist,
+            duration: best.song.interval || targetDuration,
+            syncedLyrics: rawLrc
+          };
+        }
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+function parseTTMLToLyrics(ttmlString) {
+  if (!ttmlString || typeof ttmlString !== 'string') return null;
+  const pRegex = /<p\s+[^>]*begin="([^"]+)"[^>]*>([\s\S]*?)<\/p>/gi;
+  const items = [];
+  let match;
+
+  while ((match = pRegex.exec(ttmlString)) !== null) {
+    const beginStr = match[1];
+    let time = 0;
+    if (beginStr.includes(':')) {
+      const parts = beginStr.split(':');
+      if (parts.length === 3) {
+        time = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+      } else if (parts.length === 2) {
+        time = parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+      }
+    } else {
+      time = parseFloat(beginStr) || 0;
+    }
+
+    const innerContent = match[2];
+    let text = innerContent.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    if (text) {
+      text = text
+        .replace(/&apos;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#39;/g, "'");
+
+      items.push({
+        time: parseFloat(time.toFixed(2)),
+        text
+      });
+    }
+  }
+  return items.length > 0 ? items : null;
+}
+
+async function searchBetterLyrics(title, artist, targetDuration, videoId, artistLatin, artistHangul, titleLatin, isMv) {
+  const cleanTitle = (title || '').replace(/['"‘’“”]/g, '').trim();
+  const cleanArtist = (artist || '').replace(/['"‘’“”]/g, '').trim();
+
+  const queryPairs = [];
+  if (artistLatin) {
+    queryPairs.push({ s: cleanTitle, a: artistLatin });
+    if (titleLatin && titleLatin !== cleanTitle) {
+      queryPairs.push({ s: titleLatin, a: artistLatin });
+    }
+  }
+  if (artistHangul && artistHangul !== artistLatin) {
+    queryPairs.push({ s: cleanTitle, a: artistHangul });
+  }
+  if (cleanArtist && cleanArtist !== artistLatin && cleanArtist !== artistHangul) {
+    queryPairs.push({ s: cleanTitle, a: cleanArtist });
+    const primaryArtist = cleanArtist.split(/[&,xX/]| feat\.? | ft\.? /i)[0].trim();
+    if (primaryArtist && primaryArtist !== cleanArtist) {
+      queryPairs.push({ s: cleanTitle, a: primaryArtist });
+    }
+  }
+  queryPairs.push({ s: cleanTitle });
+
+  for (const q of queryPairs) {
+    try {
+      const params = {
+        s: q.s,
+        ...(q.a ? { a: q.a } : {}),
+        ...(videoId ? { videoId } : {})
+      };
+
+      // In MVs, targetDuration is inflated by cinematic intros; do not pass d param so BetterLyrics doesn't 404
+      if (!isMv && targetDuration > 0) {
+        params.d = Math.round(targetDuration);
+      }
+
+      const res = await axios.get('https://api.betterlyrics.org/getLyrics', {
+        params,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+          'Referer': 'https://music.youtube.com'
+        },
+        timeout: 3500
+      });
+
+      if (res.data && res.data.ttml) {
+        const parsedItems = parseTTMLToLyrics(res.data.ttml);
+        if (parsedItems && parsedItems.length > 0) {
+          const syncedLrc = parsedItems.map(item => {
+            const m = Math.floor(item.time / 60);
+            const s = (item.time % 60).toFixed(2);
+            return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${item.text}`;
+          }).join('\n');
+
+          // When we sent `d`, BetterLyrics only answers for a track of that exact length.
+          // Otherwise (MVs) we only have an estimate based on the last lyric line.
+          const lastItem = parsedItems[parsedItems.length - 1];
+          const durationIsExact = Boolean(params.d);
+          const studioDur = durationIsExact ? params.d : (lastItem ? Math.round(lastItem.time + 3) : targetDuration);
+
+          return {
+            id: `bl_${videoId || Date.now()}`,
+            sourceName: 'Better Lyrics',
+            trackName: title,
+            artistName: artistLatin || artist,
+            duration: studioDur,
+            durationIsEstimate: !durationIsExact,
+            syncedLyrics: syncedLrc
+          };
+        }
+      }
+    } catch (e) {
+      if (e.response?.status === 401) {
+        // Uncached queries require an API key; avoid retrying other variations to BetterLyrics
+        break;
+      }
+    }
+  }
+  return null;
+}
+
+// Master dictionary of verified high-precision MV Intro offsets (in seconds)
+// 0 = Music starts immediately at 0:00 (any extra footage is outro/challenge at the end)
+// >0 = Exact seconds of cinematic drama/intro prologue before the music beat drops
+const KNOWN_MV_OFFSETS = {
+  // NewJeans
+  'ArmDp-zijuc': 0,   // Super Shy (starts 0:00, outro challenge at 1:44)
+  'jOTfBlKSQYY': 0,   // ETA (starts 0:00, FaceTime outro at 2:32)
+  'js1CtxSY38I': 0,   // Hype Boy (starts 0:00)
+  '_ZAgIHmHLdc': 38,  // OMG (hospital monologue intro)
+  'pSUydWEqKwE': 40,  // Ditto Side A (camcorder school intro)
+  'V37TaRdVUQY': 40,  // Ditto Side B
+  'legxOmunZZ8': 25,  // Cool With You
+  '11cta61Wi0g': 0,   // How Sweet (starts 0:00)
+
+  // ILLIT
+  'Vk5-c_v4gMU': 28,  // Magnetic (bedroom house intro)
+  '9fZxM2lJ3gA': 0,   // Cherish (My Love)
+
+  // (G)I-DLE
+  'rTKqSmX9XhQ': 11,  // Klaxon (desert convertible car stalled)
+  'oxZzG_vyMRU': 14,  // Queencard (mirror / plastic surgery intro)
+  'fCO7f0SmrDc': 12,  // Nxde (black & white film reel intro)
+  'Jh4QBu445Vg': 10,  // TOMBOY (car crash intro)
+  'b89Un3Q0wU4': 0,   // Super Lady (starts 0:00)
+
+  // aespa
+  'phuiiNCxRMg': 14,  // Supernova (falling from sky into car)
+  'D8VEhcPeSlc': 16,  // Drama (alleyway combat intro)
+  'm4_9wy44cG4': 18,  // Armageddon (crater apocalypse intro)
+  'wpGvA1v5gY8': 12,  // Spicy (mansion intro)
+  '4TWR90KJl84': 0,   // Next Level (starts 0:00)
+  'ZeerrnuLi5E': 0,   // Black Mamba (starts 0:00)
+
+  // Jung Kook & BTS
+  'QU9c0053UAU': 43,  // Jung Kook - Seven (restaurant fight drama)
+  'UNo0FET9714': 0,   // Jung Kook - 3D (starts 0:00)
+  'gdZLi9oWNZg': 0,   // BTS - Dynamite (starts 0:00)
+  'WMweEpGlu_U': 0,   // BTS - Butter (starts 0:00)
+  'XsX3ATc3FbA': 7,   // BTS - Boy With Luv (ticket booth intro)
+  'gwMa6gpoE9I': 0,   // BTS - Life Goes On
+  '7C2z4GqqS5E': 0,   // BTS - Fake Love
+  'MBdVXkSdhwU': 0,   // BTS - DNA
+
+  // LE SSERAFIM
+  'bNKXxwOQ48Y': 20,  // EASY (cathedral walk intro)
+  'hLvWy2b877A': 28,  // Perfect Night (Overwatch animation intro)
+  'pyf8cbqyfPs': 14,  // ANTIFRAGILE (meteorite falling intro)
+  '4vbDFU3CTGQ': 0,   // FEARLESS (starts 0:00)
+  'UBURTj20HXI': 0,   // CRAZY (starts 0:00)
+  'dZs_cLHfn30': 0,   // UNFORGIVEN
+
+  // BLACKPINK
+  'gQlMMD8auMs': 0,   // Pink Venom (starts 0:00, outro challenge at 1:56)
+  'POe9SOEKotk': 0,   // Shut Down (starts 0:00)
+  'ioNng23DkIM': 0,   // How You Like That (starts 0:00)
+  '2S24XxPR5gI': 0,   // Kill This Love (starts 0:00)
+  'IHNzOHi8sJQ': 0,   // DDU-DU DDU-DU (starts 0:00)
+  'bwmSjveL3Lc': 0,   // BOOMBAYAH (starts 0:00)
+  'Amq-qlqbjYA': 0,   // AS IF IT'S YOUR LAST (starts 0:00)
+  'dISNgvVpWlo': 0,   // Lovesick Girls (starts 0:00)
+
+  // IVE
+  '6ZUIwj3FgUY': 0,   // I AM (starts 0:00)
+  'Y8JFxS1HlDo': 0,   // LOVE DIVE (starts 0:00)
+  'F0B7HDiY-10': 0,   // After LIKE (starts 0:00)
+  '07Z899GwCcY': 0,   // HEYA (starts 0:00)
+  '--FmExEAsM8': 0,   // ELEVEN (starts 0:00)
+  'pG6iaOMV46I': 0,   // Baddie (starts 0:00)
+
+  // TWICE
+  'aK2C9J74P8k': 0,   // Look At Me
+  'i0p1bmr0EmE': 0,   // What is Love?
+  '3ymwOvzhwHs': 0,   // Feel Special
+  'V2hlQkVJZhE': 0,   // Talk that Talk
+  'ePpPVE-GGJw': 0,   // The Feels
+  '0rtV5esQT6I': 0,   // I CAN'T STOP ME
+  'mAKsZ26SabQ': 0,   // YES or YES
+  'rRzxEiBLQCA': 0,   // Heart Shaker
+  'c7rCyll5AeY': 0,   // CHEER UP
+
+  // BABYMONSTER
+  '2wA_b6bbJNo': 0,   // SHEESH (starts 0:00)
+  'olDWZk9B6aU': 0,   // BATTER UP (starts 0:00)
+  'bUq6Q8_N2lY': 0,   // FOREVER (starts 0:00)
+
+  // Stray Kids
+  'TQTlCHxyuu8': 0,   // God's Menu (starts 0:00)
+  'JsOOhs04Hg0': 15,  // S-Class (submarine intro)
+  '0P0aQrm2LSQ': 30,  // Chk Chk Boom (Ryan Reynolds intro)
+  'X-uJtV8ScYk': 0,   // MANIAC (starts 0:00)
+  'easwzRPoy54': 0,   // Back Door (starts 0:00)
+  'p42yvO_p1wY': 0,   // CASE 143 (starts 0:00)
+
+  // SEVENTEEN
+  '-_FiQ6h-xTk': 0,   // Super (starts 0:00)
+  'Il-an3K9pjg': 12,  // Maestro (AI keyboard intro)
+  'gRnuFC4Ualw': 0,   // HOT (starts 0:00)
+  'CyzEtbG-sxY': 0    // Rock with you
+};
+
+// High-precision MV Intro Offset Resolver
+const mvIntroOffsetCache = new Map();
+
+async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
+  if (!videoId || videoDur <= 0 || studioDur <= 0) return 0;
+  const diff = videoDur - studioDur;
+  if (diff < 3) return 0;
+
+  // 1. Instant 0ms lookup in verified K-pop MV table
+  if (KNOWN_MV_OFFSETS[videoId] !== undefined) {
+    return KNOWN_MV_OFFSETS[videoId];
+  }
+
+  if (mvIntroOffsetCache.has(videoId)) return mvIntroOffsetCache.get(videoId);
+
+  let offset = 0;
+  try {
+    const infoPromise = playdl.video_info(`https://www.youtube.com/watch?v=${videoId}`);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('playdl timeout')), 1500));
+    const info = await Promise.race([infoPromise, timeoutPromise]);
+
+    const chapters = info?.video_details?.chapters || [];
+    if (chapters.length > 0) {
+      const firstChap = chapters[0];
+      const secondChap = chapters[1];
+
+      // If chapter 1 starts at 0s and chapter 2 is located near the end (outro / challenge):
+      // The music started at 0:00! Extra video footage is at the end.
+      if (firstChap.seconds === 0 && secondChap && secondChap.seconds >= studioDur * 0.4) {
+        offset = 0;
+      } else if (firstChap.seconds === 0 && secondChap && secondChap.seconds > 0 && secondChap.seconds < 90) {
+        // If chapter 1 is intro (0s) and chapter 2 is song start at e.g. 15s:
+        offset = secondChap.seconds;
+      }
+    } else {
+      const titleLower = (info?.video_details?.title || '').toLowerCase();
+      const descLower = (info?.video_details?.description || '').toLowerCase();
+      const isOutroChallenge = /challenge|shorts|outro|credits|dance\s*practice|performance/i.test(titleLower) ||
+                               /#.+challenge/i.test(descLower) ||
+                               /only on youtube shorts/i.test(descLower);
+
+      if (isOutroChallenge) {
+        offset = 0;
+      } else if (isMv && diff >= 4 && diff <= 60) {
+        // In standard cinematic K-pop MVs without chapters or challenge outro,
+        // the extra duration is the story intro prologue before the beat drops!
+        offset = diff;
+      }
+    }
+  } catch (e) {
+    if (isMv && diff >= 4 && diff <= 45) {
+      offset = diff;
+    }
+  }
+
+  mvIntroOffsetCache.set(videoId, offset);
+  if (mvIntroOffsetCache.size > 500) mvIntroOffsetCache.delete(mvIntroOffsetCache.keys().next().value);
+  return offset;
 }
 
 app.get('/api/lyrics', async (req, res) => {
   const rawTitle = req.query.title;
   const rawArtist = req.query.artist;
   const duration = parseInt(req.query.duration, 10) || 0;
+  const videoId = req.query.videoId || '';
 
   if (!rawTitle) {
     return res.status(400).json({ success: false, error: 'Judul lagu (title) diperlukan' });
   }
 
-  const { title, artist } = cleanLyricsTrackInfo(rawTitle, rawArtist);
-  const cacheKey = `${title.toLowerCase()}___${artist.toLowerCase()}`;
+  const { title, artist, artistLatin, artistHangul, nativeTitle, nativeArtist, titleLatin } = cleanLyricsTrackInfo(rawTitle, rawArtist);
+  const isMv = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video)\b|【mv】|\[mv\]/i.test(rawTitle || '');
+
+  const cacheKey = `${title.toLowerCase()}___${artist.toLowerCase()}___${duration}`;
 
   if (lyricsCache.has(cacheKey)) {
     const cached = lyricsCache.get(cacheKey);
@@ -1187,46 +2398,159 @@ app.get('/api/lyrics', async (req, res) => {
   const headers = { 'User-Agent': 'AuraSound/3.9 (https://github.com/aurasound)' };
 
   try {
-    let result = null;
-    const candidates = buildSearchCandidates(title, artist);
+    let syncedResult = null;
+    let plainResult = null;
 
-    for (const c of candidates) {
-      try {
-        if (c.type === 'get') {
+    const hasKana = /[\u3040-\u30ff]/.test(title) || /[\u3040-\u30ff]/.test(artist) || Boolean(nativeTitle && /[\u3040-\u30ff]/.test(nativeTitle)) || Boolean(nativeArtist && /[\u3040-\u30ff]/.test(nativeArtist));
+    const hasHangul = /[\uac00-\ud7af]/.test(title) || /[\uac00-\ud7af]/.test(artist) || Boolean(nativeTitle && /[\uac00-\ud7af]/.test(nativeTitle)) || Boolean(nativeArtist && /[\uac00-\ud7af]/.test(nativeArtist)) || Boolean(artistHangul);
+    const hasHanzi = /[\u4e00-\u9fff]/.test(title) || /[\u4e00-\u9fff]/.test(artist) || Boolean(nativeTitle && /[\u4e00-\u9fff]/.test(nativeTitle)) || Boolean(nativeArtist && /[\u4e00-\u9fff]/.test(nativeArtist));
+
+    const isJapanese = hasKana || (hasHanzi && !hasHangul && /yoasobi|ado\b|aimyon|kenshi\s*yonezu|yorushika|tuki\b|zutomayo|eve\b|vocaloid|hatsune\s*miku|hololive|lisa\b|king\s*gnu|radwimps|one\s*ok\s*rock|official\s*hige\s*dandism|vaundy|fujii\s*kaze/i.test(`${title} ${artist}`));
+    const isKorean = hasHangul || (!hasKana && /newjeans|bts|blackpink|aespa|twice|le\s*sserafim|stray\s*kids|ive|seventeen|itzy|nmixx|gidle|\(g\)i-dle|red\s*velvet|exo|iu\b|taeyeon|jungkook|illit|babymonster|riize|tws|boynextdoor|zerobaseone/i.test(`${title} ${artist}`));
+    const isChinese = !isJapanese && hasHanzi;
+
+    // Step 0: Better Lyrics Engine (Apple Music Syllable-Level TTML Master Catalog)
+    syncedResult = await searchBetterLyrics(title, artist, duration, videoId, artistLatin, artistHangul, titleLatin, isMv);
+
+    // Step 1: For Korean songs, try LRCLib exact match IMMEDIATELY (300ms hit for all top K-pop tracks!)
+    if (!syncedResult && isKorean) {
+      const exactCandidate = (artistLatin && (titleLatin || title)) ? { track: titleLatin || title, artist: artistLatin } : null;
+      if (exactCandidate) {
+        try {
           const getRes = await axios.get('https://lrclib.net/api/get', {
             params: {
-              track_name: c.track,
-              artist_name: c.artist,
-              ...(duration > 0 ? { duration } : {})
+              track_name: exactCandidate.track,
+              artist_name: exactCandidate.artist
             },
             headers,
-            timeout: 4000
+            timeout: 2500
           });
-          if (getRes.data && (getRes.data.syncedLyrics || getRes.data.plainLyrics)) {
-            result = getRes.data;
-            break;
+          if (getRes.data && getRes.data.syncedLyrics) {
+            syncedResult = { ...getRes.data, sourceName: 'LRCLib' };
           }
-        } else if (c.type === 'search') {
-          const searchRes = await axios.get('https://lrclib.net/api/search', {
-            params: { q: c.q },
-            headers,
-            timeout: 4000
-          });
-          const picked = pickBestLyrics(searchRes.data, duration, artist);
-          if (picked) {
-            result = picked;
-            break;
-          }
-        }
-      } catch (e) {
-        // Try next candidate
+        } catch (e) {}
       }
     }
 
+    // Step 2: Smart Multi-Catalog Search if not yet found
+    if (!syncedResult) {
+      if (isJapanese) {
+        // NetEase is the global #1 database for Japanese J-Pop & Anime synced lyrics
+        syncedResult = await searchNetEaseLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+        if (!syncedResult) {
+          syncedResult = await searchQQMusicLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+        }
+        if (!syncedResult) {
+          syncedResult = await searchKugouLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+        }
+      } else if (isChinese) {
+        // QQ Music is Tencent's master catalog for Chinese Mandopop & C-pop
+        syncedResult = await searchQQMusicLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+        if (!syncedResult) {
+          syncedResult = await searchKugouLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+        }
+        if (!syncedResult) {
+          syncedResult = await searchNetEaseLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+        }
+      } else if (isKorean) {
+        // QQ Music has the official licensed catalog for modern K-pop and rookie groups (Hearts2Hearts, etc.)
+        syncedResult = await searchQQMusicLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+        if (!syncedResult) {
+          syncedResult = await searchKugouLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+        }
+        if (!syncedResult) {
+          syncedResult = await searchNetEaseLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+        }
+      }
+    }
+
+    // Step C: Try LRCLib for Synced Lyrics (or fallback if Asian engines had no match)
+    if (!syncedResult) {
+      const candidates = buildSearchCandidates(title, artist, nativeTitle, nativeArtist, artistLatin, artistHangul, titleLatin);
+      for (const c of candidates) {
+        try {
+          if (c.type === 'get') {
+            const getRes = await axios.get('https://lrclib.net/api/get', {
+              params: {
+                track_name: c.track,
+                artist_name: c.artist
+              },
+              headers,
+              timeout: 4000
+            });
+            if (getRes.data) {
+              if (getRes.data.syncedLyrics) {
+                // Check if duration matches when known
+                if (!duration || !getRes.data.duration || Math.abs(getRes.data.duration - duration) <= 12 || (isMv && duration - getRes.data.duration <= 90)) {
+                  syncedResult = { ...getRes.data, sourceName: 'LRCLib' };
+                  break;
+                }
+              } else if (getRes.data.plainLyrics && !plainResult) {
+                plainResult = { ...getRes.data, sourceName: 'LRCLib' };
+              }
+            }
+          } else if (c.type === 'search') {
+            const searchRes = await axios.get('https://lrclib.net/api/search', {
+              params: { q: c.q },
+              headers,
+              timeout: 4000
+            });
+            if (Array.isArray(searchRes.data) && searchRes.data.length > 0) {
+              const picked = pickBestLyrics(searchRes.data, duration, artistLatin || artist, titleLatin || title, isMv);
+              if (picked) {
+                if (picked.syncedLyrics) {
+                  syncedResult = { ...picked, sourceName: 'LRCLib' };
+                  break;
+                } else if (picked.plainLyrics && !plainResult) {
+                  plainResult = { ...picked, sourceName: 'LRCLib' };
+                }
+              }
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Step D: If song didn't find synced lyrics in LRCLib, try external master engines!
+    if (!syncedResult) {
+      syncedResult = await searchQQMusicLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+      if (!syncedResult) {
+        syncedResult = await searchNetEaseLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+      }
+      if (!syncedResult) {
+        syncedResult = await searchKugouLyrics(title, artist, duration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
+      }
+    }
+
+    // Fallback: If still no Synced Lyrics anywhere, use plain text lyrics
+    const result = syncedResult || plainResult;
+
     let parsedLyrics = null;
     let detectedLang = null;
+    let autoOffsetSec = 0;
 
     if (result && result.syncedLyrics) {
+      // 1. Automatic Offset Detection from LRC Header: [offset:+/-ms]
+      const offsetMatch = result.syncedLyrics.match(/\[offset:\s*([+-]?\d+)\]/i);
+      if (offsetMatch) {
+        autoOffsetSec = (parseInt(offsetMatch[1], 10) || 0) / 1000;
+      }
+      if (result.adjustOffsetMs) {
+        autoOffsetSec += (result.adjustOffsetMs / 1000);
+      }
+
+      // 2. High-Precision MV Cinematic Intro Alignment:
+      // Uses YouTube chapters & video metadata to detect if the extra video footage
+      // is an intro scene (e.g. Supernova: 14s, Magnetic: 28s, Klaxon: 11s, Seven: 43s)
+      // or an outro challenge/credits at the end (e.g. Super Shy: 0s, Pink Venom: 0s),
+      // ensuring lyrics trigger with frame-accurate timing!
+      if (videoId && duration > 0 && result.duration > 0) {
+        const introOffset = await getMvIntroOffset(videoId, duration, result.duration, isMv);
+        if (introOffset > 0) {
+          autoOffsetSec -= introOffset;
+        }
+      }
+
       const lrcLines = result.syncedLyrics.split('\n');
       const items = [];
       const lrcRegex = /^\[(\d{2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/;
@@ -1235,8 +2559,11 @@ app.get('/api/lyrics', async (req, res) => {
         if (match) {
           const m = parseInt(match[1], 10);
           const s = parseFloat(match[2]);
-          const time = m * 60 + s;
-          const text = match[3].trim();
+          // Subtract positive offset (LRC standard) with 2-decimal precision
+          const time = Math.max(0, parseFloat((m * 60 + s - autoOffsetSec).toFixed(2)));
+          let text = match[3].trim();
+          // Remove inline Kugou/Karaoke syllable markers like (1844,84) and <...> tags
+          text = text.replace(/\(\d+,\d+\)/g, '').replace(/<[^>]+>/g, '').trim();
           if (text) {
             items.push({ time, text });
           }
@@ -1246,16 +2573,17 @@ app.get('/api/lyrics', async (req, res) => {
       // 1. Sort strictly by timestamp ascending so lyrics never jump out of order
       items.sort((a, b) => a.time - b.time);
 
-      // 2. Filter out early credit headers (< 3.5s) like "词：...", "曲：...", "Written by: ..."
-      const creditRegex = /^(?:词[：:]|曲[：:]|作词[：:]|作曲[：:]|编曲[：:]|制作[：:]|lrc[：:]|by[：:]|written by|produced by|arranger|lyrics by)/i;
-      const cleanItems = items.filter(it => !(it.time < 3.5 && creditRegex.test(it.text)));
+      // 2. Filter out early credit headers & producer/composer lines before vocal onset (up to 30s)
+      const titleHints = [title, titleLatin, nativeTitle, artistLatin, artistHangul, result.trackName].filter(Boolean);
+      const cleanItems = items.filter(it => !isCreditOrHeaderLine(it.text, it.time, titleHints));
       const finalItems = cleanItems.length > 0 ? cleanItems : items;
 
       if (finalItems.length > 0) {
         try {
-          const romanized = await lyricsRomanizer.romanizeLyricsList(finalItems);
-          parsedLyrics = romanized.lines;
-          detectedLang = romanized.detectedLang;
+          const romanizer = getLyricsRomanizer();
+          const processed = await romanizer.romanizeLyricsList(finalItems);
+          parsedLyrics = processed.lines;
+          detectedLang = processed.detectedLang;
         } catch (e) {
           console.warn('Romanizer sync error:', e.message);
           parsedLyrics = finalItems.map(it => ({ ...it, romaji: null, lang: null }));
@@ -1273,9 +2601,10 @@ app.get('/api/lyrics', async (req, res) => {
       }));
       if (items.length > 0) {
         try {
-          const romanized = await lyricsRomanizer.romanizeLyricsList(items);
-          parsedLyrics = romanized.lines;
-          detectedLang = romanized.detectedLang;
+          const romanizer = getLyricsRomanizer();
+          const processed = await romanizer.romanizeLyricsList(items);
+          parsedLyrics = processed.lines;
+          detectedLang = processed.detectedLang;
         } catch (e) {
           console.warn('Romanizer plain error:', e.message);
           parsedLyrics = items.map(it => ({ ...it, romaji: null, lang: null }));
@@ -1286,6 +2615,7 @@ app.get('/api/lyrics', async (req, res) => {
     const payload = result ? {
       found: true,
       id: result.id,
+      source: result.sourceName || 'LRCLib',
       title: result.trackName || title,
       artist: result.artistName || artist,
       album: result.albumName || '',
@@ -1295,6 +2625,7 @@ app.get('/api/lyrics', async (req, res) => {
       plainLyrics: result.plainLyrics || null,
       parsedLyrics: parsedLyrics || null,
       detectedLang: detectedLang || null,
+      autoOffset: autoOffsetSec,
       hasRomaji: Boolean(parsedLyrics && parsedLyrics.some(l => Boolean(l.romaji)))
     } : {
       found: false,
@@ -1317,8 +2648,8 @@ app.get('/api/lyrics', async (req, res) => {
 });
 
 // Start Server
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-  app.listen(PORT, '0.0.0.0', () => {
+if (!process.env.VERCEL) {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     const primaryIp = getPrimaryIp();
     console.log(`\n======================================================`);
     console.log(`🎵 APLIKASI MUSIK BERHASIL DIJALANKAN!`);
@@ -1326,6 +2657,16 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     console.log(`📱 Akses di HP     : http://${primaryIp}:${PORT}`);
     console.log(`======================================================\n`);
   });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`[Server] Port ${PORT} already in use, reusing existing server instance.`);
+    } else {
+      console.error('[Server] Listen error:', err);
+    }
+  });
 }
+
+app.cleanLyricsTrackInfo = cleanLyricsTrackInfo;
+app.getMvIntroOffset = getMvIntroOffset;
 
 module.exports = app;

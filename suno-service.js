@@ -2,8 +2,22 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = process.env.AURASOUND_DATA_DIR || (process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
-const CONFIG_FILE = process.env.AURASOUND_DATA_DIR ? path.join(process.env.AURASOUND_DATA_DIR, 'config.json') : (process.env.VERCEL ? path.join('/tmp', 'config.json') : path.join(__dirname, 'config.json'));
+function getUnifiedDataDir() {
+  if (process.env.AURASOUND_DATA_DIR && fs.existsSync(process.env.AURASOUND_DATA_DIR)) {
+    return process.env.AURASOUND_DATA_DIR;
+  }
+  if (process.env.APPDATA) {
+    const mainDir = path.join(process.env.APPDATA, 'AuraSound', 'data');
+    if (!fs.existsSync(mainDir)) {
+      try { fs.mkdirSync(mainDir, { recursive: true }); } catch (e) {}
+    }
+    return mainDir;
+  }
+  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT || process.env.NOW_REGION);
+  return (isServerless ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
+}
+const DATA_DIR = getUnifiedDataDir();
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const CREATIONS_FILE = path.join(DATA_DIR, 'suno-creations.json');
 
 // Ensure writable paths exist

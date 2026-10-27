@@ -12,6 +12,44 @@
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
   <link rel="stylesheet" href="/css/style.css?v=4.2.0">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    // Ultra-Fast Synchronous Pre-Hydration (0ms layout shift / no reset flash)
+    (function() {
+      try {
+        var user = (typeof window !== 'undefined' && window.__AURASOUND_SERVER_SESSION__) 
+          ? window.__AURASOUND_SERVER_SESSION__ 
+          : JSON.parse(localStorage.getItem('aurasound_google_user') || 'null');
+        var profile = JSON.parse(localStorage.getItem('aurasound_user_profile') || 'null');
+
+        if (user && user.email) {
+          try {
+            localStorage.setItem('aurasound_google_user', JSON.stringify(user));
+            localStorage.setItem('aurasound_login_dismissed', 'true');
+            if (user.tasteProfile) localStorage.setItem('aurasound_taste_completed', 'true');
+          } catch(e) {}
+
+          var activeName = user.name || (profile && profile.name) || user.email.split('@')[0];
+          var activeAvatar = user.avatar || (profile && profile.avatar) || '/images/avatar.jpg';
+
+          document.addEventListener('DOMContentLoaded', function() {
+            var btnText = document.getElementById('google-login-btn-text');
+            if (btnText) btnText.textContent = activeName;
+            var btn = document.getElementById('btn-google-login');
+            if (btn) {
+              btn.classList.add('google-logged-in');
+              btn.title = 'Akun Google: ' + user.email;
+            }
+            var badge = document.getElementById('google-verified-badge');
+            if (badge) badge.style.display = 'block';
+            var avatar = document.getElementById('top-user-avatar');
+            if (avatar && activeAvatar) avatar.src = activeAvatar;
+            var profBadge = document.querySelector('#btn-profile-badge img');
+            if (profBadge && activeAvatar) profBadge.src = activeAvatar;
+          });
+        }
+      } catch(e) {}
+    })();
+  </script>
 </head>
 <body>
 
@@ -171,7 +209,7 @@
           </button>
 
           <div class="ytm-profile-badge" id="btn-profile-badge" title="Profil Akun" onclick="window.app.openProfileModal()">
-            <img id="top-user-avatar" src="/images/avatar.jpg" alt="User Avatar" class="ytm-avatar-circle" onerror="this.src='/icons/icon.svg'">
+            <img id="top-user-avatar" src="/images/avatar.jpg" alt="User Avatar" class="ytm-avatar-circle" onerror="this.src='/images/avatar.jpg'">
             <div id="google-verified-badge" class="google-badge-dot" title="Akun Google Terhubung" style="display: none;"></div>
           </div>
         </div>
@@ -697,7 +735,7 @@
   <!-- Modal Google Account & Login -->
   <div id="modal-google-auth" class="modal-overlay">
     <div class="modal-card modal-google-card" style="max-width: 440px; text-align: center;">
-      <button class="modal-close-btn" onclick="document.getElementById('modal-google-auth').classList.remove('active')">✕</button>
+      <button class="modal-close-btn" onclick="window.app ? window.app.closeGoogleLoginModal() : document.getElementById('modal-google-auth').classList.remove('active')">✕</button>
       
       <div style="margin: 0 auto 12px; width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
         <svg viewBox="0 0 24 24" width="30" height="30">
@@ -741,6 +779,16 @@
 
       <!-- State B: Login Options -->
       <div id="google-login-options">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 14px; min-height: 44px;">
+          <div id="google-official-btn" style="display: flex; justify-content: center;"></div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px; margin: 12px 0 16px; color: #64748b; font-size: 0.76rem;">
+          <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.08);"></div>
+          <span>atau masuk manual dengan akun Gmail</span>
+          <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.08);"></div>
+        </div>
+
         <form id="form-google-quick-login" onsubmit="event.preventDefault(); window.app.submitQuickGoogleLogin();" style="text-align: left;">
           <div class="form-group" style="margin-bottom: 12px;">
             <label class="form-label" for="google-input-email" style="font-size: 0.78rem;">Email Google Anda (Gmail)</label>
@@ -1331,6 +1379,13 @@
           <span class="vis-toggle-label">Visualizer: ON</span>
         </button>
 
+        <!-- Studio Cinema Audio DSP Equalizer Quick Trigger Chip -->
+        <button class="cinema-dsp-chip" id="btn-cinema-open-dsp" title="Atur Mode & Preset Audio DSP Equalizer (Dolby Atmos, Nahimic, Bass)">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
+          <span class="cinema-dsp-dot"></span>
+          <span id="cinema-active-dsp-name">Dolby Atmos</span>
+        </button>
+
         <button class="cinema-close-btn" id="btn-close-cinema" title="Tutup Studio Cinema (ESC)">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -1383,10 +1438,12 @@
               <span>Sing-Along & Dynamic Lyrics</span>
             </div>
             <div class="cinema-lyrics-header-right">
+              <!-- Single Romaji Toggle Chip (Better Lyrics Style) -->
               <button id="btn-toggle-romaji" class="cinema-romaji-chip active" style="display: none;" title="Tampilkan / Sembunyikan Fonetik Romaji/Pinyin">
-                <span class="romaji-chip-icon">🔤</span>
+                <span class="romaji-chip-icon">文A</span>
                 <span class="romaji-chip-label">Romaji: ON</span>
               </button>
+
               <span id="cinema-lyrics-badge" class="cinema-lyrics-badge" style="display: none;">KARAOKE SYNC</span>
             </div>
           </div>
@@ -1394,6 +1451,12 @@
             <div class="lyrics-loading-note">Pilih lagu untuk memuat lirik...</div>
           </div>
           <div class="cinema-lyrics-hint-bar">
+            <!-- Lead-in countdown dots -->
+            <div id="cinema-lead-in-dots" class="cinema-lead-in-dots" style="display: none;" title="Hitung mundur vokal masuk">
+              <span class="dot d1"></span>
+              <span class="dot d2"></span>
+              <span class="dot d3"></span>
+            </div>
             <span class="lyrics-hint-text">💡 Klik baris untuk lompat • Sinkron otomatis dengan tempo lagu</span>
           </div>
         </div>
@@ -1430,6 +1493,116 @@
           <button id="cinema-btn-fav" class="cinema-ctrl-btn" title="Suka Lagu Ini">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
           </button>
+          <button id="cinema-btn-eq" class="cinema-ctrl-btn" title="Audio DSP Equalizer (Dolby Atmos, Nahimic, Bass)">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
+            <span class="cinema-ctrl-dot"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Studio Cinema Audio DSP Equalizer Floating Drawer -->
+    <div id="cinema-eq-drawer" class="cinema-eq-drawer">
+      <div class="cinema-eq-header">
+        <div class="cinema-eq-title-group">
+          <div class="cinema-eq-title">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--primary)" stroke-width="2.2"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
+            <span>Studio Cinema DSP Equalizer</span>
+          </div>
+          <div class="cinema-eq-status-row">
+            <span class="cinema-eq-badge">Dolby Atmos & Nahimic 3D Engine</span>
+            <span class="cinema-limiter-badge"><span class="limiter-dot"></span> Studio Limiter: Aktif</span>
+          </div>
+        </div>
+        <button id="btn-close-cinema-eq" class="cinema-eq-close-btn" title="Tutup Equalizer">✕</button>
+      </div>
+
+      <!-- Real-Time Frequency Response Curve Canvas -->
+      <div class="cinema-eq-curve-wrap">
+        <div class="cinema-eq-curve-header">
+          <span class="cinema-eq-curve-title">Respon Frekuensi Real-Time</span>
+          <span class="cinema-eq-curve-range">32-bit Floating DSP</span>
+        </div>
+        <canvas id="cinema-eq-curve-canvas" width="430" height="75"></canvas>
+        <div class="cinema-eq-curve-legend">
+          <span>32Hz</span>
+          <span>125Hz</span>
+          <span>1kHz</span>
+          <span>4kHz</span>
+          <span>16kHz</span>
+        </div>
+      </div>
+
+      <!-- Preset Selector Chips -->
+      <div class="cinema-eq-presets">
+        <button class="cinema-preset-btn active" data-preset="dolby">🎧 Dolby Atmos 3D</button>
+        <button class="cinema-preset-btn" data-preset="nahimic">⚡ Nahimic Clarity</button>
+        <button class="cinema-preset-btn" data-preset="bassHeavy">🔊 Bass Boost Extreme</button>
+        <button class="cinema-preset-btn" data-preset="vocal">🎤 Vocal Presence</button>
+        <button class="cinema-preset-btn" data-preset="electronic">🎛️ EDM / Synth</button>
+        <button class="cinema-preset-btn" data-preset="flat">🎵 Flat / Natural</button>
+      </div>
+
+      <!-- Dual Acoustic Enhancers (Sub-Bass + 3D Spatial Soundstage) -->
+      <div class="cinema-eq-dual-controls">
+        <div class="cinema-bass-boost-box">
+          <div class="cinema-bass-header">
+            <span>Sub-Bass Booster</span>
+            <span id="cinema-bass-boost-val" style="color: var(--primary);">+4 dB</span>
+          </div>
+          <input type="range" id="cinema-bass-boost-slider" class="slider" min="0" max="16" value="4" step="1">
+        </div>
+
+        <div class="cinema-bass-boost-box">
+          <div class="cinema-bass-header">
+            <span>3D Spatial Soundstage</span>
+            <span id="cinema-spatial-width-val" style="color: #06b6d4;">145% (3D Surround)</span>
+          </div>
+          <input type="range" id="cinema-spatial-width-slider" class="slider" min="0" max="200" value="145" step="5">
+        </div>
+      </div>
+
+      <!-- 10-Band Graphic Equalizer Sliders -->
+      <div class="cinema-eq-bars-container">
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-0" min="-12" max="12" step="0.5" value="5">
+          <span class="eq-freq-label">32Hz</span>
+        </div>
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-1" min="-12" max="12" step="0.5" value="6">
+          <span class="eq-freq-label">64Hz</span>
+        </div>
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-2" min="-12" max="12" step="0.5" value="2">
+          <span class="eq-freq-label">125Hz</span>
+        </div>
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-3" min="-12" max="12" step="0.5" value="-1">
+          <span class="eq-freq-label">250Hz</span>
+        </div>
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-4" min="-12" max="12" step="0.5" value="-2">
+          <span class="eq-freq-label">500Hz</span>
+        </div>
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-5" min="-12" max="12" step="0.5" value="0">
+          <span class="eq-freq-label">1kHz</span>
+        </div>
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-6" min="-12" max="12" step="0.5" value="2">
+          <span class="eq-freq-label">2kHz</span>
+        </div>
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-7" min="-12" max="12" step="0.5" value="4">
+          <span class="eq-freq-label">4kHz</span>
+        </div>
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-8" min="-12" max="12" step="0.5" value="6">
+          <span class="eq-freq-label">8kHz</span>
+        </div>
+        <div class="cinema-eq-column">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-9" min="-12" max="12" step="0.5" value="5">
+          <span class="eq-freq-label">16kHz</span>
         </div>
       </div>
     </div>

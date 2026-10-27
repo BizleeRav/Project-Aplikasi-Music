@@ -3,8 +3,9 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
-// Ensure persistent user data directory in user's OS AppData folder (isolated per machine & Windows user)
+// CRITICAL: Ensure app name is unified to PascalCase 'AuraSound' so userData is consistently C:\Users\<User>\AppData\Roaming\AuraSound
 try {
+  app.setName('AuraSound');
   const userDataDir = path.join(app.getPath('userData'), 'data');
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
@@ -20,19 +21,44 @@ let sunoLoginWin = null;
 // Ensure local server is running on port 3000
 function ensureServerRunning() {
   return new Promise((resolve) => {
-    const req = http.get('http://localhost:3000/api/network-info', (res) => {
-      resolve(true);
-    });
-    req.on('error', () => {
-      // Server is not running yet, require server.js to start it in-process
+    let resolved = false;
+    let serverStarted = false;
+
+    const startServer = () => {
+      if (serverStarted) return;
+      serverStarted = true;
       try {
         require('./server');
-        // Give Express 800ms to bind to port 3000
-        setTimeout(() => resolve(true), 800);
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            resolve(true);
+          }
+        }, 800);
       } catch (err) {
         console.error('Error starting internal server:', err);
-        resolve(false);
+        if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
       }
+    };
+
+    const req = http.get('http://127.0.0.1:3000/api/network-info', (res) => {
+      res.resume();
+      if (!resolved) {
+        resolved = true;
+        resolve(true);
+      }
+    });
+
+    req.setTimeout(500, () => {
+      req.destroy();
+      startServer();
+    });
+
+    req.on('error', () => {
+      startServer();
     });
   });
 }
@@ -75,6 +101,7 @@ async function createMainWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    app.quit();
   });
 
   // Check for updates if electron-updater is installed

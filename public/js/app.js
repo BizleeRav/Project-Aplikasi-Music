@@ -18,11 +18,69 @@ class App {
     this.currentTrack = null;
     this.queue = [];
     this.queueIndex = -1;
-    this.currentUser = null;
-    this.checkCleanReset();
-    this.initGoogleAuth();
-    this.favorites = this.loadFavorites();
+
+    // 1. Instant Synchronous User & Session Hydration (0ms delay / zero reset flash)
+    const serverSession = (typeof window !== 'undefined' && window.__AURASOUND_SERVER_SESSION__) 
+      ? window.__AURASOUND_SERVER_SESSION__ 
+      : null;
+    let localGoogleUser = null;
+    try {
+      localGoogleUser = JSON.parse(localStorage.getItem('aurasound_google_user') || 'null');
+    } catch (e) {}
+
+    this.currentUser = serverSession || localGoogleUser || null;
+
+    if (this.currentUser && this.currentUser.email) {
+      try {
+        localStorage.setItem('aurasound_google_user', JSON.stringify({
+          email: this.currentUser.email,
+          name: this.currentUser.name,
+          avatar: this.currentUser.avatar,
+          provider: this.currentUser.provider || 'google'
+        }));
+        localStorage.setItem('aurasound_login_dismissed', 'true');
+        if (this.currentUser.tasteProfile) {
+          localStorage.setItem('aurasound_taste_completed', 'true');
+        }
+      } catch (e) {}
+    }
+
+    // 2. Initialize User Profile immediately
+    let savedProfile = null;
+    try {
+      savedProfile = JSON.parse(localStorage.getItem('aurasound_user_profile') || 'null');
+    } catch (e) {}
+
+    const initialName = this.currentUser?.name || savedProfile?.name || 'User';
+    const initialAvatar = this.currentUser?.avatar || savedProfile?.avatar || '/images/avatar.jpg';
+    const initialLang = this.currentUser?.lang || savedProfile?.lang || 'id';
+
+    this.userProfile = {
+      name: initialName,
+      avatar: initialAvatar,
+      lang: initialLang
+    };
+
+    try {
+      localStorage.setItem('aurasound_user_profile', JSON.stringify(this.userProfile));
+    } catch (e) {}
+
+    // 3. Immediately hydrate playHistory if available
+    if (serverSession && Array.isArray(serverSession.playHistory) && serverSession.playHistory.length > 0) {
+      try {
+        const curHist = JSON.parse(localStorage.getItem('aurasound_play_history') || '[]');
+        if (curHist.length === 0) {
+          localStorage.setItem('aurasound_play_history', JSON.stringify(serverSession.playHistory));
+        }
+      } catch (e) {}
+    }
+
+    // 4. Load User-Isolated Favorites & Playlists immediately with real userKey
+    this.favorites = (serverSession && Array.isArray(serverSession.favorites) && serverSession.favorites.length > 0)
+      ? serverSession.favorites
+      : this.loadFavorites();
     this.playlists = this.loadPlaylists();
+
     this.currentPlaylistDetail = null;
     this.trackToAddToPlaylist = null;
     this.nativeAudio = null;
@@ -41,7 +99,9 @@ class App {
     this.lastVolume = 1.0;
 
     try { this.initElements(); } catch (e) { console.error('Error initializing elements:', e); }
+    try { this.initGoogleAuth(); } catch (e) { console.error('Error initializing google auth:', e); }
     try { this.initProfile(); } catch (e) { console.error('Error initializing profile:', e); }
+    try { this.restorePlaybackState(); } catch (e) { console.error('Error restoring playback state:', e); }
     try { this.initAudioElement(); } catch (e) { console.error('Error initializing audio element:', e); }
     try { this.initEventListeners(); } catch (e) { console.error('Error initializing event listeners:', e); }
     try { this.initTasteOnboarding(); } catch (e) { console.error('Error initializing taste onboarding:', e); }
@@ -98,6 +158,7 @@ class App {
     this.isCinemaVisHidden = false;
     this.btnToggleRomaji = document.getElementById('btn-toggle-romaji');
     this.isRomajiEnabled = localStorage.getItem('aurasound_romaji_enabled') !== 'false';
+    this.cinemaLeadInDots = document.getElementById('cinema-lead-in-dots');
     this.currentLyricsLang = null;
     this.currentHasRomaji = false;
     this.currentLyricsData = [];
@@ -106,28 +167,7 @@ class App {
   }
 
   checkCleanReset() {
-    try {
-      const resetKey = 'aurasound_reset_v4_clean_google';
-      if (localStorage.getItem(resetKey) !== 'true') {
-        console.log('[AuraSound] Performing clean account & data reset as requested.');
-        localStorage.removeItem('aurasound_user_profile');
-        localStorage.removeItem('aurasound_google_user');
-        localStorage.removeItem('aurasound_device_id');
-        localStorage.removeItem('aurasound_playlists');
-        localStorage.removeItem('aurasound_favs');
-        localStorage.removeItem('aurasound_taste_profile');
-        localStorage.removeItem('aurasound_taste_onboarded');
-        // Clear all previous user-specific keys
-        Object.keys(localStorage).forEach(k => {
-          if (k.startsWith('aurasound_playlists_') || k.startsWith('aurasound_favs_')) {
-            localStorage.removeItem(k);
-          }
-        });
-        localStorage.setItem(resetKey, 'true');
-      }
-    } catch (e) {
-      console.warn('checkCleanReset error:', e);
-    }
+    // Permanently disabled: user login & profile MUST NEVER be reset on restart
   }
 
   // ==========================================
@@ -142,90 +182,243 @@ class App {
       return;
     }
 
+    // Fast smooth exit for active session (zero lag / zero reset appearance)
+    if (this.currentUser && this.currentUser.email) {
+      if (fillEl) fillEl.style.width = '100%';
+      if (statusEl) statusEl.textContent = `Selamat Datang, ${this.userProfile?.name || 'Sobat Musik'} ✨`;
+      setTimeout(() => {
+        splash.classList.add('splash-hiding');
+      }, 350);
+      setTimeout(() => {
+        splash.style.display = 'none';
+        this.triggerPostSplashFlow();
+      }, 650);
+      return;
+    }
+
     // Stage 1 (150ms): Starting Hi-Fi Studio
     setTimeout(() => {
       if (fillEl) fillEl.style.width = '35%';
       if (statusEl) statusEl.textContent = 'Menyiapkan Studio Audio Hi-Fi...';
     }, 150);
 
-    // Stage 2 (850ms): Calibrating DSP Equalizer & Accounts
+    // Stage 2 (550ms): Calibrating DSP Equalizer & Accounts
     setTimeout(() => {
       if (fillEl) fillEl.style.width = '75%';
       if (statusEl) statusEl.textContent = 'Menyelaraskan DSP Equalizer & Akun...';
-    }, 850);
+    }, 550);
 
-    // Stage 3 (1650ms): Ready & Welcome
+    // Stage 3 (950ms): Ready & Welcome
     setTimeout(() => {
       if (fillEl) fillEl.style.width = '100%';
       if (statusEl) statusEl.textContent = 'Selamat Datang di AuraSound ✨';
-    }, 1650);
+    }, 950);
 
-    // Stage 4 (2150ms): Smooth aperture/scale-fade exit
+    // Stage 4 (1250ms): Smooth aperture/scale-fade exit
     setTimeout(() => {
       splash.classList.add('splash-hiding');
-    }, 2150);
+    }, 1250);
 
-    // Stage 5 (2650ms): Remove splash and trigger Step 2 (Google Login) -> Step 3 (Pilih Selera Musik)
+    // Stage 5 (1550ms): Remove splash
     setTimeout(() => {
       splash.style.display = 'none';
       this.triggerPostSplashFlow();
-    }, 2650);
+    }, 1550);
   }
 
-  triggerPostSplashFlow() {
-    // Step 2: Show Google Login Modal
+  async triggerPostSplashFlow() {
     if (!this.currentUser || !this.currentUser.email) {
+      await this.restoreSessionFromServer();
+    }
+
+    // User is logged in -> NEVER popup Google modal or Selera Musik modal on startup!
+    if (this.currentUser && this.currentUser.email) {
+      const modal = document.getElementById('modal-google-auth');
+      if (modal) modal.classList.remove('active');
+      const tasteModal = document.getElementById('modal-taste-onboarding');
+      if (tasteModal) tasteModal.classList.remove('active');
+      try {
+        localStorage.setItem('aurasound_taste_completed', 'true');
+        localStorage.setItem('aurasound_login_dismissed', 'true');
+      } catch (e) {}
+      return;
+    }
+
+    // Only if user is NOT logged in and hasn't dismissed login
+    const isLoginDismissed = localStorage.getItem('aurasound_login_dismissed');
+    if (!isLoginDismissed) {
       this.openGoogleLoginModal();
-    } else {
-      // User already logged into Google, check if taste selection is needed
-      const isTasteCompleted = localStorage.getItem('aurasound_taste_completed');
-      if (!isTasteCompleted) {
-        setTimeout(() => {
-          this.openTasteModal();
-        }, 350);
-      }
     }
   }
 
-  dismissGoogleModalToTaste() {
+  closeGoogleLoginModal() {
+    try {
+      localStorage.setItem('aurasound_login_dismissed', 'true');
+    } catch (e) {}
     const modal = document.getElementById('modal-google-auth');
     if (modal) modal.classList.remove('active');
-    setTimeout(() => {
-      this.openTasteModal();
-    }, 350);
+  }
+
+  dismissGoogleModalToTaste() {
+    try {
+      localStorage.setItem('aurasound_login_dismissed', 'true');
+    } catch (e) {}
+    const modal = document.getElementById('modal-google-auth');
+    if (modal) modal.classList.remove('active');
+    const isTasteCompleted = localStorage.getItem('aurasound_taste_completed');
+    if (!isTasteCompleted) {
+      setTimeout(() => {
+        this.openTasteModal();
+      }, 350);
+    }
   }
 
   getUserKey() {
     if (this.currentUser && this.currentUser.email) {
-      return 'usr_' + this.currentUser.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
+      return this.currentUser.email.toLowerCase();
     }
     return this.getDeviceId();
   }
 
   initGoogleAuth() {
-    try {
-      this.currentUser = JSON.parse(localStorage.getItem('aurasound_google_user') || 'null');
-    } catch (e) {
-      this.currentUser = null;
+    if (!this.currentUser || !this.currentUser.email) {
+      try {
+        this.currentUser = (typeof window !== 'undefined' && window.__AURASOUND_SERVER_SESSION__) 
+          ? window.__AURASOUND_SERVER_SESSION__ 
+          : JSON.parse(localStorage.getItem('aurasound_google_user') || 'null');
+      } catch (e) {
+        this.currentUser = null;
+      }
     }
 
     if (this.currentUser && this.currentUser.email) {
       this.syncUserFromDb();
+    } else {
+      // Restore persistent session from server disk if not already loaded
+      this.restoreSessionFromServer();
     }
 
-    try {
-      if (window.google && window.google.accounts && window.google.accounts.id) {
-        window.google.accounts.id.initialize({
-          client_id: '1047291823901-placeholder.apps.googleusercontent.com',
-          callback: (res) => this.handleGoogleCredentialResponse(res),
-          auto_select: false
-        });
+    const clientId = '601468560899-3ih48jcehdsiblmv66qlaeb5rto431vd.apps.googleusercontent.com';
+    this.googleClientId = clientId;
+
+    const tryInitGsi = () => {
+      try {
+        if (window.google && window.google.accounts && window.google.accounts.id) {
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: (res) => this.handleGoogleCredentialResponse(res),
+            auto_select: false
+          });
+          this.renderGoogleSignInButton();
+          return true;
+        }
+      } catch (e) {
+        console.log('GSI initialize info:', e);
       }
-    } catch (e) {
-      console.log('GSI initialize info:', e);
+      return false;
+    };
+
+    if (!tryInitGsi()) {
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        if (tryInitGsi() || attempts >= 20) {
+          clearInterval(interval);
+        }
+      }, 500);
     }
 
     this.syncGoogleUI();
+  }
+
+  renderGoogleSignInButton() {
+    try {
+      if (window.google && window.google.accounts && window.google.accounts.id) {
+        const btnContainer = document.getElementById('google-official-btn');
+        if (btnContainer) {
+          btnContainer.innerHTML = '';
+          window.google.accounts.id.renderButton(btnContainer, {
+            theme: 'filled_blue',
+            size: 'large',
+            shape: 'pill',
+            width: 320,
+            text: 'signin_with',
+            logo_alignment: 'left'
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('renderGoogleSignInButton error:', e);
+    }
+  }
+
+  async restoreSessionFromServer() {
+    try {
+      const res = await fetch('/api/user/session');
+      const data = await res.json();
+      if (data.success && data.user && data.user.email) {
+        this.currentUser = data.user;
+        try {
+          localStorage.setItem('aurasound_google_user', JSON.stringify({
+            email: data.user.email,
+            name: data.user.name,
+            avatar: data.user.avatar,
+            provider: data.user.provider || 'google'
+          }));
+          localStorage.setItem('aurasound_login_dismissed', 'true');
+          localStorage.setItem('aurasound_taste_completed', 'true');
+        } catch (e) {}
+
+        this.userProfile = {
+          name: data.user.name || this.userProfile?.name || 'User',
+          avatar: data.user.avatar || this.userProfile?.avatar || '/images/avatar.jpg',
+          lang: data.user.lang || this.userProfile?.lang || 'id'
+        };
+        try {
+          localStorage.setItem('aurasound_user_profile', JSON.stringify(this.userProfile));
+        } catch (e) {}
+
+        if (Array.isArray(data.user.favorites)) {
+          this.favorites = data.user.favorites;
+          try {
+            localStorage.setItem(this.getFavsStorageKey(), JSON.stringify(this.favorites));
+          } catch (e) {}
+          this.updateFavButtonState();
+          if (this.activeTab === 'favorites') this.renderFavorites();
+        }
+
+        if (Array.isArray(data.user.playHistory) && data.user.playHistory.length > 0) {
+          try {
+            const localHist = this.getPlayHistory();
+            if (!localHist || localHist.length === 0) {
+              localStorage.setItem('aurasound_play_history', JSON.stringify(data.user.playHistory));
+            }
+          } catch (e) {}
+        }
+
+        // Immediately refresh user playlists and favorites
+        try {
+          this.playlists = this.loadPlaylists();
+          this.syncPlaylistsFromServer();
+          this.syncFavoritesFromDb();
+        } catch (e) {}
+
+        this.syncProfileUI();
+        this.syncGoogleUI();
+
+        const heroTitleGlow = document.querySelector('.aura-title-glow');
+        if (heroTitleGlow) {
+          heroTitleGlow.textContent = this.userProfile.name;
+        }
+
+        const modal = document.getElementById('modal-google-auth');
+        if (modal) modal.classList.remove('active');
+        const tasteModal = document.getElementById('modal-taste-onboarding');
+        if (tasteModal) tasteModal.classList.remove('active');
+      }
+    } catch (err) {
+      console.warn('restoreSessionFromServer error:', err);
+    }
   }
 
   async syncUserFromDb() {
@@ -254,6 +447,14 @@ class App {
           } catch (e) {}
           this.updateFavButtonState();
           if (this.activeTab === 'favorites') this.renderFavorites();
+        }
+        if (Array.isArray(data.user.playHistory) && data.user.playHistory.length > 0) {
+          try {
+            const localHist = this.getPlayHistory();
+            if (!localHist || localHist.length === 0) {
+              localStorage.setItem('aurasound_play_history', JSON.stringify(data.user.playHistory));
+            }
+          } catch (e) {}
         }
         this.syncProfileUI();
         this.syncGoogleUI();
@@ -430,6 +631,8 @@ class App {
     const msg = isEn ? 'Are you sure you want to log out of your Google account?' : 'Yakin ingin keluar dari akun Google ini?';
     if (!confirm(msg)) return;
 
+    fetch('/api/user/logout', { method: 'POST' }).catch(() => {});
+
     try {
       localStorage.removeItem('aurasound_google_user');
     } catch (e) {}
@@ -518,6 +721,7 @@ class App {
 
   openGoogleLoginModal() {
     this.syncGoogleUI();
+    this.renderGoogleSignInButton();
     const modal = document.getElementById('modal-google-auth');
     if (modal) modal.classList.add('active');
   }
@@ -528,6 +732,7 @@ class App {
     if (activeCard) activeCard.style.display = 'none';
     if (loginOptions) {
       loginOptions.style.display = 'block';
+      this.renderGoogleSignInButton();
       const emailInput = document.getElementById('google-input-email');
       if (emailInput) {
         emailInput.value = '';
@@ -549,23 +754,28 @@ class App {
       saved = JSON.parse(localStorage.getItem('aurasound_user_profile') || 'null');
     } catch (e) {}
 
-    if (this.currentUser) {
-      this.userProfile = {
-        name: this.currentUser.name || 'User',
-        avatar: this.currentUser.avatar || '/images/avatar.jpg',
-        lang: saved?.lang || 'id'
-      };
-    } else {
-      const savedName = (saved && typeof saved.name === 'string' && saved.name.trim())
-        ? saved.name.trim()
-        : 'User';
-
-      this.userProfile = {
-        name: savedName,
-        avatar: saved?.avatar || '/images/avatar.jpg',
-        lang: saved?.lang || 'id'
-      };
+    const savedAvatar = saved?.avatar;
+    const currentAvatar = this.currentUser?.avatar;
+    let finalAvatar = '/images/avatar.jpg';
+    if (savedAvatar && !savedAvatar.includes('unavatar.io')) {
+      finalAvatar = savedAvatar;
+    } else if (currentAvatar && !currentAvatar.includes('unavatar.io')) {
+      finalAvatar = currentAvatar;
+    } else if (savedAvatar) {
+      finalAvatar = savedAvatar;
+    } else if (currentAvatar) {
+      finalAvatar = currentAvatar;
     }
+
+    const activeName = (this.currentUser && this.currentUser.name)
+      ? this.currentUser.name
+      : ((saved && typeof saved.name === 'string' && saved.name.trim()) ? saved.name.trim() : 'User');
+
+    this.userProfile = {
+      name: activeName,
+      avatar: finalAvatar,
+      lang: saved?.lang || 'id'
+    };
 
     this.tempAvatarDataUrl = null;
 
@@ -582,6 +792,7 @@ class App {
     const badgeImg = document.querySelector('#btn-profile-badge img');
     if (badgeImg && this.userProfile.avatar) {
       badgeImg.src = this.userProfile.avatar;
+      badgeImg.onerror = () => { badgeImg.src = '/images/avatar.jpg'; };
     }
     const badge = document.getElementById('btn-profile-badge');
     if (badge) {
@@ -592,6 +803,7 @@ class App {
     const previewImg = document.getElementById('profile-preview-img');
     if (previewImg && this.userProfile.avatar) {
       previewImg.src = this.userProfile.avatar;
+      previewImg.onerror = () => { previewImg.src = '/images/avatar.jpg'; };
     }
     const nameInput = document.getElementById('profile-input-name');
     if (nameInput) {
@@ -976,6 +1188,20 @@ class App {
         const cur = this.nativeAudio.currentTime;
         const dur = this.nativeAudio.duration || 1;
         this.updateProgress(cur, dur);
+        if (!this._lastStateSaveTime || Date.now() - this._lastStateSaveTime > 3000) {
+          this._lastStateSaveTime = Date.now();
+          this.persistPlaybackState();
+        }
+      }
+    });
+
+    this.nativeAudio.addEventListener('canplay', () => {
+      if (this._pendingSeekTime && this._pendingSeekTime > 0) {
+        const seek = this._pendingSeekTime;
+        this._pendingSeekTime = 0;
+        try {
+          this.nativeAudio.currentTime = seek;
+        } catch (e) {}
       }
     });
 
@@ -1000,6 +1226,10 @@ class App {
       window.ytPlayer.onProgressCallback = (current, duration) => {
         if (this.currentAudioMode !== 'native' && (!this.currentTrack || this.currentTrack.type === 'youtube' || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'))) {
           this.updateProgress(current, duration);
+          if (!this._lastStateSaveTime || Date.now() - this._lastStateSaveTime > 3000) {
+            this._lastStateSaveTime = Date.now();
+            this.persistPlaybackState();
+          }
         }
       };
 
@@ -1012,6 +1242,10 @@ class App {
   }
 
   initEventListeners() {
+    // Save playback state when window closes or unloads
+    window.addEventListener('beforeunload', () => this.persistPlaybackState());
+    window.addEventListener('pagehide', () => this.persistPlaybackState());
+
     // Navigation Tabs
     document.querySelectorAll('.nav-link').forEach(link => {
       link.addEventListener('click', (e) => {
@@ -1314,6 +1548,94 @@ class App {
       });
     }
 
+    // Studio Cinema Equalizer Toggle & Controls
+    const cinemaEqDrawer = document.getElementById('cinema-eq-drawer');
+    const btnCinemaOpenDsp = document.getElementById('btn-cinema-open-dsp');
+    const btnCinemaEq = document.getElementById('cinema-btn-eq');
+    const btnCloseCinemaEq = document.getElementById('btn-close-cinema-eq');
+
+    const toggleCinemaEq = () => {
+      if (!cinemaEqDrawer) return;
+      const isActive = cinemaEqDrawer.classList.toggle('active');
+      if (isActive && window.audioEngine) {
+        const canvas = document.getElementById('cinema-eq-curve-canvas');
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          if (rect.width > 50) {
+            canvas.width = rect.width * (window.devicePixelRatio || 1);
+            canvas.height = (rect.height || 75) * (window.devicePixelRatio || 1);
+          }
+        }
+        window.audioEngine.drawEqCurve();
+      }
+    };
+
+    if (btnCinemaOpenDsp) {
+      btnCinemaOpenDsp.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleCinemaEq();
+      });
+    }
+
+    if (btnCinemaEq) {
+      btnCinemaEq.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleCinemaEq();
+      });
+    }
+
+    if (btnCloseCinemaEq) {
+      btnCloseCinemaEq.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (cinemaEqDrawer) cinemaEqDrawer.classList.remove('active');
+      });
+    }
+
+    // Studio Cinema EQ Preset Buttons
+    document.querySelectorAll('.cinema-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const preset = btn.getAttribute('data-preset');
+        if (window.audioEngine) {
+          window.audioEngine.applyPreset(preset);
+          this.showToast(`Preset "${btn.textContent.trim()}" diaktifkan! 🎧`, 'info');
+        }
+      });
+    });
+
+    // Studio Cinema Bass Boost Slider
+    const cinemaBassSlider = document.getElementById('cinema-bass-boost-slider');
+    if (cinemaBassSlider) {
+      cinemaBassSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (window.audioEngine) {
+          window.audioEngine.setBassBoost(val);
+        }
+      });
+    }
+
+    // Studio Cinema 3D Spatial Soundstage Slider
+    const cinemaSpatialSlider = document.getElementById('cinema-spatial-width-slider');
+    if (cinemaSpatialSlider) {
+      cinemaSpatialSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (window.audioEngine) {
+          window.audioEngine.setSpatialWidth(val / 100);
+        }
+      });
+    }
+
+    // Studio Cinema 10-Band Sliders
+    for (let idx = 0; idx < 10; idx++) {
+      const slider = document.getElementById(`cinema-eq-slider-${idx}`);
+      if (slider) {
+        slider.addEventListener('input', (e) => {
+          if (window.audioEngine) {
+            window.audioEngine.setBandGain(idx, parseFloat(e.target.value));
+          }
+        });
+      }
+    }
+
     // Suno AI Form submission
     const sunoForm = document.getElementById('suno-form');
     if (sunoForm) {
@@ -1406,6 +1728,14 @@ class App {
         this.tempAvatarDataUrl = null;
       }
 
+      if (this.currentUser) {
+        this.currentUser.name = newName;
+        this.currentUser.avatar = this.userProfile.avatar;
+        try {
+          localStorage.setItem('aurasound_google_user', JSON.stringify(this.currentUser));
+        } catch (e) {}
+      }
+
       try {
         localStorage.setItem('aurasound_user_profile', JSON.stringify(this.userProfile));
       } catch (err) {
@@ -1429,6 +1759,21 @@ class App {
             lang: newLang,
             userKey
           })
+        }).then(res => res.json()).then(data => {
+          if (data && data.success && data.user && data.user.avatar) {
+            this.userProfile.avatar = data.user.avatar;
+            if (this.currentUser) {
+              this.currentUser.avatar = data.user.avatar;
+              try {
+                localStorage.setItem('aurasound_google_user', JSON.stringify(this.currentUser));
+              } catch (e) {}
+            }
+            try {
+              localStorage.setItem('aurasound_user_profile', JSON.stringify(this.userProfile));
+            } catch (e) {}
+            this.syncProfileUI();
+            this.syncGoogleUI();
+          }
         }).catch(err => console.warn('Save profile to DB warning:', err));
       } catch (e) {}
 
@@ -1693,13 +2038,50 @@ class App {
     this.cinemaModal.classList.add('active');
     document.body.classList.add('cinema-mode-active');
 
-    if (window.audioEngine && this.cinemaVisCanvas) {
-      window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
+    if (window.audioEngine) {
+      if (this.cinemaVisCanvas) {
+        window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
+        setTimeout(() => {
+          if (window.audioEngine && this.cinemaVisCanvas) {
+            window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
+          }
+        }, 100);
+      }
+
+      // Sync active DSP preset label & buttons
+      const labelNames = {
+        dolby: 'Dolby Atmos',
+        nahimic: 'Nahimic Sound',
+        bassHeavy: 'Bass Boost',
+        bass: 'Bass Boost',
+        vocal: 'Vocal Presence',
+        electronic: 'EDM Synth',
+        club: 'EDM Synth',
+        flat: 'Flat Natural'
+      };
+      const curPreset = window.audioEngine.activePresetName || 'dolby';
+      const chipText = document.getElementById('cinema-active-dsp-name');
+      if (chipText) {
+        chipText.textContent = labelNames[curPreset] || curPreset;
+      }
+
+      document.querySelectorAll('.cinema-preset-btn').forEach(btn => {
+        const p = btn.getAttribute('data-preset');
+        btn.classList.toggle('active', p === curPreset || (curPreset === 'bassHeavy' && p === 'bass') || (curPreset === 'electronic' && p === 'club'));
+      });
+
+      // Synchronize curve canvas sizing & render
       setTimeout(() => {
-        if (window.audioEngine && this.cinemaVisCanvas) {
-          window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
+        const canvas = document.getElementById('cinema-eq-curve-canvas');
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          if (rect.width > 50) {
+            canvas.width = rect.width * (window.devicePixelRatio || 1);
+            canvas.height = (rect.height || 75) * (window.devicePixelRatio || 1);
+          }
         }
-      }, 100);
+        window.audioEngine.drawEqCurve();
+      }, 120);
     }
 
     this.syncCinemaTrackInfo();
@@ -1710,6 +2092,8 @@ class App {
     if (!this.cinemaModal) return;
     this.cinemaModal.classList.remove('active');
     document.body.classList.remove('cinema-mode-active');
+    const cinemaEqDrawer = document.getElementById('cinema-eq-drawer');
+    if (cinemaEqDrawer) cinemaEqDrawer.classList.remove('active');
   }
 
   toggleCinemaVisualizer() {
@@ -1807,6 +2191,10 @@ class App {
 
     this.activeLyricIdx = -1;
     this.currentLyricsData = [];
+    this.lyricsAlignPending = false;
+    if (this.cinemaLeadInDots) {
+      this.cinemaLeadInDots.style.display = 'none';
+    }
 
     const trackId = track.id || track.videoId || track.title;
     this.currentLyricsTrackId = trackId;
@@ -1816,7 +2204,8 @@ class App {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
-      this.displayLyricsList(this.currentLyricsData, track._lyricsType || 'synced', track._lyricsLang);
+      this.lyricsAlignPending = Boolean(track._lyricsAlignPending);
+      this.displayLyricsList(this.currentLyricsData, track._lyricsType || 'synced', track._lyricsLang, this.currentHasRomaji);
       const curTime = this.getCurrentPlaybackTime();
       this.updateActiveLyricsLine(curTime);
       return;
@@ -1848,7 +2237,7 @@ class App {
         <div class="cinema-lyrics-pulse-wave">
           <span></span><span></span><span></span><span></span><span></span>
         </div>
-        <div class="cinema-lyrics-status-text">Sinkronisasi lirik real-time...</div>
+        <div class="cinema-lyrics-status-text">Mencari lirik terbaik & sinkronisasi tempo...</div>
         <div class="cinema-lyrics-status-sub">${this.escapeHtml(track.title)}</div>
       </div>
     `;
@@ -1861,11 +2250,15 @@ class App {
       this.btnToggleRomaji.style.display = 'none';
     }
 
+    const durSec = Number(track.seconds) || this.parseDuration(track.duration) || (window.audioEngine?.getDuration() ? Math.round(window.audioEngine.getDuration()) : 0);
+    if (durSec > 0 && !track.seconds) track.seconds = durSec;
+
     try {
       const queryParams = new URLSearchParams({
         title: track.title || '',
         artist: track.artist || '',
-        duration: track.seconds || ''
+        duration: durSec > 0 ? String(durSec) : '',
+        videoId: track.id || ''
       });
 
       const res = await fetch(`/api/lyrics?${queryParams.toString()}`);
@@ -1884,7 +2277,8 @@ class App {
         track._lyricsType = data.syncedLyrics ? 'synced' : 'plain';
         track._lyricsLang = data.detectedLang || null;
         track._hasRomaji = this.currentHasRomaji;
-        this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang);
+
+        this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji);
         const curTime = this.getCurrentPlaybackTime();
         this.updateActiveLyricsLine(curTime);
         return;
@@ -1948,6 +2342,9 @@ class App {
         if (this.btnToggleRomaji) {
           this.btnToggleRomaji.style.display = 'none';
         }
+        if (this.cinemaLeadInDots) {
+          this.cinemaLeadInDots.style.display = 'none';
+        }
         this.cinemaLyricsStream.innerHTML = `
           <div class="cinema-lyrics-empty">
             <div class="cinema-lyrics-empty-icon">
@@ -1968,6 +2365,9 @@ class App {
       if (this.btnToggleRomaji) {
         this.btnToggleRomaji.style.display = 'none';
       }
+      if (this.cinemaLeadInDots) {
+        this.cinemaLeadInDots.style.display = 'none';
+      }
       this.cinemaLyricsStream.innerHTML = `
         <div class="cinema-lyrics-empty">
           <div class="cinema-lyrics-empty-icon">
@@ -1985,6 +2385,9 @@ class App {
       if (this.btnToggleRomaji) {
         this.btnToggleRomaji.style.display = 'none';
       }
+      if (this.cinemaLeadInDots) {
+        this.cinemaLeadInDots.style.display = 'none';
+      }
       this.cinemaLyricsStream.innerHTML = `
         <div class="cinema-lyrics-empty">
           <div class="cinema-lyrics-empty-desc">Gagal memuat lirik. Silakan periksa koneksi internet Anda.</div>
@@ -1993,11 +2396,12 @@ class App {
     }
   }
 
-  displayLyricsList(lines, type = 'synced', lang = null) {
+  displayLyricsList(lines, type = 'synced', lang = null, hasRomaji = false) {
     if (!this.cinemaLyricsStream) return;
 
     this.currentLyricsLang = lang || this.currentLyricsLang;
-    const hasRomajiLines = Array.isArray(lines) && lines.some(item => Boolean(item.romaji));
+    const hasRomajiLines = Boolean(hasRomaji) || (Array.isArray(lines) && lines.some(item => Boolean(item.romaji)));
+    this.currentHasRomaji = hasRomajiLines;
 
     // Handle Romaji Toggle Chip visibility
     if (this.btnToggleRomaji) {
@@ -2039,6 +2443,7 @@ class App {
       panel.classList.toggle('hide-romaji', !this.isRomajiEnabled);
     }
 
+    // Render Clean Lyrics: Original Script + Romaji/Pinyin (when available)
     this.cinemaLyricsStream.innerHTML = lines.map((item, idx) => `
       <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
         <div class="lyric-main-text">${this.escapeHtml(item.text)}</div>
@@ -2052,6 +2457,29 @@ class App {
       return this.nativeAudio ? (this.nativeAudio.currentTime || 0) : 0;
     }
     return window.ytPlayer ? (window.ytPlayer.getCurrentTime() || 0) : 0;
+  }
+
+  startLyricsSyncLoop() {
+    if (this._lyricsSyncRaf) return;
+    const tick = () => {
+      if (this.isPlaying) {
+        const cur = this.getCurrentPlaybackTime();
+        if (cur !== undefined && !isNaN(cur)) {
+          this.updateActiveLyricsLine(cur);
+        }
+        this._lyricsSyncRaf = requestAnimationFrame(tick);
+      } else {
+        this._lyricsSyncRaf = null;
+      }
+    };
+    this._lyricsSyncRaf = requestAnimationFrame(tick);
+  }
+
+  stopLyricsSyncLoop() {
+    if (this._lyricsSyncRaf) {
+      cancelAnimationFrame(this._lyricsSyncRaf);
+      this._lyricsSyncRaf = null;
+    }
   }
 
   seekToTimestamp(seekTime) {
@@ -2086,25 +2514,63 @@ class App {
   }
 
   updateActiveLyricsLine(currentSecs) {
-    if (!this.cinemaLyricsStream || !this.currentLyricsData || this.currentLyricsData.length === 0) return;
+    if (!this.cinemaLyricsStream || !this.currentLyricsData || this.currentLyricsData.length === 0) {
+      if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
+      return;
+    }
 
+    // Exact acoustic beat synchronization with 50ms vocal lead-in compensation
+    const syncTime = currentSecs + 0.05;
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
-      if (currentSecs >= this.currentLyricsData[i].time) {
+      if (syncTime >= this.currentLyricsData[i].time) {
         activeIdx = i;
       } else {
         break;
       }
     }
 
+    // Better Lyrics Lead-in Countdown Dots (• • •) during intro and vocal breaks
+    if (this.cinemaLeadInDots) {
+      let showLeadIn = false;
+      const firstLine = this.currentLyricsData[0];
+      if (currentSecs < firstLine.time) {
+        // Intro countdown: 4.5s down to 0.2s before first lyric line
+        const diff = firstLine.time - currentSecs;
+        if (diff <= 4.5 && diff >= 0.2) {
+          showLeadIn = true;
+        }
+      } else if (activeIdx >= 0 && activeIdx < this.currentLyricsData.length - 1) {
+        // Interlude break: when gap between current line and next line is >= 4.0s
+        const currentLine = this.currentLyricsData[activeIdx];
+        const nextLine = this.currentLyricsData[activeIdx + 1];
+        const gap = nextLine.time - currentLine.time;
+        if (gap >= 4.0) {
+          const diff = nextLine.time - currentSecs;
+          if (diff <= 3.8 && diff >= 0.2) {
+            showLeadIn = true;
+          }
+        }
+      }
+      this.cinemaLeadInDots.style.display = showLeadIn ? 'inline-flex' : 'none';
+    }
+
     if (activeIdx !== this.activeLyricIdx) {
       this.activeLyricIdx = activeIdx;
+      this.cinemaLyricsStream.classList.toggle('has-active', activeIdx >= 0);
+
       const lines = this.cinemaLyricsStream.querySelectorAll('.cinema-lyric-line');
       lines.forEach((line, idx) => {
         const isActive = (idx === activeIdx);
         line.classList.toggle('active', isActive);
         if (isActive) {
-          line.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Fluid golden-ratio upper-center scrolling (Apple Music & Better Lyrics standard)
+          const stream = this.cinemaLyricsStream;
+          const lineTop = line.offsetTop;
+          const lineHeight = line.offsetHeight;
+          const streamHeight = stream.clientHeight;
+          const targetScroll = Math.max(0, lineTop - (streamHeight * 0.38) + (lineHeight / 2));
+          stream.scrollTo({ top: targetScroll, behavior: 'smooth' });
         }
       });
     }
@@ -2670,10 +3136,16 @@ class App {
     const container = document.getElementById('ytm-home-sections');
     if (!container) return;
 
-    const history = this.getPlayHistory();
+    let history = this.getPlayHistory();
+    if ((!history || history.length === 0) && this.currentUser && Array.isArray(this.currentUser.playHistory) && this.currentUser.playHistory.length > 0) {
+      history = this.currentUser.playHistory;
+      try {
+        localStorage.setItem('aurasound_play_history', JSON.stringify(history));
+      } catch (e) {}
+    }
 
     // 1. Pengguna belum pernah memutar lagu apapun (0 lagu):
-    if (history.length === 0) {
+    if (!history || history.length === 0) {
       this.renderEmptyCleanHome();
       return;
     }
@@ -2810,9 +3282,44 @@ class App {
       ? hypermixData.tracks
       : history;
 
+    // Load AI-driven dynamic albums & artist/vibe mixes
+    let newReleases = (hypermixData && Array.isArray(hypermixData.dynamicAlbums) && hypermixData.dynamicAlbums.length > 0)
+      ? hypermixData.dynamicAlbums
+      : (this.cachedSections?.newReleases || null);
+
+    let mixedForYou = (hypermixData && Array.isArray(hypermixData.dynamicMixes) && hypermixData.dynamicMixes.length > 0)
+      ? hypermixData.dynamicMixes
+      : (this.cachedSections?.mixedForYou || null);
+
+    // Strictly ensure My Supermix is never in mixedForYou
+    if (Array.isArray(mixedForYou)) {
+      mixedForYou = mixedForYou.filter(m => m.id !== 'deck-supermix' && m.albumId !== 'deck-supermix' && m.title !== 'My Supermix');
+    }
+
+    if ((!newReleases || !this.homeAlbums) && (!hypermixData || !hypermixData.dynamicAlbums)) {
+      try {
+        const homeRes = await fetch('/api/home?mood=all');
+        const homeJson = await homeRes.json();
+        if (homeJson.success) {
+          if (homeJson.sections && !newReleases) {
+            this.cachedSections = homeJson.sections;
+            newReleases = homeJson.sections.newReleases;
+            mixedForYou = (homeJson.sections.mixedForYou || []).filter(m => m.id !== 'deck-supermix' && m.albumId !== 'deck-supermix' && m.title !== 'My Supermix');
+          }
+          if (homeJson.albums) {
+            this.homeAlbums = homeJson.albums;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load home albums for shelf:', e);
+      }
+    }
+
     // Register track collections
     this.registerTrackList('related-picks', relatedTracks);
     this.registerTrackList('recently-played', history);
+    if (newReleases) this.registerTrackList('ytm-new-releases', newReleases);
+    if (mixedForYou) this.registerTrackList('ytm-mixed', mixedForYou);
 
     const isAudioPlaying = (this.nativeAudio && !this.nativeAudio.paused) || (window.ytPlayer && window.ytPlayer.isPlaying);
     const heroThumb = history[0]?.thumbnail || relatedTracks[0]?.thumbnail || '/images/supermix.jpg';
@@ -3069,7 +3576,126 @@ class App {
       </section>
     `;
 
+    // 5. & 6. Append Exclusive Vinyl Shelf & Mixed Harmonies
+    html += this.renderVinylShelfAndMixesHtml(newReleases, mixedForYou, isEn);
+
     container.innerHTML = html;
+  }
+
+  // ==========================================
+  // EXCLUSIVE VINYL SHELF & MIXES RENDERER
+  // ==========================================
+  renderVinylShelfAndMixesHtml(newReleases, mixedForYou, isEn = false) {
+    let html = '';
+
+    // Koleksi Vinyl & Album Eksklusif (Algoritma Dinamis Berdasarkan Artis Dengar)
+    if (newReleases && newReleases.length > 0) {
+      html += `
+        <section class="aura-section-wrap">
+          <div class="aura-section-header-wrap">
+            <div class="aura-section-title-box">
+              <span class="aura-kicker-tag">ALGORITMA & VINYL AI</span>
+              <h2 class="aura-modern-section-title">${isEn ? 'Personalized Vinyl & Album Shelf' : 'Koleksi Vinyl & Album Personal'}</h2>
+            </div>
+            <div class="aura-section-meta-badge">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/></svg>
+              <span>${newReleases.length} ${isEn ? 'Editions Available' : 'Edisi Tersedia'}</span>
+            </div>
+          </div>
+
+          <div class="aura-vinyl-shelf" id="carousel-new-releases">
+            ${newReleases.map((album, idx) => `
+              <div class="aura-vinyl-card" onclick="window.app.openHomeAlbumDetail('${album.albumId}')">
+                <div class="aura-vinyl-jacket-wrap">
+                  <!-- Vinyl Record Disc that slides out on hover -->
+                  <div class="aura-vinyl-disc-slide">
+                    <div class="aura-vinyl-disc-grooves"></div>
+                    <div class="aura-vinyl-disc-reflection"></div>
+                    <div class="aura-vinyl-disc-label">
+                      <div class="aura-disc-hole"></div>
+                    </div>
+                  </div>
+
+                  <!-- Vinyl Jacket Cover -->
+                  <div class="aura-vinyl-jacket">
+                    <img src="${album.thumbnail}" alt="${album.title}" class="aura-vinyl-jacket-cover" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+                    <div class="aura-vinyl-jacket-sheen"></div>
+                    <span class="aura-vinyl-badge">${album.badge || 'EP'}</span>
+                    <div class="aura-vinyl-play-trigger" onclick="event.stopPropagation(); window.app.playHomeAlbum('${album.albumId}')" title="${isEn ? 'Play Album' : 'Putar Album'}">
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="aura-vinyl-meta">
+                  <div class="aura-vinyl-title" title="${album.title}">${album.title}</div>
+                  <div class="aura-vinyl-artist">${album.artist}</div>
+                  <div class="aura-vinyl-footer-row">
+                    <span class="aura-vinyl-flac-tag">24-BIT FLAC</span>
+                    <span class="aura-vinyl-dot">•</span>
+                    <span class="aura-vinyl-link">${isEn ? 'Open Tracklist →' : 'Buka Tracklist →'}</span>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    // Harmoni Campuran Spesial (STRICTLY Filter out My Supermix, as Supermix has its own system)
+    const cleanMixes = Array.isArray(mixedForYou)
+      ? mixedForYou.filter(m => m && m.id !== 'deck-supermix' && m.albumId !== 'deck-supermix' && m.title !== 'My Supermix' && !(m.title && m.title.toLowerCase().includes('supermix')))
+      : [];
+
+    if (cleanMixes.length > 0) {
+      let topArtists = [];
+      if (window.tasteEngine) {
+        topArtists = window.tasteEngine.getTopArtists(4);
+      }
+      html += `
+        <section class="aura-section-wrap">
+          <div class="aura-section-header-wrap">
+            <div class="aura-section-title-box">
+              <span class="aura-kicker-tag">CAMPURAN AI PERSONAL</span>
+              <h2 class="aura-modern-section-title">${isEn ? 'Special Mixed Harmonies' : 'Harmoni Campuran Spesial'}</h2>
+            </div>
+            <div class="aura-section-meta-badge">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+              <span>${cleanMixes.length} ${isEn ? 'Personal Mixes' : 'Mix Dinamis'}</span>
+            </div>
+          </div>
+
+          <div class="aura-mix-carousel" id="carousel-mixed">
+            ${cleanMixes.map((track, idx) => {
+              const isLiked = track.id === 'mix-liked';
+              const clickAction = isLiked ? "window.app.openLikedMusicDetail()" : `window.app.openHomeAlbumDetail('${track.albumId || track.id}')`;
+              const playAction = isLiked ? "event.stopPropagation(); window.app.playTrackList(window.app.favorites, 0)" : `event.stopPropagation(); window.app.playHomeAlbum('${track.albumId || track.id}')`;
+              const subTitle = isLiked
+                ? `${this.favorites ? this.favorites.length : 0} ${isEn ? 'Liked Songs' : 'Lagu Favorit'}`
+                : track.artist;
+
+              return `
+                <div class="aura-mix-card" onclick="${clickAction}">
+                  <div class="aura-mix-thumb-wrap">
+                    <img src="${track.thumbnail}" alt="${track.title}" class="aura-mix-thumb" loading="lazy" onerror="this.src='/images/discover.jpg'">
+                    <div class="aura-mix-play-btn" onclick="${playAction}" title="${isEn ? 'Play Now' : 'Putar Sekarang'}">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                  </div>
+                  <div class="aura-mix-info">
+                    <div class="aura-mix-title" title="${track.title}">${track.title}</div>
+                    <div class="aura-mix-sub">${subTitle}</div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    return html;
   }
 
   // ==========================================
@@ -3514,6 +4140,13 @@ class App {
         </section>
       `;
     }
+
+    // Also append exclusive vinyl shelf and special mixes if available
+    const newReleases = this.cachedSections?.newReleases || null;
+    const mixedForYou = this.cachedSections?.mixedForYou || null;
+    if (newReleases) this.registerTrackList('ytm-new-releases', newReleases);
+    if (mixedForYou) this.registerTrackList('ytm-mixed', mixedForYou);
+    html += this.renderVinylShelfAndMixesHtml(newReleases, mixedForYou, isEn);
 
     container.innerHTML = html;
   }
@@ -4856,6 +5489,120 @@ class App {
     `).join('');
   }
 
+  // ==========================================
+  // PLAYBACK STATE PERSISTENCE (Desktop Session Restore)
+  // ==========================================
+  persistPlaybackState() {
+    if (!this.currentTrack && (!this.queue || this.queue.length === 0)) return;
+    try {
+      const state = {
+        currentTrack: this.currentTrack,
+        queue: Array.isArray(this.queue) ? this.queue.slice(0, 50) : [],
+        queueIndex: typeof this.queueIndex === 'number' ? this.queueIndex : 0,
+        currentTime: this.nativeAudio ? (this.nativeAudio.currentTime || 0) : 0,
+        duration: this.nativeAudio ? (this.nativeAudio.duration || 0) : 0,
+        volume: typeof this.lastVolume === 'number' ? this.lastVolume : 1.0,
+        isMuted: !!this.isMuted,
+        isShuffle: !!this.isShuffle,
+        repeatMode: this.repeatMode || 'off',
+        savedAt: Date.now()
+      };
+      localStorage.setItem('aurasound_playback_state', JSON.stringify(state));
+
+      // Also persist to server disk asynchronously (throttled)
+      if (this.currentTrack) {
+        if (!this._lastServerStateSave || Date.now() - this._lastServerStateSave > 2000) {
+          this._lastServerStateSave = Date.now();
+          fetch('/api/user/playback-state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(state)
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to persist playback state:', e);
+    }
+  }
+
+  restorePlaybackState() {
+    try {
+      let state = (typeof window !== 'undefined' && window.__AURASOUND_PLAYBACK_STATE__) 
+        ? window.__AURASOUND_PLAYBACK_STATE__ 
+        : null;
+      if (!state) {
+        const raw = localStorage.getItem('aurasound_playback_state');
+        if (raw) state = JSON.parse(raw);
+      }
+      if (!state) return;
+
+      // Restore volume & mute
+      if (typeof state.volume === 'number') {
+        this.lastVolume = state.volume;
+        this.setVolumeLevel(state.isMuted ? 0 : state.volume);
+      }
+      if (state.isShuffle) {
+        this.isShuffle = true;
+        if (this.shuffleBtn) this.shuffleBtn.classList.add('active');
+        const cinemaShuffle = document.getElementById('cinema-btn-shuffle');
+        if (cinemaShuffle) cinemaShuffle.classList.add('active');
+      }
+      if (state.repeatMode && state.repeatMode !== 'off') {
+        this.repeatMode = state.repeatMode;
+        if (this.repeatBtn) this.repeatBtn.classList.add('active');
+        if (this.repeatBadge) {
+          this.repeatBadge.textContent = state.repeatMode === 'one' ? '1' : '∞';
+        }
+      }
+
+      // Restore queue
+      if (Array.isArray(state.queue) && state.queue.length > 0) {
+        this.queue = state.queue;
+        this.queueIndex = typeof state.queueIndex === 'number' ? state.queueIndex : 0;
+      }
+
+      // Restore track UI without auto-playing audio immediately
+      if (state.currentTrack || state.track) {
+        this.currentTrack = state.currentTrack || state.track;
+        const track = this.currentTrack;
+
+        if (this.playerTitle) this.playerTitle.textContent = track.title || 'Lagu';
+        if (this.playerArtist) this.playerArtist.textContent = track.artist || 'AuraSound';
+        if (this.playerThumb) {
+          this.playerThumb.src = track.thumbnail || '/images/supermix.jpg';
+          this.playerThumb.onerror = () => { this.playerThumb.src = '/images/supermix.jpg'; };
+        }
+        if (this.playerVinylLabelImg) {
+          this.playerVinylLabelImg.src = track.thumbnail || '/images/supermix.jpg';
+          this.playerVinylLabelImg.onerror = () => { this.playerVinylLabelImg.src = '/images/supermix.jpg'; };
+        }
+        const heroVinylThumb = document.querySelector('.aura-vinyl-label-thumb');
+        if (heroVinylThumb) {
+          heroVinylThumb.src = track.thumbnail || '/images/supermix.jpg';
+          heroVinylThumb.onerror = () => { heroVinylThumb.src = '/images/supermix.jpg'; };
+        }
+        if (this.cinemaVinylThumb) {
+          this.cinemaVinylThumb.src = track.thumbnail || '/images/supermix.jpg';
+          this.cinemaVinylThumb.onerror = () => { this.cinemaVinylThumb.src = '/images/supermix.jpg'; };
+        }
+        if (this.badgeSourceText) {
+          this.badgeSourceText.textContent = track.type === 'suno' ? 'SUNO AI • DSP' : 'YT MUSIC • 24-BIT';
+        }
+        if (this.badgeSource) {
+          this.badgeSource.className = track.type === 'suno' ? 'player-hifi-badge badge-suno' : 'player-hifi-badge badge-yt';
+        }
+
+        const dur = (state.duration && state.duration > 0) ? state.duration : (this.parseDuration(track.duration) || 180);
+        const cur = (state.currentTime && state.currentTime > 0) ? Math.min(state.currentTime, dur) : 0;
+        this._pendingSeekTime = cur;
+        this.updateProgress(cur, dur);
+        this.updateFavButtonState();
+      }
+    } catch (e) {
+      console.warn('Failed to restore playback state:', e);
+    }
+  }
+
   playTrackList(tracks, startIndex = 0) {
     if (!Array.isArray(tracks) || tracks.length === 0) return;
     const cleanKey = (str) => (str || '').toLowerCase().replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
@@ -4883,6 +5630,7 @@ class App {
 
     this.queue = uniqueTracks.length > 0 ? uniqueTracks : [...tracks];
     this.queueIndex = Math.min(Math.max(0, adjustedStartIndex), this.queue.length - 1);
+    this.persistPlaybackState();
     this.playTrack(this.queue[this.queueIndex]);
   }
 
@@ -4905,6 +5653,7 @@ class App {
     }
 
     this.queue.push(track);
+    this.persistPlaybackState();
     this.showToast(`"${track.title}" ditambahkan ke antrean 🎶`, 'success');
   }
 
@@ -5053,6 +5802,7 @@ class App {
     this.updateEqStatusBanner();
 
     this.updatePlayState(true);
+    this.persistPlaybackState();
   }
 
   updateEqStatusBanner() {
@@ -5115,15 +5865,21 @@ class App {
 
   togglePlay() {
     if (!this.currentTrack) {
-      if (this.queue.length > 0) {
+      if (this.queue && this.queue.length > 0) {
         this.playTrack(this.queue[0]);
       }
       return;
     }
 
     if (this.currentAudioMode === 'native' || this.currentTrack.type === 'suno' || this.currentTrack.type === 'local') {
+      if (!this.nativeAudio.src || this.nativeAudio.src === '' || this.nativeAudio.src.endsWith('/')) {
+        this.playTrack(this.currentTrack);
+        return;
+      }
       if (this.nativeAudio.paused) {
-        this.nativeAudio.play();
+        this.nativeAudio.play().catch(e => {
+          this.playTrack(this.currentTrack);
+        });
       } else {
         this.nativeAudio.pause();
       }
@@ -5141,6 +5897,7 @@ class App {
     if (cinemaShuffle) {
       cinemaShuffle.classList.toggle('active', this.isShuffle);
     }
+    this.persistPlaybackState();
     this.showToast(this.isShuffle ? 'Acak Lagu (Shuffle) Aktif 🔀' : 'Acak Lagu Dinonaktifkan', 'info');
   }
 
@@ -5161,6 +5918,7 @@ class App {
       if (this.repeatBadge) this.repeatBadge.textContent = '';
       this.showToast('Ulangi Lagu Dinonaktifkan', 'info');
     }
+    this.persistPlaybackState();
   }
 
   toggleMute() {
@@ -5191,6 +5949,7 @@ class App {
     this.isMuted = isMute;
     if (this.volumeIconHigh) this.volumeIconHigh.style.display = isMute ? 'none' : 'block';
     if (this.volumeIconMuted) this.volumeIconMuted.style.display = isMute ? 'block' : 'none';
+    this.persistPlaybackState();
   }
 
   playNext() {
@@ -5250,8 +6009,11 @@ class App {
 
   updatePlayState(isPlaying) {
     this.isPlaying = Boolean(isPlaying);
-    if (isPlaying && window.audioEngine) {
-      window.audioEngine.resume();
+    if (isPlaying) {
+      if (window.audioEngine) window.audioEngine.resume();
+      this.startLyricsSyncLoop();
+    } else {
+      this.stopLyricsSyncLoop();
     }
     if (!this.playPauseBtn) return;
     const playIcon = this.playPauseBtn.querySelector('.icon-play');
@@ -5385,8 +6147,15 @@ class App {
 
   loadPlaylists() {
     try {
-      const list = JSON.parse(localStorage.getItem(this.getPlaylistsStorageKey())) || [];
-      return list.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
+      const scoped = JSON.parse(localStorage.getItem(this.getPlaylistsStorageKey()));
+      if (Array.isArray(scoped) && scoped.length > 0) {
+        return scoped.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
+      }
+      const general = JSON.parse(localStorage.getItem('aurasound_custom_playlists'));
+      if (Array.isArray(general) && general.length > 0) {
+        return general.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
+      }
+      return [];
     } catch (e) {
       return [];
     }
@@ -5875,7 +6644,14 @@ class App {
 
   loadFavorites() {
     try {
-      return JSON.parse(localStorage.getItem(this.getFavsStorageKey())) || [];
+      const scoped = JSON.parse(localStorage.getItem(this.getFavsStorageKey()));
+      if (Array.isArray(scoped) && scoped.length > 0) return scoped;
+      const general = JSON.parse(localStorage.getItem('aurasound_favs'));
+      if (Array.isArray(general) && general.length > 0) return general;
+      if (this.currentUser && Array.isArray(this.currentUser.favorites) && this.currentUser.favorites.length > 0) {
+        return this.currentUser.favorites;
+      }
+      return [];
     } catch (e) {
       return [];
     }

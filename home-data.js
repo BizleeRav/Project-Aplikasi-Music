@@ -1049,16 +1049,6 @@ const HOME_SECTIONS = {
 
   mixedForYou: [
     {
-      id: 'ZRtdQ81jPUQ',
-      albumId: 'deck-supermix',
-      title: 'My Supermix',
-      artist: 'YOASOBI, tuki., Hoshimachi Suisei, Ado',
-      thumbnail: '/images/supermix.jpg',
-      isAlbum: true,
-      type: 'youtube',
-      cardType: 'square'
-    },
-    {
       id: 'mix-liked',
       title: 'Liked Music',
       artist: 'Auto playlist • Lagu yang Anda sukai',
@@ -1478,27 +1468,34 @@ async function getAlbumDetail(albumId, options = {}) {
 
   let album = ALBUM_CATALOG[albumId];
 
-  // 2. If album is not in the static catalog (e.g. from dynamic mood card or search)
+  // 2. If album is not in the static catalog (e.g. from dynamic mood card, artist mix, or search)
   if (!album) {
-    const cleanQuery = albumId.replace(/^(album-|pl-|deck-|showcase-)/, '').replace(/-/g, ' ');
+    const isMix = albumId.startsWith('mix-');
+    const cleanQuery = albumId.replace(/^(album-|pl-|deck-|showcase-|mix-artist-|mix-)/, '').replace(/-/g, ' ').trim();
     try {
-      const searchRes = await ytSearch(`${cleanQuery} full album songs official`);
+      const searchQuery = isMix ? `"${cleanQuery}" official music video` : `${cleanQuery} full album songs official`;
+      const searchRes = await ytSearch(searchQuery);
       const candidates = (searchRes && searchRes.videos)
         ? searchRes.videos.filter(v => v.seconds > 45 && v.seconds < 900)
         : [];
 
       if (candidates.length > 0) {
         const topVideo = candidates[0];
+        const formattedName = cleanQuery.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const displayTitle = isMix ? `${formattedName} Mix` : `${formattedName} Album`;
+
         album = {
           id: albumId,
-          type: 'album',
-          badge: 'ALBUM',
-          title: cleanQuery.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-          artist: topVideo.author ? topVideo.author.name : 'YouTube Music',
+          type: isMix ? 'mix' : 'album',
+          badge: isMix ? 'AURA MIX' : 'ALBUM',
+          title: displayTitle,
+          artist: topVideo.author ? topVideo.author.name : formattedName,
           releaseYear: '2024 - 2026',
-          genre: 'Pop • Hits',
+          genre: isMix ? 'Personalized Artist Mix' : 'Pop • Hits',
           thumbnail: topVideo.thumbnail || '/images/supermix.jpg',
-          description: `Koleksi lengkap lagu dari ${cleanQuery} yang dikurasi khusus untuk pengalaman mendengarkan tanpa batas.`,
+          description: isMix
+            ? `Racikan playlist otomatis berisi lagu terbaik dari ${formattedName} dan karya-karya terkait.`
+            : `Koleksi lengkap lagu dari ${formattedName} yang dikurasi khusus untuk pengalaman mendengarkan tanpa batas.`,
           tracks: []
         };
       }

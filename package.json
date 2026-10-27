@@ -4,31 +4,8 @@
   "description": "AuraSound - Hi-Fi Music Hub & Suno AI Music Studio",
   "main": "electron-main.js",
   "scripts": {
-    "start": "node server.js",
-    "app": "electron .",
-    "dist": "electron-builder --win"
+    "start": "node server.js"
   },
-  "build": {
-    "appId": "com.aurasound.musichub",
-    "productName": "AuraSound",
-    "directories": {
-      "output": "dist"
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "public/icons/icon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    }
-  },
-  "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -49,10 +26,5 @@
     "youtubei.js": "^18.2.0",
     "yt-search": "^2.13.1",
     "ytpl": "^2.3.0"
-  },
-  "devDependencies": {
-    "electron": "^45.0.0",
-    "electron-builder": "^26.15.3",
-    "electron-updater": "^6.8.9"
   }
 }

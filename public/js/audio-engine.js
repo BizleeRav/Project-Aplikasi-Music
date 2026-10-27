@@ -277,6 +277,10 @@ class AudioEngine {
       this.eqFilters[bandIndex].gain.cancelScheduledValues(now);
       this.eqFilters[bandIndex].gain.setTargetAtTime(val, now, 0.05);
     }
+    const s1 = document.getElementById(`eq-slider-${bandIndex}`);
+    if (s1 && s1.value != val) s1.value = val;
+    const s2 = document.getElementById(`cinema-eq-slider-${bandIndex}`);
+    if (s2 && s2.value != val) s2.value = val;
     this.drawEqCurve();
   }
 
@@ -294,6 +298,14 @@ class AudioEngine {
         this.subBassPunchNode.gain.setTargetAtTime(val * 0.55, now, 0.05);
       }
     }
+    ['bass-boost-slider', 'cinema-bass-boost-slider'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.value != val) el.value = val;
+    });
+    ['bass-boost-val', 'cinema-bass-boost-val'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = `+${val} dB`;
+    });
     this.drawEqCurve();
   }
 
@@ -314,6 +326,16 @@ class AudioEngine {
         this.binauralDelayR.delayTime.setTargetAtTime(delayAmount, now, 0.05);
       }
     }
+    const pct = Math.round(val * 100);
+    ['spatial-width-slider', 'cinema-spatial-width-slider'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.value != pct) el.value = pct;
+    });
+    const labelText = pct === 100 ? '100% (Stereo)' : (pct > 100 ? `${pct}% (3D Surround)` : `${pct}% (Fokus Mono)`);
+    ['spatial-width-val', 'cinema-spatial-width-val'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = labelText;
+    });
   }
 
   setSpatialPan(panValue) {
@@ -328,49 +350,50 @@ class AudioEngine {
     const preset = this.presets[presetName];
     if (!preset) return;
 
+    this.activePresetName = presetName;
+
     const values = Array.isArray(preset) ? preset : preset.eq;
     const bassVal = (typeof preset.bass === 'number') ? preset.bass : (presetName === 'dolby' ? 4 : (presetName === 'nahimic' ? 5 : (presetName === 'bassHeavy' || presetName === 'bass' ? 8 : (presetName === 'electronic' || presetName === 'club' ? 7 : 0))));
     const widthVal = (typeof preset.width === 'number') ? preset.width : (presetName === 'dolby' ? 1.45 : (presetName === 'nahimic' ? 1.25 : (presetName === 'electronic' || presetName === 'club' ? 1.40 : 1.0)));
 
     values.forEach((val, idx) => {
       this.setBandGain(idx, val);
-      const slider = document.getElementById(`eq-slider-${idx}`);
-      if (slider) slider.value = val;
     });
 
     this.setBassBoost(bassVal);
-    const bassSlider = document.getElementById('bass-boost-slider');
-    if (bassSlider) bassSlider.value = bassVal;
-    const bassLabel = document.getElementById('bass-boost-val');
-    if (bassLabel) bassLabel.textContent = `+${bassVal} dB`;
-
     this.setSpatialWidth(widthVal);
-    const widthSlider = document.getElementById('spatial-width-slider');
-    if (widthSlider) widthSlider.value = Math.round(widthVal * 100);
-    const widthLabel = document.getElementById('spatial-width-val');
-    if (widthLabel) {
-      const pct = Math.round(widthVal * 100);
-      widthLabel.textContent = pct === 100 ? '100% (Stereo)' : (pct > 100 ? `${pct}% (3D Surround)` : `${pct}% (Fokus Mono)`);
+
+    // Sync Preset Buttons Active State in both main drawer and cinema modal
+    document.querySelectorAll('.preset-btn, .cinema-preset-btn').forEach(btn => {
+      const p = btn.getAttribute('data-preset');
+      btn.classList.toggle('active', p === presetName || (presetName === 'bassHeavy' && p === 'bass') || (presetName === 'electronic' && p === 'club'));
+    });
+
+    // Update cinema active DSP label chip
+    const labelNames = {
+      dolby: 'Dolby Atmos',
+      nahimic: 'Nahimic Sound',
+      bassHeavy: 'Bass Boost',
+      bass: 'Bass Boost',
+      vocal: 'Vocal Presence',
+      electronic: 'EDM Synth',
+      club: 'EDM Synth',
+      flat: 'Flat Natural'
+    };
+    const chipText = document.getElementById('cinema-active-dsp-name');
+    if (chipText) {
+      chipText.textContent = labelNames[presetName] || presetName;
     }
 
     this.drawEqCurve();
   }
 
-  // Draw Real-Time Frequency Response Curve on Canvas
-  drawEqCurve() {
-    if (!this.curveCanvas || !this.curveCtx) {
-      const el = document.getElementById('eq-curve-canvas');
-      if (el) {
-        this.curveCanvas = el;
-        this.curveCtx = el.getContext('2d');
-      } else {
-        return;
-      }
-    }
-
-    const width = this.curveCanvas.width;
-    const height = this.curveCanvas.height;
-    const ctx = this.curveCtx;
+  // Draw Smooth Frequency Response Curve on Canvas
+  drawSingleCurve(canvas, ctx) {
+    if (!canvas || !ctx) return;
+    const width = canvas.width;
+    const height = canvas.height;
+    if (!width || !height) return;
 
     ctx.clearRect(0, 0, width, height);
 
@@ -467,6 +490,29 @@ class AudioEngine {
       ctx.fill();
       ctx.shadowBlur = 0;
     });
+  }
+
+  // Draw Real-Time Frequency Response Curve on Canvas
+  drawEqCurve() {
+    // 1. Main Drawer Canvas
+    const el1 = document.getElementById('eq-curve-canvas');
+    if (el1) {
+      if (!this.curveCtx || this.curveCanvas !== el1) {
+        this.curveCanvas = el1;
+        this.curveCtx = el1.getContext('2d');
+      }
+      this.drawSingleCurve(this.curveCanvas, this.curveCtx);
+    }
+
+    // 2. Studio Cinema Canvas
+    const el2 = document.getElementById('cinema-eq-curve-canvas');
+    if (el2) {
+      if (!this.cinemaCurveCtx || this.cinemaCurveCanvas !== el2) {
+        this.cinemaCurveCanvas = el2;
+        this.cinemaCurveCtx = el2.getContext('2d');
+      }
+      this.drawSingleCurve(this.cinemaCurveCanvas, this.cinemaCurveCtx);
+    }
   }
 
   // Setup Visualizer Canvas

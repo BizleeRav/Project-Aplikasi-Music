@@ -1,8 +1,23 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = process.env.AURASOUND_DATA_DIR || (process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
+function getUnifiedDataDir() {
+  if (process.env.AURASOUND_DATA_DIR && fs.existsSync(process.env.AURASOUND_DATA_DIR)) {
+    return process.env.AURASOUND_DATA_DIR;
+  }
+  if (process.env.APPDATA) {
+    const mainDir = path.join(process.env.APPDATA, 'AuraSound', 'data');
+    if (!fs.existsSync(mainDir)) {
+      try { fs.mkdirSync(mainDir, { recursive: true }); } catch (e) {}
+    }
+    return mainDir;
+  }
+  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT || process.env.NOW_REGION);
+  return (isServerless ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
+}
+const DATA_DIR = getUnifiedDataDir();
 const DB_FILE = path.join(DATA_DIR, 'users.json');
+const SESSION_FILE = path.join(DATA_DIR, 'session.json');
 
 // Ensure data directory exists
 try {
@@ -13,6 +28,36 @@ try {
     fs.writeFileSync(DB_FILE, '{}', 'utf8');
   }
 } catch (e) {}
+
+function getActiveSession() {
+  if (!fs.existsSync(SESSION_FILE)) return null;
+  try {
+    const raw = fs.readFileSync(SESSION_FILE, 'utf8');
+    const sess = JSON.parse(raw);
+    if (sess && sess.email) {
+      return getUser(sess.email);
+    }
+  } catch (e) {
+    console.error('Error reading session file:', e);
+  }
+  return null;
+}
+
+function setActiveSession(user) {
+  if (!user || !user.email) return;
+  try {
+    fs.writeFileSync(SESSION_FILE, JSON.stringify({ email: user.email, savedAt: Date.now() }, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error writing session file:', e);
+  }
+}
+
+function clearActiveSession() {
+  try {
+    if (fs.existsSync(SESSION_FILE)) fs.unlinkSync(SESSION_FILE);
+  } catch (e) {}
+}
+
 
 // In-Memory Cache for 0ms ultra-fast response
 let usersCache = null;
@@ -26,7 +71,7 @@ function loadFromDisk() {
   if (!fs.existsSync(DB_FILE)) return {};
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf8');
-    return JSON.parse(raw) || {};
+    return JSON.parse(raw.replace(/^\uFEFF/, '')) || {};
   } catch (err) {
     console.error('Error reading users DB from disk:', err);
     return {};
@@ -50,16 +95,23 @@ function getAllUsers() {
 
 function getUser(rawKey) {
   const all = getAllUsers();
+  if (!rawKey) return null;
   const key = normalizeUserKey(rawKey);
   if (!key) return null;
 
   // Direct match by email or key
   if (all[key]) return all[key];
+  if (all[rawKey]) return all[rawKey];
 
   // Lookup by email or id inside values
   for (const u of Object.values(all)) {
-    if (u.email && normalizeUserKey(u.email) === key) return u;
-    if (u.id && normalizeUserKey(u.id) === key) return u;
+    if (!u) continue;
+    if (u.email && (normalizeUserKey(u.email) === key || u.email.toLowerCase() === String(rawKey).toLowerCase())) return u;
+    if (u.id && (normalizeUserKey(u.id) === key || u.id === rawKey)) return u;
+    if (u.email) {
+      const emailUnderscored = 'usr_' + u.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
+      if (emailUnderscored === key || emailUnderscored === rawKey) return u;
+    }
   }
   return null;
 }
@@ -101,6 +153,7 @@ function loginOrRegisterUser({ email, name, avatar, provider = 'google', googleI
   }
 
   persistToDisk();
+  setActiveSession(user);
   return user;
 }
 
@@ -125,6 +178,7 @@ function updateUserProfile(rawKey, updates = {}) {
   user.updatedAt = Date.now();
   all[user.id] = user;
   persistToDisk();
+  setActiveSession(user);
   return user;
 }
 
@@ -233,5 +287,9 @@ module.exports = {
   getUserHistory,
   addTrackToHistory,
   getUserTaste,
-  saveUserTaste
+  saveUserTaste,
+  getActiveSession,
+  setActiveSession,
+  clearActiveSession,
+  normalizeUserKey
 };

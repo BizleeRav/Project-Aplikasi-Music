@@ -11,7 +11,13 @@ android-build/
 
 # Temporary files
 scratch/
+scratch_*
 *.log
 .DS_Store
 Thumbs.db
 data/*.backup.json
+data/session.json
+data/playback.json
+data/avatars/
+.agents/
+

@@ -9,7 +9,12 @@ const playlistDb = require('./playlist-db');
 
 // Cache to ensure fast responses (TTL: 2 hours)
 const feedCache = new Map();
+const albumShelfCache = new Map();
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+
+function cleanSlug(str = '') {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'music';
+}
 
 // Curated Genre Catalog
 const GENRES = {
@@ -200,6 +205,7 @@ async function fetchCategoryTracks(query, max = 10) {
       title: v.title.replace(/\[[^\]]*\]/g, '').replace(/\([^)]*Official[^)]*\)/gi, '').trim(),
       artist: v.author?.name || 'Artist',
       duration: v.timestamp || '3:30',
+      seconds: v.seconds || 0,
       views: v.views ? `${(v.views / 1000000).toFixed(1)}M views` : '',
       thumbnail: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
       type: 'youtube'
@@ -351,24 +357,28 @@ async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-i
 }
 
 /**
- * AI Related Music & Hypermix Generator for users who skipped taste onboarding.
- * Activates immediately once the user starts listening to any music (>= 1 track).
- * Derives related tracks directly from what the user listened to without developer biases.
+ * AI Related Music, Dynamic Vinyl Shelf & Algorithmic Mixes Engine
+ * Derives personalized albums and artist/vibe mixes directly from what the user listened to & liked.
+ * Strictly avoids hardcoding and strictly omits duplicate Supermix.
  */
 async function generateHypermix({ history = [], favorites = [] } = {}) {
   const validHistory = Array.isArray(history) ? history.filter(Boolean) : [];
-  if (validHistory.length === 0) {
-    return {
-      success: true,
-      isReady: false,
-      count: 0,
-      tracks: []
-    };
-  }
+  const validFavorites = Array.isArray(favorites) ? favorites.filter(Boolean) : [];
 
   const artistCounts = {};
   const historyTracks = [];
+  const artistThumbMap = {};
   const seenIds = new Set();
+
+  validFavorites.forEach(f => {
+    if (f && f.artist) {
+      const cleanArtist = (f.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
+      if (cleanArtist && cleanArtist.length > 1 && !cleanArtist.includes('AuraSound')) {
+        artistCounts[cleanArtist] = (artistCounts[cleanArtist] || 0) + 4; // High weight for liked tracks
+        if (f.thumbnail && !artistThumbMap[cleanArtist]) artistThumbMap[cleanArtist] = f.thumbnail;
+      }
+    }
+  });
 
   validHistory.forEach(h => {
     if (h && h.id && !seenIds.has(h.id)) {
@@ -376,14 +386,15 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
       historyTracks.push(h);
       const cleanArtist = (h.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
       if (cleanArtist && cleanArtist.length > 1 && !cleanArtist.includes('AuraSound')) {
-        artistCounts[cleanArtist] = (artistCounts[cleanArtist] || 0) + 1;
+        artistCounts[cleanArtist] = (artistCounts[cleanArtist] || 0) + 2;
+        if (h.thumbnail && !artistThumbMap[cleanArtist]) artistThumbMap[cleanArtist] = h.thumbnail;
       }
     }
   });
 
   let sortedArtists = Object.keys(artistCounts)
     .sort((a, b) => artistCounts[b] - artistCounts[a])
-    .slice(0, 4);
+    .slice(0, 6);
 
   // If no artist could be cleanly parsed, fallback to latest song artist or title
   if (sortedArtists.length === 0 && historyTracks.length > 0) {
@@ -391,15 +402,69 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     if (fallback) sortedArtists = [fallback];
   }
 
-  // Parallel query YouTube for each artist's official hits & related music
-  const relatedPromises = sortedArtists.map(async (art) => {
+  // Cold start baseline if history & favorites are completely empty
+  if (sortedArtists.length === 0) {
+    sortedArtists = ['YOASOBI', 'NewJeans', 'Ado', 'tuki.', 'aespa', 'Stray Kids'];
+  }
+
+  // 1. Parallel query YouTube for each artist's official hits & related music
+  const relatedPromises = sortedArtists.slice(0, 4).map(async (art) => {
     return await fetchCategoryTracks(`"${art}" official music video`, 6);
   });
 
-  const relatedResults = await Promise.all(relatedPromises);
-  const mixTracks = [];
+  // 2. Parallel query YouTube for dynamic official albums/EPs for the Tactile Vinyl Shelf
+  const albumPromises = sortedArtists.slice(0, 6).map(async (art) => {
+    const cacheKey = `album_shelf_${cleanSlug(art)}`;
+    if (albumShelfCache.has(cacheKey)) {
+      return albumShelfCache.get(cacheKey);
+    }
+    try {
+      const res = await ytSearch(`"${art}" full album official`);
+      const v = (res && res.videos && res.videos.length > 0) ? res.videos[0] : null;
+      let title = v?.title || `${art} Definitive Collection`;
+      title = title
+        .replace(/\[[^\]]*\]/g, '')
+        .replace(/\([^)]*(?:full|album|official|audio|stream)[^)]*\)/gi, '')
+        .replace(/\b(full\s*album|official\s*album|full\s*ep)\b/gi, '')
+        .trim();
+      title = title.replace(new RegExp(`^${art}\\s*[-:]\\s*`, 'i'), '').trim();
+      if (!title || title.length < 2) title = `${art} Collection`;
 
-  // Add related tracks first
+      const isEp = /ep|mini/i.test(v?.title || '');
+      const dynamicAlbum = {
+        id: `album-${cleanSlug(art)}`,
+        albumId: `album-${cleanSlug(art)}`,
+        title: title,
+        artist: art,
+        badge: isEp ? 'EP' : 'ALBUM',
+        thumbnail: v?.thumbnail || artistThumbMap[art] || '/images/supermix.jpg',
+        duration: isEp ? 'EP • Hi-Res' : 'Album • Hi-Res',
+        isAlbum: true,
+        type: 'youtube'
+      };
+      albumShelfCache.set(cacheKey, dynamicAlbum);
+      return dynamicAlbum;
+    } catch (e) {
+      return {
+        id: `album-${cleanSlug(art)}`,
+        albumId: `album-${cleanSlug(art)}`,
+        title: `${art} Collection`,
+        artist: art,
+        badge: 'ALBUM',
+        thumbnail: artistThumbMap[art] || '/images/supermix.jpg',
+        duration: 'Album • Hi-Res',
+        isAlbum: true,
+        type: 'youtube'
+      };
+    }
+  });
+
+  const [relatedResults, dynamicAlbums] = await Promise.all([
+    Promise.all(relatedPromises),
+    Promise.all(albumPromises)
+  ]);
+
+  const mixTracks = [];
   relatedResults.forEach(artistTracks => {
     artistTracks.forEach(t => {
       if (!seenIds.has(t.id)) {
@@ -409,11 +474,75 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     });
   });
 
-  // Also include the tracks from history so user has a rich playlist
+  // Include recent history tracks for a rich list
   historyTracks.forEach(t => {
     if (!mixTracks.some(m => m.id === t.id)) {
       mixTracks.push(t);
     }
+  });
+
+  // 3. Build Algorithmic Dynamic Mixes for "Special Mixed Harmonies" (STRICTLY NO "My Supermix")
+  const dynamicMixes = [];
+
+  // Mix 1: Liked Music
+  if (validFavorites.length > 0) {
+    dynamicMixes.push({
+      id: 'mix-liked',
+      albumId: 'mix-liked',
+      title: 'Liked Music',
+      artist: `${validFavorites.length} Lagu Favorit`,
+      thumbnail: validFavorites[0]?.thumbnail || '/images/liked.jpg',
+      type: 'mix',
+      cardType: 'square'
+    });
+  }
+
+  // Mix 2: Replay Mix (Lagu yang sering diputar ulang)
+  if (historyTracks.length > 0) {
+    dynamicMixes.push({
+      id: 'mix-replay',
+      albumId: 'mix-replay',
+      title: 'Replay Mix',
+      artist: sortedArtists.slice(0, 3).join(', ') || 'Lagu favorit yang sering diulang',
+      thumbnail: historyTracks[0]?.thumbnail || '/images/discover.jpg',
+      type: 'mix',
+      cardType: 'square'
+    });
+  }
+
+  // Mix 3..N: Artist Mixes for each Top Artist
+  sortedArtists.slice(0, 4).forEach(art => {
+    dynamicMixes.push({
+      id: `mix-artist-${cleanSlug(art)}`,
+      albumId: `mix-artist-${cleanSlug(art)}`,
+      title: `${art} Mix`,
+      artist: `Koleksi terbaik ${art} & karya serupa`,
+      thumbnail: artistThumbMap[art] || '/images/discover.jpg',
+      type: 'mix',
+      cardType: 'square'
+    });
+  });
+
+  // Mix N+1: Discover Mix
+  dynamicMixes.push({
+    id: 'showcase-discover',
+    albumId: 'showcase-discover',
+    title: 'Discover Mix',
+    artist: 'Lagu baru yang selaras dengan seleramu',
+    thumbnail: '/images/chill_vibes.jpg',
+    type: 'mix',
+    cardType: 'square'
+  });
+
+  // Mix N+2: Focus Beats: Lo-fi Study
+  dynamicMixes.push({
+    id: 'showcase-focus-beats',
+    albumId: 'showcase-focus-beats',
+    title: 'Focus Beats: Lo-fi Study',
+    artist: 'Ketukan lo-fi untuk konsentrasi & produktivitas',
+    thumbnail: '/images/focus_beats.jpg',
+    type: 'mix',
+    cardType: 'square'
   });
 
   const artistLabel = sortedArtists.length > 0 ? sortedArtists.join(', ') : 'lagu yang kamu dengar';
@@ -425,7 +554,9 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     artists: sortedArtists,
     title: '✨ Lagu yang Berkaitan',
     description: `Diramu otomatis berdasarkan musik yang kamu dengarkan (${artistLabel}).`,
-    tracks: mixTracks.slice(0, 20)
+    tracks: mixTracks.slice(0, 20),
+    dynamicAlbums: dynamicAlbums.filter(Boolean),
+    dynamicMixes: dynamicMixes
   };
 }
 

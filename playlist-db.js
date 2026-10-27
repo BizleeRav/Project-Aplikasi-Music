@@ -1,7 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = process.env.AURASOUND_DATA_DIR || (process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
+function getUnifiedDataDir() {
+  if (process.env.AURASOUND_DATA_DIR && fs.existsSync(process.env.AURASOUND_DATA_DIR)) {
+    return process.env.AURASOUND_DATA_DIR;
+  }
+  if (process.env.APPDATA) {
+    const mainDir = path.join(process.env.APPDATA, 'AuraSound', 'data');
+    if (!fs.existsSync(mainDir)) {
+      try { fs.mkdirSync(mainDir, { recursive: true }); } catch (e) {}
+    }
+    return mainDir;
+  }
+  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT || process.env.NOW_REGION);
+  return (isServerless ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
+}
+const DATA_DIR = getUnifiedDataDir();
 const DB_FILE = path.join(DATA_DIR, 'playlists.json');
 
 // Ensure data directory exists
@@ -43,9 +57,12 @@ function getAllPlaylists(userKey = null) {
   }
   if (!userKey) return playlistsCache;
   const cleanKey = String(userKey).trim().toLowerCase();
+  const normalizedKey = cleanKey.replace(/^usr_/, '').replace(/_gmail_com$/, '@gmail.com');
   return playlistsCache.filter(p => {
     const pOwner = String(p.userEmail || p.userId || p.deviceId || '').trim().toLowerCase();
-    return pOwner === cleanKey;
+    if (pOwner === cleanKey || pOwner === normalizedKey) return true;
+    const pOwnerNorm = pOwner.replace(/^usr_/, '').replace(/_gmail_com$/, '@gmail.com');
+    return pOwnerNorm === normalizedKey;
   });
 }
 

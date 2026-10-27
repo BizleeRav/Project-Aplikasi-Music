@@ -4341,6 +4341,26 @@ body::after {
   font-weight: 500;
 }
 
+.aura-section-meta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #cbd5e1;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.aura-section-meta-badge svg {
+  color: var(--primary);
+}
+
 .aura-bento-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr;
@@ -4826,41 +4846,63 @@ body::after {
 }
 
 /* ==========================================================================
-   4. Tactile Vinyl Shelf (Slide-Out Disc Animation)
+   4. Tactile Vinyl Shelf (Slide-Out Disc Animation - Responsive Grid)
    ========================================================================== */
 .aura-vinyl-shelf {
-  display: flex;
-  gap: 24px;
-  overflow-x: auto;
-  scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
-  padding: 8px 4px 18px;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+  gap: 26px 20px;
+  padding: 8px 6px 22px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.aura-vinyl-shelf::-webkit-scrollbar {
-  display: none;
+@media (min-width: 1450px) {
+  .aura-vinyl-shelf {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+@media (max-width: 1200px) and (min-width: 900px) {
+  .aura-vinyl-shelf {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 900px) and (min-width: 620px) {
+  .aura-vinyl-shelf {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .aura-vinyl-shelf {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px 12px;
+  }
 }
 
 .aura-vinyl-card {
-  flex: 0 0 210px;
-  scroll-snap-align: start;
+  width: 100%;
+  min-width: 0;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .aura-vinyl-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-6px);
+  z-index: 10;
 }
 
 .aura-vinyl-jacket-wrap {
   position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
+  overflow: visible;
 }
 
 /* The Vinyl Disc tucked inside the jacket */
@@ -5010,16 +5052,20 @@ body::after {
 .aura-vinyl-meta {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
 }
 
 .aura-vinyl-title {
-  font-size: 0.96rem;
+  font-size: 0.95rem;
   font-weight: 800;
   color: #ffffff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  width: 100%;
+  letter-spacing: -0.01em;
 }
 
 .aura-vinyl-artist {
@@ -5028,6 +5074,7 @@ body::after {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  width: 100%;
 }
 
 .aura-vinyl-footer-row {
@@ -5179,34 +5226,55 @@ body::after {
   color: #94a3b8;
 }
 
-/* Mix Carousels */
+/* Mix Carousels - Responsive Modern Grid */
 .aura-mix-carousel {
-  display: flex;
-  gap: 20px;
-  overflow-x: auto;
-  scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
-  padding: 6px 2px 14px;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+  gap: 22px 18px;
+  padding: 6px 4px 18px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.aura-mix-carousel::-webkit-scrollbar {
-  display: none;
+@media (min-width: 1300px) {
+  .aura-mix-carousel {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 1300px) and (min-width: 950px) {
+  .aura-mix-carousel {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 950px) and (min-width: 660px) {
+  .aura-mix-carousel {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 660px) {
+  .aura-mix-carousel {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px 12px;
+  }
 }
 
 .aura-mix-card {
-  flex: 0 0 195px;
-  scroll-snap-align: start;
+  width: 100%;
+  min-width: 0;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: transform 0.2s ease;
+  position: relative;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .aura-mix-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-5px);
+  z-index: 5;
 }
 
 .aura-mix-thumb-wrap {
@@ -5217,6 +5285,7 @@ body::after {
   overflow: hidden;
   background: #0f172a;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .aura-mix-thumb {
@@ -5260,7 +5329,9 @@ body::after {
 .aura-mix-info {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
 }
 
 .aura-mix-title {
@@ -5270,6 +5341,7 @@ body::after {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  width: 100%;
 }
 
 .aura-mix-sub {
@@ -5278,6 +5350,7 @@ body::after {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  width: 100%;
 }
 
 /* ==========================================================================
@@ -5304,7 +5377,8 @@ body::after {
     grid-auto-columns: minmax(290px, 320px);
   }
   .aura-vinyl-card {
-    flex: 0 0 165px;
+    width: 100%;
+    min-width: 0;
   }
   .aura-cinema-card {
     flex: 0 0 240px;
@@ -5849,6 +5923,285 @@ body.cinema-mode-active {
   transform: rotate(90deg) scale(1.1);
 }
 
+/* Studio Cinema Audio DSP Quick Trigger Chip */
+.cinema-dsp-chip {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.cinema-dsp-chip:hover {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: #34d399;
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.4);
+  transform: translateY(-1px);
+}
+
+.cinema-dsp-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulseDot 2s infinite ease-in-out;
+}
+
+.cinema-ctrl-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+}
+
+/* Studio Cinema Audio DSP Floating Equalizer Drawer */
+.cinema-eq-drawer {
+  position: fixed;
+  bottom: 96px;
+  right: 36px;
+  width: 470px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 120px);
+  background: rgba(10, 15, 29, 0.94);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  border-radius: 24px;
+  padding: 20px 22px;
+  z-index: 10050;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8), 0 0 35px rgba(6, 182, 212, 0.15);
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  animation: cinemaEqSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow-y: auto;
+}
+
+.cinema-eq-drawer.active {
+  display: flex;
+}
+
+@keyframes cinemaEqSlideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.cinema-eq-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+}
+
+.cinema-eq-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cinema-eq-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+
+.cinema-eq-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+}
+
+.cinema-eq-badge {
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  color: #38bdf8;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.cinema-limiter-badge {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #34d399;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cinema-eq-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.cinema-eq-close-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #ef4444;
+  transform: scale(1.1);
+}
+
+.cinema-eq-curve-wrap {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+.cinema-eq-curve-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.cinema-eq-curve-range {
+  color: #38bdf8;
+}
+
+#cinema-eq-curve-canvas {
+  width: 100%;
+  height: 65px;
+  display: block;
+}
+
+.cinema-eq-curve-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: #64748b;
+  font-family: monospace;
+  margin-top: 4px;
+}
+
+.cinema-eq-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.cinema-preset-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cinema-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+.cinema-preset-btn.active {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.3), rgba(16, 185, 129, 0.35));
+  border-color: #10b981;
+  color: #ffffff;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.35);
+}
+
+.cinema-eq-dual-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.cinema-bass-boost-box {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cinema-bass-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.cinema-eq-bars-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 12px 10px 8px;
+  height: 125px;
+}
+
+.cinema-eq-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  flex: 1;
+}
+
+@media (max-width: 640px) {
+  .cinema-eq-drawer {
+    right: 12px;
+    left: 12px;
+    width: auto;
+    bottom: 84px;
+    max-height: calc(100vh - 100px);
+  }
+  .cinema-eq-presets {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* Cinema Stage Layout */
 .cinema-stage {
   position: relative;
@@ -6200,6 +6553,35 @@ body.music-playing .cinema-turntable-arm {
   box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
 }
 
+/* Lead-in Instrumental Countdown */
+.cinema-lead-in-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: 20px;
+  margin-right: 10px;
+}
+
+.cinema-lead-in-dots .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+}
+
+.cinema-lead-in-dots .dot.d1 { animation: leadInBounce 0.9s infinite 0s ease-in-out; }
+.cinema-lead-in-dots .dot.d2 { animation: leadInBounce 0.9s infinite 0.2s ease-in-out; }
+.cinema-lead-in-dots .dot.d3 { animation: leadInBounce 0.9s infinite 0.4s ease-in-out; }
+
+@keyframes leadInBounce {
+  0%, 100% { transform: scale(0.6); opacity: 0.3; }
+  50% { transform: scale(1.3); opacity: 1; filter: drop-shadow(0 0 6px #38bdf8); }
+}
+
 /* Romaji Toggle Chip */
 .cinema-romaji-chip {
   display: inline-flex;
@@ -6267,11 +6649,11 @@ body.music-playing .cinema-turntable-arm {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 6px 36px;
+  gap: 16px;
+  padding: 36px 10px 100px;
   scroll-behavior: smooth;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 90%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 90%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 86%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 86%, transparent 100%);
 }
 
 .cinema-lyrics-stream::-webkit-scrollbar {
@@ -6292,37 +6674,58 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .cinema-lyric-line {
-  font-size: clamp(1.05rem, 1.8vh, 1.25rem);
+  font-size: clamp(1.1rem, 2vh, 1.35rem);
   font-weight: 700;
-  color: #64748b;
+  color: #94a3b8;
   line-height: 1.45;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  padding: 6px 14px;
-  border-radius: 10px;
+  padding: 8px 16px;
+  border-radius: 12px;
   position: relative;
   user-select: none;
+  transform-origin: left center;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.25s ease,
+              background 0.25s ease;
+}
+
+/* Inactive lines when singing is in progress - Apple Music / Better Lyrics blur depth */
+.cinema-lyrics-stream.has-active .cinema-lyric-line:not(.active) {
+  opacity: 0.35;
+  filter: blur(1.1px);
+  transform: scale(0.97);
+}
+
+.cinema-lyrics-stream.has-active .cinema-lyric-line:not(.active):hover {
+  opacity: 0.88;
+  filter: blur(0px);
+  transform: scale(1.0);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .cinema-lyric-line:hover {
   color: #e2e8f0;
   background: rgba(255, 255, 255, 0.05);
-  transform: translateX(4px);
 }
 
 .cinema-lyric-line:active {
-  transform: scale(0.98) translateX(4px);
+  transform: scale(0.98);
 }
 
 .cinema-lyric-line.active {
-  font-size: clamp(1.22rem, 2.2vh, 1.45rem);
+  font-size: clamp(1.3rem, 2.5vh, 1.62rem);
   font-weight: 900;
   color: #ffffff;
-  background: linear-gradient(90deg, rgba(6, 182, 212, 0.22), rgba(6, 182, 212, 0.02));
-  border-left: 4px solid #06b6d4;
-  padding-left: 16px;
-  text-shadow: 0 0 16px rgba(6, 182, 212, 0.65);
-  transform: translateX(6px);
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.22), rgba(168, 85, 247, 0.08) 60%, transparent);
+  border-left: 4px solid #38bdf8;
+  padding-left: 20px;
+  text-shadow: 0 0 20px rgba(56, 189, 248, 0.75), 0 2px 4px rgba(0, 0, 0, 0.6);
+  transform: scale(1.03) translateX(4px);
+  opacity: 1 !important;
+  filter: none !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .lyric-main-text {
@@ -6350,6 +6753,15 @@ body.music-playing .cinema-turntable-arm {
 
 .cinema-lyric-line:hover .lyric-romaji-text {
   color: #cbd5e1;
+}
+
+.cinema-romaji-chip .romaji-chip-icon {
+  font-size: 0.76rem;
+  background: linear-gradient(135deg, #38bdf8, #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+  letter-spacing: -0.5px;
 }
 
 /* Hide Romaji when toggled off */
