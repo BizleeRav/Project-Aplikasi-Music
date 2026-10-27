@@ -2689,13 +2689,13 @@ class App {
     if (searchSubtitle) {
       searchSubtitle.style.display = 'block';
       searchSubtitle.textContent = isEn 
-        ? `Filter: ${filterLabels[filter] || 'All'} • Searching YouTube...` 
-        : `Filter: ${filterLabels[filter] || 'Semua'} • Mencari di YouTube...`;
+        ? `Filter: ${filterLabels[filter] || 'All'} • Searching YouTube Music...` 
+        : `Filter: ${filterLabels[filter] || 'Semua'} • Mencari di YouTube Music...`;
     }
 
     if (resultsContainer) {
       resultsContainer.innerHTML = this.renderLoadingState(
-        isEn ? 'Searching music on YouTube...' : 'Mencari di YouTube Music...',
+        isEn ? 'Searching music on YouTube Music...' : 'Mencari di YouTube Music...',
         true,
         5
       );
@@ -4974,7 +4974,7 @@ class App {
           <div class="home-album-load-more-wrap">
             <button id="btn-load-more-album-tracks" class="btn-album-load-more" onclick="window.app.loadMoreAlbumTracks('${album.id}')">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
-              <span>${isEn ? 'Load More Songs from YouTube' : 'Muat Lebih Banyak Lagu dari YouTube'}</span>
+              <span>${isEn ? 'Load More Songs from YouTube Music' : 'Muat Lebih Banyak dari YouTube Music'}</span>
             </button>
           </div>
           ` : ''}
@@ -5813,7 +5813,7 @@ class App {
       textEl.textContent = isEn ? 'DSP Web Audio Engine Active (100% Live Filter)' : 'DSP Web Audio Engine Aktif (100% Termodifikasi)';
       if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
     } else {
-      textEl.textContent = isEn ? 'YouTube Hi-Fi Direct Stream' : 'YouTube Hi-Fi Direct Stream';
+      textEl.textContent = isEn ? 'YouTube Music • Hi-Fi Direct Stream' : 'YouTube Music • Studio Hi-Fi';
       if (dotEl) dotEl.className = 'status-indicator-dot dot-yt';
     }
   }

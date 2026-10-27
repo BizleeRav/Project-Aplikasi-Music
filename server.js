@@ -32,7 +32,8 @@ async function getYtdl() {
       const YtdlClass = mod.Ytdl || mod.default?.Ytdl;
       chooseFormatFn = mod.chooseFormat || mod.default?.chooseFormat;
       if (YtdlClass) {
-        ytdlInstance = new YtdlClass();
+        const clientList = mod.Client ? [mod.Client.WebEmbedded, mod.Client.Tv, mod.Client.Mweb] : undefined;
+        ytdlInstance = clientList ? new YtdlClass({ clients: clientList }) : new YtdlClass();
       }
     } catch (err) {
       console.warn('[ytdl] Could not load @distube/ytdl-core:', err.message);
@@ -263,7 +264,7 @@ async function getInnertube() {
   return innertubeInitPromise;
 }
 
-async function searchYouTubeMusicSongs(query, limit = 15) {
+async function searchYouTubeMusicSongs(query, limit = 25) {
   try {
     const yt = await getInnertube();
     if (!yt || !yt.music) return [];
@@ -280,6 +281,17 @@ async function searchYouTubeMusicSongs(query, limit = 15) {
       const duration = s.duration?.text || '0:00';
       const seconds = s.duration?.seconds || 0;
 
+      // Extract high-res 1:1 square album thumbnail from YouTube Music
+      let thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+      if (s.thumbnails && s.thumbnails.length > 0) {
+        const rawUrl = s.thumbnails[0].url || '';
+        if (rawUrl.includes('googleusercontent.com')) {
+          thumbnail = rawUrl.replace(/=w\d+-h\d+[^"]*/, '=w544-h544-l90-rj');
+        } else if (rawUrl) {
+          thumbnail = rawUrl;
+        }
+      }
+
       return {
         id,
         title,
@@ -287,20 +299,22 @@ async function searchYouTubeMusicSongs(query, limit = 15) {
         album: s.album?.name || '',
         duration,
         seconds,
-        thumbnail: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+        thumbnail,
         views: 0,
         ago: '',
         type: 'youtube',
         isOfficial: true,
-        tag: 'OFFICIAL'
+        tag: 'OFFICIAL',
+        source: 'ytmusic'
       };
     }).filter(Boolean);
   } catch (e) {
+    console.warn('searchYouTubeMusicSongs error:', e.message);
     return [];
   }
 }
 
-// 2. Search Music on YouTube / YouTube Music
+// 2. Search Music on YouTube Music & Official Studio Catalogs
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
   if (!query) {
@@ -314,6 +328,32 @@ app.get('/api/search', async (req, res) => {
     const seenTitles = new Set();
     const tracks = [];
 
+    // Step A: Priority 1 - Authentic YouTube Music Studio Songs
+    if (filter !== 'nonofficial') {
+      try {
+        const ytmSongs = await searchYouTubeMusicSongs(query, 25);
+        for (const s of ytmSongs) {
+          if (!s.id || seenIds.has(s.id)) continue;
+          const titleKey = homeData.normalizeTrackKey ? homeData.normalizeTrackKey(s.title, s.artist) : s.title.toLowerCase();
+          if (titleKey && titleKey.length >= 2 && seenTitles.has(titleKey)) continue;
+
+          seenIds.add(s.id);
+          if (titleKey && titleKey.length >= 2) seenTitles.add(titleKey);
+          tracks.push(s);
+
+          if (tracks.length >= 25) break;
+        }
+      } catch (ytmErr) {
+        console.warn('[Search] YouTube Music song query fallback:', ytmErr.message);
+      }
+    }
+
+    // Step B: If YouTube Music returned plenty of results, return immediately
+    if (tracks.length >= 12 && filter !== 'nonofficial') {
+      return res.json({ success: true, count: tracks.length, filter, tracks, source: 'ytmusic' });
+    }
+
+    // Step C: Fallback / Secondary Search or Non-Official Search (Covers, Remixes, Live)
     let searchQueries = [query];
     if (filter === 'official') {
       searchQueries = [
@@ -383,12 +423,13 @@ app.get('/api/search', async (req, res) => {
           artist: v.author?.name || 'Unknown Artist',
           duration: v.timestamp || '0:00',
           seconds: v.seconds || 0,
-          thumbnail: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+          thumbnail: `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
           views: v.views || 0,
           ago: v.ago || '',
           type: 'youtube',
           isOfficial: filter === 'nonofficial' ? false : isOfficial,
-          tag: filter === 'nonofficial' ? 'NON-OFFICIAL' : (isOfficial ? 'OFFICIAL' : null)
+          tag: filter === 'nonofficial' ? 'NON-OFFICIAL' : (isOfficial ? 'OFFICIAL' : null),
+          source: 'yt'
         });
 
         if (tracks.length >= 25) break;
@@ -502,19 +543,24 @@ app.get('/api/trending', async (req, res) => {
   const searchQuery = queryMap[genre] || queryMap.hits;
 
   try {
-    const results = await ytSearch(searchQuery);
-    const tracks = (results.videos || []).slice(0, 15).map(v => ({
-      id: v.videoId,
-      title: v.title,
-      artist: v.author?.name || 'Popular Artist',
-      duration: v.timestamp || '0:00',
-      seconds: v.seconds || 0,
-      thumbnail: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
-      views: v.views || 0,
-      type: 'youtube'
-    }));
+    let tracks = await searchYouTubeMusicSongs(searchQuery, 15);
+    if (!tracks || tracks.length < 5) {
+      const results = await ytSearch(searchQuery);
+      tracks = (results.videos || []).slice(0, 15).map(v => ({
+        id: v.videoId,
+        title: v.title,
+        artist: v.author?.name || 'Popular Artist',
+        duration: v.timestamp || '0:00',
+        seconds: v.seconds || 0,
+        thumbnail: `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+        views: v.views || 0,
+        type: 'youtube',
+        isOfficial: true,
+        tag: 'OFFICIAL'
+      }));
+    }
 
-    res.json({ success: true, genre, tracks });
+    res.json({ success: true, genre, tracks, source: 'ytmusic' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
