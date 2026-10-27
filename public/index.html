@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.7.1">
+  <link rel="stylesheet" href="/css/style.css?v=4.7.2">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     // Ultra-Fast Synchronous Pre-Hydration (0ms layout shift / no reset flash)
@@ -158,10 +158,6 @@
         </form>
 
         <div class="top-bar-right">
-          <button class="btn-top-cinema" id="btn-top-cinema" onclick="window.app.openStudioCinema()" title="Mode Panggung Studio Cinema (Lirik & Visualizer Layar Penuh)">
-            <span class="top-cinema-icon">🎬</span>
-            <span class="top-cinema-label">Studio Cinema</span>
-          </button>
           <button class="btn-top-taste" id="btn-top-taste" onclick="window.app.openTasteModal()" title="Personalisasi Selera Musik (AI)">
             <span class="top-taste-icon">🎨</span>
             <span class="top-taste-label">Selera Musik</span>
@@ -498,10 +494,6 @@
             <div id="player-title" class="player-title" title="Pilih Lagu untuk Diputar">Pilih Lagu untuk Diputar</div>
           </div>
           <div id="player-artist" class="player-artist">AuraSound Hi-Fi Audio</div>
-          <div class="mobile-player-cinema-hint">
-            <span class="cinema-hint-dot"></span>
-            <span>Studio Cinema &amp; Lirik ↗</span>
-          </div>
           <div class="player-badge-row">
             <span id="badge-source" class="player-hifi-badge badge-yt">
               <span class="hifi-pulse-dot"></span>
@@ -568,10 +560,10 @@
           </div>
         </div>
 
-        <!-- Studio Cinema Mode Button -->
-        <button id="btn-open-cinema" class="player-dsp-btn btn-cinema-mode" title="Mode Panggung Studio Cinema & Visualizer Layar Penuh" onclick="window.app.openStudioCinema()">
+        <!-- Studio Cinema Mode Tab / Button -->
+        <button id="btn-open-cinema" class="player-dsp-btn btn-cinema-mode mobile-bar-cinema-tab" title="Mode Panggung Studio Cinema & Visualizer Layar Penuh" onclick="window.app.openStudioCinema()">
           <span class="cinema-icon-badge">🎬</span>
-          <span class="cinema-btn-label">Studio Cinema</span>
+          <span class="cinema-btn-label">Cinema</span>
         </button>
 
         <!-- Equalizer Button with Glow Indicator -->
@@ -718,13 +710,6 @@
       <a class="mobile-nav-item nav-link" data-tab="search">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         <span>Cari</span>
-      </a>
-      <a class="mobile-nav-item mobile-nav-cinema" id="mobile-nav-cinema" onclick="window.app.openStudioCinema()" title="Studio Cinema & Lirik (Layar Penuh)">
-        <div class="mobile-cinema-glow-icon">
-          <span class="mobile-nav-cinema-emoji">🎬</span>
-          <span class="cinema-nav-pulse"></span>
-        </div>
-        <span class="mobile-nav-cinema-text">Cinema</span>
       </a>
       <a class="mobile-nav-item nav-link" data-tab="suno">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
@@ -1618,10 +1603,10 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="/js/audio-engine.js?v=4.7.1"></script>
-  <script src="/js/yt-player.js?v=4.7.1"></script>
-  <script src="/js/taste-engine.js?v=4.7.1"></script>
-  <script src="/js/suno-studio.js?v=4.7.1"></script>
-  <script src="/js/app.js?v=4.7.1"></script>
+  <script src="/js/audio-engine.js?v=4.7.2"></script>
+  <script src="/js/yt-player.js?v=4.7.2"></script>
+  <script src="/js/taste-engine.js?v=4.7.2"></script>
+  <script src="/js/suno-studio.js?v=4.7.2"></script>
+  <script src="/js/app.js?v=4.7.2"></script>
 </body>
 </html>
