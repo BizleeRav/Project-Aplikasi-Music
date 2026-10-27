@@ -2292,25 +2292,160 @@ body::after {
   color: #f87171;
 }
 
-/* Spinner */
+/* Hi-Fi Modern Loader & Waveform Equalizer */
 .spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top-color: var(--primary);
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.08);
+  border-top-color: #10b981;
+  border-right-color: #06b6d4;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto 12px;
+  animation: spin 0.8s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite;
+  margin: 0 auto 14px;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
+/* Audio-Reactive Waveform Spectrum Loader */
+.audio-wave-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 38px;
+  margin: 0 auto 16px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.audio-wave-loader .aw-bar {
+  width: 4px;
+  border-radius: 4px;
+  background: linear-gradient(to top, #10b981 0%, #06b6d4 50%, #8b5cf6 100%);
+  animation: audioWaveBounce 1.1s ease-in-out infinite alternate;
+}
+
+.audio-wave-loader .aw-bar:nth-child(1) { height: 12px; animation-delay: 0.1s; }
+.audio-wave-loader .aw-bar:nth-child(2) { height: 26px; animation-delay: 0.3s; }
+.audio-wave-loader .aw-bar:nth-child(3) { height: 32px; animation-delay: 0.15s; }
+.audio-wave-loader .aw-bar:nth-child(4) { height: 22px; animation-delay: 0.45s; }
+.audio-wave-loader .aw-bar:nth-child(5) { height: 14px; animation-delay: 0.25s; }
+
+@keyframes audioWaveBounce {
+  0% { transform: scaleY(0.35); opacity: 0.55; }
+  100% { transform: scaleY(1.25); opacity: 1; filter: drop-shadow(0 0 6px #06b6d4); }
+}
+
+/* Skeleton Loading Shimmer System (Spotify / Apple Music Mobile Style) */
+.skeleton-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 0;
+}
+
+.skeleton-track-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-track-row::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  animation: skeletonShimmer 1.5s infinite;
+}
+
+@keyframes skeletonShimmer {
+  100% { transform: translateX(100%); }
+}
+
+.skeleton-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.skeleton-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.skeleton-line.line-title {
+  width: 65%;
+  height: 14px;
+}
+
+.skeleton-line.line-sub {
+  width: 40%;
+}
+
+.skeleton-pill {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+/* Audio Playback Buffering Spinner on Play Orbs */
+.btn-play-orb.is-buffering,
+.cinema-play-orb.is-buffering {
+  position: relative;
+  pointer-events: none;
+}
+
+.btn-play-orb.is-buffering::before,
+.cinema-play-orb.is-buffering::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: #38bdf8;
+  border-right-color: #10b981;
+  animation: spin 0.75s linear infinite;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.6);
+  z-index: 5;
+}
+
 .loading-state, .empty-state {
   text-align: center;
-  padding: 48px 20px;
+  padding: 42px 20px;
   color: var(--text-muted);
+}
+
+.loading-state p {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-top: 4px;
 }
 
 .empty-icon {
@@ -8975,7 +9110,7 @@ body.music-playing .cinema-turntable-arm {
 }
 
 /* ==========================================================================
-   CINEMATIC SPLASH ENTRANCE ANIMATION (Mobile & Laptop)
+   CINEMATIC SPLASH ENTRANCE ANIMATION (GPU-Accelerated 60fps Mobile & Laptop)
    ========================================================================== */
 .app-splash-screen {
   position: fixed;
@@ -8986,17 +9121,19 @@ body.music-playing .cinema-turntable-arm {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at center, #0d1326 0%, #060913 60%, #020306 100%);
+  background: radial-gradient(circle at center, #0d1326 0%, #060913 65%, #020306 100%);
   overflow: hidden;
   user-select: none;
   opacity: 1;
-  transform: scale(1);
-  transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .app-splash-screen.splash-hiding {
   opacity: 0;
-  transform: scale(1.08);
+  transform: scale(1.05) translate3d(0, 0, 0);
   pointer-events: none;
 }
 
@@ -9007,46 +9144,48 @@ body.music-playing .cinema-turntable-arm {
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  overflow: hidden;
 }
 
 .splash-aurora-glow {
   position: absolute;
-  width: 500px;
-  height: 500px;
+  width: 380px;
+  height: 380px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, rgba(147, 51, 234, 0.2) 40%, rgba(16, 185, 129, 0.1) 70%, transparent 100%);
-  filter: blur(60px);
-  animation: splashAuroraPulse 4s ease-in-out infinite alternate;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.22) 0%, rgba(139, 92, 246, 0.16) 45%, rgba(16, 185, 129, 0.08) 70%, transparent 100%);
+  will-change: transform, opacity;
+  animation: splashAuroraPulse 3.5s ease-in-out infinite alternate;
 }
 
 @keyframes splashAuroraPulse {
-  0% { transform: scale(0.85) rotate(0deg); opacity: 0.7; }
-  100% { transform: scale(1.25) rotate(180deg); opacity: 1; }
+  0% { transform: scale(0.9) translate3d(0, 0, 0); opacity: 0.65; }
+  100% { transform: scale(1.15) translate3d(0, 0, 0); opacity: 0.95; }
 }
 
 .splash-pulse-ring {
   position: absolute;
-  width: 220px;
-  height: 220px;
+  width: 180px;
+  height: 180px;
   border-radius: 50%;
-  border: 1px solid rgba(59, 130, 246, 0.35);
-  box-shadow: 0 0 30px rgba(59, 130, 246, 0.15);
-  animation: splashRingExpand 3s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.12);
+  will-change: transform, opacity;
+  animation: splashRingExpand 2.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
 }
 
 .splash-pulse-ring.ring-2 {
   animation-delay: 0.9s;
-  border-color: rgba(168, 85, 247, 0.35);
+  border-color: rgba(168, 85, 247, 0.3);
 }
 
 .splash-pulse-ring.ring-3 {
   animation-delay: 1.8s;
-  border-color: rgba(16, 185, 129, 0.35);
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 @keyframes splashRingExpand {
-  0% { transform: scale(0.6); opacity: 0.8; }
-  100% { transform: scale(2.6); opacity: 0; }
+  0% { transform: scale(0.65) translate3d(0, 0, 0); opacity: 0.75; }
+  100% { transform: scale(2.2) translate3d(0, 0, 0); opacity: 0; }
 }
 
 .splash-content {
@@ -9057,15 +9196,16 @@ body.music-playing .cinema-turntable-arm {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 24px;
-  max-width: 480px;
+  padding: 20px;
+  max-width: 440px;
+  width: 100%;
 }
 
 .splash-emblem-wrap {
   position: relative;
-  width: 110px;
-  height: 110px;
-  margin-bottom: 24px;
+  width: 100px;
+  height: 100px;
+  margin-bottom: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9073,31 +9213,31 @@ body.music-playing .cinema-turntable-arm {
 
 .splash-vinyl-glow {
   position: absolute;
-  width: 140px;
-  height: 140px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.45) 0%, rgba(139, 92, 246, 0.3) 50%, transparent 75%);
-  filter: blur(20px);
-  animation: splashGlowPulse 2.5s ease-in-out infinite alternate;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.4) 0%, rgba(139, 92, 246, 0.25) 50%, transparent 75%);
+  animation: splashGlowPulse 2.4s ease-in-out infinite alternate;
 }
 
 @keyframes splashGlowPulse {
-  0% { transform: scale(0.9); opacity: 0.6; }
-  100% { transform: scale(1.2); opacity: 1; }
+  0% { transform: scale(0.92) translate3d(0, 0, 0); opacity: 0.6; }
+  100% { transform: scale(1.15) translate3d(0, 0, 0); opacity: 1; }
 }
 
 .splash-vinyl-disc {
   position: relative;
-  width: 104px;
-  height: 104px;
+  width: 96px;
+  height: 96px;
   border-radius: 50%;
   background: radial-gradient(circle at center, #1e293b 0%, #090d16 65%, #05070b 100%);
-  border: 2px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(59, 130, 246, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7), 0 0 20px rgba(56, 189, 248, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: splashSpinVinyl 8s linear infinite;
+  will-change: transform;
+  animation: splashSpinVinyl 7s linear infinite;
 }
 
 .splash-vinyl-grooves {
@@ -9108,90 +9248,91 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .splash-vinyl-center {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 16px rgba(37, 99, 235, 0.6);
+  box-shadow: 0 0 16px rgba(37, 99, 235, 0.7);
 }
 
 @keyframes splashSpinVinyl {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% { transform: rotate(0deg) translate3d(0, 0, 0); }
+  100% { transform: rotate(360deg) translate3d(0, 0, 0); }
 }
 
 .splash-brand-title {
   margin: 0;
-  font-size: 2.3rem;
+  font-size: 2.1rem;
   font-weight: 900;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 35%, #60a5fa 70%, #a78bfa 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 30%, #38bdf8 70%, #a78bfa 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 4px 24px rgba(59, 130, 246, 0.35);
+  text-shadow: 0 4px 20px rgba(56, 189, 248, 0.3);
 }
 
 .splash-brand-sub {
-  margin-top: 6px;
-  font-size: 0.72rem;
+  margin-top: 5px;
+  font-size: 0.7rem;
   font-weight: 700;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.25em;
   color: #94a3b8;
   text-transform: uppercase;
 }
 
-/* Soundwave spectrum bars */
+/* Soundwave spectrum bars in Splash */
 .splash-soundwave-bars {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 32px;
-  margin: 22px 0 18px;
+  height: 28px;
+  margin: 18px 0 14px;
 }
 
 .splash-soundwave-bars .sw-bar {
   width: 4px;
   border-radius: 4px;
   background: linear-gradient(to top, #2563eb, #38bdf8);
-  animation: splashBarBounce 1.2s ease-in-out infinite;
+  will-change: transform;
+  animation: splashBarBounce 1.1s ease-in-out infinite;
 }
 
 .sw-bar.bar-1 { height: 8px; animation-delay: 0.1s; }
-.sw-bar.bar-2 { height: 18px; animation-delay: 0.25s; }
-.sw-bar.bar-3 { height: 26px; animation-delay: 0.4s; }
-.sw-bar.bar-4 { height: 30px; animation-delay: 0.15s; background: linear-gradient(to top, #7c3aed, #a78bfa); }
-.sw-bar.bar-5 { height: 22px; animation-delay: 0.35s; }
-.sw-bar.bar-6 { height: 14px; animation-delay: 0.2s; }
-.sw-bar.bar-7 { height: 8px; animation-delay: 0.3s; }
+.sw-bar.bar-2 { height: 16px; animation-delay: 0.25s; }
+.sw-bar.bar-3 { height: 24px; animation-delay: 0.4s; }
+.sw-bar.bar-4 { height: 28px; animation-delay: 0.15s; background: linear-gradient(to top, #7c3aed, #a78bfa); }
+.sw-bar.bar-5 { height: 20px; animation-delay: 0.35s; }
+.sw-bar.bar-6 { height: 12px; animation-delay: 0.2s; }
+.sw-bar.bar-7 { height: 7px; animation-delay: 0.3s; }
 
 @keyframes splashBarBounce {
-  0%, 100% { transform: scaleY(0.4); opacity: 0.6; }
-  50% { transform: scaleY(1.3); opacity: 1; }
+  0%, 100% { transform: scaleY(0.4) translate3d(0, 0, 0); opacity: 0.6; }
+  50% { transform: scaleY(1.3) translate3d(0, 0, 0); opacity: 1; }
 }
 
 .splash-status-wrap {
   width: 100%;
-  max-width: 260px;
-  margin-top: 6px;
+  max-width: 250px;
+  margin-top: 4px;
 }
 
 .splash-status-text {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: #cbd5e1;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  animation: splashFadeText 0.4s ease;
+  animation: splashFadeText 0.35s ease;
 }
 
 @keyframes splashFadeText {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -9206,8 +9347,134 @@ body.music-playing .cinema-turntable-arm {
 .splash-progress-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #2563eb, #38bdf8, #a855f7);
-  box-shadow: 0 0 10px #38bdf8;
+  background: linear-gradient(90deg, #2563eb, #38bdf8, #10b981);
+  box-shadow: 0 0 8px #38bdf8;
   border-radius: 4px;
-  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ==========================================================================
+   MOBILE DESIGN FINE-TUNING & POLISH (< 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* Splash screen mobile sizing */
+  .splash-vinyl-disc {
+    width: 86px;
+    height: 86px;
+  }
+  .splash-vinyl-center {
+    width: 40px;
+    height: 40px;
+  }
+  .splash-vinyl-center svg {
+    width: 22px;
+    height: 22px;
+  }
+  .splash-brand-title {
+    font-size: 1.85rem;
+  }
+  .splash-brand-sub {
+    font-size: 0.66rem;
+    letter-spacing: 0.2em;
+  }
+
+  /* Suno AI Studio Mobile Layout (Single Column Stack) */
+  .suno-container {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .suno-panel {
+    padding: 18px 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .suno-panel-title {
+    font-size: 1.15rem !important;
+  }
+
+  .form-group {
+    margin-bottom: 14px !important;
+  }
+
+  .form-input, .form-textarea {
+    font-size: 0.9rem !important;
+    padding: 10px 12px !important;
+    border-radius: 10px !important;
+  }
+
+  .btn-generate-ai {
+    height: 46px !important;
+    font-size: 0.9rem !important;
+    border-radius: 12px !important;
+    margin-top: 10px !important;
+  }
+
+  /* Playlist Banner Mobile Vertical Centered Card */
+  .playlist-banner {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    padding: 20px 14px !important;
+    gap: 16px !important;
+    border-radius: 18px !important;
+  }
+
+  .playlist-banner-thumb {
+    width: 150px !important;
+    height: 150px !important;
+    border-radius: 14px !important;
+  }
+
+  .playlist-banner-title {
+    font-size: 1.4rem !important;
+  }
+
+  .playlist-action-btns {
+    justify-content: center !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .playlist-action-btns button {
+    flex: 1 !important;
+    min-width: 120px !important;
+    justify-content: center !important;
+    padding: 10px 14px !important;
+  }
+
+  /* Universal Modal Card Safe Area & Scrolling in Mobile */
+  .modal-overlay {
+    padding: 12px !important;
+    align-items: center !important;
+  }
+
+  .modal-card {
+    padding: 22px 16px 20px !important;
+    max-height: 86dvh !important;
+    max-height: 86vh !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    border-radius: 20px !important;
+  }
+
+  .modal-close-btn {
+    top: 12px !important;
+    right: 12px !important;
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 1rem !important;
+  }
+
+  /* Touch micro-interactions for native mobile app feel */
+  .btn-ctrl:active,
+  .btn-play-orb:active,
+  .mobile-nav-item:active,
+  .search-filter-pill:active,
+  .ytm-chip:active,
+  .track-row:active {
+    transform: scale(0.96) !important;
+    transition: transform 0.1s ease !important;
+  }
+}
+

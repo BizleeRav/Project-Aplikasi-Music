@@ -188,42 +188,42 @@ class App {
       if (statusEl) statusEl.textContent = `Selamat Datang, ${this.userProfile?.name || 'Sobat Musik'} ✨`;
       setTimeout(() => {
         splash.classList.add('splash-hiding');
-      }, 350);
+      }, 250);
       setTimeout(() => {
         splash.style.display = 'none';
         this.triggerPostSplashFlow();
-      }, 650);
+      }, 550);
       return;
     }
 
-    // Stage 1 (150ms): Starting Hi-Fi Studio
+    // Stage 1 (100ms): Starting Hi-Fi Studio
     setTimeout(() => {
-      if (fillEl) fillEl.style.width = '35%';
+      if (fillEl) fillEl.style.width = '40%';
       if (statusEl) statusEl.textContent = 'Menyiapkan Studio Audio Hi-Fi...';
-    }, 150);
+    }, 100);
 
-    // Stage 2 (550ms): Calibrating DSP Equalizer & Accounts
+    // Stage 2 (420ms): Calibrating DSP Equalizer & Accounts
     setTimeout(() => {
-      if (fillEl) fillEl.style.width = '75%';
+      if (fillEl) fillEl.style.width = '80%';
       if (statusEl) statusEl.textContent = 'Menyelaraskan DSP Equalizer & Akun...';
-    }, 550);
+    }, 420);
 
-    // Stage 3 (950ms): Ready & Welcome
+    // Stage 3 (750ms): Ready & Welcome
     setTimeout(() => {
       if (fillEl) fillEl.style.width = '100%';
       if (statusEl) statusEl.textContent = 'Selamat Datang di AuraSound ✨';
-    }, 950);
+    }, 750);
 
-    // Stage 4 (1250ms): Smooth aperture/scale-fade exit
+    // Stage 4 (980ms): Smooth aperture/scale-fade exit
     setTimeout(() => {
       splash.classList.add('splash-hiding');
-    }, 1250);
+    }, 980);
 
-    // Stage 5 (1550ms): Remove splash
+    // Stage 5 (1280ms): Remove splash
     setTimeout(() => {
       splash.style.display = 'none';
       this.triggerPostSplashFlow();
-    }, 1550);
+    }, 1280);
   }
 
   async triggerPostSplashFlow() {
@@ -1195,7 +1195,18 @@ class App {
       }
     });
 
+    const setBufferingState = (isBuffering) => {
+      document.body.classList.toggle('audio-is-buffering', isBuffering);
+      const playOrbs = document.querySelectorAll('.btn-play-orb, .cinema-play-orb');
+      playOrbs.forEach(orb => orb.classList.toggle('is-buffering', isBuffering));
+    };
+
+    this.nativeAudio.addEventListener('loadstart', () => setBufferingState(true));
+    this.nativeAudio.addEventListener('waiting', () => setBufferingState(true));
+    this.nativeAudio.addEventListener('playing', () => setBufferingState(false));
+
     this.nativeAudio.addEventListener('canplay', () => {
+      setBufferingState(false);
       if (this._pendingSeekTime && this._pendingSeekTime > 0) {
         const seek = this._pendingSeekTime;
         this._pendingSeekTime = 0;
@@ -1206,10 +1217,12 @@ class App {
     });
 
     this.nativeAudio.addEventListener('ended', () => {
+      setBufferingState(false);
       this.playNext();
     });
 
     this.nativeAudio.addEventListener('play', () => {
+      setBufferingState(false);
       this.updatePlayState(true);
       if (window.audioEngine) {
         window.audioEngine.isSimulatedVisualizer = false;
@@ -1218,7 +1231,12 @@ class App {
     });
 
     this.nativeAudio.addEventListener('pause', () => {
+      setBufferingState(false);
       this.updatePlayState(false);
+    });
+
+    this.nativeAudio.addEventListener('error', () => {
+      setBufferingState(false);
     });
 
     // YouTube Player Callbacks
@@ -2666,6 +2684,38 @@ class App {
     }
   }
 
+  renderLoadingState(text = 'Memuat...', showSkeleton = true, count = 4) {
+    let html = `
+      <div class="loading-state">
+        <div class="audio-wave-loader" aria-hidden="true">
+          <span class="aw-bar"></span>
+          <span class="aw-bar"></span>
+          <span class="aw-bar"></span>
+          <span class="aw-bar"></span>
+          <span class="aw-bar"></span>
+        </div>
+        <p>${text}</p>
+      </div>
+    `;
+    if (showSkeleton) {
+      html += '<div class="skeleton-container" aria-hidden="true">';
+      for (let i = 0; i < count; i++) {
+        html += `
+          <div class="skeleton-track-row">
+            <div class="skeleton-thumb"></div>
+            <div class="skeleton-meta">
+              <div class="skeleton-line line-title"></div>
+              <div class="skeleton-line line-sub"></div>
+            </div>
+            <div class="skeleton-pill"></div>
+          </div>
+        `;
+      }
+      html += '</div>';
+    }
+    return html;
+  }
+
   async searchMusic(query, filter = this.currentSearchFilter || 'all') {
     this.lastSearchQuery = query;
     this.currentSearchFilter = filter;
@@ -2702,12 +2752,11 @@ class App {
     }
 
     if (resultsContainer) {
-      resultsContainer.innerHTML = `
-        <div class="loading-state">
-          <div class="spinner"></div>
-          <p>${isEn ? 'Searching music on YouTube...' : 'Mencari di YouTube Music...'}</p>
-        </div>
-      `;
+      resultsContainer.innerHTML = this.renderLoadingState(
+        isEn ? 'Searching music on YouTube...' : 'Mencari di YouTube Music...',
+        true,
+        5
+      );
     }
 
     try {
@@ -3070,12 +3119,11 @@ class App {
     if (!container) return;
 
     const isEn = (this.userProfile?.lang === 'en');
-    container.innerHTML = `
-      <div class="loading-state">
-        <div class="spinner"></div>
-        <p>${isEn ? 'Loading YouTube Music Home Feed...' : 'Memuat beranda YouTube Music...'}</p>
-      </div>
-    `;
+    container.innerHTML = this.renderLoadingState(
+      isEn ? 'Loading YouTube Music Home Feed...' : 'Memuat beranda YouTube Music...',
+      true,
+      4
+    );
 
     try {
       // 1. If mood is 'all', check for user's personalized taste profile vs skipped/dynamic home
@@ -4864,10 +4912,7 @@ class App {
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           ${isEn ? 'Back to Home' : 'Kembali ke Beranda'}
         </button>
-        <div class="loading-state" style="padding: 60px 0;">
-          <div class="spinner"></div>
-          <p>${isEn ? 'Loading album details & tracklist...' : 'Memuat detail album & daftar lagu...'}</p>
-        </div>
+        ${this.renderLoadingState(isEn ? 'Loading album details & tracklist...' : 'Memuat detail album & daftar lagu...', true, 4)}
       </div>
     `;
 
@@ -6403,10 +6448,7 @@ class App {
           </div>
         </div>
         <div id="playlist-tracks-list" class="track-list" style="margin-top: 24px;">
-          <div class="loading-state">
-            <div class="spinner"></div>
-            <p>${isEn ? 'Loading tracklist...' : 'Memuat daftar lagu...'}</p>
-          </div>
+          ${this.renderLoadingState(isEn ? 'Loading tracklist...' : 'Memuat daftar lagu...', true, 4)}
         </div>
         <div id="playlist-pagination-box"></div>
       `;

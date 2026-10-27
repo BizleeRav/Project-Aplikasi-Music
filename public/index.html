@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.3.0">
+  <link rel="stylesheet" href="/css/style.css?v=4.4.0">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     // Ultra-Fast Synchronous Pre-Hydration (0ms layout shift / no reset flash)
@@ -238,8 +238,40 @@
           <!-- YouTube Music Sections Container -->
           <div id="ytm-home-sections" class="ytm-home-sections">
             <div class="loading-state">
-              <div class="spinner"></div>
+              <div class="audio-wave-loader" aria-hidden="true">
+                <span class="aw-bar"></span>
+                <span class="aw-bar"></span>
+                <span class="aw-bar"></span>
+                <span class="aw-bar"></span>
+                <span class="aw-bar"></span>
+              </div>
               <p>Memuat beranda YouTube Music...</p>
+            </div>
+            <div class="skeleton-container" aria-hidden="true">
+              <div class="skeleton-track-row">
+                <div class="skeleton-thumb"></div>
+                <div class="skeleton-meta">
+                  <div class="skeleton-line line-title"></div>
+                  <div class="skeleton-line line-sub"></div>
+                </div>
+                <div class="skeleton-pill"></div>
+              </div>
+              <div class="skeleton-track-row">
+                <div class="skeleton-thumb"></div>
+                <div class="skeleton-meta">
+                  <div class="skeleton-line line-title"></div>
+                  <div class="skeleton-line line-sub"></div>
+                </div>
+                <div class="skeleton-pill"></div>
+              </div>
+              <div class="skeleton-track-row">
+                <div class="skeleton-thumb"></div>
+                <div class="skeleton-meta">
+                  <div class="skeleton-line line-title"></div>
+                  <div class="skeleton-line line-sub"></div>
+                </div>
+                <div class="skeleton-pill"></div>
+              </div>
             </div>
           </div>
 
@@ -257,15 +289,15 @@
             <div class="search-filter-pills" id="search-filter-pills">
               <button class="search-filter-pill active" data-filter="all" onclick="window.app.setSearchFilter('all')">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                <span class="filter-pill-label">Semua Versi</span>
+                <span class="filter-pill-label">Semua</span>
               </button>
               <button class="search-filter-pill filter-pill-official" data-filter="official" onclick="window.app.setSearchFilter('official')">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                <span class="filter-pill-label">Official Saja</span>
+                <span class="filter-pill-label">Official</span>
               </button>
               <button class="search-filter-pill filter-pill-nonofficial" data-filter="nonofficial" onclick="window.app.setSearchFilter('nonofficial')" title="Cover, Remix, Lyrics, Performance Video, Festival EDM & Dance">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-                <span class="filter-pill-label">Bukan Official (Cover, Remix, Lyrics, Live, Dance)</span>
+                <span class="filter-pill-label">Cover &amp; Remix</span>
               </button>
             </div>
           </div>
@@ -1605,10 +1637,10 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="/js/audio-engine.js?v=4.3.0"></script>
-  <script src="/js/yt-player.js?v=4.3.0"></script>
-  <script src="/js/taste-engine.js?v=4.3.0"></script>
-  <script src="/js/suno-studio.js?v=4.3.0"></script>
-  <script src="/js/app.js?v=4.3.0"></script>
+  <script src="/js/audio-engine.js?v=4.4.0"></script>
+  <script src="/js/yt-player.js?v=4.4.0"></script>
+  <script src="/js/taste-engine.js?v=4.4.0"></script>
+  <script src="/js/suno-studio.js?v=4.4.0"></script>
+  <script src="/js/app.js?v=4.4.0"></script>
 </body>
 </html>
