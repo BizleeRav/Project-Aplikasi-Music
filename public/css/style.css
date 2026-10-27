@@ -3065,29 +3065,77 @@ body::after {
   }
 
   /* 1. Header: Clean, Symmetric, Tombol Tutup X Jelas & Mudah Ditekan */
+  /* 1. Header: Clean, Symmetrical, Tombol Tutup X di Kanan Atas & Dolby Atmos */
   .cinema-header {
-    height: 52px !important;
+    height: auto !important;
     min-height: 52px !important;
-    max-height: 52px !important;
-    padding: 8px 14px !important;
+    padding: max(10px, env(safe-area-inset-top, 0px)) 14px 8px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
     gap: 8px !important;
     flex-shrink: 0 !important;
-    background: rgba(7, 10, 20, 0.88) !important;
+    background: rgba(7, 10, 20, 0.94) !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
     z-index: 50 !important;
     box-sizing: border-box !important;
   }
 
-  /* Tombol Tutup di posisi kiri atas yang sangat jelas bagi pengguna Android */
-  .cinema-close-btn {
-    order: -1 !important;
-    width: 38px !important;
-    height: 38px !important;
-    min-width: 38px !important;
-    max-width: 38px !important;
+  .cinema-brand {
+    font-size: 0.92rem !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.4px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    color: #f8fafc !important;
+  }
+
+  .cinema-brand svg {
+    width: 18px !important;
+    height: 18px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .cinema-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-shrink: 0 !important;
+    margin-left: auto !important;
+  }
+
+  /* Sembunyikan switcher 3 tombol teks panjang di header mobile sempit */
+  .cinema-vis-switcher,
+  .cinema-vis-toggle-chip {
+    display: none !important;
+  }
+
+  /* Tampilkan Chip Dolby Atmos DSP yang ringkas di kanan */
+  .cinema-dsp-chip {
+    padding: 6px 11px !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    border-radius: 9999px !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+    background: rgba(16, 185, 129, 0.16) !important;
+    border: 1px solid rgba(16, 185, 129, 0.45) !important;
+    color: #34d399 !important;
+  }
+
+  /* Tombol Tutup X di posisi paling kanan yang bersih & ergonomis */
+  .cinema-close-btn,
+  #btn-close-cinema.cinema-close-btn {
+    order: unset !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
     border-radius: 50% !important;
     background: rgba(255, 255, 255, 0.12) !important;
     border: 1px solid rgba(255, 255, 255, 0.22) !important;
@@ -3098,68 +3146,21 @@ body::after {
     flex-shrink: 0 !important;
     cursor: pointer !important;
     touch-action: manipulation !important;
-    margin-right: 4px !important;
+    margin: 0 !important;
     transition: transform 0.15s ease, background 0.15s ease !important;
   }
 
-  .cinema-close-btn:active {
+  .cinema-close-btn:active,
+  #btn-close-cinema.cinema-close-btn:active {
     transform: scale(0.9) !important;
     background: rgba(239, 68, 68, 0.3) !important;
     border-color: #ef4444 !important;
   }
 
-  .cinema-close-btn svg {
-    width: 20px !important;
-    height: 20px !important;
-  }
-
-  .cinema-brand {
-    font-size: 0.78rem !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.8px !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    flex: 1 1 auto !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    color: #e2e8f0 !important;
-  }
-
-  .cinema-brand svg {
-    width: 17px !important;
-    height: 17px !important;
-    flex-shrink: 0 !important;
-  }
-
-  .cinema-header-actions {
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    flex-shrink: 0 !important;
-  }
-
-  /* Sembunyikan switcher 3 tombol teks panjang di header mobile sempit */
-  .cinema-vis-switcher {
-    display: none !important;
-  }
-
-  .cinema-vis-toggle-chip {
-    display: none !important;
-  }
-
-  /* Tampilkan Chip Dolby Atmos DSP yang ringkas di kanan */
-  .cinema-dsp-chip {
-    padding: 5px 10px !important;
-    font-size: 0.72rem !important;
-    font-weight: 700 !important;
-    border-radius: 9999px !important;
-    gap: 5px !important;
-    flex-shrink: 0 !important;
-    background: rgba(16, 185, 129, 0.15) !important;
-    border: 1px solid rgba(16, 185, 129, 0.4) !important;
-    color: #34d399 !important;
+  .cinema-close-btn svg,
+  #btn-close-cinema.cinema-close-btn svg {
+    width: 18px !important;
+    height: 18px !important;
   }
 
   /* 2. Main Stage: Compact Top Deck & Full Immersion Lyrics Stream */
@@ -3169,11 +3170,11 @@ body::after {
     grid-template-columns: none !important;
     flex: 1 1 auto !important;
     min-height: 0 !important;
-    height: calc(100vh - 165px) !important;
-    height: calc(100dvh - 165px) !important;
+    height: calc(100vh - 160px) !important;
+    height: calc(100dvh - 160px) !important;
     overflow: hidden !important;
-    padding: 4px 12px 2px !important;
-    gap: 4px !important;
+    padding: 6px 12px 4px !important;
+    gap: 6px !important;
     box-sizing: border-box !important;
   }
 
@@ -3182,24 +3183,31 @@ body::after {
     flex-direction: column !important;
     align-items: center !important;
     text-align: center !important;
+    justify-content: flex-start !important;
+    flex: 0 0 auto !important;
     flex-shrink: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     gap: 2px !important;
-    margin: 0 !important;
-    padding: 2px 0 !important;
+    margin: 0 0 2px 0 !important;
+    padding: 2px 0 4px 0 !important;
+    box-sizing: border-box !important;
   }
 
   /* Compact Vinyl Disc so lyrics get the maximum screen height */
   .cinema-vinyl-wrap {
-    width: 76px !important;
-    height: 76px !important;
-    min-width: 76px !important;
-    min-height: 76px !important;
+    width: 74px !important;
+    height: 74px !important;
+    min-width: 74px !important;
+    min-height: 74px !important;
     margin: 0 auto 2px !important;
+    flex-shrink: 0 !important;
   }
 
   .cinema-vinyl-disc {
-    width: 72px !important;
-    height: 72px !important;
+    width: 70px !important;
+    height: 70px !important;
   }
 
   .cinema-turntable-arm {
@@ -3211,6 +3219,7 @@ body::after {
     flex-direction: column !important;
     align-items: center !important;
     gap: 1px !important;
+    max-width: 90vw !important;
   }
 
   .cinema-badge-row {
@@ -3219,10 +3228,11 @@ body::after {
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    margin-bottom: 1px !important;
   }
 
   .cinema-live-badge {
-    font-size: 0.6rem !important;
+    font-size: 0.58rem !important;
     padding: 1px 6px !important;
   }
 
@@ -3230,15 +3240,19 @@ body::after {
     font-size: 0.72rem !important;
     color: #94a3b8 !important;
     font-weight: 600 !important;
+    max-width: 160px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
   .cinema-title {
-    font-size: 1.02rem !important;
+    font-size: 1.05rem !important;
     font-weight: 800 !important;
-    line-height: 1.2 !important;
+    line-height: 1.25 !important;
     color: #ffffff !important;
     margin: 0 !important;
-    max-width: 85vw !important;
+    max-width: 88vw !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
@@ -3248,17 +3262,15 @@ body::after {
   .cinema-visual-lyrics-split {
     display: flex !important;
     flex-direction: column !important;
-    flex: 1 1 auto !important;
+    flex: 1 1 0% !important;
     min-height: 0 !important;
-    height: auto !important;
+    height: calc(100% - 120px) !important;
     gap: 0 !important;
     overflow: hidden !important;
+    box-sizing: border-box !important;
   }
 
-  .cinema-canvas-wrap {
-    display: none !important;
-  }
-
+  .cinema-canvas-wrap,
   .cinema-vis-canvas {
     display: none !important;
   }
@@ -3267,15 +3279,16 @@ body::after {
   .cinema-lyrics-panel {
     display: flex !important;
     flex-direction: column !important;
-    flex: 1 1 auto !important;
+    flex: 1 1 100% !important;
     min-height: 0 !important;
     height: 100% !important;
+    max-height: 100% !important;
     border-radius: 16px !important;
-    background: rgba(10, 15, 30, 0.78) !important;
+    background: rgba(10, 15, 30, 0.82) !important;
     backdrop-filter: blur(24px) !important;
     -webkit-backdrop-filter: blur(24px) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    padding: 8px 12px 4px !important;
+    padding: 8px 12px 6px !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
@@ -3348,13 +3361,15 @@ body::after {
   .cinema-lyrics-stream {
     display: flex !important;
     flex-direction: column !important;
-    flex: 1 1 auto !important;
+    flex: 1 1 100% !important;
     min-height: 0 !important;
     height: 100% !important;
+    max-height: 100% !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
-    padding: 4px 2px 24px !important;
+    padding: 6px 4px 28px !important;
     scroll-behavior: smooth !important;
+    box-sizing: border-box !important;
   }
 
   .cinema-lyric-line {
@@ -8065,8 +8080,8 @@ body.music-playing .cinema-turntable-arm {
   }
 }
 
-/* Responsive Cinema */
-@media (max-width: 960px) {
+/* Responsive Cinema for Tablets */
+@media (min-width: 769px) and (max-width: 960px) {
   .cinema-stage {
     grid-template-columns: 1fr;
     overflow-y: auto;
@@ -10278,10 +10293,9 @@ body.music-playing .cinema-turntable-arm {
   }
 
   .cinema-header {
-    height: 52px !important;
+    height: auto !important;
     min-height: 52px !important;
-    max-height: 52px !important;
-    padding: 8px 14px !important;
+    padding: max(10px, env(safe-area-inset-top, 0px)) 14px 8px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
@@ -10290,11 +10304,11 @@ body.music-playing .cinema-turntable-arm {
   }
 
   #btn-close-cinema.cinema-close-btn {
-    order: -1 !important;
-    width: 38px !important;
-    height: 38px !important;
-    min-width: 38px !important;
-    max-width: 38px !important;
+    order: unset !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
     border-radius: 50% !important;
     background: rgba(255, 255, 255, 0.12) !important;
     border: 1px solid rgba(255, 255, 255, 0.22) !important;
@@ -10304,7 +10318,7 @@ body.music-playing .cinema-turntable-arm {
     justify-content: center !important;
     flex-shrink: 0 !important;
     cursor: pointer !important;
-    margin-right: 4px !important;
+    margin: 0 !important;
   }
 
   .cinema-vis-switcher,
@@ -10313,11 +10327,11 @@ body.music-playing .cinema-turntable-arm {
   }
 
   .cinema-dsp-chip {
-    padding: 5px 10px !important;
+    padding: 6px 11px !important;
     font-size: 0.72rem !important;
     font-weight: 700 !important;
     border-radius: 9999px !important;
-    gap: 5px !important;
+    gap: 6px !important;
     flex-shrink: 0 !important;
   }
 
@@ -10327,11 +10341,11 @@ body.music-playing .cinema-turntable-arm {
     grid-template-columns: none !important;
     flex: 1 1 auto !important;
     min-height: 0 !important;
-    height: calc(100vh - 165px) !important;
-    height: calc(100dvh - 165px) !important;
+    height: calc(100vh - 160px) !important;
+    height: calc(100dvh - 160px) !important;
     overflow: hidden !important;
-    padding: 4px 12px 2px !important;
-    gap: 4px !important;
+    padding: 6px 12px 4px !important;
+    gap: 6px !important;
     box-sizing: border-box !important;
   }
 
@@ -10340,23 +10354,30 @@ body.music-playing .cinema-turntable-arm {
     flex-direction: column !important;
     align-items: center !important;
     text-align: center !important;
+    justify-content: flex-start !important;
+    flex: 0 0 auto !important;
     flex-shrink: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     gap: 2px !important;
-    margin: 0 !important;
-    padding: 2px 0 !important;
+    margin: 0 0 2px 0 !important;
+    padding: 2px 0 4px 0 !important;
+    box-sizing: border-box !important;
   }
 
   .cinema-vinyl-wrap {
-    width: 76px !important;
-    height: 76px !important;
-    min-width: 76px !important;
-    min-height: 76px !important;
+    width: 74px !important;
+    height: 74px !important;
+    min-width: 74px !important;
+    min-height: 74px !important;
     margin: 0 auto 2px !important;
+    flex-shrink: 0 !important;
   }
 
   .cinema-vinyl-disc {
-    width: 72px !important;
-    height: 72px !important;
+    width: 70px !important;
+    height: 70px !important;
   }
 
   .cinema-turntable-arm {
@@ -10366,11 +10387,12 @@ body.music-playing .cinema-turntable-arm {
   .cinema-visual-lyrics-split {
     display: flex !important;
     flex-direction: column !important;
-    flex: 1 1 auto !important;
+    flex: 1 1 0% !important;
     min-height: 0 !important;
-    height: auto !important;
+    height: calc(100% - 120px) !important;
     gap: 0 !important;
     overflow: hidden !important;
+    box-sizing: border-box !important;
   }
 
   .cinema-canvas-wrap {
@@ -10384,15 +10406,16 @@ body.music-playing .cinema-turntable-arm {
   .cinema-lyrics-panel {
     display: flex !important;
     flex-direction: column !important;
-    flex: 1 1 auto !important;
+    flex: 1 1 100% !important;
     min-height: 0 !important;
     height: 100% !important;
+    max-height: 100% !important;
     border-radius: 16px !important;
-    background: rgba(10, 15, 30, 0.78) !important;
+    background: rgba(10, 15, 30, 0.82) !important;
     backdrop-filter: blur(24px) !important;
     -webkit-backdrop-filter: blur(24px) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    padding: 8px 12px 4px !important;
+    padding: 8px 12px 6px !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
@@ -10401,33 +10424,37 @@ body.music-playing .cinema-turntable-arm {
   .cinema-lyrics-stream {
     display: flex !important;
     flex-direction: column !important;
-    flex: 1 1 auto !important;
+    flex: 1 1 100% !important;
     min-height: 0 !important;
     height: 100% !important;
+    max-height: 100% !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
-    padding: 4px 2px 24px !important;
+    padding: 6px 4px 28px !important;
     scroll-behavior: smooth !important;
+    box-sizing: border-box !important;
   }
 
   .cinema-lyric-line {
     display: block !important;
     font-size: 1.05rem !important;
     line-height: 1.4 !important;
-    padding: 7px 8px !important;
+    padding: 8px 10px !important;
     border-radius: 10px !important;
-    margin-bottom: 2px !important;
+    margin-bottom: 4px !important;
     color: rgba(255, 255, 255, 0.5) !important;
     cursor: pointer !important;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    user-select: none !important;
+    touch-action: manipulation !important;
   }
 
   .cinema-lyric-line.active {
-    font-size: 1.18rem !important;
+    font-size: 1.22rem !important;
     font-weight: 800 !important;
     color: #ffffff !important;
-    background: linear-gradient(90deg, rgba(56, 189, 248, 0.22), rgba(16, 185, 129, 0.12) 60%, transparent) !important;
-    border-left: 3px solid #38bdf8 !important;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.24), rgba(16, 185, 129, 0.12) 65%, transparent) !important;
+    border-left: 3.5px solid #38bdf8 !important;
     padding-left: 12px !important;
     text-shadow: 0 0 16px rgba(56, 189, 248, 0.8) !important;
     opacity: 1 !important;
