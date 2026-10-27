@@ -132,6 +132,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
         setContentView(R.layout.activity_main);
 
         webView = findViewById(R.id.webview);
@@ -140,6 +141,8 @@ public class MainActivity extends Activity {
     }
 
     private void initWebView() {
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -151,6 +154,8 @@ public class MainActivity extends Activity {
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setOffscreenPreRaster(true);
+        settings.setEnableSmoothTransition(true);
         settings.setUserAgentString(settings.getUserAgentString() + " AuraSoundAndroid/1.0");
 
         webView.setWebChromeClient(new WebChromeClient());

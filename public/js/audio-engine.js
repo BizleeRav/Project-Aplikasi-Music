@@ -535,13 +535,22 @@ class AudioEngine {
     const resize = () => {
       if (this.cinemaCanvas) {
         const rect = this.cinemaCanvas.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        this.cinemaCanvas.width = (rect.width || 600) * dpr;
-        this.cinemaCanvas.height = (rect.height || 160) * dpr;
+        if (rect.width > 20) {
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          this.cinemaCanvas.width = (rect.width || 600) * dpr;
+          this.cinemaCanvas.height = (rect.height || 160) * dpr;
+          this.cinemaCanvasCtx = this.cinemaCanvas.getContext('2d');
+          if (this.cinemaCanvasCtx && dpr !== 1) {
+            this.cinemaCanvasCtx.scale(dpr, dpr);
+          }
+          this._cachedCinemaWidth = rect.width;
+          this._cachedCinemaHeight = rect.height;
+        }
       }
     };
+    this.syncCinemaCanvasSize = resize;
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', resize, { passive: true });
   }
 
   initStardustParticles() {
@@ -653,6 +662,8 @@ class AudioEngine {
 
   drawVisualizer() {
     if (!this.canvas || !this.canvasCtx) return;
+    // Skip calculation & rendering if mini visualizer is hidden (e.g. on mobile devices)
+    if (this.canvas.offsetParent === null) return;
 
     const width = this.canvas.width;
     const height = this.canvas.height;
@@ -754,20 +765,18 @@ class AudioEngine {
   drawCinemaVisualizer() {
     if (!this.cinemaCanvas || !this.cinemaCanvasCtx) return;
 
-    let width = this.cinemaCanvas.width;
-    let height = this.cinemaCanvas.height;
-
-    // Auto-sync canvas internal resolution with its CSS display dimensions
-    const rect = this.cinemaCanvas.getBoundingClientRect();
-    if (rect.width > 20 && (Math.abs(this.cinemaCanvas.width - rect.width) > 4 || Math.abs(this.cinemaCanvas.height - rect.height) > 4)) {
-      this.cinemaCanvas.width = rect.width;
-      this.cinemaCanvas.height = rect.height;
-      width = rect.width;
-      height = rect.height;
+    // Zero-overhead check: Do NOT compute or draw when Studio Cinema is closed!
+    if (!window.app || !window.app.cinemaModal || !window.app.cinemaModal.classList.contains('active')) {
+      return;
     }
+
+    const width = this._cachedCinemaWidth || (this.cinemaCanvas.width / (window.devicePixelRatio || 1)) || 600;
+    const height = this._cachedCinemaHeight || (this.cinemaCanvas.height / (window.devicePixelRatio || 1)) || 160;
+    if (width <= 0 || height <= 0) return;
 
     const ctx = this.cinemaCanvasCtx;
     const mode = this.cinemaVisMode || 'spectrum';
+    const isMobile = (window.innerWidth <= 768);
 
     ctx.clearRect(0, 0, width, height);
 
@@ -903,12 +912,14 @@ class AudioEngine {
         if (peakPct > 0.08) {
           const peakY = height - (peakPct * height * 0.92) - 4;
           ctx.fillStyle = '#ffffff';
-          ctx.shadowColor = '#06b6d4';
-          ctx.shadowBlur = 6;
+          if (!isMobile) {
+            ctx.shadowColor = '#06b6d4';
+            ctx.shadowBlur = 6;
+          }
           ctx.beginPath();
           ctx.arc(x + barWidth / 2, Math.max(3, peakY), Math.min(barWidth / 2, 2.2), 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
+          if (!isMobile) ctx.shadowBlur = 0;
         }
       }
     } else if (mode === 'waveform') {
@@ -973,13 +984,15 @@ class AudioEngine {
         const dynamicSize = p.size * (1 + Math.sin(songTime * 5 + p.pulseOffset) * 0.4 * pulseAmp);
 
         ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = isPlaying ? (8 + kickImpulse * 12) : 2;
+        if (!isMobile) {
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = isPlaying ? (8 + kickImpulse * 12) : 2;
+        }
         ctx.beginPath();
         ctx.arc(px, py, Math.max(1, dynamicSize), 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.shadowBlur = 0;
+      if (!isMobile) ctx.shadowBlur = 0;
     }
   }
 }

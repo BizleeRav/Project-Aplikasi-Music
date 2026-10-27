@@ -1951,6 +1951,11 @@ class App {
   }
 
   initInteractiveInteractions() {
+    // On mobile touch devices, disable mousemove parallax and 3D card tilt to conserve GPU/battery and maintain 120 FPS
+    if (('ontouchstart' in window) || window.innerWidth <= 768) {
+      return;
+    }
+
     // 1. Fluid Ambient Aurora Mesh Cursor Parallax on Beranda
     let mouseMoveRaf = null;
     window.addEventListener('mousemove', (e) => {
@@ -2131,13 +2136,11 @@ class App {
     } catch (e) {}
 
     if (window.audioEngine) {
-      if (this.cinemaVisCanvas) {
+      if (this.cinemaVisCanvas && !this._cinemaVisInitialized) {
         window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
-        setTimeout(() => {
-          if (window.audioEngine && this.cinemaVisCanvas) {
-            window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
-          }
-        }, 100);
+        this._cinemaVisInitialized = true;
+      } else if (window.audioEngine && typeof window.audioEngine.syncCinemaCanvasSize === 'function') {
+        window.audioEngine.syncCinemaCanvasSize();
       }
 
       // Sync active DSP preset label & buttons

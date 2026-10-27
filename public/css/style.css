@@ -49,6 +49,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html, body {
+  touch-action: manipulation;
+}
+
 body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: var(--bg-main);
@@ -3022,11 +3026,49 @@ body::after {
     50% { transform: scale(1.35); opacity: 1; filter: drop-shadow(0 0 6px #ec4899); }
   }
 
-  /* Fullscreen Studio Cinema on Mobile */
+  /* Fullscreen Studio Cinema on Mobile: Native GPU Slide-Up Transition & Ultra-Smooth Performance */
   .studio-cinema-overlay,
   .cinema-modal {
     padding-top: max(8px, env(safe-area-inset-top, 0px)) !important;
     padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
+    transform: translate3d(0, 100%, 0) !important;
+    opacity: 0 !important;
+    transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.25s ease !important;
+    will-change: transform !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    background: rgba(6, 8, 15, 0.98) !important;
+  }
+
+  .studio-cinema-overlay.active,
+  .cinema-modal.active {
+    transform: translate3d(0, 0, 0) !important;
+    opacity: 1 !important;
+  }
+
+  /* Disable heavy infinite blur orbs on mobile to maintain locked 60/120 FPS */
+  .aura-ambient-orb,
+  .cinema-ambient-orbs {
+    display: none !important;
+  }
+
+  .aura-ambient-mesh {
+    opacity: 0.8 !important;
+    background: radial-gradient(circle at 15% 10%, rgba(139, 92, 246, 0.16) 0%, transparent 45%),
+                radial-gradient(circle at 85% 55%, rgba(6, 182, 212, 0.14) 0%, transparent 45%),
+                radial-gradient(circle at 50% 90%, rgba(236, 72, 153, 0.12) 0%, transparent 45%) !important;
+  }
+
+  .cinema-backdrop {
+    filter: blur(20px) brightness(0.2) saturate(1.4) !important;
+    transform: scale(1.05) translateZ(0) !important;
+  }
+
+  /* Smooth scrolling without blur recalculations on lyric lines */
+  .cinema-lyrics-stream.has-active .cinema-lyric-line:not(.active) {
+    filter: none !important;
+    opacity: 0.38 !important;
+    transform: scale(0.98) !important;
   }
 
   .cinema-header {
@@ -6991,7 +7033,10 @@ body.cinema-mode-active {
   align-items: center;
   justify-content: center;
   position: relative;
-  transform: rotate(0deg);
+  transform: translateZ(0) rotate(0deg);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   transition: transform 0.5s ease;
 }
 
@@ -7004,8 +7049,8 @@ body.music-paused .cinema-vinyl-disc {
 }
 
 @keyframes spinCinemaVinyl {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from { transform: translateZ(0) rotate(0deg); }
+  to { transform: translateZ(0) rotate(360deg); }
 }
 
 .vinyl-groove-rings {
