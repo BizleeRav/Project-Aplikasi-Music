@@ -2702,16 +2702,34 @@ class App {
     }
 
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&filter=${encodeURIComponent(filter)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&filter=${encodeURIComponent(filter)}&page=1`);
       const data = await res.json();
 
       if (data.success && data.tracks && data.tracks.length > 0) {
+        this.currentSearchQuery = query;
+        this.currentSearchTracks = data.tracks;
+        this.currentSearchPage = 1;
+        this.currentSearchHasMore = Boolean(data.hasMore);
+
         if (searchSubtitle) {
           searchSubtitle.textContent = isEn
             ? `Found ${data.tracks.length} songs • Filter: ${filterLabels[filter] || 'All'}`
             : `Ditemukan ${data.tracks.length} lagu • Filter: ${filterLabels[filter] || 'Semua'}`;
         }
         this.renderTrackList(data.tracks, resultsContainer, { listKey: `search-${filter}` });
+
+        if (data.hasMore) {
+          const loadMoreWrap = document.createElement('div');
+          loadMoreWrap.id = 'search-load-more-wrap';
+          loadMoreWrap.style.cssText = 'text-align: center; margin: 24px 0 40px;';
+          loadMoreWrap.innerHTML = `
+            <button id="btn-load-more-search" class="btn-album-load-more" onclick="window.app.loadMoreSearchResults()">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+              <span>${isEn ? 'Load More Songs from YouTube Music' : 'Muat Lebih Banyak dari YouTube Music'}</span>
+            </button>
+          `;
+          resultsContainer.appendChild(loadMoreWrap);
+        }
       } else {
         if (searchSubtitle) {
           searchSubtitle.textContent = isEn
@@ -2734,6 +2752,69 @@ class App {
       console.error('Search error:', err);
       if (searchSubtitle) searchSubtitle.style.display = 'none';
       resultsContainer.innerHTML = `<p class="error-msg">${isEn ? 'Failed to load search results.' : 'Gagal memuat hasil pencarian.'}</p>`;
+    }
+  }
+
+  async loadMoreSearchResults() {
+    if (!this.currentSearchQuery) return;
+    const isEn = (this.userProfile?.lang === 'en');
+    const nextPage = (this.currentSearchPage || 1) + 1;
+    const btn = document.getElementById('btn-load-more-search');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `
+        <span class="simple-pulse-spinner" style="width: 16px; height: 16px; border-width: 2px; margin-right: 8px; display: inline-block; vertical-align: middle;"></span>
+        <span>${isEn ? 'Loading more songs...' : 'Memuat lagu lainnya...'}</span>
+      `;
+    }
+
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(this.currentSearchQuery)}&filter=${encodeURIComponent(this.currentSearchFilter || 'all')}&page=${nextPage}`);
+      const data = await res.json();
+
+      if (data.success && data.tracks && data.tracks.length > 0) {
+        this.currentSearchPage = nextPage;
+        this.currentSearchHasMore = Boolean(data.hasMore);
+
+        const existingIds = new Set((this.currentSearchTracks || []).map(t => t.id));
+        const newTracks = data.tracks.filter(t => !existingIds.has(t.id));
+
+        if (newTracks.length > 0) {
+          this.currentSearchTracks = (this.currentSearchTracks || []).concat(newTracks);
+        }
+
+        const resultsContainer = document.getElementById('search-results');
+        const searchSubtitle = document.getElementById('search-meta-subtitle');
+        if (searchSubtitle) {
+          searchSubtitle.textContent = isEn
+            ? `Showing ${this.currentSearchTracks.length} songs • YouTube Music Catalog`
+            : `Menampilkan ${this.currentSearchTracks.length} lagu • Katalog YouTube Music`;
+        }
+
+        if (resultsContainer) {
+          this.renderTrackList(this.currentSearchTracks, resultsContainer, { listKey: `search-${this.currentSearchFilter || 'all'}` });
+          if (data.hasMore) {
+            const loadMoreWrap = document.createElement('div');
+            loadMoreWrap.id = 'search-load-more-wrap';
+            loadMoreWrap.style.cssText = 'text-align: center; margin: 24px 0 40px;';
+            loadMoreWrap.innerHTML = `
+              <button id="btn-load-more-search" class="btn-album-load-more" onclick="window.app.loadMoreSearchResults()">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+                <span>${isEn ? 'Load More Songs from YouTube Music' : 'Muat Lebih Banyak dari YouTube Music'}</span>
+              </button>
+            `;
+            resultsContainer.appendChild(loadMoreWrap);
+          }
+        }
+      } else {
+        if (btn) btn.style.display = 'none';
+      }
+    } catch (err) {
+      console.error('loadMoreSearchResults error:', err);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<span>${isEn ? 'Try Again' : 'Coba Lagi'}</span>`;
+      }
     }
   }
 

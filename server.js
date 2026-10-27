@@ -264,14 +264,25 @@ async function getInnertube() {
   return innertubeInitPromise;
 }
 
-async function searchYouTubeMusicSongs(query, limit = 25) {
+async function searchYouTubeMusicSongs(query, limit = 25, page = 1) {
   try {
     const yt = await getInnertube();
     if (!yt || !yt.music) return [];
 
-    const res = await yt.music.search(query, { type: 'song' });
-    const shelf = res.contents?.[0];
-    const items = shelf?.contents || [];
+    let res = await yt.music.search(query, { type: 'song' });
+    let shelf = res.contents?.[0];
+    let items = shelf?.contents || [];
+
+    // Support deep pagination via YouTube Music continuations
+    if (page > 1 && res.has_continuation) {
+      let currentPage = 1;
+      let currentRes = res;
+      while (currentPage < page && currentRes.has_continuation) {
+        currentRes = await currentRes.getContinuation();
+        currentPage++;
+      }
+      items = currentRes.contents?.contents || currentRes.contents || [];
+    }
 
     return items.slice(0, limit).map(s => {
       const id = s.id;
@@ -314,7 +325,7 @@ async function searchYouTubeMusicSongs(query, limit = 25) {
   }
 }
 
-// 2. Search Music on YouTube Music & Official Studio Catalogs
+// 2. Search Music on YouTube Music & Official Studio Catalogs (Unlimited Global Catalog)
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
   if (!query) {
@@ -322,6 +333,7 @@ app.get('/api/search', async (req, res) => {
   }
 
   const filter = (req.query.filter || 'all').toLowerCase(); // 'all' | 'official' | 'nonofficial'
+  const page = Math.max(1, parseInt(req.query.page) || 1);
 
   try {
     const seenIds = new Set();
@@ -331,7 +343,7 @@ app.get('/api/search', async (req, res) => {
     // Step A: Priority 1 - Authentic YouTube Music Studio Songs
     if (filter !== 'nonofficial') {
       try {
-        const ytmSongs = await searchYouTubeMusicSongs(query, 25);
+        const ytmSongs = await searchYouTubeMusicSongs(query, 25, page);
         for (const s of ytmSongs) {
           if (!s.id || seenIds.has(s.id)) continue;
           const titleKey = homeData.normalizeTrackKey ? homeData.normalizeTrackKey(s.title, s.artist) : s.title.toLowerCase();
@@ -349,8 +361,8 @@ app.get('/api/search', async (req, res) => {
     }
 
     // Step B: If YouTube Music returned plenty of results, return immediately
-    if (tracks.length >= 12 && filter !== 'nonofficial') {
-      return res.json({ success: true, count: tracks.length, filter, tracks, source: 'ytmusic' });
+    if (tracks.length >= 10 && filter !== 'nonofficial') {
+      return res.json({ success: true, count: tracks.length, filter, page, hasMore: tracks.length >= 10, tracks, source: 'ytmusic' });
     }
 
     // Step C: Fallback / Secondary Search or Non-Official Search (Covers, Remixes, Live)
@@ -436,7 +448,7 @@ app.get('/api/search', async (req, res) => {
       }
     }
 
-    res.json({ success: true, count: tracks.length, filter, tracks });
+    res.json({ success: true, count: tracks.length, filter, page, hasMore: tracks.length >= 10, tracks });
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ success: false, error: 'Failed to search music' });
