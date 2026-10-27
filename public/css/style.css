@@ -283,7 +283,6 @@ body::after {
   box-shadow: 0 0 8px #a855f7;
   animation: pulse-dot 2.4s infinite;
 }
-}
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -2497,14 +2496,15 @@ body::after {
 /* ==========================================================================
    Mobile Responsive Navigation & Layout (< 768px)
    ========================================================================== */
-.mobile-bottom-nav {
+.mobile-bottom-nav,
+.mobile-top-brand {
   display: none;
 }
 
 @media (max-width: 768px) {
   :root {
-    --player-height: 62px;
-    --mobile-nav-height: 56px;
+    --player-height: 60px;
+    --mobile-nav-height: 58px;
   }
 
   /* Prevent horizontal bounce / overflow on mobile */
@@ -2528,26 +2528,80 @@ body::after {
     display: none !important;
   }
 
-  /* Main Content clearance for floating player + bottom nav */
+  /* Main Content clearance for floating island player + bottom nav */
   .main-content {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: calc(var(--player-height) + var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 26px) !important;
+    padding-bottom: calc(var(--player-height) + var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 24px) !important;
   }
 
-  /* Top Bar Header on Mobile */
+  /* 1. Mobile Native Top Bar Header */
   .top-bar {
     position: sticky;
     top: 0;
     z-index: 50;
     padding: max(10px, env(safe-area-inset-top, 0px)) 12px 10px !important;
     gap: 8px !important;
-    background: rgba(7, 10, 18, 0.90) !important;
-    backdrop-filter: blur(20px) !important;
-    -webkit-backdrop-filter: blur(20px) !important;
+    background: rgba(7, 10, 18, 0.94) !important;
+    backdrop-filter: blur(28px) !important;
+    -webkit-backdrop-filter: blur(28px) !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Mobile Native App Brand Logo in Top Bar */
+  .mobile-top-brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    flex-shrink: 0 !important;
+    cursor: pointer !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    touch-action: manipulation !important;
+  }
+
+  .mobile-brand-icon {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.45) !important;
+    flex-shrink: 0 !important;
+  }
+
+  .mobile-brand-text {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+
+  .mobile-brand-title {
+    font-size: 0.96rem !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.4px !important;
+    background: linear-gradient(135deg, #ffffff 30%, #38bdf8 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+  }
+
+  .mobile-brand-badge {
+    font-size: 0.56rem !important;
+    font-weight: 800 !important;
+    color: #34d399 !important;
+    background: rgba(16, 185, 129, 0.15) !important;
+    border: 1px solid rgba(16, 185, 129, 0.4) !important;
+    padding: 1px 4px !important;
+    border-radius: 4px !important;
+    line-height: 1.1 !important;
   }
 
   /* Hide laptop-only cast button on phone */
@@ -2557,34 +2611,38 @@ body::after {
   }
 
   .search-box-wrapper {
-    flex: 1 !important;
+    flex: 1 1 auto !important;
     min-width: 0 !important;
     max-width: none !important;
-    height: 38px !important;
-    padding: 2px 4px 2px 12px !important;
-    background: rgba(255, 255, 255, 0.07) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    height: 36px !important;
+    padding: 2px 4px 2px 10px !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
     border-radius: 9999px !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3) !important;
   }
 
   .search-box-wrapper input {
-    font-size: 0.84rem !important;
+    font-size: 0.82rem !important;
     padding: 4px 6px !important;
   }
 
   .search-box-wrapper input::placeholder {
-    font-size: 0.8rem !important;
+    font-size: 0.78rem !important;
   }
 
   .btn-search-action {
-    width: 30px !important;
-    height: 30px !important;
-    min-width: 30px !important;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    border-radius: 50% !important;
   }
 
   .top-bar-right {
     gap: 6px !important;
     flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
   }
 
   /* Selera Musik icon button */
@@ -2598,6 +2656,9 @@ body::after {
     align-items: center !important;
     justify-content: center !important;
     font-size: 1rem !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
   }
 
   .btn-top-taste .top-taste-label {
@@ -2606,15 +2667,15 @@ body::after {
 
   /* Google Sign-in button */
   #btn-google-login {
-    height: 34px !important;
-    padding: 0 10px !important;
+    height: 32px !important;
+    padding: 0 8px !important;
     border-radius: 9999px !important;
-    font-size: 0.75rem !important;
-    gap: 6px !important;
+    font-size: 0.72rem !important;
+    gap: 5px !important;
   }
 
   #google-login-btn-text {
-    max-width: 65px !important;
+    max-width: 60px !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
@@ -2623,28 +2684,56 @@ body::after {
   .ytm-profile-badge {
     width: 34px !important;
     height: 34px !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    border: 1.5px solid rgba(56, 189, 248, 0.5) !important;
   }
 
   .ytm-avatar-circle {
-    width: 34px !important;
-    height: 34px !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
   }
 
   /* Views Container */
   .views-container {
-    padding: 10px 12px 24px !important;
+    padding: 10px 14px 28px !important;
   }
 
-  /* Mood & Filter Chips */
+  /* Mood & Filter Chips (Fluid Scroll Snap) */
   .ytm-chips-container {
-    margin: 0 -12px 14px !important;
-    padding: 2px 12px 10px !important;
+    margin: 0 -14px 16px !important;
+    padding: 2px 14px 10px !important;
     gap: 8px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    scroll-snap-type: x proximity !important;
+  }
+
+  .ytm-chips-container::-webkit-scrollbar {
+    display: none !important;
   }
 
   .ytm-chip {
-    padding: 6px 14px !important;
-    font-size: 0.76rem !important;
+    height: 34px !important;
+    padding: 0 14px !important;
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+    border-radius: 9999px !important;
+    flex-shrink: 0 !important;
+    scroll-snap-align: start !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #cbd5e1 !important;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  .ytm-chip.active {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    box-shadow: 0 2px 12px rgba(16, 185, 129, 0.45) !important;
   }
 
   /* Mobile Carousels */
@@ -9811,31 +9900,316 @@ body.music-playing .cinema-turntable-arm {
    Eliminates all remaining desktop artifacts on mobile
    ========================================================================== */
 @media (max-width: 768px) {
-  /* Prevent horizontal scrolling completely */
+  /* Prevent horizontal scrolling & set native viewport standards */
   html, body, .app-container, .main-content {
     max-width: 100vw !important;
     overflow-x: hidden !important;
+    box-sizing: border-box !important;
   }
 
-  /* 1. Track Rows in Mobile: Super Clean, Spacious Title, No Overflow */
+  /* ==========================================================================
+     1. HERO SOUNDSTAGE ON MOBILE (Adaptive Clean Card, No Desktop Bloat)
+     ========================================================================== */
+  .aura-hero-soundstage {
+    border-radius: 18px !important;
+    margin-bottom: 20px !important;
+    background: radial-gradient(ellipse at 85% 15%, rgba(99, 102, 241, 0.18) 0%, transparent 60%),
+                radial-gradient(ellipse at 15% 85%, rgba(6, 182, 212, 0.14) 0%, transparent 65%),
+                linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(10, 15, 30, 0.98) 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5) !important;
+    overflow: hidden !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .aura-hero-inner {
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 18px 14px !important;
+    gap: 12px !important;
+  }
+
+  /* Hide giant 300px desktop turntable chassis on phone screen */
+  .aura-hero-right {
+    display: none !important;
+  }
+
+  .aura-hero-left {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .aura-greeting-capsule {
+    padding: 4px 10px !important;
+    gap: 6px !important;
+    font-size: 0.68rem !important;
+  }
+
+  .aura-greeting-tag {
+    font-size: 0.65rem !important;
+  }
+
+  .aura-dsp-hi-res-tag {
+    font-size: 0.62rem !important;
+  }
+
+  .aura-hero-title {
+    font-size: 1.45rem !important;
+    line-height: 1.25 !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.4px !important;
+    margin: 0 !important;
+  }
+
+  .aura-hero-desc {
+    font-size: 0.82rem !important;
+    line-height: 1.5 !important;
+    color: #94a3b8 !important;
+    margin: 0 !important;
+  }
+
+  .aura-dna-bar {
+    gap: 6px !important;
+    margin-top: 2px !important;
+  }
+
+  .aura-dna-tag,
+  .aura-dna-match-tag {
+    font-size: 0.72rem !important;
+    padding: 4px 10px !important;
+  }
+
+  .aura-hero-actions {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    width: 100% !important;
+    margin-top: 6px !important;
+  }
+
+  .aura-btn-hero-primary,
+  .aura-btn-hero-glass,
+  .aura-btn-hero-outline {
+    flex: 1 1 calc(50% - 6px) !important;
+    min-width: 120px !important;
+    justify-content: center !important;
+    padding: 10px 14px !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    border-radius: 9999px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* ==========================================================================
+     2. DEDICATED IN-PAGE SEARCH HERO (Spotify & YouTube Music Android Style)
+     ========================================================================== */
+  .search-page-hero {
+    margin-bottom: 16px !important;
+    padding: 14px 12px !important;
+    border-radius: 16px !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .search-page-box {
+    height: 44px !important;
+    padding: 2px 4px 2px 14px !important;
+    border-radius: 9999px !important;
+    background: rgba(0, 0, 0, 0.5) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  }
+
+  .search-page-box input {
+    font-size: 0.92rem !important;
+    padding: 8px 4px !important;
+  }
+
+  .search-page-submit-btn {
+    padding: 8px 16px !important;
+    font-size: 0.82rem !important;
+    height: 36px !important;
+    border-radius: 9999px !important;
+  }
+
+  .search-quick-tags-box {
+    margin-top: 10px !important;
+    gap: 6px !important;
+  }
+
+  .search-quick-title {
+    font-size: 0.72rem !important;
+    letter-spacing: 0.4px !important;
+    color: #94a3b8 !important;
+  }
+
+  .search-quick-chips {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 6px !important;
+    padding-bottom: 4px !important;
+    scrollbar-width: none !important;
+  }
+
+  .search-quick-chips::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .search-quick-chip {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    font-size: 0.76rem !important;
+    padding: 6px 12px !important;
+    border-radius: 9999px !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #e2e8f0 !important;
+  }
+
+  /* ==========================================================================
+     3. FEED CAROUSELS & HORIZONTAL SWIPE GRIDS
+     ========================================================================== */
+  .ytm-carousel {
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 12px !important;
+    margin: 0 -14px !important;
+    padding: 0 14px 12px !important;
+    scroll-snap-type: x proximity !important;
+  }
+
+  .ytm-carousel::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .ytm-video-card {
+    flex: 0 0 210px !important;
+    width: 210px !important;
+    gap: 8px !important;
+    scroll-snap-align: start !important;
+  }
+
+  .ytm-square-card {
+    flex: 0 0 138px !important;
+    width: 138px !important;
+    gap: 8px !important;
+    scroll-snap-align: start !important;
+  }
+
+  .ytm-square-card .card-thumb-wrap {
+    width: 138px !important;
+    height: 138px !important;
+    border-radius: 14px !important;
+    overflow: hidden !important;
+  }
+
+  .card-title {
+    font-size: 0.84rem !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    margin-top: 4px !important;
+  }
+
+  .card-artist {
+    font-size: 0.72rem !important;
+    color: #94a3b8 !important;
+  }
+
+  .ytm-3row-grid {
+    display: grid !important;
+    grid-template-rows: repeat(3, 1fr) !important;
+    grid-auto-flow: column !important;
+    grid-auto-columns: minmax(280px, 86vw) !important;
+    gap: 8px 14px !important;
+    margin: 0 -14px !important;
+    padding: 0 14px 10px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    scroll-snap-type: x proximity !important;
+  }
+
+  .ytm-3row-grid::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .ytm-row-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 6px 8px !important;
+    border-radius: 12px !important;
+    min-height: 52px !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    scroll-snap-align: start !important;
+    box-sizing: border-box !important;
+  }
+
+  .ytm-row-thumb {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 10px !important;
+    flex-shrink: 0 !important;
+    object-fit: cover !important;
+  }
+
+  .ytm-row-title {
+    font-size: 0.86rem !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .ytm-row-subtitle {
+    font-size: 0.72rem !important;
+    color: #94a3b8 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* Tactile Vinyl Shelf: 2 Columns on Mobile */
+  .aura-vinyl-shelf {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px 10px !important;
+    padding: 4px 0 16px !important;
+  }
+
+  /* ==========================================================================
+     4. TRACK ROWS IN MOBILE (Fluid Touch Height, Clear Hierarchy)
+     ========================================================================== */
   .track-row {
     padding: 8px 10px !important;
     gap: 10px !important;
-    border-radius: 10px !important;
+    border-radius: 12px !important;
     width: 100% !important;
     box-sizing: border-box !important;
     align-items: center !important;
+    min-height: 54px !important;
   }
 
   .track-number {
-    display: none !important; /* Hide track numbers on mobile like Spotify */
+    display: none !important; /* Spotify pattern: hide track index on phone */
   }
 
   .track-row-thumb {
-    width: 44px !important;
-    height: 44px !important;
-    border-radius: 8px !important;
+    width: 46px !important;
+    height: 46px !important;
+    border-radius: 10px !important;
     flex-shrink: 0 !important;
+    object-fit: cover !important;
   }
 
   .track-row-details {
@@ -9845,10 +10219,12 @@ body.music-playing .cinema-turntable-arm {
 
   .track-row-title {
     font-size: 0.88rem !important;
+    font-weight: 700 !important;
     line-height: 1.25 !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    color: #ffffff !important;
   }
 
   .track-row-artist {
@@ -9857,24 +10233,30 @@ body.music-playing .cinema-turntable-arm {
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    margin-top: 2px !important;
   }
 
   .track-row-duration {
-    display: none !important; /* Hide duration text on mobile track rows to give title full width */
+    display: none !important; /* Hide duration on mobile to give maximum room to title */
   }
 
   .track-row-actions {
     gap: 4px !important;
     flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
   }
 
   .track-row-actions .icon-btn {
     padding: 6px !important;
-    width: 32px !important;
-    height: 32px !important;
+    width: 36px !important;
+    height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
-  /* 2. Playlist & Music Card Grid on Mobile: Symmetric 2-Columns */
+  /* 2-Columns Music Card Grid */
   .music-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 10px !important;
@@ -9883,24 +10265,15 @@ body.music-playing .cinema-turntable-arm {
 
   .music-card {
     padding: 10px !important;
-    border-radius: 12px !important;
+    border-radius: 14px !important;
   }
 
   .card-thumb-wrap {
-    border-radius: 8px !important;
+    border-radius: 10px !important;
     margin-bottom: 8px !important;
   }
 
-  .card-title {
-    font-size: 0.84rem !important;
-    line-height: 1.25 !important;
-  }
-
-  .card-artist {
-    font-size: 0.72rem !important;
-  }
-
-  /* 3. Section Headers & Action Buttons Stacking */
+  /* Section Headers */
   .section-header {
     flex-direction: column !important;
     align-items: flex-start !important;
@@ -9911,23 +10284,10 @@ body.music-playing .cinema-turntable-arm {
 
   .section-title {
     font-size: 1.35rem !important;
+    font-weight: 800 !important;
   }
 
-  .playlist-header-actions {
-    width: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 8px !important;
-  }
-
-  .playlist-header-actions button {
-    width: 100% !important;
-    justify-content: center !important;
-    padding: 10px 14px !important;
-    font-size: 0.82rem !important;
-  }
-
-  /* 4. Search View Header & Filter Pills */
+  /* Search View Header & Filter Pills */
   .search-view-header {
     flex-direction: column !important;
     align-items: flex-start !important;
@@ -9942,16 +10302,131 @@ body.music-playing .cinema-turntable-arm {
     width: 100% !important;
     padding-bottom: 4px !important;
     flex-wrap: nowrap !important;
+    scrollbar-width: none !important;
+  }
+
+  .search-filter-pills::-webkit-scrollbar {
+    display: none !important;
   }
 
   .search-filter-pill {
     flex-shrink: 0 !important;
     white-space: nowrap !important;
-    padding: 6px 12px !important;
+    padding: 6px 14px !important;
     font-size: 0.78rem !important;
+    border-radius: 9999px !important;
   }
 
-  /* 5. Suno AI Studio Mobile Overrides */
+  /* ==========================================================================
+     5. HOME ALBUM / PLAYLIST DETAIL VIEW ON MOBILE
+     ========================================================================== */
+  .home-album-banner {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    padding: 16px 12px !important;
+    gap: 12px !important;
+    border-radius: 18px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .home-album-thumb-wrap {
+    width: 140px !important;
+    height: 140px !important;
+    border-radius: 16px !important;
+    margin: 0 auto !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7) !important;
+    overflow: hidden !important;
+    flex-shrink: 0 !important;
+  }
+
+  .home-album-thumb {
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 16px !important;
+    object-fit: cover !important;
+  }
+
+  .home-album-title {
+    font-size: 1.32rem !important;
+    line-height: 1.25 !important;
+    font-weight: 900 !important;
+    margin: 4px 0 !important;
+  }
+
+  .home-album-artist {
+    font-size: 0.84rem !important;
+    color: #94a3b8 !important;
+    font-weight: 600 !important;
+  }
+
+  .home-album-meta {
+    font-size: 0.72rem !important;
+    gap: 6px !important;
+    justify-content: center !important;
+  }
+
+  .home-album-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 8px !important;
+    margin-top: 8px !important;
+  }
+
+  .btn-album-play-all,
+  .btn-album-secondary,
+  .btn-album-save-lib {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 11px 16px !important;
+    font-size: 0.85rem !important;
+    border-radius: 9999px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Playlist View Banner */
+  .playlist-banner {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    padding: 18px 12px !important;
+    gap: 14px !important;
+    border-radius: 16px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .playlist-banner-thumb {
+    width: 130px !important;
+    height: 130px !important;
+    border-radius: 14px !important;
+  }
+
+  .playlist-banner-title {
+    font-size: 1.32rem !important;
+  }
+
+  .playlist-action-btns {
+    justify-content: center !important;
+    width: 100% !important;
+    gap: 8px !important;
+    flex-direction: column !important;
+  }
+
+  .playlist-action-btns button {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 10px 14px !important;
+    font-size: 0.82rem !important;
+    border-radius: 9999px !important;
+  }
+
+  /* ==========================================================================
+     6. SUNO AI MUSIC STUDIO ON MOBILE
+     ========================================================================== */
   .suno-account-card {
     flex-direction: column !important;
     align-items: flex-start !important;
@@ -9981,16 +10456,21 @@ body.music-playing .cinema-turntable-arm {
 
   .suno-subtabs-bar {
     display: flex !important;
-    gap: 8px !important;
+    gap: 6px !important;
     width: 100% !important;
     margin-bottom: 14px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    padding: 4px !important;
+    border-radius: 12px !important;
+    box-sizing: border-box !important;
   }
 
   .suno-subtab-chip {
-    flex: 1 !important;
+    flex: 1 1 50% !important;
     justify-content: center !important;
-    padding: 8px 6px !important;
-    font-size: 0.76rem !important;
+    padding: 8px 4px !important;
+    font-size: 0.78rem !important;
+    border-radius: 10px !important;
   }
 
   .suno-container,
@@ -10005,92 +10485,46 @@ body.music-playing .cinema-turntable-arm {
     border-radius: 14px !important;
   }
 
-  .suno-library-header {
-    flex-direction: column !important;
-    gap: 10px !important;
-    align-items: stretch !important;
+  .form-textarea {
+    font-size: 16px !important; /* Prevents auto-zoom in mobile browsers */
   }
 
-  .suno-library-header button {
-    width: 100% !important;
-    justify-content: center !important;
-  }
-
-  .suno-library-grid {
-    grid-template-columns: 1fr !important;
-    gap: 10px !important;
-  }
-
-  /* 6. Playlist Detail View on Mobile */
-  .playlist-banner {
-    flex-direction: column !important;
-    align-items: center !important;
-    text-align: center !important;
-    padding: 18px 12px !important;
-    gap: 14px !important;
-    border-radius: 16px !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-  }
-
-  .playlist-banner-thumb {
-    width: 140px !important;
-    height: 140px !important;
-    border-radius: 12px !important;
-  }
-
-  .playlist-banner-title {
-    font-size: 1.35rem !important;
-  }
-
-  .playlist-action-btns {
-    justify-content: center !important;
-    width: 100% !important;
-    gap: 8px !important;
-  }
-
-  .playlist-action-btns button {
-    flex: 1 !important;
-    min-width: 110px !important;
-    justify-content: center !important;
-    padding: 9px 12px !important;
-    font-size: 0.8rem !important;
-  }
-
-  /* 7. Universal Modal Card Safe Area & Scrolling in Mobile */
-  .modal-overlay {
-    padding: 12px !important;
-    align-items: center !important;
-  }
-
-  .modal-card {
-    padding: 22px 16px 20px !important;
-    max-height: 86dvh !important;
-    max-height: 86vh !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    border-radius: 20px !important;
-  }
-
-  .modal-close-btn {
-    top: 12px !important;
-    right: 12px !important;
-    width: 32px !important;
-    height: 32px !important;
-    font-size: 1rem !important;
-  }
-
-  /* 9. Mobile Player Bar Layout Perfection & Aesthetic Cinema Capsule */
+  /* ==========================================================================
+     7. FLOATING ISLAND MINI PLAYER ON MOBILE (Spotify / Apple Music Luxury)
+     ========================================================================== */
   #master-player-bar.player-bar {
+    position: fixed !important;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 8px) !important;
+    height: 60px !important;
+    padding: 0 10px !important;
+    background: rgba(12, 17, 30, 0.96) !important;
+    backdrop-filter: blur(30px) !important;
+    -webkit-backdrop-filter: blur(30px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 18px !important;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.75), 0 0 1px rgba(255, 255, 255, 0.25) inset !important;
+    z-index: 60 !important;
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
-    gap: 6px !important;
-    padding: 0 8px !important;
+    gap: 8px !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
-    width: auto !important;
+  }
+
+  .player-glow-beam {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 2.5px !important;
+    border-radius: 18px 18px 0 0 !important;
+    background: linear-gradient(90deg, #38bdf8 0%, #10b981 100%) !important;
+    z-index: 2 !important;
   }
 
   #master-player-bar .player-left {
@@ -10100,7 +10534,8 @@ body.music-playing .cinema-turntable-arm {
     width: auto !important;
     display: flex !important;
     align-items: center !important;
-    gap: 8px !important;
+    gap: 10px !important;
+    cursor: pointer !important;
     padding: 0 !important;
     margin: 0 !important;
     overflow: hidden !important;
@@ -10115,6 +10550,7 @@ body.music-playing .cinema-turntable-arm {
     border-radius: 10px !important;
     overflow: hidden !important;
     position: relative !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
   }
 
   #master-player-bar .player-thumb-img {
@@ -10149,7 +10585,7 @@ body.music-playing .cinema-turntable-arm {
 
   #master-player-bar .player-title {
     display: block !important;
-    font-size: 0.85rem !important;
+    font-size: 0.86rem !important;
     font-weight: 700 !important;
     white-space: nowrap !important;
     overflow: hidden !important;
@@ -10172,7 +10608,6 @@ body.music-playing .cinema-turntable-arm {
     flex: 0 0 auto !important;
     width: auto !important;
     min-width: 0 !important;
-    max-width: none !important;
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
@@ -10189,10 +10624,10 @@ body.music-playing .cinema-turntable-arm {
   }
 
   #master-player-bar .btn-play-orb {
-    width: 36px !important;
-    height: 36px !important;
-    min-width: 36px !important;
-    max-width: 36px !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    max-width: 38px !important;
     border-radius: 50% !important;
     background: linear-gradient(135deg, var(--primary) 0%, #059669 100%) !important;
     box-shadow: 0 2px 10px rgba(16, 185, 129, 0.45) !important;
@@ -10201,6 +10636,7 @@ body.music-playing .cinema-turntable-arm {
     justify-content: center !important;
     flex-shrink: 0 !important;
     border: none !important;
+    cursor: pointer !important;
   }
 
   #master-player-bar .btn-play-orb svg {
@@ -10221,6 +10657,7 @@ body.music-playing .cinema-turntable-arm {
     border: none !important;
     color: #cbd5e1 !important;
     flex-shrink: 0 !important;
+    cursor: pointer !important;
   }
 
   #master-player-bar #next-btn svg {
@@ -10231,13 +10668,11 @@ body.music-playing .cinema-turntable-arm {
   #master-player-bar .player-right {
     flex: 0 0 auto !important;
     width: auto !important;
-    min-width: 0 !important;
-    max-width: none !important;
     display: flex !important;
     align-items: center !important;
     justify-content: flex-end !important;
     flex-shrink: 0 !important;
-    margin: 0 0 0 4px !important;
+    margin: 0 0 0 2px !important;
     padding: 0 !important;
     gap: 0 !important;
   }
@@ -10246,7 +10681,7 @@ body.music-playing .cinema-turntable-arm {
   #master-player-bar .btn-cinema-mode {
     height: 34px !important;
     width: auto !important;
-    padding: 0 11px 0 9px !important;
+    padding: 0 10px !important;
     border-radius: 9999px !important;
     display: inline-flex !important;
     align-items: center !important;
@@ -10265,14 +10700,12 @@ body.music-playing .cinema-turntable-arm {
   #master-player-bar #btn-open-cinema:active {
     transform: scale(0.93) !important;
     background: linear-gradient(135deg, rgba(236, 72, 153, 0.5) 0%, rgba(99, 102, 241, 0.55) 100%) !important;
-    box-shadow: 0 0 8px rgba(236, 72, 153, 0.6) !important;
   }
 
   #master-player-bar #btn-open-cinema .cinema-icon-badge {
     font-size: 0.95rem !important;
     line-height: 1 !important;
     display: inline-flex !important;
-    align-items: center !important;
   }
 
   #master-player-bar #btn-open-cinema .cinema-btn-label {
@@ -10283,7 +10716,139 @@ body.music-playing .cinema-turntable-arm {
     letter-spacing: 0.3px !important;
   }
 
-  /* 10. Studio Cinema Mobile Perfection & Close Button Visibility Defense */
+  /* ==========================================================================
+     8. MOBILE BOTTOM NAVIGATION BAR (Fluid Touch Ergonomics)
+     ========================================================================== */
+  .mobile-bottom-nav {
+    display: flex !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    background: rgba(8, 11, 20, 0.96) !important;
+    backdrop-filter: blur(28px) !important;
+    -webkit-backdrop-filter: blur(28px) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+    z-index: 55 !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+  }
+
+  .mobile-nav-item {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    color: #64748b !important;
+    font-size: 0.68rem !important;
+    font-weight: 700 !important;
+    padding: 6px 0 4px !important;
+    text-decoration: none !important;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    cursor: pointer !important;
+    touch-action: manipulation !important;
+  }
+
+  .mobile-nav-item:active {
+    transform: scale(0.92) !important;
+  }
+
+  .mobile-nav-item svg {
+    width: 21px !important;
+    height: 21px !important;
+    stroke-width: 2.2 !important;
+    transition: all 0.2s ease !important;
+  }
+
+  .mobile-nav-item.active {
+    color: #10b981 !important;
+  }
+
+  .mobile-nav-item.active svg {
+    color: #10b981 !important;
+    stroke: #10b981 !important;
+    transform: translateY(-2px) scale(1.08) !important;
+    filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.6)) !important;
+  }
+
+  /* ==========================================================================
+     9. EQUALIZER DSP BOTTOM SHEET DRAWER ON MOBILE
+     ========================================================================== */
+  .cinema-eq-drawer,
+  .eq-drawer {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    max-height: 85vh !important;
+    max-height: 85dvh !important;
+    border-radius: 24px 24px 0 0 !important;
+    padding: 14px 16px max(24px, env(safe-area-inset-bottom, 0px)) !important;
+    border-bottom: none !important;
+    z-index: 100000 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.9) !important;
+    background: rgba(10, 14, 28, 0.96) !important;
+    backdrop-filter: blur(32px) !important;
+    -webkit-backdrop-filter: blur(32px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-sizing: border-box !important;
+  }
+
+  .cinema-eq-drawer::before,
+  .eq-drawer::before {
+    content: '' !important;
+    display: block !important;
+    width: 44px !important;
+    height: 4px !important;
+    background: rgba(255, 255, 255, 0.25) !important;
+    border-radius: 2px !important;
+    margin: 0 auto 12px !important;
+  }
+
+  .cinema-eq-presets,
+  .eq-presets {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    padding: 4px 0 !important;
+    width: 100% !important;
+    overflow-x: visible !important;
+  }
+
+  .cinema-preset-btn,
+  .preset-btn {
+    white-space: nowrap !important;
+    padding: 8px 10px !important;
+    font-size: 0.76rem !important;
+    border-radius: 10px !important;
+    text-align: center !important;
+  }
+
+  .eq-bars-container,
+  .cinema-eq-bars-container {
+    overflow-x: auto !important;
+    gap: 6px !important;
+    padding: 12px 4px !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+
+  .eq-column,
+  .cinema-eq-column {
+    min-width: 32px !important;
+  }
+
+  /* ==========================================================================
+     10. STUDIO CINEMA FULLSCREEN NOW PLAYING (Ultra Clean & High-Immersive)
+     ========================================================================== */
   .studio-cinema-overlay {
     height: 100vh !important;
     height: 100dvh !important;
@@ -10301,6 +10866,9 @@ body.music-playing .cinema-turntable-arm {
     justify-content: space-between !important;
     gap: 8px !important;
     box-sizing: border-box !important;
+    background: rgba(7, 10, 20, 0.94) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    z-index: 50 !important;
   }
 
   #btn-close-cinema.cinema-close-btn {
@@ -10319,6 +10887,13 @@ body.music-playing .cinema-turntable-arm {
     flex-shrink: 0 !important;
     cursor: pointer !important;
     margin: 0 !important;
+    transition: transform 0.15s ease, background 0.15s ease !important;
+  }
+
+  #btn-close-cinema.cinema-close-btn:active {
+    transform: scale(0.9) !important;
+    background: rgba(239, 68, 68, 0.3) !important;
+    border-color: #ef4444 !important;
   }
 
   .cinema-vis-switcher,
@@ -10395,10 +10970,7 @@ body.music-playing .cinema-turntable-arm {
     box-sizing: border-box !important;
   }
 
-  .cinema-canvas-wrap {
-    display: none !important;
-  }
-
+  .cinema-canvas-wrap,
   .cinema-vis-canvas {
     display: none !important;
   }
