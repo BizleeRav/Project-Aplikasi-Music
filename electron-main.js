@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -82,7 +82,7 @@ async function createMainWindow() {
     }
   });
 
-  // Remove "Electron/..." and "AuraSound/..." from User-Agent so Google allows OAuth without "disallowed_useragent"
+  // Clean User-Agent globally and on window so no service detects Electron/AuraSound
   try {
     const rawUa = mainWindow.webContents.getUserAgent();
     const cleanUa = rawUa.replace(/Electron\/[0-9.]+\s*/i, '').replace(/AuraSound\/[0-9.]+\s*/i, '');
@@ -96,8 +96,17 @@ async function createMainWindow() {
     console.error('Failed to load local server in Electron window:', err);
   });
 
+  // Log any renderer console messages and load failures for debugging
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer Console] ${message} (${sourceId}:${line})`);
+  });
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Renderer Load Error] Failed to load ${validatedURL}: ${errorCode} - ${errorDescription}`);
+  });
+
   // Handle any popup windows cleanly in Electron (prevent blank white windows)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    console.log(`[WindowOpenHandler] Blocked child window for: ${url}`);
     if (url.startsWith('http:') || url.startsWith('https:')) {
       const { shell } = require('electron');
       shell.openExternal(url);
@@ -114,6 +123,9 @@ async function createMainWindow() {
 
   // Remove default menu bar for sleek modern desktop look
   mainWindow.setMenuBarVisibility(false);
+  if (typeof mainWindow.removeMenu === 'function') {
+    mainWindow.removeMenu();
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -161,6 +173,17 @@ ipcMain.handle('open-suno-login', async () => {
       nodeIntegration: false,
       contextIsolation: true
     }
+  });
+
+  sunoLoginWin.setMenuBarVisibility(false);
+  if (typeof sunoLoginWin.removeMenu === 'function') {
+    sunoLoginWin.removeMenu();
+  }
+
+  sunoLoginWin.webContents.setWindowOpenHandler(({ url }) => {
+    // Navigate within sunoLoginWin instead of opening a blank child window
+    sunoLoginWin.loadURL(url);
+    return { action: 'deny' };
   });
 
   sunoLoginWin.loadURL('https://suno.com/me');
@@ -228,6 +251,14 @@ ipcMain.on('restart-app', () => {
 });
 
 app.whenReady().then(() => {
+  try {
+    if (session && session.defaultSession) {
+      const defaultUa = session.defaultSession.getUserAgent();
+      const cleanUa = defaultUa.replace(/Electron\/[0-9.]+\s*/i, '').replace(/AuraSound\/[0-9.]+\s*/i, '');
+      session.defaultSession.setUserAgent(cleanUa);
+    }
+  } catch (e) {}
+
   createMainWindow();
 
   app.on('activate', () => {
