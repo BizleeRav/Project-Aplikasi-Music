@@ -2761,7 +2761,7 @@ app.get('/api/lyrics', async (req, res) => {
           };
         });
       } else {
-        // Parse from LRC format
+        // Parse from LRC format (with support for QQ Music <offset,dur> & Kugou (start,dur) syllable sync)
         const lrcLines = result.syncedLyrics.split('\n');
         const lrcRegex = /^\[(\d{2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/;
         for (const line of lrcLines) {
@@ -2769,13 +2769,46 @@ app.get('/api/lyrics', async (req, res) => {
           if (match) {
             const m = parseInt(match[1], 10);
             const s = parseFloat(match[2]);
-            // Subtract positive offset (LRC standard) with 2-decimal precision
             const time = Math.max(0, parseFloat((m * 60 + s - autoOffsetSec).toFixed(2)));
-            let text = match[3].trim();
-            // Remove inline Kugou/Karaoke syllable markers like (1844,84) and <...> tags
-            text = text.replace(/\(\d+,\d+\)/g, '').replace(/<[^>]+>/g, '').trim();
+            const rawLinePayload = match[3].trim();
+            const lineBaseSec = m * 60 + s;
+
+            // Universal Asian Syllable Extractor:
+            // 1. QQ Music format: <offset_ms,dur_ms>word or <offset_ms,dur_ms,0>word
+            // 2. Kugou format: (start_ms,dur_ms)word
+            const syllableRegex = /(?:<(\d+),(\d+)(?:,\d+)?>|\((\d+),(\d+)\))([^\(<]+)/g;
+            const words = [];
+            let sylMatch;
+
+            while ((sylMatch = syllableRegex.exec(rawLinePayload)) !== null) {
+              const startVal = parseInt(sylMatch[1] || sylMatch[3], 10);
+              const durVal = parseInt(sylMatch[2] || sylMatch[4], 10);
+              const sylText = (sylMatch[5] || '').trim();
+              if (sylText && !isNaN(startVal) && !isNaN(durVal)) {
+                let wordBeginSec;
+                if (startVal >= lineBaseSec * 500 && startVal > 1000) {
+                  wordBeginSec = startVal / 1000.0;
+                } else {
+                  wordBeginSec = lineBaseSec + (startVal / 1000.0);
+                }
+                const wordEndSec = wordBeginSec + Math.max(0.05, durVal / 1000.0);
+                const adjBegin = Math.max(0, parseFloat((wordBeginSec - autoOffsetSec).toFixed(3)));
+                const adjEnd = Math.max(0, parseFloat((wordEndSec - autoOffsetSec).toFixed(3)));
+                words.push({
+                  text: sylText,
+                  begin: adjBegin,
+                  end: adjEnd
+                });
+              }
+            }
+
+            let text = rawLinePayload.replace(/\(\d+,\d+\)/g, '').replace(/<[^>]+>/g, '').trim();
             if (text) {
-              items.push({ time, text, words: null });
+              items.push({
+                time,
+                text,
+                words: words.length > 0 ? words : null
+              });
             }
           }
         }

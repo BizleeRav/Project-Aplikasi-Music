@@ -547,17 +547,46 @@ class LyricsRomanizer {
       let updatedWords = item.words || null;
       if (Array.isArray(item.words) && item.words.length > 0 && lineLang) {
         updatedWords = [];
-        for (const w of item.words) {
-          let wRomaji = null;
-          if (w.text && /[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]/.test(w.text)) {
-            try {
-              wRomaji = await this.romanizeLine(w.text, lineLang);
-            } catch (e) {}
+        const fullTokens = (romaji || '').trim().split(/\s+/).filter(Boolean);
+
+        if (fullTokens.length === item.words.length) {
+          // Perfect 1-to-1 contextual alignment: preserves Japanese Kanji compounds and Korean liaison
+          for (let i = 0; i < item.words.length; i++) {
+            updatedWords.push({
+              ...item.words[i],
+              romaji: fullTokens[i] || null
+            });
           }
-          updatedWords.push({
-            ...w,
-            romaji: wRomaji || null
-          });
+        } else {
+          // Contextual Morpheme-guided slice alignment
+          let tokenCursor = 0;
+          for (let i = 0; i < item.words.length; i++) {
+            const w = item.words[i];
+            let wRomaji = null;
+            if (w.text && /[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]/.test(w.text)) {
+              try {
+                const individualRomaji = await this.romanizeLine(w.text, lineLang);
+                const tokenCount = Math.max(1, (individualRomaji || '').trim().split(/\s+/).filter(Boolean).length);
+                const slicedTokens = fullTokens.slice(tokenCursor, tokenCursor + tokenCount);
+                if (slicedTokens.length > 0) {
+                  wRomaji = slicedTokens.join(' ');
+                } else {
+                  wRomaji = individualRomaji;
+                }
+                tokenCursor += tokenCount;
+              } catch (e) {
+                wRomaji = fullTokens[tokenCursor] || null;
+                tokenCursor++;
+              }
+            } else {
+              wRomaji = fullTokens[tokenCursor] || null;
+              tokenCursor++;
+            }
+            updatedWords.push({
+              ...w,
+              romaji: wRomaji || null
+            });
+          }
         }
       }
 

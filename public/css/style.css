@@ -8101,48 +8101,64 @@ body.music-playing .cinema-turntable-arm {
 /* Apple Music & Better Lyrics Syllable-Level Karaoke Wave Animation */
 .cinema-lyric-word {
   display: inline-block;
-  opacity: 0.65;
-  transition: opacity 0.12s ease, color 0.12s ease, text-shadow 0.12s ease, transform 0.12s cubic-bezier(0.16, 1, 0.3, 1);
-  margin-right: 0.2em;
+  margin-right: 0.22em;
+  color: rgba(255, 255, 255, 0.45);
+  transition: transform 0.1s cubic-bezier(0.16, 1, 0.3, 1), filter 0.1s ease;
+  will-change: transform, background;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word {
-  opacity: 0.5;
-  color: rgba(255, 255, 255, 0.65);
+  /* Continuous Left-to-Right Apple Music Fluid Gradient Text Sweep */
+  background: linear-gradient(
+    90deg,
+    #ffffff var(--fill-pct, 0%),
+    rgba(255, 255, 255, 0.45) var(--fill-pct, 0%)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word.active {
-  opacity: 1 !important;
-  color: #ffffff !important;
-  text-shadow: 0 0 16px rgba(56, 189, 248, 0.95), 0 0 32px rgba(168, 85, 247, 0.8) !important;
   transform: scale(1.08) translateY(-1px);
-  font-weight: 900;
+  filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.85)) drop-shadow(0 0 24px rgba(168, 85, 247, 0.65));
 }
 
 .cinema-lyric-line.active .cinema-lyric-word.passed {
-  opacity: 0.95;
-  color: #ffffff;
-  text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+  background: #ffffff;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: #ffffff;
+  transform: scale(1);
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3));
 }
 
 .cinema-lyric-word-romaji {
   display: inline-block;
-  opacity: 0.65;
-  transition: opacity 0.12s ease, color 0.12s ease, transform 0.12s ease;
   margin-right: 0.2em;
+  color: rgba(148, 163, 184, 0.55);
+  transition: transform 0.1s ease;
+}
+
+.cinema-lyric-line.active .cinema-lyric-word-romaji {
+  background: linear-gradient(
+    90deg,
+    #38bdf8 var(--fill-pct, 0%),
+    rgba(148, 163, 184, 0.55) var(--fill-pct, 0%)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji.active {
-  opacity: 1 !important;
-  color: #38bdf8 !important;
-  text-shadow: 0 0 12px rgba(56, 189, 248, 0.85);
-  font-weight: 800;
-  transform: scale(1.05);
+  transform: scale(1.06);
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.9));
 }
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji.passed {
-  opacity: 0.9;
-  color: #7dd3fc;
+  background: #7dd3fc;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: #7dd3fc;
+  transform: scale(1);
+  filter: none;
 }
 
 /* Cinema Floating Controller Dock */

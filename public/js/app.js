@@ -2809,7 +2809,7 @@ class App {
       });
     }
 
-    // Syllable-Level Karaoke Wave Animation on active line (Apple Music & Better Lyrics standard)
+    // Syllable-Level Continuous Gradient Sweep Animation (Apple Music & Better Lyrics standard)
     if (activeIdx >= 0) {
       const activeLineEl = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${activeIdx}"]`);
       if (activeLineEl && activeLineEl.classList.contains('has-word-sync')) {
@@ -2817,13 +2817,19 @@ class App {
         words.forEach(w => {
           const begin = parseFloat(w.getAttribute('data-begin'));
           const end = parseFloat(w.getAttribute('data-end'));
+          const duration = Math.max(0.04, end - begin);
+
           if (syncTime >= begin && syncTime < end) {
+            const fillPct = Math.min(100, Math.max(0, ((syncTime - begin) / duration) * 100));
+            w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
             w.classList.add('active');
             w.classList.remove('passed');
           } else if (syncTime >= end) {
+            w.style.setProperty('--fill-pct', '100%');
             w.classList.remove('active');
             w.classList.add('passed');
           } else {
+            w.style.setProperty('--fill-pct', '0%');
             w.classList.remove('active', 'passed');
           }
         });
@@ -2832,13 +2838,19 @@ class App {
         romajiWords.forEach(w => {
           const begin = parseFloat(w.getAttribute('data-begin'));
           const end = parseFloat(w.getAttribute('data-end'));
+          const duration = Math.max(0.04, end - begin);
+
           if (syncTime >= begin && syncTime < end) {
+            const fillPct = Math.min(100, Math.max(0, ((syncTime - begin) / duration) * 100));
+            w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
             w.classList.add('active');
             w.classList.remove('passed');
           } else if (syncTime >= end) {
+            w.style.setProperty('--fill-pct', '100%');
             w.classList.remove('active');
             w.classList.add('passed');
           } else {
+            w.style.setProperty('--fill-pct', '0%');
             w.classList.remove('active', 'passed');
           }
         });

@@ -12,6 +12,9 @@ class YTPlayerManager {
     this.progressInterval = null;
     this.onStateChangeCallback = null;
     this.onProgressCallback = null;
+    this._lastRawTime = 0;
+    this._lastRawTimestamp = performance.now();
+    this._interpolatedTime = 0;
     this.initYouTubeIFrameAPI();
   }
 
@@ -187,16 +190,49 @@ class YTPlayerManager {
   }
 
   seekTo(seconds) {
+    this._lastRawTime = seconds;
+    this._lastRawTimestamp = performance.now();
+    this._interpolatedTime = seconds;
     if (this.player && this.isReady) {
       this.player.seekTo(seconds, true);
     }
   }
 
   getCurrentTime() {
-    if (this.player && this.isReady && typeof this.player.getCurrentTime === 'function') {
-      return this.player.getCurrentTime() || 0;
+    if (!this.player || !this.isReady || typeof this.player.getCurrentTime !== 'function') {
+      return 0;
     }
-    return 0;
+
+    const raw = this.player.getCurrentTime() || 0;
+    const now = performance.now();
+
+    // If paused or stopped, always return exact raw time
+    if (!this.isPlaying) {
+      this._lastRawTime = raw;
+      this._lastRawTimestamp = now;
+      this._interpolatedTime = raw;
+      return raw;
+    }
+
+    // Detect when YouTube iframe delivers a new time packet (usually every ~250ms)
+    if (raw !== this._lastRawTime) {
+      this._lastRawTime = raw;
+      this._lastRawTimestamp = now;
+
+      // If deviation is significant (>350ms, e.g. after seek or buffer), snap immediately
+      if (Math.abs(this._interpolatedTime - raw) > 0.35) {
+        this._interpolatedTime = raw;
+      }
+    }
+
+    // High-Resolution Predictive Smoothing between YouTube 250ms ticks
+    const elapsedSec = (now - this._lastRawTimestamp) / 1000;
+    // Cap extrapolation at 0.35s to prevent runaway if player buffers
+    const estimated = this._lastRawTime + Math.min(elapsedSec, 0.35);
+
+    // Ensure time strictly advances without jitter
+    this._interpolatedTime = Math.max(this._interpolatedTime, estimated);
+    return this._interpolatedTime;
   }
 
   setVolume(volPercent) {
@@ -206,6 +242,12 @@ class YTPlayerManager {
   }
 
   handleStateChange(playerState) {
+    // Reset clock baseline on state transitions
+    const curRaw = (this.player && typeof this.player.getCurrentTime === 'function') ? (this.player.getCurrentTime() || 0) : 0;
+    this._lastRawTime = curRaw;
+    this._lastRawTimestamp = performance.now();
+    this._interpolatedTime = curRaw;
+
     // YT.PlayerState: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
     if (playerState === 1) {
       this.isPlaying = true;
