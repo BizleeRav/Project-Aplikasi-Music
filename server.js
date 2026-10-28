@@ -2870,7 +2870,7 @@ app.get('/api/lyrics', async (req, res) => {
 });
 
 // Start Server
-if (require.main === module && !process.env.VERCEL) {
+if (!process.env.VERCEL && !process.env.NO_SERVER_LISTEN) {
   const server = app.listen(PORT, '0.0.0.0', () => {
     const primaryIp = getPrimaryIp();
     console.log(`\n======================================================`);
