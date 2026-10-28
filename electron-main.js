@@ -96,6 +96,15 @@ async function createMainWindow() {
     console.error('Failed to load local server in Electron window:', err);
   });
 
+  // Handle any popup windows cleanly in Electron (prevent blank white windows)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http:') || url.startsWith('https:')) {
+      const { shell } = require('electron');
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
   // Enable F5 and Ctrl+R reload shortcuts
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {
