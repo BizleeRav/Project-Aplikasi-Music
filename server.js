@@ -10,6 +10,7 @@ const sunoService = require('./suno-service');
 const playlistDb = require('./playlist-db');
 const userDb = require('./user-db');
 const homeData = require('./home-data');
+const wanakana = require('wanakana');
 let lyricsRomanizer = require('./lyrics-romanizer');
 function getLyricsRomanizer() {
   try {
@@ -1715,6 +1716,92 @@ const KPOP_ARTIST_ALIASES = [
   { match: /(?:monsta\s*x|몬스타엑스)/i, latin: 'MONSTA X', hangul: '몬스타엑스' }
 ];
 
+const JAPANESE_ARTIST_ALIASES = [
+  { match: /(?:米津玄師|よねづ\s*けんし|kenshi\s*yonezu|hachi|ハチ)/i, latin: 'Kenshi Yonezu', native: '米津玄師' },
+  { match: /(?:優里|ゆうり|yuuri)/i, latin: 'Yuuri', native: '優里' },
+  { match: /(?:椎名林檎|しいな\s*りんご|sheena\s*ringo|shiina\s*ringo)/i, latin: 'Sheena Ringo', native: '椎名林檎' },
+  { match: /(?:藤井\s*風|藤井風|ふじい\s*かぜ|fujii\s*kaze)/i, latin: 'Fujii Kaze', native: '藤井 風' },
+  { match: /(?:ずっと真夜中でいいのに。?|ずとまよ|zutomayo)/i, latin: 'ZUTOMAYO', native: 'ずっと真夜中でいいのに。' },
+  { match: /(?:official髭男dism|髭男|ヒゲダン|official\s*hige\s*dandism)/i, latin: 'Official HIGE DANDISM', native: 'Official髭男dism' },
+  { match: /(?:緑黄色社会|リョクシャカ|ryokuoushoku\s*shakai)/i, latin: 'Ryokuoushoku Shakai', native: '緑黄色社会' },
+  { match: /(?:宇多田ヒカル|宇多田光|hikaru\s*utada|utada\s*hikaru)/i, latin: 'Hikaru Utada', native: '宇多田ヒカル' },
+  { match: /(?:星野\s*源|星野源|gen\s*hoshino)/i, latin: 'Gen Hoshino', native: '星野 源' },
+  { match: /(?:ヨルシカ|yorushika)/i, latin: 'Yorushika', native: 'ヨルシカ' },
+  { match: /(?:あいみょん|aimyon)/i, latin: 'Aimyon', native: 'あいみょん' },
+  { match: /(?:king\s*gnu|キングヌー)/i, latin: 'King Gnu', native: 'King Gnu' },
+  { match: /(?:vaundy|バウンディ)/i, latin: 'Vaundy', native: 'Vaundy' },
+  { match: /(?:mrs\.\s*green\s*apple|ミセス)/i, latin: 'Mrs. GREEN APPLE', native: 'Mrs. GREEN APPLE' },
+  { match: /(?:radwimps|ラッドウィンプス)/i, latin: 'RADWIMPS', native: 'RADWIMPS' },
+  { match: /(?:eve|いぶ)/i, latin: 'Eve', native: 'Eve' },
+  { match: /(?:aimer|エメ)/i, latin: 'Aimer', native: 'Aimer' },
+  { match: /(?:ado|アド)/i, latin: 'Ado', native: 'Ado' },
+  { match: /(?:lisa|リサ)/i, latin: 'LiSA', native: 'LiSA' },
+  { match: /(?:yoasobi|ヨアソビ)/i, latin: 'YOASOBI', native: 'YOASOBI' },
+  { match: /(?:tuki\.|ツキ)/i, latin: 'tuki.', native: 'tuki.' },
+  { match: /(?:菅田将暉|すだ\s*まさき|masaki\s*suda)/i, latin: 'Masaki Suda', native: '菅田将暉' },
+  { match: /(?:back\s*number|バックナンバー)/i, latin: 'back number', native: 'back number' },
+  { match: /(?:creepy\s*nuts|クリーピーナッツ)/i, latin: 'Creepy Nuts', native: 'Creepy Nuts' },
+  { match: /(?:スキマスイッチ|sukimaswitch)/i, latin: 'Sukimaswitch', native: 'スキマスイッチ' },
+  { match: /(?:ポルノグラフィティ|porno\s*graffitti)/i, latin: 'Porno Graffitti', native: 'ポルノグラフィティ' },
+  { match: /(?:山下達郎|tatsuro\s*yamashita)/i, latin: 'Tatsuro Yamashita', native: '山下達郎' },
+  { match: /(?:竹内まりや|mariya\s*takeuchi)/i, latin: 'Mariya Takeuchi', native: '竹内まりや' },
+  { match: /(?:松原みき|miki\s*matsubara)/i, latin: 'Miki Matsubara', native: '松原みき' }
+];
+
+const CHINESE_ARTIST_ALIASES = [
+  { match: /(?:音阙诗听|音闕詩聽|yin\s*que\s*shi\s*ting)/i, latin: 'Yin Que Shi Ting', native: '音阙诗听' },
+  { match: /(?:赵方婧|趙方婧|zhao\s*fangjing)/i, latin: 'Zhao Fangjing', native: '赵方婧' },
+  { match: /(?:汪苏泷|汪蘇瀧|silence\s*wang)/i, latin: 'Silence Wang', native: '汪苏泷' },
+  { match: /(?:鄧麗君|邓丽君|teresa\s*teng)/i, latin: 'Teresa Teng', native: '鄧麗君' },
+  { match: /(?:周杰伦|周杰倫|jay\s*chou)/i, latin: 'Jay Chou', native: '周杰伦' },
+  { match: /(?:林俊杰|林俊傑|jj\s*lin)/i, latin: 'JJ Lin', native: '林俊杰' },
+  { match: /(?:陈奕迅|陳奕迅|eason\s*chan)/i, latin: 'Eason Chan', native: '陈奕迅' },
+  { match: /(?:王菲|faye\s*wong)/i, latin: 'Faye Wong', native: '王菲' },
+  { match: /(?:薛之谦|薛之謙|joker\s*xue)/i, latin: 'Joker Xue', native: '薛之谦' },
+  { match: /(?:李荣浩|李榮浩|ronghao\s*li)/i, latin: 'Ronghao Li', native: '李荣浩' },
+  { match: /(?:g\.e\.m\.|邓紫棋|鄧紫棋)/i, latin: 'G.E.M.', native: '邓紫棋' },
+  { match: /(?:陶喆|david\s*tao)/i, latin: 'David Tao', native: '陶喆' },
+  { match: /(?:五月天|mayday)/i, latin: 'Mayday', native: '五月天' }
+];
+
+const KNOWN_SONG_CANONICAL_TITLES = {
+  'うっせぇわ': ['Usseewa'],
+  '新時代': ['New Genesis', 'Shinjidai'],
+  '唱': ['Show'],
+  'ドライフラワー': ['Dried Flower', 'Dry Flower'],
+  'ベテルギウス': ['Betelgeuse'],
+  '夜に駆ける': ['Racing into the Night', 'Yoru ni Kakeru'],
+  '怪物': ['Monster', 'Kaibutsu'],
+  '群青': ['Blue', 'Gunjou'],
+  'アイドル': ['Idol'],
+  '勇者': ['The Brave', 'Yuusha'],
+  '丸の内サディスティック': ['Marunouchi Sadistic'],
+  '炎': ['Homura'],
+  '紅蓮華': ['Gurenge'],
+  '残響散歌': ['Zankyou Sanka'],
+  '打上花火': ['Uchiage Hanabi'],
+  '春を告げる': ['Haru wo Tsugeru'],
+  'ギラギラ': ['Gira Gira'],
+  '踊': ['Odo'],
+  '阿修羅ちゃん': ['Ashura-chan'],
+  '逆光': ['Backlight'],
+  '私は最強': ["I'm invincible"],
+  '廻廻奇譚': ['Kaikai Kitan'],
+  '青のすみか': ['Where Our Blue Is', 'Ao no Sumika'],
+  '前前前世': ['Zenzenzense'],
+  'なんでもないや': ['Nandemonaiya'],
+  'スパークル': ['Sparkle'],
+  '水平線': ['Suiheisen'],
+  '怪獣の花唄': ['Kaiju no Hanauta'],
+  'きらり': ['Kirari'],
+  '死ぬのがいいわ': ['Shinunoga E-Wa'],
+  'まつり': ['Matsuri'],
+  '満ちてゆく': ['Michiteyuku', 'Overflowing'],
+  '白日': ['Hakujitsu'],
+  '一途': ['Ichizu'],
+  '逆夢': ['Sakayume']
+};
+
 function normalizeForCompare(str) {
   return (str || '')
     .toLowerCase()
@@ -1809,7 +1896,7 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   const nativeTitle = asianTitleMatches ? asianTitleMatches.join(' ').trim() : '';
 
   const asianArtistMatches = artist.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g);
-  const nativeArtist = asianArtistMatches ? asianArtistMatches.join(' ').trim() : '';
+  let nativeArtist = asianArtistMatches ? asianArtistMatches.join(' ').trim() : '';
 
   // Clean tags and parens like (feat. ...), (Official Music Video), etc.
   title = stripTagsAndParens(title);
@@ -1839,7 +1926,7 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
     .trim();
   artist = artist.replace(/[\s\-_:–—|丨]+$/, '').replace(/^[\s\-_:–—|丨]+/, '').trim();
 
-  // Check known aliases for 100% accurate canonical matching
+  // Check known aliases for 100% accurate canonical matching (K-Pop, Japanese, Chinese)
   let artistLatin = '';
   let artistHangul = '';
 
@@ -1849,6 +1936,33 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
       artistHangul = alias.hangul;
       break;
     }
+  }
+
+  if (!artistLatin) {
+    for (const alias of JAPANESE_ARTIST_ALIASES) {
+      if (alias.match.test(artist) || (isChannelPublisher && alias.match.test(rawTitle || ''))) {
+        artistLatin = alias.latin;
+        if (!nativeArtist && alias.native) nativeArtist = alias.native;
+        break;
+      }
+    }
+  }
+
+  if (!artistLatin) {
+    for (const alias of CHINESE_ARTIST_ALIASES) {
+      if (alias.match.test(artist) || (isChannelPublisher && alias.match.test(rawTitle || ''))) {
+        artistLatin = alias.latin;
+        if (!nativeArtist && alias.native) nativeArtist = alias.native;
+        break;
+      }
+    }
+  }
+
+  // Canonical title resolution for Japanese / Chinese tracks
+  if (!titleLatin && KNOWN_SONG_CANONICAL_TITLES[title]) {
+    titleLatin = KNOWN_SONG_CANONICAL_TITLES[title][0];
+  } else if (!titleLatin && nativeTitle && KNOWN_SONG_CANONICAL_TITLES[nativeTitle]) {
+    titleLatin = KNOWN_SONG_CANONICAL_TITLES[nativeTitle][0];
   }
 
   // If not in aliases, extract clean Latin and Korean separately
@@ -2590,7 +2704,7 @@ function parseAppleMusicTTML(ttmlString) {
   return items.length > 0 ? { leadingSilence, items, lang: detectedTranslitLang } : null;
 }
 
-async function searchBetterLyrics(title, artist, targetDuration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv) {
+async function searchBetterLyrics(title, artist, targetDuration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv, nativeArtist) {
   const cleanTitle = (title || '').replace(/['"‘’“”]/g, '').trim();
   const cleanArtist = (artist || '').replace(/['"‘’“”]/g, '').replace(/\([0-9]+\)/g, '').trim();
 
@@ -2613,14 +2727,35 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   if (titleLatin) titleCandidates.add(titleLatin.toLowerCase());
   if (nativeTitle) titleCandidates.add(nativeTitle.toLowerCase());
 
+  // Add canonical synonyms from KNOWN_SONG_CANONICAL_TITLES
+  const canonLookups = [cleanTitle, strippedTitle, nativeTitle].filter(Boolean);
+  for (const cl of canonLookups) {
+    if (KNOWN_SONG_CANONICAL_TITLES[cl]) {
+      for (const syn of KNOWN_SONG_CANONICAL_TITLES[cl]) {
+        titleCandidates.add(syn.toLowerCase());
+      }
+    }
+  }
+
+  // If Japanese kana/kanji, add natural Romaji conversion via wanakana
+  try {
+    if (wanakana && wanakana.isJapanese(strippedTitle)) {
+      const rTitle = wanakana.toRomaji(strippedTitle).trim().toLowerCase();
+      if (rTitle && rTitle !== strippedTitle.toLowerCase()) {
+        titleCandidates.add(rTitle);
+      }
+    }
+  } catch (e) {}
+
   // Tier 1: lrc.red Master Apple Music TTML Catalog (Direct, Unrestricted & High-Precision)
   const lrcRedQueries = [];
   for (const tc of titleCandidates) {
+    if (tc && artistLatin) lrcRedQueries.push(`${tc} ${artistLatin}`);
     if (tc && cleanArtist) lrcRedQueries.push(`${tc} ${cleanArtist}`);
     if (tc) lrcRedQueries.push(tc);
   }
-  if (cleanArtist) lrcRedQueries.push(cleanArtist);
   if (artistLatin) lrcRedQueries.push(artistLatin);
+  if (cleanArtist) lrcRedQueries.push(cleanArtist);
 
   const seenLrcRed = new Set();
   const uniqueLrcRed = lrcRedQueries.filter(q => {
@@ -2648,11 +2783,13 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         const ha = (h.artist || '').toLowerCase();
         const ca = cleanArtist.toLowerCase();
 
-        // If cleanArtist is available, verify artist matches to avoid false hits
-        if (ca && ca.length >= 3 && !ha.includes(ca) && !ca.includes(ha)) {
-          const artMatch = (artistLatin && ha.includes(artistLatin.toLowerCase())) ||
-                           (artistHangul && ha.includes(artistHangul.toLowerCase()));
-          if (!artMatch) continue;
+        // Verify artist matches to avoid false hits (e.g. Stam1na for Yuuri)
+        const artMatch = (ca && (ha.includes(ca) || ca.includes(ha))) ||
+                         (artistLatin && (ha.includes(artistLatin.toLowerCase()) || artistLatin.toLowerCase().includes(ha))) ||
+                         (nativeArtist && (ha.includes(nativeArtist.toLowerCase()) || nativeArtist.toLowerCase().includes(ha))) ||
+                         (artistHangul && (ha.includes(artistHangul.toLowerCase()) || artistHangul.toLowerCase().includes(ha)));
+        if (ca && !artMatch) {
+          continue;
         }
 
         let isTitleMatch = false;
@@ -2967,7 +3104,7 @@ app.get('/api/lyrics', async (req, res) => {
     const isChinese = !isJapanese && hasHanzi;
 
     // Step 0: Better Lyrics Engine (Apple Music Syllable-Level TTML Master Catalog)
-    syncedResult = await searchBetterLyrics(title, artist, duration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv);
+    syncedResult = await searchBetterLyrics(title, artist, duration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv, nativeArtist);
 
     // Step 1: For Korean songs, try LRCLib exact match IMMEDIATELY (300ms hit for all top K-pop tracks!)
     if (!syncedResult && isKorean) {
@@ -3213,7 +3350,8 @@ app.get('/api/lyrics', async (req, res) => {
           const hasOfficialRomaji = finalItems.some(it => it.romaji);
           if (hasOfficialRomaji) {
             parsedLyrics = finalItems;
-            detectedLang = result.detectedLang || 'ja';
+            const rawLang = result.detectedLang || 'ja';
+            detectedLang = rawLang.split('-')[0].toLowerCase();
           } else {
             const romanizer = getLyricsRomanizer();
             const processed = await romanizer.romanizeLyricsList(finalItems);

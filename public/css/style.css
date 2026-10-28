@@ -7956,6 +7956,10 @@ body.music-playing .cinema-turntable-arm {
   text-shadow: 0 0 10px rgba(56, 189, 248, 0.45);
 }
 
+.cinema-lyric-line.has-word-sync.active .lyric-romaji-text {
+  text-shadow: none;
+}
+
 .cinema-lyric-line:hover .lyric-romaji-text {
   color: #cbd5e1;
 }
