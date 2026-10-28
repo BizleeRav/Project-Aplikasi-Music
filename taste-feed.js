@@ -12,6 +12,91 @@ const feedCache = new Map();
 const albumShelfCache = new Map();
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 
+let innertubeClient = null;
+let innertubeInitPromise = null;
+
+async function getInnertube() {
+  if (innertubeClient) return innertubeClient;
+  if (innertubeInitPromise) return innertubeInitPromise;
+
+  innertubeInitPromise = (async () => {
+    try {
+      const { Innertube } = await import('youtubei.js');
+      innertubeClient = await Innertube.create({ retrieve_player: false });
+      return innertubeClient;
+    } catch (e) {
+      console.warn('TasteFeed Innertube init warning:', e.message);
+      innertubeClient = null;
+      return null;
+    }
+  })();
+
+  return innertubeInitPromise;
+}
+
+/**
+ * Fetches authentic YouTube Music "Up Next" related tracks based on a video ID.
+ * Returns up to 20 algorithmic recommendations from similar artists and vibes.
+ */
+async function getUpNextTracks(videoId, max = 15) {
+  if (!videoId || typeof videoId !== 'string') return [];
+  const cleanId = videoId.replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
+  if (!cleanId || cleanId.length !== 11) return [];
+
+  const cacheKey = `upnext_${cleanId}`;
+  if (feedCache.has(cacheKey)) {
+    const entry = feedCache.get(cacheKey);
+    if (Date.now() - entry.timestamp < CACHE_TTL_MS) {
+      return entry.tracks;
+    }
+  }
+
+  try {
+    const yt = await getInnertube();
+    if (!yt || !yt.music) return [];
+
+    const upNext = await yt.music.getUpNext(cleanId);
+    const contents = upNext?.contents || [];
+    // Skip item 0 which is the song itself
+    const candidateItems = contents.slice(1, max + 8);
+
+    const tracks = candidateItems.map(item => {
+      const id = item.id || item.video_id;
+      if (!id) return null;
+      const title = item.title?.text || item.title || '';
+      const artist = (item.artists || []).map(a => a.name).join(', ') || 'Unknown Artist';
+      const duration = item.duration?.text || '3:30';
+
+      let thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+      if (item.thumbnails && item.thumbnails.length > 0) {
+        const rawUrl = item.thumbnails[0].url || '';
+        if (rawUrl.includes('googleusercontent.com')) {
+          thumbnail = rawUrl.replace(/=w\d+-h\d+[^"]*/, '=w544-h544-l90-rj');
+        } else if (rawUrl) {
+          thumbnail = rawUrl;
+        }
+      }
+
+      return {
+        id,
+        title: title.replace(/\[[^\]]*\]/g, '').replace(/\([^)]*Official[^)]*\)/gi, '').trim(),
+        artist,
+        duration,
+        thumbnail,
+        type: 'youtube',
+        isOfficial: true,
+        tag: 'RELATED'
+      };
+    }).filter(t => t && t.id && t.title).slice(0, max);
+
+    feedCache.set(cacheKey, { tracks, timestamp: Date.now() });
+    return tracks;
+  } catch (e) {
+    console.warn(`UpNext fetch error for ${cleanId}:`, e.message);
+    return [];
+  }
+}
+
 function cleanSlug(str = '') {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'music';
 }
@@ -222,7 +307,7 @@ async function fetchCategoryTracks(query, max = 10) {
 /**
  * Main personalized feed generator
  */
-async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-indo'], mood = 'chill', deviceId = null }) {
+async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-indo'], mood = 'chill', history = [], favorites = [], deviceId = null }) {
   const validGenres = Array.isArray(genres) && genres.length > 0 ? genres : ['pop-indo'];
   const userMood = MOODS[mood] ? mood : 'chill';
   const moodObj = MOODS[userMood];
@@ -242,9 +327,19 @@ async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-i
   // Fetch mood tracks
   const moodPromise = fetchCategoryTracks(moodObj.query, 12);
 
-  const [genreResults, moodTracks] = await Promise.all([
+  // If user has listening history, compute true YouTube Music UpNext related tracks in parallel!
+  let hypermixPromise = Promise.resolve(null);
+  if (Array.isArray(history) && history.length > 0) {
+    hypermixPromise = generateHypermix({ history, favorites }).catch(err => {
+      console.warn('Personalized feed hypermix error:', err.message);
+      return null;
+    });
+  }
+
+  const [genreResults, moodTracks, hypermixResult] = await Promise.all([
     Promise.all(genrePromises),
-    moodPromise
+    moodPromise,
+    hypermixPromise
   ]);
 
   // Combine top tracks from selected genres for Quick Picks & AI Starter Playlist
@@ -349,6 +444,13 @@ async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-i
       mood: userMood
     },
     quickPicks,
+    relatedTracks: (hypermixResult && Array.isArray(hypermixResult.tracks)) ? hypermixResult.tracks : [],
+    dynamicAlbums: (hypermixResult && Array.isArray(hypermixResult.dynamicAlbums) && hypermixResult.dynamicAlbums.length > 0)
+      ? hypermixResult.dynamicAlbums
+      : null,
+    dynamicMixes: (hypermixResult && Array.isArray(hypermixResult.dynamicMixes) && hypermixResult.dynamicMixes.length > 0)
+      ? hypermixResult.dynamicMixes
+      : null,
     genreShelves,
     moodShelf,
     discoveryShelf,
@@ -407,9 +509,38 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     sortedArtists = ['YOASOBI', 'NewJeans', 'Ado', 'tuki.', 'aespa', 'Stray Kids'];
   }
 
-  // 1. Parallel query YouTube for each artist's official hits & related music
+  // 1. Parallel query YouTube Music Up Next recommendations for recent tracks
+  const recentVideoIds = [];
+  for (const h of validHistory) {
+    const rawId = (h?.id || '').replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
+    if (rawId && rawId.length === 11 && !recentVideoIds.includes(rawId)) {
+      recentVideoIds.push(rawId);
+      if (recentVideoIds.length >= 3) break;
+    }
+  }
+  if (recentVideoIds.length < 3) {
+    for (const f of validFavorites) {
+      const rawId = (f?.id || '').replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
+      if (rawId && rawId.length === 11 && !recentVideoIds.includes(rawId)) {
+        recentVideoIds.push(rawId);
+        if (recentVideoIds.length >= 3) break;
+      }
+    }
+  }
+
+  const upNextPromises = recentVideoIds.map(vid => getUpNextTracks(vid, 15));
+
+  // Fallback / supplement: similar artists and vibes
   const relatedPromises = sortedArtists.slice(0, 4).map(async (art) => {
-    return await fetchCategoryTracks(`"${art}" official music video`, 6);
+    try {
+      const [similar, artistHits] = await Promise.all([
+        fetchCategoryTracks(`lagu mirip ${art} official music video`, 6),
+        fetchCategoryTracks(`"${art}" official music video`, 4)
+      ]);
+      return [...similar, ...artistHits];
+    } catch (e) {
+      return await fetchCategoryTracks(`"${art}" official music video`, 6);
+    }
   });
 
   // 2. Parallel query YouTube for dynamic official albums/EPs for the Tactile Vinyl Shelf
@@ -459,27 +590,54 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     }
   });
 
-  const [relatedResults, dynamicAlbums] = await Promise.all([
+  const [upNextResults, relatedResults, dynamicAlbums] = await Promise.all([
+    Promise.all(upNextPromises),
     Promise.all(relatedPromises),
     Promise.all(albumPromises)
   ]);
 
   const mixTracks = [];
+  const addedIds = new Set(seenIds); // Don't repeat songs already in user's history in the "related" section!
+
+  // Interleave true UpNext related tracks from recent songs
+  const maxLen = Math.max(...upNextResults.map(r => r.length), 0);
+  for (let i = 0; i < maxLen; i++) {
+    for (const list of upNextResults) {
+      if (list[i] && !addedIds.has(list[i].id)) {
+        addedIds.add(list[i].id);
+        mixTracks.push(list[i]);
+      }
+    }
+  }
+
+  // Supplement with artist hits if needed to ensure at least 15 tracks
   relatedResults.forEach(artistTracks => {
     artistTracks.forEach(t => {
-      if (!seenIds.has(t.id)) {
-        seenIds.add(t.id);
+      if (!addedIds.has(t.id)) {
+        addedIds.add(t.id);
         mixTracks.push(t);
       }
     });
   });
 
-  // Include recent history tracks for a rich list
-  historyTracks.forEach(t => {
-    if (!mixTracks.some(m => m.id === t.id)) {
-      mixTracks.push(t);
-    }
-  });
+  // If fewer than 8 tracks found, supplement with top trending songs instead of repeating history
+  if (mixTracks.length < 8) {
+    try {
+      const topQuery = sortedArtists[0] ? `top hits mirip ${sortedArtists[0]}` : 'trending music official hits';
+      const backupTracks = await fetchCategoryTracks(topQuery, 12);
+      backupTracks.forEach(t => {
+        if (!addedIds.has(t.id)) {
+          addedIds.add(t.id);
+          mixTracks.push(t);
+        }
+      });
+    } catch (e) {}
+  }
+
+  // If still completely empty (cold start with 0 history), allow history tracks
+  if (mixTracks.length === 0) {
+    historyTracks.forEach(t => mixTracks.push(t));
+  }
 
   // 3. Build Algorithmic Dynamic Mixes for "Special Mixed Harmonies" (STRICTLY NO "My Supermix")
   const dynamicMixes = [];
@@ -563,6 +721,7 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
 module.exports = {
   GENRES,
   MOODS,
+  getUpNextTracks,
   generatePersonalizedFeed,
   generateHypermix
 };

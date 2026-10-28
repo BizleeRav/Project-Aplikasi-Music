@@ -551,9 +551,9 @@ app.post('/api/recommendations/liked-radio', async (req, res) => {
 // 2.8 AI Dynamic Personalized Feed & Taste Setup (First-launch & Custom Preferences)
 app.post('/api/recommendations/personalized-feed', async (req, res) => {
   try {
-    const { name, genres, mood } = req.body || {};
+    const { name, genres, mood, history, favorites } = req.body || {};
     const deviceId = req.headers['x-device-id'] || req.body?.deviceId || null;
-    const feed = await tasteFeed.generatePersonalizedFeed({ name, genres, mood, deviceId });
+    const feed = await tasteFeed.generatePersonalizedFeed({ name, genres, mood, history, favorites, deviceId });
     res.json(feed);
   } catch (error) {
     console.error('Personalized feed error:', error);

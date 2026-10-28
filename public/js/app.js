@@ -3308,10 +3308,19 @@ class App {
         window.tasteEngine.recordTrackStart(track);
       }
 
-      // If user is currently viewing Home and has skipped taste setup,
-      // dynamically update the home screen so the new track & hypermix progress appears immediately!
-      if (this.activeTab === 'home' && !this.hasChosenTaste()) {
-        this.renderHomeForSkippedUser();
+      // If user is currently viewing Home, dynamically update the home screen
+      // so the new track & related tracks recommendations appear immediately!
+      if (this.activeTab === 'home') {
+        clearTimeout(this._refreshHomeDebounce);
+        this._refreshHomeDebounce = setTimeout(() => {
+          if (this.activeTab === 'home') {
+            if (!this.hasChosenTaste()) {
+              this.renderHomeForSkippedUser();
+            } else {
+              this.loadYTMHome('all');
+            }
+          }
+        }, 800);
       }
     } catch (e) {
       console.warn('Failed to record track history:', e);
@@ -3524,6 +3533,7 @@ class App {
       if (mood === 'all') {
         if (this.hasChosenTaste()) {
           const savedTaste = this.getChosenTaste();
+          const history = this.getPlayHistory();
           try {
             const res = await fetch('/api/recommendations/personalized-feed', {
               method: 'POST',
@@ -3535,6 +3545,8 @@ class App {
                 name: this.userProfile?.name || savedTaste.name || 'Sobat Musik',
                 genres: savedTaste.genres,
                 mood: savedTaste.mood || 'chill',
+                history: history.slice(0, 10),
+                favorites: (this.favorites || []).slice(0, 10),
                 deviceId: this.getDeviceId()
               })
             });
@@ -3728,9 +3740,9 @@ class App {
       console.warn('Related music fetch failed:', e.message);
     }
 
-    const relatedTracks = (hypermixData && hypermixData.tracks && hypermixData.tracks.length > 0)
+    const relatedTracks = (hypermixData && Array.isArray(hypermixData.tracks) && hypermixData.tracks.length > 0)
       ? hypermixData.tracks
-      : history;
+      : (this.cachedSections?.quickPicks || history);
 
     // Load AI-driven dynamic albums & artist/vibe mixes
     let newReleases = (hypermixData && Array.isArray(hypermixData.dynamicAlbums) && hypermixData.dynamicAlbums.length > 0)
@@ -4488,6 +4500,99 @@ class App {
       </section>
     `;
 
+    // 4b. REKOMENDASI PERSONAL: ✨ Lagu yang Berkaitan dengan Musikmu
+    if (feed.relatedTracks && feed.relatedTracks.length > 0) {
+      this.registerTrackList('related-picks', feed.relatedTracks);
+      const history = this.getPlayHistory();
+      if (history.length > 0) {
+        this.registerTrackList('recently-played', history);
+      }
+      html += `
+        <section class="aura-section-wrap">
+          <div class="aura-section-header-wrap">
+            <div class="aura-section-title-box">
+              <span class="aura-kicker-tag">REKOMENDASI PERSONAL</span>
+              <h2 class="aura-modern-section-title">✨ Lagu yang Berkaitan dengan Musikmu</h2>
+            </div>
+            <div class="ytm-section-actions">
+              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('related-picks', 0)">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                ${isEn ? 'Play All' : 'Putar Semua'}
+              </button>
+            </div>
+          </div>
+          <div class="aura-resonance-grid" id="carousel-related-picks">
+            ${feed.relatedTracks.map((track, idx) => {
+              const isCurrent = this.currentTrack?.id === track.id;
+              const isFav = this.isFavorited(track.id);
+              return `
+                <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('related-picks', ${idx})">
+                  <div class="aura-resonance-num"><span>${(idx + 1).toString().padStart(2, '0')}</span></div>
+                  <div class="aura-resonance-thumb-box">
+                    <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+                    <div class="aura-resonance-play-icon">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                  </div>
+                  <div class="aura-resonance-info">
+                    <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
+                    <div class="aura-resonance-meta">${track.artist}</div>
+                  </div>
+                  <div class="aura-resonance-right">
+                    <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('related-picks', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    </button>
+                    <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </section>
+      `;
+
+      if (history.length > 0) {
+        html += `
+          <section class="aura-section-wrap">
+            <div class="aura-section-header-wrap">
+              <div class="aura-section-title-box">
+                <span class="aura-kicker-tag">RIWAYAT AKTIVITAS</span>
+                <h2 class="aura-modern-section-title">🕒 Baru Saja Didengarkan</h2>
+              </div>
+              <span class="aura-section-subtext">Lagu yang telah kamu nikmati di AuraSound</span>
+            </div>
+            <div class="aura-resonance-grid" id="carousel-recently-played">
+              ${history.map((track, idx) => {
+                const isCurrent = this.currentTrack?.id === track.id;
+                const isFav = this.isFavorited(track.id);
+                return `
+                  <div class="aura-resonance-tile ${isCurrent ? 'is-playing' : ''}" data-track-id="${track.id}" onclick="window.app.playFromRegistry('recently-played', ${idx})">
+                    <div class="aura-resonance-num"><span>${(idx + 1).toString().padStart(2, '0')}</span></div>
+                    <div class="aura-resonance-thumb-box">
+                      <img src="${track.thumbnail}" alt="${track.title}" class="aura-resonance-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+                      <div class="aura-resonance-play-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                      </div>
+                    </div>
+                    <div class="aura-resonance-info">
+                      <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
+                      <div class="aura-resonance-meta">${track.artist}</div>
+                    </div>
+                    <div class="aura-resonance-right">
+                      <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('recently-played', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                      </button>
+                      <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </section>
+        `;
+      }
+    }
+
     // 5. DYNAMIC MOOD SHELF
     if (feed.moodShelf && feed.moodShelf.tracks?.length > 0) {
       const moodShelfKey = 'shelf-mood';
@@ -4592,8 +4697,8 @@ class App {
     }
 
     // Also append exclusive vinyl shelf and special mixes if available
-    const newReleases = this.cachedSections?.newReleases || null;
-    const mixedForYou = this.cachedSections?.mixedForYou || null;
+    const newReleases = (feed.dynamicAlbums && feed.dynamicAlbums.length > 0) ? feed.dynamicAlbums : (this.cachedSections?.newReleases || null);
+    const mixedForYou = (feed.dynamicMixes && feed.dynamicMixes.length > 0) ? feed.dynamicMixes : (this.cachedSections?.mixedForYou || null);
     if (newReleases) this.registerTrackList('ytm-new-releases', newReleases);
     if (mixedForYou) this.registerTrackList('ytm-mixed', mixedForYou);
     html += this.renderVinylShelfAndMixesHtml(newReleases, mixedForYou, isEn);
