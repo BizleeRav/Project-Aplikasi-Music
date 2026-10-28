@@ -3031,6 +3031,7 @@ if (!process.env.VERCEL && !process.env.NO_SERVER_LISTEN) {
 app.cleanLyricsTrackInfo = cleanLyricsTrackInfo;
 app.getMvIntroOffset = getMvIntroOffset;
 app.searchBetterLyrics = searchBetterLyrics;
-app.parseTTMLToLyrics = parseTTMLToLyrics;
+app.parseAppleMusicTTML = parseAppleMusicTTML;
+app.parseTTMLToLyrics = parseAppleMusicTTML;
 
 module.exports = app;
