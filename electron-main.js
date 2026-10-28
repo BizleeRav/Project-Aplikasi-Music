@@ -82,6 +82,13 @@ async function createMainWindow() {
     }
   });
 
+  // Remove "Electron/..." and "AuraSound/..." from User-Agent so Google allows OAuth without "disallowed_useragent"
+  try {
+    const rawUa = mainWindow.webContents.getUserAgent();
+    const cleanUa = rawUa.replace(/Electron\/[0-9.]+\s*/i, '').replace(/AuraSound\/[0-9.]+\s*/i, '');
+    mainWindow.webContents.setUserAgent(cleanUa);
+  } catch (e) {}
+
   const LOCAL_URL = 'http://localhost:3000';
 
   // Load native local server for direct low-latency audio streaming & Web Audio DSP processing

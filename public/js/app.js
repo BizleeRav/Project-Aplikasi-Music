@@ -517,6 +517,9 @@ class App {
         avatar: googleUser.avatar,
         provider: 'google'
       }));
+      localStorage.setItem('aurasound_last_google_email', googleUser.email);
+      localStorage.setItem('aurasound_last_google_name', googleUser.name || googleUser.email.split('@')[0]);
+      localStorage.setItem('aurasound_login_dismissed', 'true');
     } catch (e) {}
 
     this.userProfile = {
@@ -585,10 +588,13 @@ class App {
       ? `Logged in as ${this.userProfile.name} (${googleUser.email})! ✨`
       : `Akun Google aktif: ${this.userProfile.name} (${googleUser.email})! ✨`, 'success');
 
-    // Step 3: Seamless transition to Pilih Selera Musik
-    setTimeout(() => {
-      this.openTasteModal();
-    }, 400);
+    // Step 3: Seamless transition to Pilih Selera Musik ONLY if not already completed
+    const isTasteDone = localStorage.getItem('aurasound_taste_completed');
+    if (!isTasteDone) {
+      setTimeout(() => {
+        this.openTasteModal();
+      }, 400);
+    }
   }
 
   logoutGoogle() {
@@ -641,40 +647,54 @@ class App {
     const activeEmail = document.getElementById('google-active-email');
     const activeAvatar = document.getElementById('google-active-avatar');
     const profileGoogleEmail = document.getElementById('profile-google-email-text');
+    const topUserAvatar = document.getElementById('top-user-avatar');
+    const isMobile = window.innerWidth <= 768;
 
     if (this.currentUser && this.currentUser.email) {
+      document.body.classList.add('user-logged-in');
+      const displayName = this.currentUser.name || this.currentUser.email.split('@')[0];
+      const displayAvatar = this.currentUser.avatar || '/images/avatar.jpg';
+
       if (btnGoogleLogin) {
         btnGoogleLogin.title = `Akun Google: ${this.currentUser.email}`;
         btnGoogleLogin.classList.add('google-logged-in');
       }
       if (googleLoginBtnText) {
-        googleLoginBtnText.textContent = this.currentUser.name || this.currentUser.email.split('@')[0];
+        googleLoginBtnText.textContent = displayName;
       }
       if (googleBadgeDot) {
         googleBadgeDot.style.display = 'block';
         googleBadgeDot.title = `Akun Google Aktif: ${this.currentUser.email}`;
       }
+      if (topUserAvatar) {
+        topUserAvatar.src = displayAvatar;
+        topUserAvatar.onerror = () => { topUserAvatar.src = '/images/avatar.jpg'; };
+      }
       if (activeCard) activeCard.style.display = 'block';
       if (loginOptions) loginOptions.style.display = 'none';
-      if (activeName) activeName.textContent = this.currentUser.name || 'User';
+      if (activeName) activeName.textContent = displayName;
       if (activeEmail) activeEmail.textContent = this.currentUser.email;
       if (activeAvatar) {
-        activeAvatar.src = this.currentUser.avatar || '/images/avatar.jpg';
+        activeAvatar.src = displayAvatar;
         activeAvatar.onerror = () => { activeAvatar.src = '/images/avatar.jpg'; };
       }
       if (profileGoogleEmail) {
         profileGoogleEmail.textContent = this.currentUser.email;
       }
     } else {
+      document.body.classList.remove('user-logged-in');
       if (btnGoogleLogin) {
         btnGoogleLogin.title = 'Masuk dengan Akun Google Anda';
         btnGoogleLogin.classList.remove('google-logged-in');
       }
       if (googleLoginBtnText) {
-        googleLoginBtnText.textContent = 'Masuk Google';
+        googleLoginBtnText.textContent = isMobile ? 'Masuk' : 'Masuk Google';
       }
       if (googleBadgeDot) {
         googleBadgeDot.style.display = 'none';
+      }
+      if (topUserAvatar) {
+        topUserAvatar.src = '/images/avatar.jpg';
       }
       if (activeCard) activeCard.style.display = 'none';
       if (loginOptions) loginOptions.style.display = 'block';
@@ -684,9 +704,58 @@ class App {
     }
   }
 
+  handleProfileBadgeClick() {
+    if (this.currentUser && this.currentUser.email) {
+      this.openProfileModal();
+    } else {
+      this.openGoogleLoginModal();
+    }
+  }
+
+  quickResumeLastAccount() {
+    const email = localStorage.getItem('aurasound_last_google_email');
+    const name = localStorage.getItem('aurasound_last_google_name') || (email ? email.split('@')[0] : 'User');
+    if (email) {
+      this.loginWithGoogle({
+        email,
+        name,
+        avatar: `https://unavatar.io/google/${email}`,
+        provider: 'google'
+      });
+    }
+  }
+
   openGoogleLoginModal() {
     this.syncGoogleUI();
     this.renderGoogleSignInButton();
+
+    // Check for last saved Google email for 1-Tap quick resume
+    const lastEmail = localStorage.getItem('aurasound_last_google_email');
+    const lastName = localStorage.getItem('aurasound_last_google_name') || (lastEmail ? lastEmail.split('@')[0] : '');
+    const resumeBox = document.getElementById('google-recent-account-chip');
+    if (resumeBox) {
+      if (lastEmail && (!this.currentUser || !this.currentUser.email)) {
+        resumeBox.style.display = 'block';
+        const recentName = document.getElementById('recent-account-name');
+        const recentEmail = document.getElementById('recent-account-email');
+        const recentAvatar = document.getElementById('recent-account-avatar');
+        if (recentName) recentName.textContent = lastName;
+        if (recentEmail) recentEmail.textContent = lastEmail;
+        if (recentAvatar) recentAvatar.src = `https://unavatar.io/google/${lastEmail}`;
+      } else {
+        resumeBox.style.display = 'none';
+      }
+    }
+
+    const emailInput = document.getElementById('google-input-email');
+    if (emailInput && !emailInput.value && lastEmail) {
+      emailInput.value = lastEmail;
+    }
+    const nameInput = document.getElementById('google-input-name');
+    if (nameInput && !nameInput.value && lastName) {
+      nameInput.value = lastName;
+    }
+
     const modal = document.getElementById('modal-google-auth');
     if (modal) modal.classList.add('active');
   }
@@ -694,6 +763,8 @@ class App {
   promptGoogleSwitch() {
     const activeCard = document.getElementById('google-active-user-card');
     const loginOptions = document.getElementById('google-login-options');
+    const resumeBox = document.getElementById('google-recent-account-chip');
+    if (resumeBox) resumeBox.style.display = 'none';
     if (activeCard) activeCard.style.display = 'none';
     if (loginOptions) {
       loginOptions.style.display = 'block';

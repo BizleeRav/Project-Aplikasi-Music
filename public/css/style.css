@@ -2663,8 +2663,32 @@ body::after {
     display: none !important;
   }
 
-  /* On mobile top bar, hide separate text pill because avatar badge already handles Google account & status */
+  /* On mobile top bar: Show compact Google login button when logged out; hide when logged in */
   #btn-google-login {
+    height: 34px !important;
+    padding: 0 10px !important;
+    border-radius: 9999px !important;
+    font-size: 0.74rem !important;
+    font-weight: 700 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    color: #f1f5f9 !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    touch-action: manipulation !important;
+  }
+
+  /* When user is logged in, hide text pill on mobile (avatar takes its place) */
+  body.user-logged-in #btn-google-login,
+  #btn-google-login.google-logged-in {
+    display: none !important;
+  }
+
+  /* When logged out on mobile, hide the avatar circle so the Google pill is prominent without clutter */
+  body:not(.user-logged-in) .ytm-profile-badge {
     display: none !important;
   }
 
