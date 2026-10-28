@@ -422,7 +422,7 @@ app.get('/api/search', async (req, res) => {
       const candidates = results.videos || [];
 
       // Sort candidates to prioritize official clean studio audio (Topic / Audio) over MVs with intro bumpers
-      if (filter === 'official') {
+      if (filter !== 'nonofficial' && !/\b(?:live|concert|cover|fancam)\b/i.test(query)) {
         candidates.sort((a, b) => {
           const aAuthor = (a.author?.name || '').toLowerCase();
           const bAuthor = (b.author?.name || '').toLowerCase();

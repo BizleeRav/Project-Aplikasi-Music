@@ -2791,9 +2791,10 @@ class App {
     }
 
     const userOffset = this.getCurrentTrackOffset();
-    // Better Lyrics timing offset anticipation standard (+120ms lead)
-    // Synchronizes text highlight perfectly as vocal acoustic onset occurs.
-    const timingOffset = 0.12;
+    // True Acoustic 1:1 Real-Time Synchronization (0.00s offset):
+    // Zero artificial lead so that word highlights strictly track the actual vocal acoustic onset.
+    // Eliminates the forward-rush ("kecepetan") where words highlight before sound is vocalized.
+    const timingOffset = 0.0;
     const syncTime = Math.max(0, currentSecs + timingOffset + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
@@ -2829,8 +2830,8 @@ class App {
       this.cinemaLeadInDots.style.display = showLeadIn ? 'inline-flex' : 'none';
     }
 
-    // Anticipatory smooth scroll: glide 350ms before vocal onset into the golden-ratio upper third (36%)
-    const scrollLeadTime = syncTime + 0.35;
+    // Smooth scroll anticipation: subtle 120ms glide into the golden-ratio upper third (36%)
+    const scrollLeadTime = syncTime + 0.12;
     let scrollTargetIdx = activeIdx;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
       if (scrollLeadTime >= this.currentLyricsData[i].time) {
