@@ -1026,8 +1026,8 @@ class App {
     const plTitle = document.querySelector('#view-playlists .section-title');
     if (plTitle) plTitle.textContent = isEn ? 'My Playlists' : 'Playlist Akun Saya';
     const plDesc = document.querySelector('#view-playlists .section-header p');
-    if (plDesc) plDesc.textContent = isEn ? 'Manage your YouTube Music playlists and build personal song collections.' : 'Kelola playlist YouTube Music akun Anda dan buat koleksi lagu pribadi.';
-    setNodeText('button[onclick*="modal-import-playlist"]', '+ Impor dari YouTube Music', '+ Import from YouTube Music');
+    if (plDesc) plDesc.textContent = isEn ? 'Manage your Spotify & YouTube Music playlists and build personal collections.' : 'Kelola playlist Spotify & YouTube Music akun Anda dan buat koleksi lagu pribadi.';
+    setNodeText('#btn-open-import-playlist', '+ Impor Playlist & Album', '+ Import Playlist & Album');
     setNodeText('button[onclick*="modal-create-playlist"]', '+ Buat Playlist Baru', '+ Create New Playlist');
 
     // 8. Suno AI Studio View
@@ -1151,24 +1151,22 @@ class App {
     if (autoLoginBtn) autoLoginBtn.innerHTML = isEn ? '🚀 Open Window & Sign In to Suno' : '🚀 Buka Jendela & Login ke Suno';
 
     const importModalTitle = document.querySelector('#modal-import-playlist .modal-title');
-    if (importModalTitle) importModalTitle.textContent = isEn ? 'Import YouTube Music Playlist 📥' : 'Impor Playlist YouTube Music 📥';
+    if (importModalTitle) importModalTitle.textContent = isEn ? 'Import Playlist & Album 📥' : 'Impor Playlist & Album 📥';
     const importModalDesc = document.querySelector('#modal-import-playlist .modal-desc');
-    if (importModalDesc) importModalDesc.textContent = isEn ? 'Paste playlist link/URL from your YouTube Music account to load all songs instantly.' : 'Tempel tautan / URL playlist dari akun YouTube Music Anda untuk memuat semua lagu secara instan.';
+    if (importModalDesc) importModalDesc.innerHTML = isEn ? 'Paste playlist or album link from <strong>Spotify</strong> or <strong>YouTube Music</strong>.' : 'Tempel tautan / URL playlist maupun album dari <strong>Spotify</strong> atau <strong>YouTube Music</strong>.';
     const importGuide = document.querySelector('#modal-import-playlist div[style*="background"]');
     if (importGuide) {
       importGuide.innerHTML = isEn
         ? `<strong>💡 How to copy playlist link:</strong><br>
-           1. Open YouTube Music / YouTube on your phone or laptop.<br>
-           2. Go to <strong>Library</strong> -> Open your playlist.<br>
-           3. Tap <strong>Share</strong> -> choose <strong>Copy Link</strong>.<br>
-           4. <em>Note:</em> Make sure playlist privacy is set to <strong>Public</strong> or <strong>Unlisted</strong>.`
-        : `<strong>💡 Cara salin link playlist dari akun Anda:</strong><br>
-           1. Buka YouTube Music / YouTube di HP atau Laptop.<br>
-           2. Masuk ke menu <strong>Koleksi / Library</strong> -> Buka playlist Anda.<br>
-           3. Klik tombol <strong>Bagikan (Share)</strong> -> pilih <strong>Salin Link</strong>.<br>
-           4. <em>Catatan:</em> Pastikan privasi playlist Anda disetel ke <strong>Publik</strong> atau <strong>Tidak Terdaftar (Unlisted)</strong> agar dapat dibaca.`;
+           • <strong>Spotify:</strong> Open Spotify -> Playlist/Album -> Tap <strong>Share</strong> -> choose <strong>Copy Link</strong>.<br>
+           • <strong>YouTube Music:</strong> Open Playlist -> Tap <strong>Share</strong> -> choose <strong>Copy Link</strong>.<br>
+           • <em>Note:</em> Playlist will be saved automatically to your Playlists tab with high-res cover art!`
+        : `<strong>💡 Cara salin link:</strong><br>
+           • <strong>Spotify:</strong> Buka Spotify -> Buka Playlist/Album -> Klik <strong>Bagikan (Share)</strong> -> <strong>Salin Tautan</strong>.<br>
+           • <strong>YouTube Music:</strong> Buka Playlist -> Klik <strong>Bagikan (Share)</strong> -> <strong>Salin Link</strong>.<br>
+           • <em>Tips:</em> Playlist akan otomatis tersimpan di tab Playlist kamu dengan cover art resolusi tinggi!`;
     }
-    setText('label[for="input-playlist-url"]', 'URL atau Link Playlist', 'Playlist URL or Link');
+    setText('label[for="input-playlist-url"]', 'URL / Link Playlist atau Album', 'Playlist or Album URL / Link');
     setText('#btn-submit-import', 'Mulai Impor Lagu', 'Start Importing Songs');
 
     const createModalTitle = document.querySelector('#modal-create-playlist .modal-title');
