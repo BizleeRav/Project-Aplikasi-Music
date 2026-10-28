@@ -2847,6 +2847,7 @@ const KNOWN_MV_OFFSETS = {
   // TWICE
   'aK2C9J74P8k': 0,   // Look At Me
   'i0p1bmr0EmE': 0,   // What is Love?
+  'w4nihuYVTW0': 0,   // What is Love? (Official MV)
   '3ymwOvzhwHs': 0,   // Feel Special
   'V2hlQkVJZhE': 0,   // Talk that Talk
   'ePpPVE-GGJw': 0,   // The Feels
@@ -2857,6 +2858,7 @@ const KNOWN_MV_OFFSETS = {
 
   // BABYMONSTER
   '2wA_b6bbJNo': 0,   // SHEESH (starts 0:00)
+  'HkiaLCniIj8': 0,   // DRIP (starts 0:00)
   'olDWZk9B6aU': 0,   // BATTER UP (starts 0:00)
   'bUq6Q8_N2lY': 0,   // FOREVER (starts 0:00)
 
@@ -2872,18 +2874,23 @@ const KNOWN_MV_OFFSETS = {
   '-_FiQ6h-xTk': 0,   // Super (starts 0:00)
   'Il-an3K9pjg': 12,  // Maestro (AI keyboard intro)
   'gRnuFC4Ualw': 0,   // HOT (starts 0:00)
-  'CyzEtbG-sxY': 0    // Rock with you
+  'CyzEtbG-sxY': 0,   // Rock with you
+
+  // Japanese & Asian Artists (Music starts at 0:00)
+  'oZpYEEcvu5I': 0,   // tuki. - 晩餐歌 (Bansanka)
+  'p_KckcJxzrY': 0,   // tuki. - ひゅるりらぱっぱ (HYURURIRAPAPPA)
+  'Y4nEEZwckuU': 0,   // YOASOBI - 群青 (Gunjou)
+  'BEPSc8q6Bd8': 0,   // Hearts2Hearts - Lemon Tang
+  'eqKhhG4FVoQ': 0    // Hearts2Hearts - FOCUS
 };
 
 // High-precision MV Intro Offset Resolver
 const mvIntroOffsetCache = new Map();
 
 async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
-  if (!videoId || videoDur <= 0 || studioDur <= 0) return 0;
-  const diff = videoDur - studioDur;
-  if (diff < 3) return 0;
+  if (!videoId) return 0;
 
-  // 1. Instant 0ms lookup in verified K-pop MV table
+  // 1. Instant 0ms lookup in verified cinematic MV table
   if (KNOWN_MV_OFFSETS[videoId] !== undefined) {
     return KNOWN_MV_OFFSETS[videoId];
   }
@@ -2891,42 +2898,30 @@ async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
   if (mvIntroOffsetCache.has(videoId)) return mvIntroOffsetCache.get(videoId);
 
   let offset = 0;
-  try {
-    const infoPromise = playdl.video_info(`https://www.youtube.com/watch?v=${videoId}`);
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('playdl timeout')), 1500));
-    const info = await Promise.race([infoPromise, timeoutPromise]);
+  // In 99.9% of songs (official music videos, live recordings, official audio),
+  // music starts at 0:00. The duration difference between YouTube and Apple Music is
+  // outro padding, channel end-screens, or credits.
+  // ONLY check for an intro offset if duration diff is >= 10s AND video chapters explicitly
+  // specify an intro/prologue/story before the song:
+  if (isMv && videoDur > 0 && studioDur > 0 && (videoDur - studioDur) >= 10) {
+    try {
+      const infoPromise = playdl.video_info(`https://www.youtube.com/watch?v=${videoId}`);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('playdl timeout')), 1800));
+      const info = await Promise.race([infoPromise, timeoutPromise]);
 
-    const chapters = info?.video_details?.chapters || [];
-    if (chapters.length > 0) {
-      const firstChap = chapters[0];
-      const secondChap = chapters[1];
+      const chapters = info?.video_details?.chapters || [];
+      if (chapters.length >= 2) {
+        const firstChap = chapters[0];
+        const secondChap = chapters[1];
+        const firstTitle = (firstChap.title || '').toLowerCase();
+        const isIntroPrologue = /intro|prologue|opening|story|drama|skit|scene|monologue/i.test(firstTitle);
 
-      // If chapter 1 starts at 0s and chapter 2 is located near the end (outro / challenge):
-      // The music started at 0:00! Extra video footage is at the end.
-      if (firstChap.seconds === 0 && secondChap && secondChap.seconds >= studioDur * 0.4) {
-        offset = 0;
-      } else if (firstChap.seconds === 0 && secondChap && secondChap.seconds > 0 && secondChap.seconds < 90) {
-        // If chapter 1 is intro (0s) and chapter 2 is song start at e.g. 15s:
-        offset = secondChap.seconds;
+        if (firstChap.seconds === 0 && isIntroPrologue && secondChap && secondChap.seconds > 0 && secondChap.seconds < 90) {
+          offset = secondChap.seconds;
+        }
       }
-    } else {
-      const titleLower = (info?.video_details?.title || '').toLowerCase();
-      const descLower = (info?.video_details?.description || '').toLowerCase();
-      const isOutroChallenge = /challenge|shorts|outro|credits|dance\s*practice|performance/i.test(titleLower) ||
-                               /#.+challenge/i.test(descLower) ||
-                               /only on youtube shorts/i.test(descLower);
-
-      if (isOutroChallenge) {
-        offset = 0;
-      } else if (isMv && diff >= 2 && diff <= 60) {
-        // In standard cinematic MVs and Live performances without chapters or challenge outro,
-        // the extra duration is the story intro prologue/tuning before the beat drops!
-        offset = diff;
-      }
-    }
-  } catch (e) {
-    if (isMv && diff >= 2 && diff <= 45) {
-      offset = diff;
+    } catch (e) {
+      offset = 0;
     }
   }
 
@@ -3114,8 +3109,8 @@ app.get('/api/lyrics', async (req, res) => {
       if (result.parsedLyrics && Array.isArray(result.parsedLyrics) && result.parsedLyrics.length > 0) {
         // High-Precision Syllable-Level items from BetterLyrics (Apple Music TTML)
         items = result.parsedLyrics.map(it => {
-          const adjTime = Math.max(0, parseFloat((it.time - autoOffsetSec).toFixed(2)));
-          const adjEndTime = it.endTime ? Math.max(0, parseFloat((it.endTime - autoOffsetSec).toFixed(2))) : undefined;
+          const adjTime = Math.max(0, parseFloat((it.time - autoOffsetSec).toFixed(3)));
+          const adjEndTime = it.endTime ? Math.max(0, parseFloat((it.endTime - autoOffsetSec).toFixed(3))) : undefined;
           const adjWords = it.words ? it.words.map(w => ({
             ...w,
             begin: Math.max(0, parseFloat((w.begin - autoOffsetSec).toFixed(3))),

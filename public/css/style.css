@@ -8141,7 +8141,7 @@ body.music-playing .cinema-turntable-arm {
 
 .cinema-lyric-line.active .cinema-lyric-word.active {
   transform: none; /* Keep text geometry 100% stable without word collisions */
-  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.75)) drop-shadow(0 0 20px rgba(56, 189, 248, 0.5));
+  filter: none;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word.passed {
@@ -8178,7 +8178,7 @@ body.music-playing .cinema-turntable-arm {
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji.active {
   transform: none; /* Keep layout 100% stable */
-  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.9));
+  filter: none;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji.passed {

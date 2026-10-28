@@ -2792,11 +2792,10 @@ class App {
 
     const userOffset = this.getCurrentTrackOffset();
     const isYt = (this.currentAudioMode !== 'native' && this.currentTrack?.type !== 'suno' && this.currentTrack?.type !== 'local');
-    // True Acoustic Latency Alignment:
-    // Neutralizes the ~220ms audio output queue latency of Chromium's YouTube iframe audio pipeline.
-    // Locks syllable sweeps strictly onto the physical sound waves leaving the speakers,
-    // permanently eliminating the forward-rush ("kecepetan").
-    const acousticLatencyOffset = isYt ? -0.22 : 0.0;
+    // Pure Gold-Standard Acoustic Alignment:
+    // With false MV intro offsets eliminated and syllable glow stabilized,
+    // exact continuous real-time clock ensures syllable highlights lock directly onto vocal onset.
+    const acousticLatencyOffset = 0.0;
     const syncTime = Math.max(0, currentSecs + acousticLatencyOffset + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
