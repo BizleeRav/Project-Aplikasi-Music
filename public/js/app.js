@@ -3798,6 +3798,33 @@ class App {
     else if (hour >= 15 && hour < 18) { greeting = 'Selamat Sore'; greetingIcon = '🌇'; }
     else { greeting = 'Selamat Malam'; greetingIcon = '🌌'; }
 
+    let heroButtonLabel = isEn ? 'Play My Supermix' : 'Putar My Supermix';
+    let turntableTag = 'SUPERMIX • TACTILE VINYL • HI-FI';
+    let bentoSupermixBadge = 'SUPERMIX AI 2026';
+    let bentoSupermixTitle = 'My Supermix';
+    let bentoSupermixSubtitle = isEn ? 'Auto-Curated for Your Taste' : 'Racikan Otomatis Selera Anda';
+    let bentoSupermixDesc = `Diramu otomatis dari artis dan lagu yang Anda nikmati (${topArtistNames}).`;
+
+    if (importedPlaylists.length === 1) {
+      const imp = importedPlaylists[0];
+      const sourceName = imp.source === 'spotify' ? 'Spotify' : 'YouTube Music';
+      heroButtonLabel = `Putar Supermix (${imp.title})`;
+      turntableTag = `${imp.title.toUpperCase()} • SUPERMIX HI-FI`;
+      bentoSupermixBadge = imp.source === 'spotify' ? 'SPOTIFY SUPERMIX' : 'ALBUM SUPERMIX';
+      bentoSupermixTitle = `Supermix: ${imp.title}`;
+      bentoSupermixSubtitle = `Impor dari ${sourceName} & Selera Musikmu`;
+      bentoSupermixDesc = `Memadukan album "${imp.title}", riwayat dengar (${topArtistNames}), dan penemuan musik baru.`;
+    } else if (importedPlaylists.length >= 2) {
+      const imp1 = importedPlaylists[0];
+      const imp2 = importedPlaylists[1];
+      heroButtonLabel = 'Putar Crossover Supermix';
+      turntableTag = 'CROSSOVER SUPERMIX • HI-FI';
+      bentoSupermixBadge = 'CROSSOVER SUPERMIX';
+      bentoSupermixTitle = `Fusion: ${imp1.title} × ${imp2.title}`;
+      bentoSupermixSubtitle = 'Perpaduan 2 Album Impor & Selera Musik';
+      bentoSupermixDesc = `Perpaduan hybrid cerdas antara "${imp1.title}", "${imp2.title}", dan selera musik Anda.`;
+    }
+
     let html = `
       <!-- 1. SIGNATURE RELATED MUSIC HERO -->
       <section class="aura-hero-soundstage">
@@ -3806,7 +3833,7 @@ class App {
           <div class="aura-hero-left">
             <div class="aura-greeting-capsule">
               <span class="aura-greeting-icon">✨</span>
-              <span class="aura-greeting-tag">LAGU TERKAIT • AI SOUNDSTAGE</span>
+              <span class="aura-greeting-tag">${bentoSupermixBadge} • AI SOUNDSTAGE</span>
               <span class="aura-greeting-dot"></span>
               <span class="aura-dsp-hi-res-tag">24-BIT / 96kHz HI-FI</span>
             </div>
@@ -3816,7 +3843,7 @@ class App {
             </h1>
 
             <p class="aura-hero-desc">
-              Berdasarkan lagu yang baru Anda dengar, AuraSound menyajikan lagu-lagu terkait yang selaras dengan seleramu. Suara disempurnakan dengan <strong>Dolby Atmos & Nahimic DSP</strong>.
+              ${bentoSupermixDesc} Suara disempurnakan dengan <strong>Dolby Atmos & Nahimic DSP</strong>.
             </p>
 
             <div class="aura-dna-bar">
@@ -3831,9 +3858,9 @@ class App {
             </div>
 
             <div class="aura-hero-actions">
-              <button class="aura-btn-hero-primary" onclick="window.app.playFromRegistry('related-picks', 0)">
+              <button class="aura-btn-hero-primary" onclick="window.app.playHomeAlbum('deck-supermix')">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                <span>Putar Lagu Terkait</span>
+                <span>${heroButtonLabel}</span>
               </button>
 
               <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" title="Atur Selera Musik">
@@ -3849,7 +3876,7 @@ class App {
           </div>
 
           <div class="aura-hero-right">
-            <div class="aura-turntable-card" onclick="window.app.playFromRegistry('related-picks', 0)">
+            <div class="aura-turntable-card" onclick="window.app.openHomeAlbumDetail('deck-supermix')">
               <div class="aura-turntable-chassis">
                 <div class="aura-vinyl-record ${isAudioPlaying ? 'is-spinning' : ''}">
                   <div class="aura-vinyl-grooves"></div>
@@ -3867,7 +3894,7 @@ class App {
                 <div class="aura-live-eq-wave">
                   <span></span><span></span><span></span><span></span><span></span>
                 </div>
-                <span class="aura-turntable-text">REKOMENDASI TERKAIT • HI-FI</span>
+                <span class="aura-turntable-text">${turntableTag}</span>
               </div>
             </div>
           </div>
@@ -3885,28 +3912,28 @@ class App {
         </div>
 
         <div class="aura-bento-grid">
-          <!-- Pod 1: Stasiun Terkait -->
-          <div class="aura-bento-card aura-bento-supermix" onclick="window.app.playFromRegistry('related-picks', 0)">
+          <!-- Pod 1: My Supermix / Album Supermix -->
+          <div class="aura-bento-card aura-bento-supermix" onclick="window.app.openHomeAlbumDetail('deck-supermix')">
             <div class="aura-bento-bg" style="background-image: url('${heroThumb}');"></div>
             <div class="aura-bento-mesh"></div>
             <div class="aura-bento-top">
               <span class="aura-pill-badge aura-pill-emerald">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
-                STASIUN TERKAIT
+                ${bentoSupermixBadge}
               </span>
               <div class="aura-mini-equalizer"><span></span><span></span><span></span><span></span><span></span></div>
             </div>
             <div class="aura-bento-body">
-              <span class="aura-bento-subtitle">Berdasarkan Yang Kamu Dengar</span>
-              <h3 class="aura-bento-title">Lagu-Lagu Terkait</h3>
+              <span class="aura-bento-subtitle">${bentoSupermixSubtitle}</span>
+              <h3 class="aura-bento-title">${bentoSupermixTitle}</h3>
               <p class="aura-bento-desc">
-                Diramu otomatis dari artis dan lagu yang Anda nikmati (${topArtistNames}).
+                ${bentoSupermixDesc}
               </p>
               <div class="aura-bento-actions">
-                <button class="aura-btn-circle-play" onclick="event.stopPropagation(); window.app.playFromRegistry('related-picks', 0)" title="Putar Sekarang">
+                <button class="aura-btn-circle-play" onclick="event.stopPropagation(); window.app.playHomeAlbum('deck-supermix')" title="Putar Sekarang">
                   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 </button>
-                <span class="aura-bento-action-label">Putar Stasiun Terkait →</span>
+                <span class="aura-bento-action-label">Buka Tracklist Supermix →</span>
               </div>
             </div>
           </div>
