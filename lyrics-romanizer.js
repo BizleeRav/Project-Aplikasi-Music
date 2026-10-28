@@ -544,8 +544,26 @@ class LyricsRomanizer {
         }
       }
 
+      let updatedWords = item.words || null;
+      if (Array.isArray(item.words) && item.words.length > 0 && lineLang) {
+        updatedWords = [];
+        for (const w of item.words) {
+          let wRomaji = null;
+          if (w.text && /[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]/.test(w.text)) {
+            try {
+              wRomaji = await this.romanizeLine(w.text, lineLang);
+            } catch (e) {}
+          }
+          updatedWords.push({
+            ...w,
+            romaji: wRomaji || null
+          });
+        }
+      }
+
       result.push({
         ...item,
+        words: updatedWords,
         romaji: romaji || null,
         lang: lineLang || null
       });

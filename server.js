@@ -1952,6 +1952,14 @@ async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, a
           else if (diff <= 8) score += 15;
           else if (isMv && durSec < targetDuration && (targetDuration - durSec) <= 90) score += 45;
           else if (!isMv && diff > 15) score -= 40;
+
+          // Anti TV-Size Guard: If target is full song (>130s), reject short TV-size versions (<110s)
+          if (targetDuration > 130 && durSec < 110) {
+            score -= 500;
+          }
+          if (/tv\s*(?:size|ver|version|edit)|anime\s*ver|short\s*ver/i.test(name) && !/tv\s*(?:size|ver)|short/i.test(title)) {
+            score -= 500;
+          }
         }
 
         return { song, durSec, score };
@@ -2050,6 +2058,14 @@ async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, art
           else if (diff <= 8) score += 15;
           else if (isMv && dur < targetDuration && (targetDuration - dur) <= 90) score += 45;
           else if (!isMv && diff > 15) score -= 40;
+
+          // Anti TV-Size Guard: If target is full song (>130s), reject short TV-size versions (<110s)
+          if (targetDuration > 130 && dur < 110) {
+            score -= 500;
+          }
+          if (/tv\s*(?:size|ver|version|edit)|anime\s*ver|short\s*ver/i.test(sName) && !/tv\s*(?:size|ver)|short/i.test(title)) {
+            score -= 500;
+          }
         }
 
         return { song: s, score };
@@ -2171,6 +2187,14 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
           else if (diff <= 8) score += 15;
           else if (isMv && dur < targetDuration && (targetDuration - dur) <= 90) score += 45;
           else if (!isMv && diff > 15) score -= 40;
+
+          // Anti TV-Size Guard: If target is full song (>130s), reject short TV-size versions (<110s)
+          if (targetDuration > 130 && dur < 110) {
+            score -= 500;
+          }
+          if (/tv\s*(?:size|ver|version|edit)|anime\s*ver|short\s*ver/i.test(sName) && !/tv\s*(?:size|ver)|short/i.test(title)) {
+            score -= 500;
+          }
         }
 
         return { song: s, score };
@@ -2210,119 +2234,175 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
 
 function parseTTMLToLyrics(ttmlString) {
   if (!ttmlString || typeof ttmlString !== 'string') return null;
-  const pRegex = /<p\s+[^>]*begin="([^"]+)"[^>]*>([\s\S]*?)<\/p>/gi;
+
+  let leadingSilence = 0;
+  const lsMatch = ttmlString.match(/leadingSilence="([0-9.]+)"/i);
+  if (lsMatch) leadingSilence = parseFloat(lsMatch[1]) || 0;
+
+  const parseTimeStr = (str) => {
+    if (!str) return 0;
+    if (str.includes(':')) {
+      const parts = str.split(':');
+      if (parts.length === 3) {
+        return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+      } else if (parts.length === 2) {
+        return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+      }
+    }
+    return parseFloat(str) || 0;
+  };
+
+  const decodeXml = (s) => (s || '')
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'");
+
+  const pRegex = /<p\s+[^>]*begin="([^"]+)"[^>]*(?:end="([^"]+)")?[^>]*>([\s\S]*?)<\/p>/gi;
+  const spanRegex = /<span\s+[^>]*begin="([^"]+)"\s+end="([^"]+)"[^>]*>([\s\S]*?)<\/span>/gi;
   const items = [];
   let match;
 
   while ((match = pRegex.exec(ttmlString)) !== null) {
     const beginStr = match[1];
-    let time = 0;
-    if (beginStr.includes(':')) {
-      const parts = beginStr.split(':');
-      if (parts.length === 3) {
-        time = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
-      } else if (parts.length === 2) {
-        time = parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+    const endStr = match[2];
+    const time = parseTimeStr(beginStr);
+    const endTime = endStr ? parseTimeStr(endStr) : time + 3.0;
+
+    const innerContent = match[3];
+
+    // Extract word/syllable-level timings for Apple Music fluid karaoke wave
+    const words = [];
+    let sm;
+    while ((sm = spanRegex.exec(innerContent)) !== null) {
+      const wBegin = parseTimeStr(sm[1]);
+      const wEnd = parseTimeStr(sm[2]);
+      const wText = decodeXml(sm[3].replace(/<[^>]+>/g, '').trim());
+      if (wText) {
+        words.push({
+          text: wText,
+          begin: parseFloat(wBegin.toFixed(3)),
+          end: parseFloat(wEnd.toFixed(3))
+        });
       }
-    } else {
-      time = parseFloat(beginStr) || 0;
     }
 
-    const innerContent = match[2];
     let text = innerContent.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-    if (text) {
-      text = text
-        .replace(/&apos;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&#39;/g, "'");
+    text = decodeXml(text);
 
+    if (text) {
       items.push({
         time: parseFloat(time.toFixed(2)),
-        text
+        endTime: parseFloat(endTime.toFixed(2)),
+        text,
+        words: words.length > 0 ? words : null
       });
     }
   }
-  return items.length > 0 ? items : null;
+
+  return items.length > 0 ? { leadingSilence, items } : null;
 }
 
-async function searchBetterLyrics(title, artist, targetDuration, videoId, artistLatin, artistHangul, titleLatin, isMv) {
+async function searchBetterLyrics(title, artist, targetDuration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv) {
   const cleanTitle = (title || '').replace(/['"‘’“”]/g, '').trim();
   const cleanArtist = (artist || '').replace(/['"‘’“”]/g, '').trim();
 
-  const queryPairs = [];
-  if (artistLatin) {
-    queryPairs.push({ s: cleanTitle, a: artistLatin });
-    if (titleLatin && titleLatin !== cleanTitle) {
-      queryPairs.push({ s: titleLatin, a: artistLatin });
-    }
+  // Smart Query Sequencing: For CJK songs, Native Script matches Apple Music cache best!
+  const queries = [];
+
+  if (nativeTitle) {
+    if (artistLatin) queries.push({ s: nativeTitle, a: artistLatin });
+    if (artistHangul && artistHangul !== artistLatin) queries.push({ s: nativeTitle, a: artistHangul });
+    if (cleanArtist) queries.push({ s: nativeTitle, a: cleanArtist });
+    queries.push({ s: nativeTitle });
   }
-  if (artistHangul && artistHangul !== artistLatin) {
-    queryPairs.push({ s: cleanTitle, a: artistHangul });
+
+  if (titleLatin && titleLatin !== cleanTitle && titleLatin !== nativeTitle) {
+    if (artistLatin) queries.push({ s: titleLatin, a: artistLatin });
+    if (cleanArtist) queries.push({ s: titleLatin, a: cleanArtist });
+    queries.push({ s: titleLatin });
   }
-  if (cleanArtist && cleanArtist !== artistLatin && cleanArtist !== artistHangul) {
-    queryPairs.push({ s: cleanTitle, a: cleanArtist });
+
+  if (artistLatin && cleanTitle) {
+    queries.push({ s: cleanTitle, a: artistLatin });
+  }
+  if (artistHangul && artistHangul !== artistLatin && cleanTitle) {
+    queries.push({ s: cleanTitle, a: artistHangul });
+  }
+  if (cleanArtist && cleanTitle) {
+    queries.push({ s: cleanTitle, a: cleanArtist });
     const primaryArtist = cleanArtist.split(/[&,xX/]| feat\.? | ft\.? /i)[0].trim();
     if (primaryArtist && primaryArtist !== cleanArtist) {
-      queryPairs.push({ s: cleanTitle, a: primaryArtist });
+      queries.push({ s: cleanTitle, a: primaryArtist });
     }
   }
-  queryPairs.push({ s: cleanTitle });
+  if (cleanTitle) {
+    queries.push({ s: cleanTitle });
+  }
 
-  for (const q of queryPairs) {
-    try {
-      const params = {
-        s: q.s,
-        ...(q.a ? { a: q.a } : {}),
-        ...(videoId ? { videoId } : {})
-      };
+  // Deduplicate queries
+  const seenQueries = new Set();
+  const uniqueQueries = [];
+  for (const q of queries) {
+    const key = `${(q.s || '').toLowerCase()}:::${(q.a || '').toLowerCase()}`;
+    if (!seenQueries.has(key)) {
+      seenQueries.add(key);
+      uniqueQueries.push(q);
+    }
+  }
 
-      // In MVs, targetDuration is inflated by cinematic intros; do not pass d param so BetterLyrics doesn't 404
-      if (!isMv && targetDuration > 0) {
-        params.d = Math.round(targetDuration);
-      }
+  for (const q of uniqueQueries) {
+    // Try exact duration first, then without duration if needed
+    const durationsToTry = (!isMv && targetDuration > 0)
+      ? [Math.round(targetDuration), null]
+      : [null];
 
-      const res = await axios.get('https://api.betterlyrics.org/getLyrics', {
-        params,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-          'Referer': 'https://music.youtube.com'
-        },
-        timeout: 3500
-      });
+    for (const dVal of durationsToTry) {
+      try {
+        const params = { s: q.s };
+        if (q.a) params.a = q.a;
+        if (dVal) params.d = dVal;
 
-      if (res.data && res.data.ttml) {
-        const parsedItems = parseTTMLToLyrics(res.data.ttml);
-        if (parsedItems && parsedItems.length > 0) {
-          const syncedLrc = parsedItems.map(item => {
-            const m = Math.floor(item.time / 60);
-            const s = (item.time % 60).toFixed(2);
-            return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${item.text}`;
-          }).join('\n');
+        const res = await axios.get('https://api.betterlyrics.org/getLyrics', {
+          params,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Referer': 'https://music.youtube.com'
+          },
+          timeout: 3200
+        });
 
-          // When we sent `d`, BetterLyrics only answers for a track of that exact length.
-          // Otherwise (MVs) we only have an estimate based on the last lyric line.
-          const lastItem = parsedItems[parsedItems.length - 1];
-          const durationIsExact = Boolean(params.d);
-          const studioDur = durationIsExact ? params.d : (lastItem ? Math.round(lastItem.time + 3) : targetDuration);
+        if (res.data && res.data.ttml) {
+          const parsedResult = parseTTMLToLyrics(res.data.ttml);
+          if (parsedResult && parsedResult.items && parsedResult.items.length > 0) {
+            const parsedItems = parsedResult.items;
+            const syncedLrc = parsedItems.map(item => {
+              const m = Math.floor(item.time / 60);
+              const s = (item.time % 60).toFixed(2);
+              return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${item.text}`;
+            }).join('\n');
 
-          return {
-            id: `bl_${videoId || Date.now()}`,
-            sourceName: 'Better Lyrics',
-            trackName: title,
-            artistName: artistLatin || artist,
-            duration: studioDur,
-            durationIsEstimate: !durationIsExact,
-            syncedLyrics: syncedLrc
-          };
+            const lastItem = parsedItems[parsedItems.length - 1];
+            const studioDur = dVal || (lastItem ? Math.round(lastItem.time + 3) : targetDuration);
+
+            return {
+              id: `bl_${Date.now()}`,
+              sourceName: 'Better Lyrics (Apple Music TTML)',
+              trackName: q.s,
+              artistName: q.a || artistLatin || artist,
+              duration: studioDur,
+              leadingSilence: parsedResult.leadingSilence || 0,
+              parsedLyrics: parsedItems,
+              syncedLyrics: syncedLrc,
+              hasWordSync: parsedItems.some(it => it.words && it.words.length > 0)
+            };
+          }
         }
-      }
-    } catch (e) {
-      if (e.response?.status === 401) {
-        // Uncached queries require an API key; avoid retrying other variations to BetterLyrics
-        break;
+      } catch (e) {
+        // Do NOT break on 401; continue to next query variation!
+        continue;
       }
     }
   }
@@ -2524,7 +2604,7 @@ app.get('/api/lyrics', async (req, res) => {
     const isChinese = !isJapanese && hasHanzi;
 
     // Step 0: Better Lyrics Engine (Apple Music Syllable-Level TTML Master Catalog)
-    syncedResult = await searchBetterLyrics(title, artist, duration, videoId, artistLatin, artistHangul, titleLatin, isMv);
+    syncedResult = await searchBetterLyrics(title, artist, duration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv);
 
     // Step 1: For Korean songs, try LRCLib exact match IMMEDIATELY (300ms hit for all top K-pop tracks!)
     if (!syncedResult && isKorean) {
@@ -2653,11 +2733,7 @@ app.get('/api/lyrics', async (req, res) => {
         autoOffsetSec += (result.adjustOffsetMs / 1000);
       }
 
-      // 2. High-Precision MV Cinematic Intro Alignment:
-      // Uses YouTube chapters & video metadata to detect if the extra video footage
-      // is an intro scene (e.g. Supernova: 14s, Magnetic: 28s, Klaxon: 11s, Seven: 43s)
-      // or an outro challenge/credits at the end (e.g. Super Shy: 0s, Pink Venom: 0s),
-      // ensuring lyrics trigger with frame-accurate timing!
+      // 2. High-Precision MV Cinematic Intro Alignment
       if (videoId && duration > 0 && result.duration > 0) {
         const introOffset = await getMvIntroOffset(videoId, duration, result.duration, isMv);
         if (introOffset > 0) {
@@ -2665,21 +2741,50 @@ app.get('/api/lyrics', async (req, res) => {
         }
       }
 
-      const lrcLines = result.syncedLyrics.split('\n');
-      const items = [];
-      const lrcRegex = /^\[(\d{2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/;
-      for (const line of lrcLines) {
-        const match = line.trim().match(lrcRegex);
-        if (match) {
-          const m = parseInt(match[1], 10);
-          const s = parseFloat(match[2]);
-          // Subtract positive offset (LRC standard) with 2-decimal precision
-          const time = Math.max(0, parseFloat((m * 60 + s - autoOffsetSec).toFixed(2)));
-          let text = match[3].trim();
-          // Remove inline Kugou/Karaoke syllable markers like (1844,84) and <...> tags
-          text = text.replace(/\(\d+,\d+\)/g, '').replace(/<[^>]+>/g, '').trim();
-          if (text) {
-            items.push({ time, text });
+      // 3. Smart Duration Delta Alignment between YouTube Music & Studio Master
+      if (!isMv && duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 2.5) {
+        const delta = duration - result.duration;
+        if (Math.abs(delta) >= 0.25 && Math.abs(delta) <= 1.5) {
+          autoOffsetSec -= (delta * 0.5);
+        }
+      }
+
+      let items = [];
+
+      if (result.parsedLyrics && Array.isArray(result.parsedLyrics) && result.parsedLyrics.length > 0) {
+        // High-Precision Syllable-Level items from BetterLyrics (Apple Music TTML)
+        items = result.parsedLyrics.map(it => {
+          const adjTime = Math.max(0, parseFloat((it.time - autoOffsetSec).toFixed(2)));
+          const adjEndTime = it.endTime ? Math.max(0, parseFloat((it.endTime - autoOffsetSec).toFixed(2))) : undefined;
+          const adjWords = it.words ? it.words.map(w => ({
+            ...w,
+            begin: Math.max(0, parseFloat((w.begin - autoOffsetSec).toFixed(3))),
+            end: Math.max(0, parseFloat((w.end - autoOffsetSec).toFixed(3)))
+          })) : null;
+          return {
+            ...it,
+            time: adjTime,
+            endTime: adjEndTime,
+            words: adjWords
+          };
+        });
+      } else {
+        // Parse from LRC format
+        const lrcLines = result.syncedLyrics.split('\n');
+        const lrcRegex = /^\[(\d{2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/;
+        for (const line of lrcLines) {
+          const match = line.trim().match(lrcRegex);
+          if (match) {
+            const m = parseInt(match[1], 10);
+            const s = parseFloat(match[2]);
+            // Subtract positive offset (LRC standard) with 2-decimal precision
+            const time = Math.max(0, parseFloat((m * 60 + s - autoOffsetSec).toFixed(2)));
+            let text = match[3].trim();
+            // Remove inline Kugou/Karaoke syllable markers like (1844,84) and <...> tags
+            text = text.replace(/\(\d+,\d+\)/g, '').replace(/<[^>]+>/g, '').trim();
+            if (text) {
+              items.push({ time, text, words: null });
+            }
           }
         }
       }
@@ -2711,7 +2816,8 @@ app.get('/api/lyrics', async (req, res) => {
       const interval = dur / (rawLines.length + 1);
       const items = rawLines.map((text, idx) => ({
         time: Math.floor(interval * (idx + 0.6)),
-        text
+        text,
+        words: null
       }));
       if (items.length > 0) {
         try {
@@ -2734,6 +2840,8 @@ app.get('/api/lyrics', async (req, res) => {
       artist: result.artistName || artist,
       album: result.albumName || '',
       duration: result.duration || duration,
+      leadingSilence: result.leadingSilence || 0,
+      hasWordSync: Boolean(result.hasWordSync || (parsedLyrics && parsedLyrics.some(l => l.words && l.words.length > 0))),
       instrumental: Boolean(result.instrumental),
       syncedLyrics: result.syncedLyrics || null,
       plainLyrics: result.plainLyrics || null,
@@ -2762,7 +2870,7 @@ app.get('/api/lyrics', async (req, res) => {
 });
 
 // Start Server
-if (!process.env.VERCEL) {
+if (require.main === module && !process.env.VERCEL) {
   const server = app.listen(PORT, '0.0.0.0', () => {
     const primaryIp = getPrimaryIp();
     console.log(`\n======================================================`);
@@ -2782,5 +2890,7 @@ if (!process.env.VERCEL) {
 
 app.cleanLyricsTrackInfo = cleanLyricsTrackInfo;
 app.getMvIntroOffset = getMvIntroOffset;
+app.searchBetterLyrics = searchBetterLyrics;
+app.parseTTMLToLyrics = parseTTMLToLyrics;
 
 module.exports = app;

@@ -159,11 +159,14 @@ class App {
     this.btnToggleRomaji = document.getElementById('btn-toggle-romaji');
     this.isRomajiEnabled = localStorage.getItem('aurasound_romaji_enabled') !== 'false';
     this.cinemaLeadInDots = document.getElementById('cinema-lead-in-dots');
+    this.cinemaOffsetDisplay = document.getElementById('cinema-offset-display');
     this.currentLyricsLang = null;
     this.currentHasRomaji = false;
     this.currentLyricsData = [];
     this.activeLyricIdx = -1;
     this.currentLyricsTrackId = null;
+    this.currentLeadingSilence = 0;
+    this.hasWordSync = false;
   }
 
   checkCleanReset() {
@@ -2443,6 +2446,10 @@ class App {
       // Guard against race conditions if song switched during fetch
       if (this.currentLyricsTrackId !== trackId) return;
 
+      this.currentLeadingSilence = Number(data.leadingSilence) || 0;
+      this.hasWordSync = Boolean(data.hasWordSync);
+      this.updateOffsetDisplay();
+
       // Primary: Use pre-romanized parsedLyrics if available from server
       if (data.found && data.parsedLyrics && Array.isArray(data.parsedLyrics) && data.parsedLyrics.length > 0) {
         this.currentLyricsData = data.parsedLyrics;
@@ -2452,8 +2459,9 @@ class App {
         track._lyricsType = data.syncedLyrics ? 'synced' : 'plain';
         track._lyricsLang = data.detectedLang || null;
         track._hasRomaji = this.currentHasRomaji;
+        track._hasWordSync = this.hasWordSync;
 
-        this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji);
+        this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync);
         const curTime = this.getCurrentPlaybackTime();
         this.updateActiveLyricsLine(curTime);
         return;
@@ -2571,12 +2579,13 @@ class App {
     }
   }
 
-  displayLyricsList(lines, type = 'synced', lang = null, hasRomaji = false) {
+  displayLyricsList(lines, type = 'synced', lang = null, hasRomaji = false, hasWordSync = false) {
     if (!this.cinemaLyricsStream) return;
 
     this.currentLyricsLang = lang || this.currentLyricsLang;
     const hasRomajiLines = Boolean(hasRomaji) || (Array.isArray(lines) && lines.some(item => Boolean(item.romaji)));
     this.currentHasRomaji = hasRomajiLines;
+    this.hasWordSync = Boolean(hasWordSync) || (Array.isArray(lines) && lines.some(item => Array.isArray(item.words) && item.words.length > 0));
 
     // Handle Romaji Toggle Chip visibility
     if (this.btnToggleRomaji) {
@@ -2591,18 +2600,34 @@ class App {
     if (this.cinemaLyricsBadge) {
       this.cinemaLyricsBadge.style.display = 'inline-flex';
       if (type === 'synced') {
-        if (this.currentLyricsLang === 'ja') {
-          this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';
-          this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇯🇵 ROMAJI SYNC`;
-        } else if (this.currentLyricsLang === 'ko') {
-          this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ko';
-          this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇰🇷 ROMAJA SYNC`;
-        } else if (this.currentLyricsLang === 'zh') {
-          this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-zh';
-          this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 PINYIN SYNC`;
+        if (this.hasWordSync) {
+          if (this.currentLyricsLang === 'ja') {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇯🇵 SYLLABLE ROMAJI`;
+          } else if (this.currentLyricsLang === 'ko') {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ko';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇰🇷 SYLLABLE ROMAJA`;
+          } else if (this.currentLyricsLang === 'zh') {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-zh';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 SYLLABLE PINYIN`;
+          } else {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge synced';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> ✨ APPLE TTML SYNC`;
+          }
         } else {
-          this.cinemaLyricsBadge.className = 'cinema-lyrics-badge synced';
-          this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> KARAOKE SYNC`;
+          if (this.currentLyricsLang === 'ja') {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇯🇵 ROMAJI SYNC`;
+          } else if (this.currentLyricsLang === 'ko') {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ko';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇰🇷 ROMAJA SYNC`;
+          } else if (this.currentLyricsLang === 'zh') {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-zh';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 PINYIN SYNC`;
+          } else {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge synced';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> KARAOKE SYNC`;
+          }
         }
       } else if (type === 'suno_ai') {
         this.cinemaLyricsBadge.className = 'cinema-lyrics-badge suno';
@@ -2618,13 +2643,35 @@ class App {
       panel.classList.toggle('hide-romaji', !this.isRomajiEnabled);
     }
 
-    // Render Clean Lyrics: Original Script + Romaji/Pinyin (when available)
-    this.cinemaLyricsStream.innerHTML = lines.map((item, idx) => `
-      <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
-        <div class="lyric-main-text">${this.escapeHtml(item.text)}</div>
-        ${item.romaji ? `<div class="lyric-romaji-text">${this.escapeHtml(item.romaji)}</div>` : ''}
-      </div>
-    `).join('');
+    // Render Lyrics: Original Script + Syllable Spans + Romaji/Pinyin
+    this.cinemaLyricsStream.innerHTML = lines.map((item, idx) => {
+      let mainContent = '';
+      if (Array.isArray(item.words) && item.words.length > 0) {
+        mainContent = item.words.map(w =>
+          `<span class="cinema-lyric-word" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`
+        ).join('');
+      } else {
+        mainContent = this.escapeHtml(item.text);
+      }
+
+      let romajiContent = '';
+      if (item.romaji) {
+        if (Array.isArray(item.words) && item.words.some(w => w.romaji)) {
+          romajiContent = `<div class="lyric-romaji-text">` + item.words.map(w =>
+            `<span class="cinema-lyric-word-romaji" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.romaji || w.text)}</span>`
+          ).join('') + `</div>`;
+        } else {
+          romajiContent = `<div class="lyric-romaji-text">${this.escapeHtml(item.romaji)}</div>`;
+        }
+      }
+
+      return `
+        <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''} ${Array.isArray(item.words) && item.words.length > 0 ? 'has-word-sync' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
+          <div class="lyric-main-text">${mainContent}</div>
+          ${romajiContent}
+        </div>
+      `;
+    }).join('');
   }
 
   getCurrentPlaybackTime() {
@@ -2694,8 +2741,9 @@ class App {
       return;
     }
 
-    // Exact acoustic beat synchronization with 50ms vocal lead-in compensation
-    const syncTime = currentSecs + 0.05;
+    const userOffset = this.getCurrentTrackOffset();
+    // Exact acoustic beat synchronization with vocal compensation and user micro-offset
+    const syncTime = currentSecs + 0.05 + userOffset;
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
       if (syncTime >= this.currentLyricsData[i].time) {
@@ -2709,9 +2757,9 @@ class App {
     if (this.cinemaLeadInDots) {
       let showLeadIn = false;
       const firstLine = this.currentLyricsData[0];
-      if (currentSecs < firstLine.time) {
+      if (syncTime < firstLine.time) {
         // Intro countdown: 4.5s down to 0.2s before first lyric line
-        const diff = firstLine.time - currentSecs;
+        const diff = firstLine.time - syncTime;
         if (diff <= 4.5 && diff >= 0.2) {
           showLeadIn = true;
         }
@@ -2721,7 +2769,7 @@ class App {
         const nextLine = this.currentLyricsData[activeIdx + 1];
         const gap = nextLine.time - currentLine.time;
         if (gap >= 4.0) {
-          const diff = nextLine.time - currentSecs;
+          const diff = nextLine.time - syncTime;
           if (diff <= 3.8 && diff >= 0.2) {
             showLeadIn = true;
           }
@@ -2748,6 +2796,77 @@ class App {
           stream.scrollTo({ top: targetScroll, behavior: 'smooth' });
         }
       });
+    }
+
+    // Syllable-Level Karaoke Wave Animation on active line (Apple Music & Better Lyrics standard)
+    if (activeIdx >= 0) {
+      const activeLineEl = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${activeIdx}"]`);
+      if (activeLineEl && activeLineEl.classList.contains('has-word-sync')) {
+        const words = activeLineEl.querySelectorAll('.cinema-lyric-word');
+        words.forEach(w => {
+          const begin = parseFloat(w.getAttribute('data-begin'));
+          const end = parseFloat(w.getAttribute('data-end'));
+          if (syncTime >= begin && syncTime < end) {
+            w.classList.add('active');
+            w.classList.remove('passed');
+          } else if (syncTime >= end) {
+            w.classList.remove('active');
+            w.classList.add('passed');
+          } else {
+            w.classList.remove('active', 'passed');
+          }
+        });
+
+        const romajiWords = activeLineEl.querySelectorAll('.cinema-lyric-word-romaji');
+        romajiWords.forEach(w => {
+          const begin = parseFloat(w.getAttribute('data-begin'));
+          const end = parseFloat(w.getAttribute('data-end'));
+          if (syncTime >= begin && syncTime < end) {
+            w.classList.add('active');
+            w.classList.remove('passed');
+          } else if (syncTime >= end) {
+            w.classList.remove('active');
+            w.classList.add('passed');
+          } else {
+            w.classList.remove('active', 'passed');
+          }
+        });
+      }
+    }
+  }
+
+  getTrackOffsetKey() {
+    if (!this.currentTrack) return null;
+    return `aura_offset_${this.currentTrack.id || (this.currentTrack.title + '_' + (this.currentTrack.artist || ''))}`;
+  }
+
+  getCurrentTrackOffset() {
+    const key = this.getTrackOffsetKey();
+    if (!key) return 0;
+    return parseFloat(localStorage.getItem(key)) || 0;
+  }
+
+  adjustCurrentTrackOffset(deltaSec) {
+    const key = this.getTrackOffsetKey();
+    if (!key) return;
+    let cur = this.getCurrentTrackOffset();
+    cur = Math.round((cur + deltaSec) * 100) / 100;
+    cur = Math.max(-5.0, Math.min(5.0, cur));
+    localStorage.setItem(key, String(cur));
+    this.updateOffsetDisplay();
+    const t = this.getCurrentPlaybackTime();
+    this.updateActiveLyricsLine(t);
+    this.showToast(`Kalibrasi lirik: ${cur > 0 ? '+' : ''}${cur.toFixed(2)}s`, 'info');
+  }
+
+  updateOffsetDisplay() {
+    if (!this.cinemaOffsetDisplay) {
+      this.cinemaOffsetDisplay = document.getElementById('cinema-offset-display');
+    }
+    if (this.cinemaOffsetDisplay) {
+      const offset = this.getCurrentTrackOffset();
+      this.cinemaOffsetDisplay.textContent = `${offset > 0 ? '+' : ''}${offset.toFixed(2)}s`;
+      this.cinemaOffsetDisplay.style.color = offset !== 0 ? 'var(--accent-glow, #38ef7d)' : 'var(--text-muted, #8e8ea0)';
     }
   }
 
