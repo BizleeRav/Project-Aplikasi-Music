@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.22.0">
+  <link rel="stylesheet" href="/css/style.css?v=4.23.0">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     // Ultra-Fast Synchronous Pre-Hydration (0ms layout shift / no reset flash)
@@ -1502,7 +1502,9 @@
             <!-- Quick Micro-Offset Calibration Tool -->
             <div class="cinema-offset-ctrl" title="Kalibrasi Halus: Geser Lirik jika Agak Telat / Kecepetan">
               <button type="button" class="btn-offset-adjust" onclick="window.app.adjustCurrentTrackOffset(-0.25)" title="Lirik Kecepatan: Geser Mundur 0.25 detik">−0.25s</button>
+              <button type="button" class="btn-offset-adjust" onclick="window.app.adjustCurrentTrackOffset(-0.10)" title="Lirik Sedikit Kecepatan: Geser Mundur 0.10 detik">−0.1s</button>
               <span id="cinema-offset-display" class="offset-display" onclick="window.app.resetCurrentTrackOffset()" title="Klik untuk Reset Offset ke 0.00s (Shortcut: '\' di keyboard)" style="cursor: pointer;">0.00s</span>
+              <button type="button" class="btn-offset-adjust" onclick="window.app.adjustCurrentTrackOffset(+0.10)" title="Lirik Sedikit Ketinggalan: Geser Maju 0.10 detik">+0.1s</button>
               <button type="button" class="btn-offset-adjust" onclick="window.app.adjustCurrentTrackOffset(+0.25)" title="Lirik Ketinggalan: Geser Maju 0.25 detik">+0.25s</button>
             </div>
           </div>
@@ -1656,10 +1658,10 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="/js/audio-engine.js?v=4.22.0"></script>
-  <script src="/js/yt-player.js?v=4.22.0"></script>
-  <script src="/js/taste-engine.js?v=4.22.0"></script>
-  <script src="/js/suno-studio.js?v=4.22.0"></script>
-  <script src="/js/app.js?v=4.22.0"></script>
+  <script src="/js/audio-engine.js?v=4.23.0"></script>
+  <script src="/js/yt-player.js?v=4.23.0"></script>
+  <script src="/js/taste-engine.js?v=4.23.0"></script>
+  <script src="/js/suno-studio.js?v=4.23.0"></script>
+  <script src="/js/app.js?v=4.23.0"></script>
 </body>
 </html>

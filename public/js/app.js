@@ -1612,9 +1612,9 @@ class App {
         this.closeStudioCinema();
       } else if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
         if (e.key === '[') {
-          this.adjustCurrentTrackOffset(-0.25);
+          this.adjustCurrentTrackOffset(-0.10);
         } else if (e.key === ']') {
-          this.adjustCurrentTrackOffset(+0.25);
+          this.adjustCurrentTrackOffset(+0.10);
         } else if (e.key === '\\') {
           this.resetCurrentTrackOffset();
         }
@@ -2787,8 +2787,12 @@ class App {
     }
 
     const userOffset = this.getCurrentTrackOffset();
-    // Exact acoustic beat synchronization with vocal compensation and user micro-offset
-    const syncTime = currentSecs + 0.05 + userOffset;
+    const isYt = (this.currentAudioMode !== 'native' && this.currentTrack?.type !== 'suno' && this.currentTrack?.type !== 'local');
+    // High-Precision Acoustic Latency Compensation:
+    // YouTube Web Audio pipeline has ~200ms of hardware/browser latency behind JS clock.
+    // Offsetting by -0.20s prevents lyrics and Romaji from triggering prematurely before singer's vocal attack.
+    const acousticLatencyCompensation = isYt ? -0.20 : 0.0;
+    const syncTime = Math.max(0, currentSecs + acousticLatencyCompensation + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
       if (syncTime >= this.currentLyricsData[i].time) {
