@@ -2894,10 +2894,12 @@ class App {
         words.forEach(w => {
           const begin = parseFloat(w.getAttribute('data-begin'));
           const end = parseFloat(w.getAttribute('data-end'));
-          const duration = Math.max(0.04, end - begin);
+          const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.3 : (end - begin);
 
           if (syncTime >= begin && syncTime < end) {
-            const fillPct = Math.min(100, Math.max(0, ((syncTime - begin) / duration) * 100));
+            let fillPct = ((syncTime - begin) / duration) * 100;
+            if (isNaN(fillPct)) fillPct = 0;
+            fillPct = Math.min(100, Math.max(0, fillPct));
             w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
             w.classList.add('active');
             w.classList.remove('passed');
@@ -2915,10 +2917,12 @@ class App {
         romajiWords.forEach(w => {
           const begin = parseFloat(w.getAttribute('data-begin'));
           const end = parseFloat(w.getAttribute('data-end'));
-          const duration = Math.max(0.04, end - begin);
+          const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.3 : (end - begin);
 
           if (syncTime >= begin && syncTime < end) {
-            const fillPct = Math.min(100, Math.max(0, ((syncTime - begin) / duration) * 100));
+            let fillPct = ((syncTime - begin) / duration) * 100;
+            if (isNaN(fillPct)) fillPct = 0;
+            fillPct = Math.min(100, Math.max(0, fillPct));
             w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
             w.classList.add('active');
             w.classList.remove('passed');
