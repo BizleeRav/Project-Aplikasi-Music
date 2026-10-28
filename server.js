@@ -2836,14 +2836,14 @@ async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
 
       if (isOutroChallenge) {
         offset = 0;
-      } else if (isMv && diff >= 4 && diff <= 60) {
-        // In standard cinematic K-pop MVs without chapters or challenge outro,
-        // the extra duration is the story intro prologue before the beat drops!
+      } else if (isMv && diff >= 2 && diff <= 60) {
+        // In standard cinematic MVs and Live performances without chapters or challenge outro,
+        // the extra duration is the story intro prologue/tuning before the beat drops!
         offset = diff;
       }
     }
   } catch (e) {
-    if (isMv && diff >= 4 && diff <= 45) {
+    if (isMv && diff >= 2 && diff <= 45) {
       offset = diff;
     }
   }
@@ -2864,7 +2864,7 @@ app.get('/api/lyrics', async (req, res) => {
   }
 
   const { title, artist, artistLatin, artistHangul, nativeTitle, nativeArtist, titleLatin } = cleanLyricsTrackInfo(rawTitle, rawArtist);
-  const isMv = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video)\b|【mv】|\[mv\]/i.test(rawTitle || '');
+  const isMv = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
 
   const cacheKey = `${title.toLowerCase()}___${artist.toLowerCase()}___${duration}`;
 
