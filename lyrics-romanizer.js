@@ -6,9 +6,12 @@
  * - Chinese (Hanzi -> Pinyin via pinyin-pro + song polyphone contextual disambiguation)
  */
 
+const path = require('path');
+const fs = require('fs');
 const Kuroshiro = require('kuroshiro');
 const KuromojiAnalyzer = require('kuroshiro-analyzer-kuromoji');
 const { pinyin, customPinyin } = require('pinyin-pro');
+const wanakana = require('wanakana');
 
 // =============================================================================
 // 1. KOREAN PHONOLOGICAL ROMANIZER (Official Revised Romanization of Korea)
@@ -384,7 +387,21 @@ class LyricsRomanizer {
 
     this.jpInitPromise = (async () => {
       try {
-        await this.kuroshiro.init(new KuromojiAnalyzer());
+        let dictPath = undefined;
+        const possiblePaths = [
+          path.join(process.cwd(), 'node_modules', 'kuromoji', 'dict'),
+          path.resolve(__dirname, 'node_modules', 'kuromoji', 'dict'),
+          path.join(__dirname, '..', 'node_modules', 'kuromoji', 'dict'),
+          path.join(__dirname, 'node_modules', 'kuromoji', 'dict')
+        ];
+        for (const p of possiblePaths) {
+          if (fs.existsSync(p)) {
+            dictPath = p;
+            break;
+          }
+        }
+
+        await this.kuroshiro.init(new KuromojiAnalyzer(dictPath ? { dictPath } : undefined));
         this.isJpReady = true;
       } catch (err) {
         console.warn('Kuroshiro initialization warning:', err.message);
@@ -476,10 +493,13 @@ class LyricsRomanizer {
 
           return res;
         }
+
+        // Safe fallback for kana if Kuromoji dict is not loaded
+        return wanakana.toRomaji(cleanText);
       }
 
-      // 3. Chinese
-      if (lang === 'zh' || /[\u4E00-\u9FFF]/.test(cleanText)) {
+      // 3. Chinese (Strictly excluded if line was detected as Japanese or contains Kana)
+      if (lang === 'zh' || (/[\u4E00-\u9FFF]/.test(cleanText) && !/[\u3040-\u309F\u30A0-\u30FF]/.test(cleanText) && lang !== 'ja')) {
         let s = cleanText;
 
         // Protect noun words containing 地 (dì)
@@ -587,7 +607,12 @@ class LyricsRomanizer {
   async alignJapaneseWords(lineText, words) {
     if (!words || words.length === 0) return words;
     await this.initJapanese();
-    if (!this.isJpReady) return words;
+    if (!this.isJpReady) {
+      return words.map(w => ({
+        ...w,
+        romaji: wanakana.toRomaji(w.text) || w.text
+      }));
+    }
 
     let preProcessed = lineText || '';
     for (const r of JP_PRE_OVERRIDES) {

@@ -12,7 +12,7 @@
   ],
   "functions": {
     "api/index.js": {
-      "includeFiles": "data/**"
+      "includeFiles": "{data/**,node_modules/kuromoji/dict/**}"
     }
   }
 }
