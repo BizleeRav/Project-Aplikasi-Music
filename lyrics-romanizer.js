@@ -41,20 +41,20 @@ function decomposeHangul(code) {
   };
 }
 
-function romanizeKoreanText(text) {
-  if (!text) return '';
+function romanizeKoreanTokens(text) {
+  if (!text) return [];
   const chars = Array.from(text);
   const tokens = chars.map(ch => {
     const code = ch.charCodeAt(0);
     return { ch, hangul: decomposeHangul(code) };
   });
 
-  let result = '';
+  const result = [];
 
   for (let i = 0; i < tokens.length; i++) {
     const curr = tokens[i];
     if (!curr.hangul) {
-      result += curr.ch;
+      result.push({ text: curr.ch, romaji: curr.ch });
       continue;
     }
 
@@ -144,12 +144,20 @@ function romanizeKoreanText(text) {
       choStr = curr.customCho;
     }
 
-    result += choStr + jungStr + jongStr;
+    const sylRomaja = (choStr + jungStr + jongStr)
+      .replace(/lr/g, 'll')
+      .replace(/rl/g, 'll');
+
+    result.push({ text: curr.ch, romaji: sylRomaja });
   }
 
-  return result
-    .replace(/lr/g, 'll')
-    .replace(/rl/g, 'll')
+  return result;
+}
+
+function romanizeKoreanText(text) {
+  if (!text) return '';
+  const tokens = romanizeKoreanTokens(text);
+  return tokens.map(t => t.romaji).join('')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -513,6 +521,161 @@ class LyricsRomanizer {
     return '';
   }
 
+  alignKoreanWords(lineText, words) {
+    if (!words || words.length === 0) return words;
+    const tokens = romanizeKoreanTokens(lineText);
+    let cursor = 0;
+    return words.map(w => {
+      let wRomaji = '';
+      for (const ch of w.text) {
+        while (cursor < tokens.length && tokens[cursor].text !== ch && /\s/.test(tokens[cursor].text)) {
+          cursor++;
+        }
+        if (cursor < tokens.length && tokens[cursor].text === ch) {
+          wRomaji += tokens[cursor].romaji;
+          cursor++;
+        } else {
+          wRomaji += ch;
+        }
+      }
+      return {
+        ...w,
+        romaji: wRomaji || w.text
+      };
+    });
+  }
+
+  alignChineseWords(lineText, words) {
+    if (!words || words.length === 0) return words;
+    let s = lineText || '';
+    const diPhs = [];
+    ZH_DI_NOUNS.forEach((w, i) => {
+      if (s.includes(w)) {
+        const ph = '__D_' + i + '__';
+        diPhs.push({ ph, original: w });
+        s = s.split(w).join(ph);
+      }
+    });
+    s = s.replace(/地/g, '的');
+    diPhs.forEach(({ ph, original }) => {
+      s = s.split(ph).join(original);
+    });
+
+    const tokens = pinyin(s, { toneType: 'none', type: 'all' });
+    let cursor = 0;
+    return words.map(w => {
+      let wPinyin = [];
+      for (const ch of w.text) {
+        while (cursor < tokens.length && tokens[cursor].origin !== ch && /\s/.test(tokens[cursor].origin)) {
+          cursor++;
+        }
+        if (cursor < tokens.length && tokens[cursor].origin === ch) {
+          const t = tokens[cursor];
+          wPinyin.push(t.isZh ? t.pinyin : (t.result || ch));
+          cursor++;
+        } else {
+          wPinyin.push(ch);
+        }
+      }
+      return {
+        ...w,
+        romaji: wPinyin.join(' ').trim() || w.text
+      };
+    });
+  }
+
+  async alignJapaneseWords(lineText, words) {
+    if (!words || words.length === 0) return words;
+    await this.initJapanese();
+    if (!this.isJpReady) return words;
+
+    let preProcessed = lineText || '';
+    for (const r of JP_PRE_OVERRIDES) {
+      preProcessed = preProcessed.replace(r.match, r.rep);
+    }
+
+    try {
+      const html = await this.kuroshiro.convert(preProcessed, { to: 'hiragana', mode: 'furigana' });
+      const furiganaTokens = [];
+      const rubyRegex = /<ruby>([\s\S]*?)<rp>\(<\/rp><rt>([\s\S]*?)<\/rt><rp>\)<\/rp><\/ruby>/gi;
+      let lastIdx = 0;
+      let m;
+      while ((m = rubyRegex.exec(html)) !== null) {
+        if (m.index > lastIdx) {
+          const plain = html.substring(lastIdx, m.index);
+          furiganaTokens.push({ text: plain, reading: plain });
+        }
+        furiganaTokens.push({ text: m[1], reading: m[2] });
+        lastIdx = m.index + m[0].length;
+      }
+      if (lastIdx < html.length) {
+        const plain = html.substring(lastIdx);
+        furiganaTokens.push({ text: plain, reading: plain });
+      }
+
+      const charReadings = [];
+      for (const ft of furiganaTokens) {
+        if (ft.text.length === 1) {
+          charReadings.push({ char: ft.text, reading: ft.reading });
+        } else if (ft.text === ft.reading) {
+          for (const ch of ft.text) {
+            charReadings.push({ char: ch, reading: ch });
+          }
+        } else {
+          const perCharLen = Math.max(1, Math.floor(ft.reading.length / ft.text.length));
+          let readIdx = 0;
+          for (let i = 0; i < ft.text.length; i++) {
+            const ch = ft.text[i];
+            const isLast = (i === ft.text.length - 1);
+            const rChunk = isLast ? ft.reading.substring(readIdx) : ft.reading.substr(readIdx, perCharLen);
+            readIdx += perCharLen;
+            charReadings.push({ char: ch, reading: rChunk });
+          }
+        }
+      }
+
+      const result = [];
+      let searchPos = 0;
+      for (const w of words) {
+        let wReading = '';
+        const compound = furiganaTokens.find(ft => ft.text === w.text);
+        if (compound) {
+          wReading = compound.reading;
+        } else {
+          for (const ch of w.text) {
+            const match = charReadings.find((cr, idx) => idx >= searchPos && cr.char === ch);
+            if (match) {
+              wReading += match.reading;
+              searchPos = charReadings.indexOf(match) + 1;
+            } else {
+              wReading += ch;
+            }
+          }
+        }
+
+        let wRomaji = await this.kuroshiro.convert(wReading || w.text, {
+          to: 'romaji',
+          mode: 'spaced',
+          romajiSystem: 'hepburn'
+        });
+        wRomaji = (wRomaji || '')
+          .replace(/ō/g, 'ou').replace(/ū/g, 'uu').replace(/ē/g, 'ee').replace(/ā/g, 'aa').replace(/ī/g, 'ii')
+          .replace(/Ō/g, 'Ou').replace(/Ū/g, 'Uu').replace(/Ē/g, 'Ee').replace(/Ā/g, 'Aa').replace(/Ī/g, 'Ii')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        result.push({
+          ...w,
+          romaji: wRomaji || w.text
+        });
+      }
+      return result;
+    } catch (e) {
+      console.warn('alignJapaneseWords error:', e.message);
+      return words;
+    }
+  }
+
   async romanizeLyricsList(parsedLines) {
     if (!Array.isArray(parsedLines) || parsedLines.length === 0) return parsedLines;
 
@@ -524,13 +687,13 @@ class LyricsRomanizer {
       let lineLang = item.lang || null;
 
       if (!romaji && item.text) {
-        if (overallLang === 'ja') {
+        if (overallLang === 'ja' && /[\u3040-\u30ff\u4e00-\u9fff]/.test(item.text)) {
           // If song is Japanese, any Kanji or Kana line is Japanese (prevents pure Kanji from becoming Chinese Pinyin)
-          lineLang = (/[\u3040-\u30ff\u4e00-\u9fff]/.test(item.text)) ? 'ja' : null;
-        } else if (overallLang === 'ko') {
-          lineLang = (/[\uac00-\ud7af\u1100-\u11ff]/.test(item.text)) ? 'ko' : null;
-        } else if (overallLang === 'zh') {
-          lineLang = (/[\u4e00-\u9fff]/.test(item.text)) ? 'zh' : null;
+          lineLang = 'ja';
+        } else if (overallLang === 'ko' && /[\uac00-\ud7af\u1100-\u11ff]/.test(item.text)) {
+          lineLang = 'ko';
+        } else if (overallLang === 'zh' && /[\u4e00-\u9fff]/.test(item.text) && !/[\u3040-\u30ff]/.test(item.text)) {
+          lineLang = 'zh';
         } else {
           lineLang = this.detectLanguage(item.text);
         }
@@ -546,47 +709,14 @@ class LyricsRomanizer {
 
       let updatedWords = item.words || null;
       if (Array.isArray(item.words) && item.words.length > 0 && lineLang && !item.romajiWords) {
-        updatedWords = [];
-        const fullTokens = (romaji || '').trim().split(/\s+/).filter(Boolean);
-
-        if (fullTokens.length === item.words.length) {
-          // Perfect 1-to-1 contextual alignment: preserves Japanese Kanji compounds and Korean liaison
-          for (let i = 0; i < item.words.length; i++) {
-            updatedWords.push({
-              ...item.words[i],
-              romaji: fullTokens[i] || null
-            });
-          }
+        if (lineLang === 'ja') {
+          updatedWords = await this.alignJapaneseWords(item.text, item.words);
+        } else if (lineLang === 'ko') {
+          updatedWords = this.alignKoreanWords(item.text, item.words);
+        } else if (lineLang === 'zh') {
+          updatedWords = this.alignChineseWords(item.text, item.words);
         } else {
-          // Contextual Morpheme-guided slice alignment
-          let tokenCursor = 0;
-          for (let i = 0; i < item.words.length; i++) {
-            const w = item.words[i];
-            let wRomaji = null;
-            if (w.text && /[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]/.test(w.text)) {
-              try {
-                const individualRomaji = await this.romanizeLine(w.text, lineLang);
-                const tokenCount = Math.max(1, (individualRomaji || '').trim().split(/\s+/).filter(Boolean).length);
-                const slicedTokens = fullTokens.slice(tokenCursor, tokenCursor + tokenCount);
-                if (slicedTokens.length > 0) {
-                  wRomaji = slicedTokens.join(' ');
-                } else {
-                  wRomaji = individualRomaji;
-                }
-                tokenCursor += tokenCount;
-              } catch (e) {
-                wRomaji = fullTokens[tokenCursor] || null;
-                tokenCursor++;
-              }
-            } else {
-              wRomaji = fullTokens[tokenCursor] || null;
-              tokenCursor++;
-            }
-            updatedWords.push({
-              ...w,
-              romaji: wRomaji || null
-            });
-          }
+          updatedWords = item.words;
         }
       }
 

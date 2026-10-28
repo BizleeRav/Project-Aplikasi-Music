@@ -2690,9 +2690,7 @@ class App {
           const romajiLineText = item.romaji || '';
           romajiContent = `<div class="lyric-romaji-text">` + rWords.map((w, wIdx) => {
             let hasSpace = false;
-            if (w.trailingSpace !== undefined && typeof w.trailingSpace === 'boolean') {
-              hasSpace = w.trailingSpace;
-            } else if (romajiLineText) {
+            if (romajiLineText) {
               const fIdx = romajiLineText.indexOf(w.text, rSearchPos);
               if (fIdx !== -1) {
                 rSearchPos = fIdx + w.text.length;
@@ -2700,6 +2698,8 @@ class App {
               } else {
                 hasSpace = (wIdx < rWords.length - 1);
               }
+            } else if (w.trailingSpace !== undefined && typeof w.trailingSpace === 'boolean') {
+              hasSpace = w.trailingSpace;
             } else {
               hasSpace = (wIdx < rWords.length - 1);
             }
