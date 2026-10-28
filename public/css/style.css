@@ -3497,22 +3497,22 @@ body::after {
 
   .cinema-lyric-line {
     display: block !important;
-    font-size: 1.05rem !important;
-    line-height: 1.4 !important;
-    padding: 7px 8px !important;
+    font-size: 1.12rem !important;
+    line-height: 1.42 !important;
+    padding: 8px 12px !important;
     border-radius: 10px !important;
     margin-bottom: 2px !important;
-    color: rgba(255, 255, 255, 0.5) !important;
+    color: rgba(255, 255, 255, 0.45) !important;
     cursor: pointer !important;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    transition: opacity 0.3s ease, transform 0.3s ease, background 0.25s ease !important;
   }
 
   .cinema-lyric-line.active {
-    font-size: 1.18rem !important;
+    font-size: 1.12rem !important;
     font-weight: 800 !important;
     color: #ffffff !important;
-    background: linear-gradient(90deg, rgba(56, 189, 248, 0.22), rgba(16, 185, 129, 0.12) 60%, transparent) !important;
-    border-left: 3px solid #38bdf8 !important;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.18), rgba(16, 185, 129, 0.08) 60%, transparent) !important;
+    border-left: none !important;
     padding-left: 12px !important;
     text-shadow: 0 0 16px rgba(56, 189, 248, 0.8) !important;
     opacity: 1 !important;
@@ -7879,28 +7879,28 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .cinema-lyric-line {
-  font-size: clamp(1.1rem, 2vh, 1.35rem);
+  font-size: clamp(1.22rem, 2.4vh, 1.6rem);
   font-weight: 700;
   color: #94a3b8;
   line-height: 1.45;
   cursor: pointer;
-  padding: 8px 16px;
-  border-radius: 12px;
+  padding: 10px 18px;
+  border-radius: 14px;
   position: relative;
   user-select: none;
   transform-origin: left center;
-  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-              filter 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-              color 0.25s ease,
-              background 0.25s ease;
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.2s ease,
+              background 0.2s ease;
 }
 
-/* Inactive lines when singing is in progress - Apple Music / Better Lyrics blur depth */
+/* Inactive lines when singing is in progress - Apple Music & Better Lyrics depth focus */
 .cinema-lyrics-stream.has-active .cinema-lyric-line:not(.active) {
-  opacity: 0.35;
-  filter: blur(1.1px);
-  transform: scale(0.97);
+  opacity: 0.30;
+  filter: blur(0.8px);
+  transform: scale(0.975);
 }
 
 .cinema-lyrics-stream.has-active .cinema-lyric-line:not(.active):hover {
@@ -7916,21 +7916,21 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .cinema-lyric-line:active {
-  transform: scale(0.98);
+  transform: scale(0.985);
 }
 
+/* Active line: rock-solid layout geometry, NO font-size jumping, pure luminous glow */
 .cinema-lyric-line.active {
-  font-size: clamp(1.3rem, 2.5vh, 1.62rem);
-  font-weight: 900;
+  font-size: clamp(1.22rem, 2.4vh, 1.6rem);
+  font-weight: 800;
   color: #ffffff;
-  background: linear-gradient(90deg, rgba(56, 189, 248, 0.22), rgba(168, 85, 247, 0.08) 60%, transparent);
-  border-left: 4px solid #38bdf8;
-  padding-left: 20px;
-  text-shadow: 0 0 20px rgba(56, 189, 248, 0.75), 0 2px 4px rgba(0, 0, 0, 0.6);
-  transform: scale(1.03) translateX(4px);
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.16), rgba(168, 85, 247, 0.06) 60%, transparent);
+  border-left: none;
+  padding: 10px 18px;
+  transform: scale(1.025);
   opacity: 1 !important;
   filter: none !important;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
 }
 
 .lyric-main-text {
@@ -8114,13 +8114,13 @@ body.music-playing .cinema-turntable-arm {
   text-align: center;
 }
 
-/* Apple Music & Better Lyrics Syllable-Level Karaoke Wave Animation */
+/* Apple Music & Better Lyrics Syllable-Level Liquid Light Animation */
 .cinema-lyric-word {
   display: inline-block;
   margin-right: 0;
-  color: rgba(255, 255, 255, 0.45);
-  transition: transform 0.1s cubic-bezier(0.16, 1, 0.3, 1), filter 0.1s ease;
-  will-change: transform, background;
+  color: rgba(255, 255, 255, 0.40);
+  transition: filter 0.15s ease;
+  will-change: background;
 }
 
 .cinema-lyric-word.has-space {
@@ -8128,34 +8128,36 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .cinema-lyric-line.active .cinema-lyric-word {
-  /* Continuous Left-to-Right Apple Music Fluid Gradient Text Sweep */
+  /* Liquid Light Feathered Gradient: soft beam transition mimicking Apple Music / Better Lyrics */
   background: linear-gradient(
     90deg,
-    #ffffff var(--fill-pct, 0%),
-    rgba(255, 255, 255, 0.45) var(--fill-pct, 0%)
+    #ffffff calc(var(--fill-pct, 0%) - 12%),
+    rgba(255, 255, 255, 0.98) var(--fill-pct, 0%),
+    rgba(255, 255, 255, 0.38) calc(var(--fill-pct, 0%) + 10%)
   );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word.active {
-  transform: scale(1.08) translateY(-1px);
-  filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.85)) drop-shadow(0 0 24px rgba(168, 85, 247, 0.65));
+  transform: none; /* Keep text geometry 100% stable without word collisions */
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.75)) drop-shadow(0 0 20px rgba(56, 189, 248, 0.5));
 }
 
 .cinema-lyric-line.active .cinema-lyric-word.passed {
   background: #ffffff;
   -webkit-background-clip: text;
   -webkit-text-fill-color: #ffffff;
-  transform: scale(1);
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3));
+  transform: none;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
 }
 
 .cinema-lyric-word-romaji {
   display: inline-block;
   margin-right: 0;
-  color: rgba(148, 163, 184, 0.55);
-  transition: transform 0.1s ease;
+  color: rgba(148, 163, 184, 0.45);
+  transition: filter 0.15s ease;
+  will-change: background;
 }
 
 .cinema-lyric-word-romaji.has-space {
@@ -8163,17 +8165,19 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji {
+  /* Liquid Light Feathered Gradient for Romaji / Pinyin / Romaja */
   background: linear-gradient(
     90deg,
-    #38bdf8 var(--fill-pct, 0%),
-    rgba(148, 163, 184, 0.55) var(--fill-pct, 0%)
+    #38bdf8 calc(var(--fill-pct, 0%) - 12%),
+    #7dd3fc var(--fill-pct, 0%),
+    rgba(148, 163, 184, 0.40) calc(var(--fill-pct, 0%) + 10%)
   );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji.active {
-  transform: scale(1.06);
+  transform: none; /* Keep layout 100% stable */
   filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.9));
 }
 
@@ -8181,7 +8185,7 @@ body.music-playing .cinema-turntable-arm {
   background: #7dd3fc;
   -webkit-background-clip: text;
   -webkit-text-fill-color: #7dd3fc;
-  transform: scale(1);
+  transform: none;
   filter: none;
 }
 
@@ -11158,24 +11162,24 @@ body.music-playing .cinema-turntable-arm {
 
   .cinema-lyric-line {
     display: block !important;
-    font-size: 1.05rem !important;
-    line-height: 1.4 !important;
-    padding: 8px 10px !important;
+    font-size: 1.12rem !important;
+    line-height: 1.42 !important;
+    padding: 8px 12px !important;
     border-radius: 10px !important;
     margin-bottom: 4px !important;
-    color: rgba(255, 255, 255, 0.5) !important;
+    color: rgba(255, 255, 255, 0.45) !important;
     cursor: pointer !important;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    transition: opacity 0.3s ease, transform 0.3s ease, background 0.25s ease !important;
     user-select: none !important;
     touch-action: manipulation !important;
   }
 
   .cinema-lyric-line.active {
-    font-size: 1.22rem !important;
+    font-size: 1.12rem !important;
     font-weight: 800 !important;
     color: #ffffff !important;
-    background: linear-gradient(90deg, rgba(56, 189, 248, 0.24), rgba(16, 185, 129, 0.12) 65%, transparent) !important;
-    border-left: 3.5px solid #38bdf8 !important;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.18), rgba(16, 185, 129, 0.08) 65%, transparent) !important;
+    border-left: none !important;
     padding-left: 12px !important;
     text-shadow: 0 0 16px rgba(56, 189, 248, 0.8) !important;
     opacity: 1 !important;

@@ -164,6 +164,7 @@ class App {
     this.currentHasRomaji = false;
     this.currentLyricsData = [];
     this.activeLyricIdx = -1;
+    this.lastScrolledLyricIdx = -1;
     this.currentLyricsTrackId = null;
     this.currentLeadingSilence = 0;
     this.hasWordSync = false;
@@ -2377,6 +2378,7 @@ class App {
     if (!this.cinemaLyricsStream || !track) return;
 
     this.activeLyricIdx = -1;
+    this.lastScrolledLyricIdx = -1;
     this.currentLyricsData = [];
     this.lyricsAlignPending = false;
     if (this.cinemaLeadInDots) {
@@ -2778,6 +2780,7 @@ class App {
     if (this.cinemaTimeCurrent) {
       this.cinemaTimeCurrent.textContent = this.formatTime(seekTime);
     }
+    this.lastScrolledLyricIdx = -1;
     this.updateActiveLyricsLine(seekTime);
   }
 
@@ -2788,12 +2791,10 @@ class App {
     }
 
     const userOffset = this.getCurrentTrackOffset();
-    const isYt = (this.currentAudioMode !== 'native' && this.currentTrack?.type !== 'suno' && this.currentTrack?.type !== 'local');
-    // High-Precision Acoustic Latency Compensation:
-    // Chromium YouTube iframe audio pipeline buffering adds ~200-220ms behind JS clock.
-    // Offsetting by -0.22s locks lyrics and Romaji strictly onto the physical vocal attack.
-    const acousticLatencyCompensation = isYt ? -0.22 : 0.0;
-    const syncTime = Math.max(0, currentSecs + acousticLatencyCompensation + userOffset);
+    // Better Lyrics timing offset anticipation standard (+120ms lead)
+    // Synchronizes text highlight perfectly as vocal acoustic onset occurs.
+    const timingOffset = 0.12;
+    const syncTime = Math.max(0, currentSecs + timingOffset + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
       if (syncTime >= this.currentLyricsData[i].time) {
@@ -2828,6 +2829,29 @@ class App {
       this.cinemaLeadInDots.style.display = showLeadIn ? 'inline-flex' : 'none';
     }
 
+    // Anticipatory smooth scroll: glide 350ms before vocal onset into the golden-ratio upper third (36%)
+    const scrollLeadTime = syncTime + 0.35;
+    let scrollTargetIdx = activeIdx;
+    for (let i = 0; i < this.currentLyricsData.length; i++) {
+      if (scrollLeadTime >= this.currentLyricsData[i].time) {
+        scrollTargetIdx = i;
+      } else {
+        break;
+      }
+    }
+    if (scrollTargetIdx !== this.lastScrolledLyricIdx && scrollTargetIdx >= 0) {
+      this.lastScrolledLyricIdx = scrollTargetIdx;
+      const targetLine = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${scrollTargetIdx}"]`);
+      if (targetLine) {
+        const stream = this.cinemaLyricsStream;
+        const lineTop = targetLine.offsetTop;
+        const lineHeight = targetLine.offsetHeight;
+        const streamHeight = stream.clientHeight;
+        const targetScroll = Math.max(0, lineTop - (streamHeight * 0.36) + (lineHeight / 2));
+        stream.scrollTo({ top: targetScroll, behavior: 'smooth' });
+      }
+    }
+
     if (activeIdx !== this.activeLyricIdx) {
       this.activeLyricIdx = activeIdx;
       this.cinemaLyricsStream.classList.toggle('has-active', activeIdx >= 0);
@@ -2836,15 +2860,7 @@ class App {
       lines.forEach((line, idx) => {
         const isActive = (idx === activeIdx);
         line.classList.toggle('active', isActive);
-        if (isActive) {
-          // Fluid golden-ratio upper-center scrolling (Apple Music & Better Lyrics standard)
-          const stream = this.cinemaLyricsStream;
-          const lineTop = line.offsetTop;
-          const lineHeight = line.offsetHeight;
-          const streamHeight = stream.clientHeight;
-          const targetScroll = Math.max(0, lineTop - (streamHeight * 0.38) + (lineHeight / 2));
-          stream.scrollTo({ top: targetScroll, behavior: 'smooth' });
-        } else if (idx < activeIdx) {
+        if (idx < activeIdx) {
           // Past lines: ensure all syllables are fully swept and marked passed
           if (line.classList.contains('has-word-sync')) {
             const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji');

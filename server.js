@@ -2345,6 +2345,52 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
   return null;
 }
 
+function generateInterpolatedWords(text, begin, end) {
+  if (!text || typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const duration = Math.max(0.1, (end || begin + 3) - begin);
+
+  const isCjk = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(trimmed);
+  const tokens = [];
+
+  if (isCjk && !trimmed.includes(' ')) {
+    for (const ch of trimmed) {
+      tokens.push({ text: ch, trailingSpace: false });
+    }
+  } else {
+    const rawTokens = trimmed.split(/(\s+)/);
+    for (let i = 0; i < rawTokens.length; i++) {
+      const tok = rawTokens[i];
+      if (/^\s+$/.test(tok)) {
+        if (tokens.length > 0) tokens[tokens.length - 1].trailingSpace = true;
+      } else if (tok) {
+        tokens.push({ text: tok, trailingSpace: false });
+      }
+    }
+  }
+
+  if (tokens.length === 0) return null;
+
+  const totalWeight = tokens.reduce((acc, t) => acc + Math.max(1, t.text.length), 0);
+  let curTime = begin;
+
+  return tokens.map((token, i) => {
+    const weight = Math.max(1, token.text.length);
+    const tokenDuration = (weight / totalWeight) * duration;
+    const wBegin = curTime;
+    const wEnd = (i === tokens.length - 1) ? (end || curTime + tokenDuration) : curTime + tokenDuration;
+    curTime = wEnd;
+
+    return {
+      text: token.text,
+      begin: parseFloat(wBegin.toFixed(3)),
+      end: parseFloat(wEnd.toFixed(3)),
+      trailingSpace: token.trailingSpace
+    };
+  });
+}
+
 function parseAppleMusicTTML(ttmlString) {
   if (!ttmlString || typeof ttmlString !== 'string') return null;
 
@@ -2459,13 +2505,19 @@ function parseAppleMusicTTML(ttmlString) {
     let text = decodeXml(innerContent.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
     if (text) {
       const translit = lineKey ? translitMap.get(lineKey) : null;
+      let finalWords = words.length > 0 ? words : generateInterpolatedWords(text, time, endTime);
+      let finalRomajiWords = translit?.words || null;
+      if (!finalRomajiWords && translit?.text) {
+        finalRomajiWords = generateInterpolatedWords(translit.text, time, endTime);
+      }
+
       items.push({
         time: parseFloat(time.toFixed(2)),
         endTime: parseFloat(endTime.toFixed(2)),
         text,
-        words: words.length > 0 ? words : null,
+        words: finalWords,
         romaji: translit ? translit.text : null,
-        romajiWords: translit ? translit.words : null,
+        romajiWords: finalRomajiWords,
         lang: detectedTranslitLang
       });
     }
@@ -2513,14 +2565,14 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
       const tlLower = (titleLatin || '').toLowerCase();
       const ntLower = (nativeTitle || '').toLowerCase();
 
-      // Priority 1: Exact title match with duration proximity
+      // Priority 1: Exact title match with duration proximity (tolerant for album padding)
       for (const h of hits) {
         const hTitle = (h.title || '').toLowerCase();
         const isExactTitle = hTitle === tLower || (ntLower && hTitle === ntLower) || (tlLower && hTitle === tlLower);
         if (isExactTitle) {
           if (targetDuration > 0) {
             const diff = Math.abs((h.duration || 0) - targetDuration);
-            if (diff <= (isMv ? 90 : 15)) {
+            if (diff <= (isMv ? 90 : 30)) {
               matchedHit = h;
               break;
             }
@@ -2542,7 +2594,7 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
           if (titleMatches) {
             if (targetDuration > 0) {
               const diff = Math.abs((h.duration || 0) - targetDuration);
-              if (diff <= (isMv ? 90 : 20)) {
+              if (diff <= (isMv ? 90 : 25)) {
                 matchedHit = h;
                 break;
               }

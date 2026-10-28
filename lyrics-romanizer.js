@@ -720,11 +720,25 @@ class LyricsRomanizer {
         }
       }
 
+      let computedRomajiWords = item.romajiWords || null;
+      if (!computedRomajiWords && Array.isArray(updatedWords) && updatedWords.some(w => w.romaji)) {
+        computedRomajiWords = updatedWords.map(w => ({
+          text: w.romaji || w.text,
+          begin: w.begin,
+          end: w.end,
+          trailingSpace: w.trailingSpace !== false
+        }));
+      } else if (!computedRomajiWords && romaji && item.time !== undefined) {
+        const beginTime = item.time;
+        const endTime = item.endTime || (item.time + 3.0);
+        computedRomajiWords = this.interpolateLineWords(romaji, beginTime, endTime);
+      }
+
       result.push({
         ...item,
         words: updatedWords,
         romaji: romaji || null,
-        romajiWords: item.romajiWords || null,
+        romajiWords: computedRomajiWords,
         lang: lineLang || null
       });
     }
@@ -733,6 +747,52 @@ class LyricsRomanizer {
       lines: result,
       detectedLang: overallLang
     };
+  }
+
+  interpolateLineWords(text, begin, end) {
+    if (!text || typeof text !== 'string') return null;
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    const duration = Math.max(0.1, (end || begin + 3) - begin);
+
+    const isCjk = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(trimmed);
+    const tokens = [];
+
+    if (isCjk && !trimmed.includes(' ')) {
+      for (const ch of trimmed) {
+        tokens.push({ text: ch, trailingSpace: false });
+      }
+    } else {
+      const rawTokens = trimmed.split(/(\s+)/);
+      for (let i = 0; i < rawTokens.length; i++) {
+        const tok = rawTokens[i];
+        if (/^\s+$/.test(tok)) {
+          if (tokens.length > 0) tokens[tokens.length - 1].trailingSpace = true;
+        } else if (tok) {
+          tokens.push({ text: tok, trailingSpace: false });
+        }
+      }
+    }
+
+    if (tokens.length === 0) return null;
+
+    const totalWeight = tokens.reduce((acc, t) => acc + Math.max(1, t.text.length), 0);
+    let curTime = begin;
+
+    return tokens.map((token, i) => {
+      const weight = Math.max(1, token.text.length);
+      const tokenDuration = (weight / totalWeight) * duration;
+      const wBegin = curTime;
+      const wEnd = (i === tokens.length - 1) ? (end || curTime + tokenDuration) : curTime + tokenDuration;
+      curTime = wEnd;
+
+      return {
+        text: token.text,
+        begin: parseFloat(wBegin.toFixed(3)),
+        end: parseFloat(wEnd.toFixed(3)),
+        trailingSpace: token.trailingSpace
+      };
+    });
   }
 }
 
