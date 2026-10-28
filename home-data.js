@@ -14,6 +14,7 @@
  */
 
 const ytSearch = require('yt-search');
+const playlistDb = require('./playlist-db');
 
 // Full album and playlist catalog with complete tracklists
 const ALBUM_CATALOG = {
@@ -1595,10 +1596,14 @@ async function getAlbumDetail(albumId, options = {}) {
   return enrichedAlbum;
 }
 
-async function fetchMoreAlbumTracks(albumId, offset = 0) {
+async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
   let album = albumEnrichCache.get(albumId) || ALBUM_CATALOG[albumId];
   if (!album) {
     album = await getAlbumDetail(albumId);
+  }
+  if (!album && playlistDb) {
+    const pl = playlistDb.getPlaylistById(albumId, userKey) || playlistDb.getAllPlaylists(userKey).find(p => p.id === albumId);
+    if (pl) album = pl;
   }
   if (!album) return [];
 
@@ -1606,16 +1611,96 @@ async function fetchMoreAlbumTracks(albumId, offset = 0) {
   const existingTitleKeys = new Set(
     (album.tracks || []).map(t => normalizeTrackKey(t.title, album.artist)).filter(k => k.length >= 2)
   );
-  const queries = [
-    `"${album.artist}" official music video`,
-    `"${album.artist}" official audio`,
-    `"${album.artist} - Topic"`,
-    `"${album.artist}" official mv`,
-    `"${album.artist}" official track`
-  ];
 
-  const startIndex = Math.floor((offset / 8)) % queries.length;
   const newTracks = [];
+
+  function tryAddTrack(t, fallbackArtist = 'AuraSound Mix') {
+    if (!t) return false;
+    const id = t.id || t.videoId;
+    if (!id || existingIds.has(id)) return false;
+    const titleKey = normalizeTrackKey(t.title, t.artist || fallbackArtist);
+    if (titleKey.length >= 2 && existingTitleKeys.has(titleKey)) return false;
+
+    existingIds.add(id);
+    if (titleKey.length >= 2) existingTitleKeys.add(titleKey);
+
+    const trk = {
+      id: id,
+      title: t.title,
+      artist: t.artist || (t.author ? t.author.name : fallbackArtist),
+      duration: t.duration || t.timestamp || '3:30',
+      thumbnail: t.thumbnail || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+      type: 'youtube'
+    };
+    newTracks.push(trk);
+    if (albumEnrichCache.has(albumId)) {
+      albumEnrichCache.get(albumId).tracks.push(trk);
+    }
+    return true;
+  }
+
+  // 1. HYBRID PART 1: Pull remaining tracks from imported albums/playlists
+  try {
+    const allUserPlaylists = playlistDb.getAllPlaylists(userKey).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+
+    // If inside Supermix or a crossover fusion mix: check all imported playlists
+    if (albumId === 'deck-supermix' || albumId.startsWith('mix-fusion-')) {
+      for (const pl of allUserPlaylists) {
+        for (const t of (pl.tracks || [])) {
+          if (tryAddTrack(t, pl.title)) {
+            if (newTracks.length >= 6) break;
+          }
+        }
+        if (newTracks.length >= 6) break;
+      }
+    } else {
+      // If inside a specific imported playlist/album: pull any remaining tracks from that playlist first
+      const matchedPl = allUserPlaylists.find(p => p.id === albumId);
+      if (matchedPl && Array.isArray(matchedPl.tracks)) {
+        for (const t of matchedPl.tracks) {
+          if (tryAddTrack(t, matchedPl.artist || matchedPl.title)) {
+            if (newTracks.length >= 6) break;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Hybrid imported tracks load error:', err.message);
+  }
+
+  // 2. HYBRID PART 2: Extract clean artist names and query YouTube Music for fresh official tracks
+  let queryArtists = [];
+  if (albumId === 'deck-supermix') {
+    const artSet = new Set();
+    (album.tracks || []).forEach(t => {
+      const a = (t.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
+      if (a && a.length > 1 && !a.toLowerCase().includes('aurasound')) artSet.add(a);
+    });
+    queryArtists = Array.from(artSet).slice(0, 4);
+  } else {
+    const cleanArt = (album.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
+    if (cleanArt && cleanArt.length > 1 && !cleanArt.toLowerCase().includes('aurasound')) {
+      queryArtists = [cleanArt];
+    } else {
+      const artSet = new Set();
+      (album.tracks || []).forEach(t => {
+        const a = (t.artist || '').split('•')[0].split(',')[0].trim();
+        if (a && a.length > 1 && !a.toLowerCase().includes('aurasound')) artSet.add(a);
+      });
+      queryArtists = Array.from(artSet).slice(0, 3);
+    }
+  }
+
+  if (queryArtists.length === 0) queryArtists = ['YOASOBI', 'NewJeans'];
+
+  const queries = [];
+  queryArtists.forEach(art => {
+    queries.push(`"${art}" official music video`);
+    queries.push(`"${art}" official audio`);
+    queries.push(`lagu mirip ${art} official music video`);
+  });
+
+  const startIndex = Math.floor((offset / 6)) % queries.length;
 
   for (let i = 0; i < queries.length && newTracks.length < 15; i++) {
     const qIndex = (startIndex + i) % queries.length;
@@ -1624,29 +1709,21 @@ async function fetchMoreAlbumTracks(albumId, offset = 0) {
       const res = await ytSearch(q);
       if (res && res.videos) {
         for (const v of res.videos) {
-          const titleKey = normalizeTrackKey(v.title, album.artist);
-          const isDuplicate = existingIds.has(v.videoId) || (titleKey.length >= 2 && existingTitleKeys.has(titleKey));
-          if (!isDuplicate && isOfficialMusicTrack(v, album.artist)) {
-            existingIds.add(v.videoId);
-            if (titleKey.length >= 2) existingTitleKeys.add(titleKey);
-            const trk = {
+          const matchedArtist = queryArtists.find(a => isOfficialMusicTrack(v, a)) || queryArtists[0];
+          if (isOfficialMusicTrack(v, matchedArtist)) {
+            tryAddTrack({
               id: v.videoId,
               title: v.title,
-              artist: v.author ? v.author.name : album.artist,
+              artist: v.author ? v.author.name : matchedArtist,
               duration: v.timestamp || '3:30',
-              thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
-              type: 'youtube'
-            };
-            newTracks.push(trk);
-            if (albumEnrichCache.has(albumId)) {
-              albumEnrichCache.get(albumId).tracks.push(trk);
-            }
+              thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`
+            }, matchedArtist);
             if (newTracks.length >= 15) break;
           }
         }
       }
     } catch (e) {
-      console.warn('Error querying:', q, e.message);
+      console.warn('Error querying YT for loadMore:', q, e.message);
     }
   }
 

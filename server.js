@@ -567,7 +567,8 @@ app.get('/api/home/album/:id', async (req, res) => {
 app.get('/api/home/album/:id/more', async (req, res) => {
   try {
     const offset = parseInt(req.query.offset) || 0;
-    const newTracks = await homeData.fetchMoreAlbumTracks(req.params.id, offset);
+    const userKey = req.headers['x-device-id'] || req.headers['x-user-id'] || req.query.deviceId || null;
+    const newTracks = await homeData.fetchMoreAlbumTracks(req.params.id, offset, userKey);
     res.json({ success: true, newTracks, count: newTracks.length });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

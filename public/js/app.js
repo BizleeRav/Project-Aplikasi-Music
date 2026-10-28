@@ -5593,11 +5593,11 @@ class App {
           <div id="home-album-tracks-container" class="track-list"></div>
           <div id="home-album-pagination-box"></div>
 
-          ${(album.type === 'playlist' || album.type === 'mix') ? `
+          ${(album.type === 'playlist' || album.type === 'mix' || album.isAlbum || album.isImported || album.id === 'deck-supermix') ? `
           <div class="home-album-load-more-wrap">
             <button id="btn-load-more-album-tracks" class="btn-album-load-more" onclick="window.app.loadMoreAlbumTracks('${album.id}')">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
-              <span>${isEn ? 'Load More Songs from YouTube Music' : 'Muat Lebih Banyak dari YouTube Music'}</span>
+              <span>${isEn ? 'Load More Songs (Imported & YouTube Music)' : 'Muat Lebih Banyak Lagu (Gabungan Impor & YouTube Music)'}</span>
             </button>
           </div>
           ` : ''}
@@ -5762,7 +5762,13 @@ class App {
 
     try {
       const currentCount = (this.currentAlbumDetail.tracks || []).length;
-      const res = await fetch(`/api/home/album/${encodeURIComponent(albumId)}/more?offset=${currentCount}`);
+      const userKey = this.getUserKey();
+      const res = await fetch(`/api/home/album/${encodeURIComponent(albumId)}/more?offset=${currentCount}`, {
+        headers: {
+          'x-device-id': userKey,
+          'x-user-id': userKey
+        }
+      });
       const data = await res.json();
 
       if (data.success && data.newTracks && data.newTracks.length > 0) {
@@ -5793,7 +5799,7 @@ class App {
           const metaCount = document.getElementById('home-album-meta-count');
           if (metaCount) metaCount.textContent = `${this.currentAlbumDetail.tracks.length} ${isEn ? 'Songs' : 'Lagu'}`;
 
-          this.showToast(`+${trulyNew.length} lagu baru ditambahkan ke album! 🎶`, 'success');
+          this.showToast(`+${trulyNew.length} lagu baru ditambahkan (Gabungan Impor & YouTube Music)! 🎶`, 'success');
         } else {
           this.showToast('Semua lagu yang ditemukan sudah ada di dalam album.', 'info');
         }
