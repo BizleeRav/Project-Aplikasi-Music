@@ -2741,14 +2741,6 @@ app.get('/api/lyrics', async (req, res) => {
         }
       }
 
-      // 3. Smart Duration Delta Alignment between YouTube Music & Studio Master
-      if (!isMv && duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 2.5) {
-        const delta = duration - result.duration;
-        if (Math.abs(delta) >= 0.25 && Math.abs(delta) <= 1.5) {
-          autoOffsetSec -= (delta * 0.5);
-        }
-      }
-
       let items = [];
 
       if (result.parsedLyrics && Array.isArray(result.parsedLyrics) && result.parsedLyrics.length > 0) {

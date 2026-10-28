@@ -1490,7 +1490,7 @@
             <!-- Quick Micro-Offset Calibration Tool -->
             <div class="cinema-offset-ctrl" title="Kalibrasi Halus: Geser Lirik jika Agak Telat / Kecepetan">
               <button type="button" class="btn-offset-adjust" onclick="window.app.adjustCurrentTrackOffset(-0.25)" title="Lirik Kecepatan: Geser Mundur 0.25 detik">−0.25s</button>
-              <span id="cinema-offset-display" class="offset-display" title="Offset lirik lagu ini">0.00s</span>
+              <span id="cinema-offset-display" class="offset-display" onclick="window.app.resetCurrentTrackOffset()" title="Klik untuk Reset Offset ke 0.00s (Shortcut: '\' di keyboard)" style="cursor: pointer;">0.00s</span>
               <button type="button" class="btn-offset-adjust" onclick="window.app.adjustCurrentTrackOffset(+0.25)" title="Lirik Ketinggalan: Geser Maju 0.25 detik">+0.25s</button>
             </div>
           </div>

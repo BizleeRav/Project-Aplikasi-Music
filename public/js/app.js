@@ -1605,10 +1605,21 @@ class App {
       });
     }
 
-    // Keyboard shortcut: Escape to exit Studio Cinema
+    // Keyboard shortcuts for Studio Cinema (Escape to close, [ and ] for micro-offset, \ to reset)
     window.addEventListener('keydown', (e) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) return;
+
       if (e.key === 'Escape' && this.cinemaModal && this.cinemaModal.classList.contains('active')) {
         this.closeStudioCinema();
+      } else if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
+        if (e.key === '[') {
+          this.adjustCurrentTrackOffset(-0.25);
+        } else if (e.key === ']') {
+          this.adjustCurrentTrackOffset(+0.25);
+        } else if (e.key === '\\') {
+          this.resetCurrentTrackOffset();
+        }
       }
     });
 
@@ -2857,6 +2868,16 @@ class App {
     const t = this.getCurrentPlaybackTime();
     this.updateActiveLyricsLine(t);
     this.showToast(`Kalibrasi lirik: ${cur > 0 ? '+' : ''}${cur.toFixed(2)}s`, 'info');
+  }
+
+  resetCurrentTrackOffset() {
+    const key = this.getTrackOffsetKey();
+    if (!key) return;
+    localStorage.removeItem(key);
+    this.updateOffsetDisplay();
+    const t = this.getCurrentPlaybackTime();
+    this.updateActiveLyricsLine(t);
+    this.showToast('Offset lirik direset ke 0.00s', 'info');
   }
 
   updateOffsetDisplay() {
