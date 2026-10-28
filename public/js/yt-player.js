@@ -214,25 +214,18 @@ class YTPlayerManager {
       return raw;
     }
 
-    // Detect when YouTube iframe delivers a new time packet (usually every ~250ms)
+    // When YouTube iframe delivers a new time tick (~every 250ms)
     if (raw !== this._lastRawTime) {
       this._lastRawTime = raw;
       this._lastRawTimestamp = now;
-
-      // If deviation is significant (>350ms, e.g. after seek or buffer), snap immediately
-      if (Math.abs(this._interpolatedTime - raw) > 0.35) {
-        this._interpolatedTime = raw;
-      }
     }
 
-    // High-Resolution Predictive Smoothing between YouTube 250ms ticks
+    // High-Resolution Micro-Extrapolation between YouTube 250ms ticks
+    // Capped at 0.28s to strictly prevent runaway or forward drift during buffering
     const elapsedSec = (now - this._lastRawTimestamp) / 1000;
-    // Cap extrapolation at 0.35s to prevent runaway if player buffers
-    const estimated = this._lastRawTime + Math.min(elapsedSec, 0.35);
-
-    // Ensure time strictly advances without jitter
-    this._interpolatedTime = Math.max(this._interpolatedTime, estimated);
-    return this._interpolatedTime;
+    const estimated = this._lastRawTime + Math.min(Math.max(0, elapsedSec), 0.28);
+    this._interpolatedTime = estimated;
+    return estimated;
   }
 
   setVolume(volPercent) {

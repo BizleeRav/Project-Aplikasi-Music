@@ -2385,17 +2385,22 @@ function parseAppleMusicTTML(ttmlString) {
       while ((textMatch = textTagRegex.exec(transBlockMatch[2])) !== null) {
         const lineKey = textMatch[1];
         const inner = textMatch[2];
-        const spanRegex = /<span\s+[^>]*begin="([^"]+)"\s+end="([^"]+)"[^>]*>([\s\S]*?)<\/span>/gi;
+        const spanRegex = /<span\s+([\s\S]*?)>([\s\S]*?)<\/span>/gi;
         const romajiWords = [];
         let sm;
         while ((sm = spanRegex.exec(inner)) !== null) {
-          const wText = decodeXml(sm[3].replace(/<[^>]+>/g, '').trim());
-          if (wText) {
-            romajiWords.push({
-              text: wText,
-              begin: parseFloat(parseTimeStr(sm[1]).toFixed(3)),
-              end: parseFloat(parseTimeStr(sm[2]).toFixed(3))
-            });
+          const sAttrs = sm[1];
+          const bMatch = sAttrs.match(/\bbegin="([^"]+)"/i);
+          const eMatch = sAttrs.match(/\bend="([^"]+)"/i);
+          if (bMatch && eMatch) {
+            const wText = decodeXml(sm[2].replace(/<[^>]+>/g, '').trim());
+            if (wText) {
+              romajiWords.push({
+                text: wText,
+                begin: parseFloat(parseTimeStr(bMatch[1]).toFixed(3)),
+                end: parseFloat(parseTimeStr(eMatch[1]).toFixed(3))
+              });
+            }
           }
         }
         const fullRomajiText = decodeXml(inner.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
@@ -2409,38 +2414,45 @@ function parseAppleMusicTTML(ttmlString) {
   }
 
   // 2. Parse main lyrics lines (<p> tags)
-  const pRegex = /<p\s+[^>]*begin="([^"]+)"[^>]*(?:end="([^"]+)")?[^>]*>([\s\S]*?)<\/p>/gi;
-  const spanRegex = /<span\s+[^>]*begin="([^"]+)"\s+end="([^"]+)"[^>]*>([\s\S]*?)<\/span>(\s*)/gi;
+  const pRegex = /<p\s+([\s\S]*?)>([\s\S]*?)<\/p>/gi;
+  const spanRegex = /<span\s+([\s\S]*?)>([\s\S]*?)<\/span>(\s*)/gi;
   const items = [];
   let match;
 
   while ((match = pRegex.exec(ttmlString)) !== null) {
-    const fullPTag = match[0];
-    const beginStr = match[1];
-    const endStr = match[2];
-    const time = parseTimeStr(beginStr);
-    const endTime = endStr ? parseTimeStr(endStr) : time + 3.0;
+    const attrStr = match[1];
+    const innerContent = match[2];
+    const beginMatch = attrStr.match(/\bbegin="([^"]+)"/i);
+    const endMatch = attrStr.match(/\bend="([^"]+)"/i);
+    if (!beginMatch) continue;
 
-    const keyMatch = fullPTag.match(/(?:itunes:key|lrc:key)="([^"]+)"/i);
+    const time = parseTimeStr(beginMatch[1]);
+    const endTime = endMatch ? parseTimeStr(endMatch[1]) : time + 3.0;
+
+    const keyMatch = attrStr.match(/(?:itunes:key|lrc:key)="([^"]+)"/i);
     const lineKey = keyMatch ? keyMatch[1] : null;
 
-    const innerContent = match[3];
     const words = [];
     let sm;
     while ((sm = spanRegex.exec(innerContent)) !== null) {
-      const wBegin = parseTimeStr(sm[1]);
-      const wEnd = parseTimeStr(sm[2]);
-      const rawSpanText = sm[3].replace(/<[^>]+>/g, '');
-      const trailingInSpan = /\s+$/.test(rawSpanText);
-      const trailingAfterSpan = Boolean(sm[4] && sm[4].length > 0);
-      const wText = decodeXml(rawSpanText.trim());
-      if (wText) {
-        words.push({
-          text: wText,
-          begin: parseFloat(wBegin.toFixed(3)),
-          end: parseFloat(wEnd.toFixed(3)),
-          trailingSpace: trailingInSpan || trailingAfterSpan
-        });
+      const sAttrs = sm[1];
+      const bMatch = sAttrs.match(/\bbegin="([^"]+)"/i);
+      const eMatch = sAttrs.match(/\bend="([^"]+)"/i);
+      if (bMatch && eMatch) {
+        const wBegin = parseTimeStr(bMatch[1]);
+        const wEnd = parseTimeStr(eMatch[1]);
+        const rawSpanText = sm[2].replace(/<[^>]+>/g, '');
+        const trailingInSpan = /\s+$/.test(rawSpanText);
+        const trailingAfterSpan = Boolean(sm[3] && sm[3].length > 0);
+        const wText = decodeXml(rawSpanText.trim());
+        if (wText) {
+          words.push({
+            text: wText,
+            begin: parseFloat(wBegin.toFixed(3)),
+            end: parseFloat(wEnd.toFixed(3)),
+            trailingSpace: trailingInSpan || trailingAfterSpan
+          });
+        }
       }
     }
 

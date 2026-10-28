@@ -2710,8 +2710,9 @@ class App {
         }
       }
 
+      const hasWordSync = (Array.isArray(item.words) && item.words.length > 0) || (Array.isArray(item.romajiWords) && item.romajiWords.length > 0);
       return `
-        <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''} ${Array.isArray(item.words) && item.words.length > 0 ? 'has-word-sync' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
+        <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''} ${hasWordSync ? 'has-word-sync' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
           <div class="lyric-main-text">${mainContent}</div>
           ${romajiContent}
         </div>
@@ -2789,9 +2790,9 @@ class App {
     const userOffset = this.getCurrentTrackOffset();
     const isYt = (this.currentAudioMode !== 'native' && this.currentTrack?.type !== 'suno' && this.currentTrack?.type !== 'local');
     // High-Precision Acoustic Latency Compensation:
-    // YouTube Web Audio pipeline has ~200ms of hardware/browser latency behind JS clock.
-    // Offsetting by -0.20s prevents lyrics and Romaji from triggering prematurely before singer's vocal attack.
-    const acousticLatencyCompensation = isYt ? -0.20 : 0.0;
+    // Chromium YouTube iframe audio pipeline buffering adds ~200-220ms behind JS clock.
+    // Offsetting by -0.22s locks lyrics and Romaji strictly onto the physical vocal attack.
+    const acousticLatencyCompensation = isYt ? -0.22 : 0.0;
     const syncTime = Math.max(0, currentSecs + acousticLatencyCompensation + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
@@ -2843,6 +2844,25 @@ class App {
           const streamHeight = stream.clientHeight;
           const targetScroll = Math.max(0, lineTop - (streamHeight * 0.38) + (lineHeight / 2));
           stream.scrollTo({ top: targetScroll, behavior: 'smooth' });
+        } else if (idx < activeIdx) {
+          // Past lines: ensure all syllables are fully swept and marked passed
+          if (line.classList.contains('has-word-sync')) {
+            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji');
+            allWords.forEach(w => {
+              w.style.setProperty('--fill-pct', '100%');
+              w.classList.remove('active');
+              w.classList.add('passed');
+            });
+          }
+        } else if (idx > activeIdx) {
+          // Future lines: reset syllables to initial unhighlighted state
+          if (line.classList.contains('has-word-sync')) {
+            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji');
+            allWords.forEach(w => {
+              w.style.setProperty('--fill-pct', '0%');
+              w.classList.remove('active', 'passed');
+            });
+          }
         }
       });
     }
@@ -2902,9 +2922,9 @@ class App {
   }
 
   getCurrentTrackOffset() {
-    const key = this.getTrackOffsetKey();
-    if (!key) return 0;
-    return parseFloat(localStorage.getItem(key)) || 0;
+    // 100% Automatic Timing: manual calibration buttons have been removed.
+    // Always return 0 so stale localStorage keys cannot distort acoustic synchronization.
+    return 0;
   }
 
   adjustCurrentTrackOffset(deltaSec) {
