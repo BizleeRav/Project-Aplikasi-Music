@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.15.0">
+  <link rel="stylesheet" href="/css/style.css?v=4.16.0">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     // Ultra-Fast Synchronous Pre-Hydration (0ms layout shift / no reset flash)
@@ -1268,27 +1268,37 @@
     </div>
   </div>
 
-  <!-- Modal Impor Playlist YouTube Music -->
+  <!-- Modal Impor Playlist Spotify & YouTube Music -->
   <div id="modal-import-playlist" class="modal-overlay">
     <div class="modal-card">
       <button class="modal-close-btn" onclick="document.getElementById('modal-import-playlist').classList.remove('active')">✕</button>
-      <div class="modal-title">Impor Playlist YouTube Music 📥</div>
+      <div class="modal-title">Impor Playlist & Album 📥</div>
       <div class="modal-desc">
-        Tempel tautan / URL playlist dari akun YouTube Music Anda untuk memuat semua lagu secara instan.
+        Tempel tautan / URL playlist maupun album dari <strong>Spotify</strong> atau <strong>YouTube Music</strong>.
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 16px;">
+        <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(30, 215, 96, 0.15); border: 1px solid rgba(30, 215, 96, 0.4); color: #1ed760; font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 5.524 4.477 10 10 10s10-4.476 10-10c0-5.523-4.477-10-10-10zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.435-5.308-1.76-8.792-.963-.334.076-.667-.133-.743-.466-.076-.334.133-.667.466-.743 3.805-.87 7.073-.496 9.719 1.115.294.18.386.563.207.857zm1.224-2.72c-.226.368-.71.482-1.078.256-2.69-1.654-6.79-2.134-9.97-1.168-.413.125-.85-.11-.975-.523-.125-.413.11-.85.523-.975 3.634-1.103 8.147-.568 11.244 1.332.368.226.482.71.256 1.078zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.494.15-1.02-.132-1.17-.626-.15-.494.132-1.02.626-1.17 3.535-1.073 9.404-.87 13.115 1.332.443.263.588.84.325 1.283-.263.444-.84.588-1.284.325z"/></svg>
+          Spotify
+        </span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #ef4444; font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+          YouTube Music
+        </span>
       </div>
 
       <form id="form-import-playlist" style="text-align: left;">
         <div class="form-group">
-          <label class="form-label" for="input-playlist-url">URL atau Link Playlist</label>
-          <input type="url" id="input-playlist-url" class="form-input" placeholder="https://music.youtube.com/playlist?list=PL..." required>
+          <label class="form-label" for="input-playlist-url">URL / Link Playlist atau Album</label>
+          <input type="url" id="input-playlist-url" class="form-input" placeholder="https://open.spotify.com/playlist/... atau https://music.youtube.com/..." required>
         </div>
 
-        <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 12px; font-size: 0.78rem; color: #94a3b8; margin-bottom: 20px;">
-          <strong>💡 Cara salin link playlist dari akun Anda:</strong><br>
-          1. Buka YouTube Music / YouTube di HP atau Laptop.<br>
-          2. Masuk ke menu <strong>Koleksi / Library</strong> -> Buka playlist Anda.<br>
-          3. Klik tombol <strong>Bagikan (Share)</strong> -> pilih <strong>Salin Link</strong>.<br>
-          4. <em>Catatan:</em> Pastikan privasi playlist Anda disetel ke <strong>Publik</strong> atau <strong>Tidak Terdaftar (Unlisted)</strong> agar dapat dibaca.
+        <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 12px; font-size: 0.78rem; color: #94a3b8; margin-bottom: 20px; line-height: 1.5;">
+          <strong>💡 Cara salin link:</strong><br>
+          • <strong>Spotify:</strong> Buka Spotify -> Buka Playlist/Album -> Klik <strong>Bagikan (Share)</strong> -> <strong>Salin Tautan</strong>.<br>
+          • <strong>YouTube Music:</strong> Buka Playlist -> Klik <strong>Bagikan (Share)</strong> -> <strong>Salin Link</strong>.<br>
+          • <em>Tips:</em> Playlist akan otomatis tersimpan di tab Playlist kamu dengan cover art resolusi tinggi!
         </div>
 
         <div id="import-status-text" style="color: var(--primary); font-size: 0.85rem; margin-bottom: 12px; text-align: center;"></div>
@@ -1644,10 +1654,10 @@
   </div>
 
   <!-- Application Logic Scripts -->
-  <script src="/js/audio-engine.js?v=4.15.0"></script>
-  <script src="/js/yt-player.js?v=4.15.0"></script>
-  <script src="/js/taste-engine.js?v=4.15.0"></script>
-  <script src="/js/suno-studio.js?v=4.15.0"></script>
-  <script src="/js/app.js?v=4.15.0"></script>
+  <script src="/js/audio-engine.js?v=4.16.0"></script>
+  <script src="/js/yt-player.js?v=4.16.0"></script>
+  <script src="/js/taste-engine.js?v=4.16.0"></script>
+  <script src="/js/suno-studio.js?v=4.16.0"></script>
+  <script src="/js/app.js?v=4.16.0"></script>
 </body>
 </html>

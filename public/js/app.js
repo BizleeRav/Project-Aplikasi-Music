@@ -6193,7 +6193,7 @@ class App {
     this.showToast(`"${track.title}" ditambahkan ke antrean 🎶`, 'success');
   }
 
-  playTrack(track) {
+  async playTrack(track) {
     if (!track) return;
 
     if (track.id === 'mix-liked') {
@@ -6204,6 +6204,24 @@ class App {
         this.openLikedMusicDetail();
       }
       return;
+    }
+
+    // On-demand Spotify audio resolution (seamless matching without delay)
+    if (track.id && (track.id.startsWith('sp_') || (track.isSpotify && !track.youtubeResolved))) {
+      this.showToast(`Menyambungkan audio: ${track.title}...`, 'info');
+      try {
+        const resolveRes = await fetch(`/api/spotify/resolve?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist || '')}&id=${encodeURIComponent(track.spotifyId || track.id)}`);
+        const resolveData = await resolveRes.json();
+        if (resolveData.success && resolveData.videoId) {
+          track.originalSpotifyId = track.id;
+          track.id = resolveData.videoId;
+          track.type = 'youtube';
+          track.youtubeResolved = true;
+          this.savePlaylists();
+        }
+      } catch (spErr) {
+        console.warn('Spotify on-demand resolve error:', spErr);
+      }
     }
 
     // Record playback metrics in TasteEngine and Play History
@@ -6250,7 +6268,7 @@ class App {
       this.cinemaVinylThumb.onerror = () => { this.cinemaVinylThumb.src = '/images/supermix.jpg'; };
     }
     if (this.badgeSourceText) {
-      this.badgeSourceText.textContent = track.type === 'suno' ? 'SUNO AI • DSP' : 'YT MUSIC • 24-BIT';
+      this.badgeSourceText.textContent = track.type === 'suno' ? 'SUNO AI • DSP' : (track.isSpotify ? 'SPOTIFY • 24-BIT' : 'YT MUSIC • 24-BIT');
     }
     if (this.badgeSource) {
       this.badgeSource.className = track.type === 'suno' ? 'player-hifi-badge badge-suno' : 'player-hifi-badge badge-yt';
@@ -6735,7 +6753,10 @@ class App {
     const btn = document.getElementById('btn-submit-import');
     const statusText = document.getElementById('import-status-text');
     if (btn) btn.disabled = true;
-    if (statusText) statusText.textContent = 'Menghubungkan ke YouTube Music dan mengambil daftar lagu...';
+    const isSpotify = /spotify/i.test(url);
+    if (statusText) statusText.textContent = isSpotify
+      ? 'Menghubungkan ke Spotify dan mengambil daftar lagu...'
+      : 'Menghubungkan ke YouTube Music dan mengambil daftar lagu...';
 
     try {
       const userKey = this.getUserKey();

@@ -23,6 +23,7 @@ function getLyricsRomanizer() {
 const sunoLoginHelper = require('./suno-login-helper');
 const deviceCredits = require('./device-credits');
 const tasteFeed = require('./taste-feed');
+const spotifyService = require('./spotify-service');
 let ytdlInstance = null;
 let chooseFormatFn = null;
 async function getYtdl() {
@@ -973,11 +974,27 @@ app.get('/api/stream-audio', async (req, res) => {
   }
 });
 
-// 6. Import Playlist from YouTube / YouTube Music
+// 6. Import Playlist from YouTube Music / Spotify
 app.post('/api/playlist/import', async (req, res) => {
   const { url } = req.body;
   if (!url) {
     return res.status(400).json({ success: false, error: 'URL atau ID playlist diperlukan' });
+  }
+
+  // Handle Spotify Playlist / Album / Track Import
+  if (spotifyService.isSpotifyUrl(url)) {
+    try {
+      const deviceId = req.headers['x-device-id'] || req.body?.deviceId || null;
+      const newPlaylist = await spotifyService.importFromSpotify(url, deviceId);
+      playlistDb.addOrUpdatePlaylist(newPlaylist);
+      return res.json({
+        success: true,
+        playlist: newPlaylist
+      });
+    } catch (spErr) {
+      console.error('Spotify import error:', spErr.message);
+      return res.status(500).json({ success: false, error: `Gagal mengimpor dari Spotify: ${spErr.message}` });
+    }
   }
 
   try {
@@ -1116,6 +1133,24 @@ app.post('/api/playlist/import', async (req, res) => {
   } catch (error) {
     console.error('Playlist import error:', error.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil playlist. Pastikan playlist disetel sebagai Publik atau Tidak Terdaftar (Unlisted) di akun Anda.' });
+  }
+});
+
+// 6.1 Resolve Spotify track audio on demand
+app.get('/api/spotify/resolve', async (req, res) => {
+  try {
+    const { title, artist, id } = req.query;
+    if (!title && !id) {
+      return res.status(400).json({ success: false, error: 'Parameter title atau id diperlukan' });
+    }
+    const videoId = await spotifyService.resolveSpotifyTrack(title, artist, id);
+    if (!videoId) {
+      return res.status(404).json({ success: false, error: 'Audio untuk lagu Spotify ini tidak ditemukan' });
+    }
+    res.json({ success: true, videoId });
+  } catch (err) {
+    console.error('Spotify resolve error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
