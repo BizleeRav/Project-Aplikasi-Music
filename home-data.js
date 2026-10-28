@@ -1656,8 +1656,26 @@ async function fetchMoreAlbumTracks(albumId, offset = 0) {
 // ==========================================
 // SMART SUPERMIX & LIKED RADIO ENGINE
 // ==========================================
-async function generatePersonalizedSupermix({ topArtists = [], favorites = [], history = [] } = {}) {
+async function generatePersonalizedSupermix({ topArtists = [], favorites = [], history = [], importedPlaylists = [] } = {}) {
+  const validImported = (Array.isArray(importedPlaylists) ? importedPlaylists : [])
+    .filter(p => p && Array.isArray(p.tracks) && p.tracks.length > 0);
+
   let activeArtists = Array.isArray(topArtists) ? topArtists.filter(Boolean) : [];
+
+  // Also collect artists from imported playlists so their related tracks are blended
+  if (validImported.length > 0) {
+    const importedArtists = new Set();
+    validImported.forEach(p => {
+      (p.tracks || []).slice(0, 10).forEach(t => {
+        const art = (t.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
+        if (art && art.length > 1 && !art.toLowerCase().includes('aurasound')) {
+          importedArtists.add(art);
+        }
+      });
+    });
+    activeArtists = [...Array.from(importedArtists), ...activeArtists];
+  }
+
   if (activeArtists.length === 0 && Array.isArray(favorites)) {
     const artistSet = new Set();
     favorites.forEach(f => { if (f.artist) artistSet.add(f.artist); });
@@ -1668,7 +1686,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     history.forEach(h => { if (h.artist) artistSet.add(h.artist); });
     activeArtists = Array.from(artistSet);
   }
-  if (activeArtists.length === 0) {
+  if (activeArtists.length === 0 && validImported.length === 0) {
     return {
       id: 'deck-supermix',
       type: 'mix',
@@ -1679,11 +1697,12 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
       tracks: []
     };
   }
-  activeArtists = activeArtists.slice(0, 5);
+  activeArtists = [...new Set(activeArtists)].slice(0, 5);
 
   const existingIds = new Set();
   const existingSongKeys = new Set();
   const familiarPool = [];
+  const importedPool = [];
   const relatedPool = [];
   const discoveryPool = [];
 
@@ -1708,7 +1727,24 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     return true;
   }
 
-  // 1. 40% Familiar hits from favorites & history
+  // 1. Tracks from Imported Playlists/Albums (40% Weight)
+  if (validImported.length === 1) {
+    for (const t of validImported[0].tracks) {
+      if (addTrackIfUnique(t, importedPool) && importedPool.length >= 12) break;
+    }
+  } else if (validImported.length >= 2) {
+    const maxImpLen = Math.max(...validImported.map(p => (p.tracks || []).length));
+    for (let i = 0; i < maxImpLen; i++) {
+      for (const p of validImported) {
+        if (p.tracks && p.tracks[i]) {
+          addTrackIfUnique(p.tracks[i], importedPool);
+        }
+      }
+      if (importedPool.length >= 16) break;
+    }
+  }
+
+  // 2. Familiar hits from favorites & history (40% Weight)
   if (Array.isArray(favorites) && favorites.length > 0) {
     for (const f of favorites) {
       addTrackIfUnique(f, familiarPool);
@@ -1804,8 +1840,9 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     return true;
   }
 
-  const maxLen = Math.max(familiarPool.length, relatedPool.length, discoveryPool.length);
+  const maxLen = Math.max(importedPool.length, familiarPool.length, relatedPool.length, discoveryPool.length);
   for (let i = 0; i < maxLen; i++) {
+    if (i < importedPool.length) pushToFinal(importedPool[i]);
     if (i < familiarPool.length) pushToFinal(familiarPool[i]);
     if (i < relatedPool.length) pushToFinal(relatedPool[i]);
     if (i < discoveryPool.length) pushToFinal(discoveryPool[i]);
@@ -1828,16 +1865,27 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
 
   const artistSummary = activeArtists.slice(0, 4).join(', ');
 
+  let supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: memadukan lagu yang sering Anda dengar (${artistSummary}) dengan penemuan musik baru yang selaras dengan selera Anda.`;
+  let supermixArtist = `Berdasarkan selera musik Anda • ${artistSummary}`;
+
+  if (validImported.length === 1) {
+    supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: memadukan album "${validImported[0].title}" dengan riwayat lagu Anda dan penemuan musik baru.`;
+    supermixArtist = `Album ${validImported[0].title} & Musik Terkait`;
+  } else if (validImported.length >= 2) {
+    supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: perpaduan crossover antara "${validImported[0].title}", "${validImported[1].title}", riwayat musik Anda, dan penemuan baru.`;
+    supermixArtist = `Fusion: ${validImported[0].title} × ${validImported[1].title}`;
+  }
+
   const supermixAlbum = {
     id: 'deck-supermix',
     type: 'mix',
-    badge: 'SMART SUPERMIX',
+    badge: validImported.length >= 2 ? 'CROSSOVER SUPERMIX' : (validImported.length === 1 ? 'ALBUM SUPERMIX' : 'SMART SUPERMIX'),
     title: 'My Supermix',
-    artist: `Berdasarkan selera musik Anda • ${artistSummary}`,
+    artist: supermixArtist,
     releaseYear: '2026',
     genre: 'Algoritma Personalisasi AuraSound',
-    thumbnail: '/images/supermix.jpg',
-    description: `Diracik otomatis oleh Algoritma Cerdas AuraSound: memadukan lagu yang sering Anda dengar (${artistSummary}) dengan penemuan musik baru yang selaras dengan selera Anda.`,
+    thumbnail: validImported[0]?.thumbnail || '/images/supermix.jpg',
+    description: supermixDescription,
     totalDuration: hours > 0 ? `${finalTracks.length} Lagu • ${hours} Jam ${minutes} Menit` : `${finalTracks.length} Lagu • ${minutes} Menit`,
     tracks: finalTracks,
     isPersonalized: true

@@ -508,7 +508,53 @@ app.get('/api/home', async (req, res) => {
 // 2.6 Album & Curated Playlist Details
 app.get('/api/home/album/:id', async (req, res) => {
   try {
-    const album = await homeData.getAlbumDetail(req.params.id);
+    let album = await homeData.getAlbumDetail(req.params.id);
+
+    // If not found in default catalog, check user playlists DB
+    if (!album) {
+      const allPlaylists = playlistDb.getAllPlaylists();
+      const pl = allPlaylists.find(p => p.id === req.params.id || String(p.id) === String(req.params.id));
+      if (pl) {
+        album = {
+          id: pl.id,
+          title: pl.title,
+          artist: pl.source === 'spotify' ? 'Spotify Imported Album' : (pl.source === 'youtube' ? 'YouTube Music Imported Album' : (pl.artist || 'AuraSound Album')),
+          description: pl.description || `Koleksi ${pl.tracks?.length || 0} lagu yang diimpor ke AuraSound.`,
+          thumbnail: pl.thumbnail || '/images/supermix.jpg',
+          tracks: pl.tracks || [],
+          badge: pl.source === 'spotify' ? 'SPOTIFY' : 'ALBUM',
+          year: new Date().getFullYear(),
+          genre: 'Imported Album'
+        };
+      }
+    }
+
+    // Support dynamic Crossover Fusion mixes (mix-fusion-[id1]-[id2])
+    if (!album && req.params.id.startsWith('mix-fusion-')) {
+      const allPlaylists = playlistDb.getAllPlaylists().filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+      const pl1 = allPlaylists.find(p => req.params.id.includes(p.id)) || allPlaylists[0];
+      const pl2 = allPlaylists.filter(p => p.id !== pl1?.id).find(p => req.params.id.includes(p.id)) || allPlaylists[1];
+      if (pl1 && pl2) {
+        const mergedTracks = [];
+        const maxT = Math.max(pl1.tracks?.length || 0, pl2.tracks?.length || 0);
+        for (let i = 0; i < maxT; i++) {
+          if (pl1.tracks && pl1.tracks[i]) mergedTracks.push(pl1.tracks[i]);
+          if (pl2.tracks && pl2.tracks[i]) mergedTracks.push(pl2.tracks[i]);
+        }
+        album = {
+          id: req.params.id,
+          title: `${pl1.title} × ${pl2.title} Fusion`,
+          artist: `${pl1.title} & ${pl2.title}`,
+          description: `Perpaduan crossover harmonis antara album "${pl1.title}" dan "${pl2.title}".`,
+          thumbnail: pl1.thumbnail || pl2.thumbnail || '/images/supermix.jpg',
+          tracks: mergedTracks,
+          badge: 'FUSION MIX',
+          year: '2026',
+          genre: 'Crossover Hybrid Mix'
+        };
+      }
+    }
+
     if (!album) {
       return res.status(404).json({ success: false, error: 'Album tidak ditemukan' });
     }
@@ -531,8 +577,18 @@ app.get('/api/home/album/:id/more', async (req, res) => {
 // 2.7 Smart Personalized Recommendations (Supermix & Liked Radio)
 app.post('/api/recommendations/supermix', async (req, res) => {
   try {
-    const { topArtists, favorites, history } = req.body || {};
-    const supermix = await homeData.generatePersonalizedSupermix({ topArtists, favorites, history });
+    const { topArtists, favorites, history, importedPlaylists } = req.body || {};
+    const userKey = req.headers['x-device-id'] || req.body?.deviceId || null;
+    let effectiveImported = Array.isArray(importedPlaylists) && importedPlaylists.length > 0
+      ? importedPlaylists
+      : playlistDb.getAllPlaylists(userKey).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+
+    const supermix = await homeData.generatePersonalizedSupermix({
+      topArtists,
+      favorites,
+      history,
+      importedPlaylists: effectiveImported
+    });
     res.json({ success: true, album: supermix });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -552,9 +608,21 @@ app.post('/api/recommendations/liked-radio', async (req, res) => {
 // 2.8 AI Dynamic Personalized Feed & Taste Setup (First-launch & Custom Preferences)
 app.post('/api/recommendations/personalized-feed', async (req, res) => {
   try {
-    const { name, genres, mood, history, favorites } = req.body || {};
+    const { name, genres, mood, history, favorites, importedPlaylists } = req.body || {};
     const deviceId = req.headers['x-device-id'] || req.body?.deviceId || null;
-    const feed = await tasteFeed.generatePersonalizedFeed({ name, genres, mood, history, favorites, deviceId });
+    let effectiveImported = Array.isArray(importedPlaylists) && importedPlaylists.length > 0
+      ? importedPlaylists
+      : playlistDb.getAllPlaylists(deviceId).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+
+    const feed = await tasteFeed.generatePersonalizedFeed({
+      name,
+      genres,
+      mood,
+      history,
+      favorites,
+      importedPlaylists: effectiveImported,
+      deviceId
+    });
     res.json(feed);
   } catch (error) {
     console.error('Personalized feed error:', error);
@@ -564,8 +632,17 @@ app.post('/api/recommendations/personalized-feed', async (req, res) => {
 
 app.post('/api/recommendations/hypermix', async (req, res) => {
   try {
-    const { history, favorites } = req.body || {};
-    const result = await tasteFeed.generateHypermix({ history, favorites });
+    const { history, favorites, importedPlaylists } = req.body || {};
+    const userKey = req.headers['x-device-id'] || req.body?.deviceId || null;
+    let effectiveImported = Array.isArray(importedPlaylists) && importedPlaylists.length > 0
+      ? importedPlaylists
+      : playlistDb.getAllPlaylists(userKey).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+
+    const result = await tasteFeed.generateHypermix({
+      history,
+      favorites,
+      importedPlaylists: effectiveImported
+    });
     res.json(result);
   } catch (error) {
     console.error('Hypermix recommendation error:', error);

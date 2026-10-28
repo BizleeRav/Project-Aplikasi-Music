@@ -3604,15 +3604,17 @@ class App {
       } catch (e) {}
     }
 
-    // 1. Pengguna belum pernah memutar lagu apapun (0 lagu):
-    if (!history || history.length === 0) {
+    const importedPlaylists = (this.playlists || []).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+
+    // 1. Pengguna belum pernah memutar lagu apapun dan belum mengimpor album (0 lagu & 0 album):
+    if ((!history || history.length === 0) && importedPlaylists.length === 0) {
       this.renderEmptyCleanHome();
       return;
     }
 
-    // 2. Begitu mulai mendengar lagu (>= 1 lagu):
-    // Langsung munculkan lagu yang berkaitan dengan yang didengar, tanpa progress bar!
-    await this.renderRelatedMusicHome(history);
+    // 2. Begitu mulai mendengar lagu (>= 1 lagu) ATAU mengimpor album:
+    // Langsung munculkan lagu yang berkaitan, album vinyl, dan supermix!
+    await this.renderRelatedMusicHome(history || []);
   }
 
   renderEmptyHome() {
@@ -3725,13 +3727,14 @@ class App {
     const isEn = (this.userProfile?.lang === 'en');
     const userName = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : 'Sobat Musik';
 
-    // Fetch dynamic recommendations directly derived from user's listened songs
+    // Fetch dynamic recommendations directly derived from user's listened songs & imported albums
     let hypermixData = null;
+    const importedPlaylists = (this.playlists || []).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
     try {
       const res = await fetch('/api/recommendations/hypermix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history, favorites: this.favorites || [] })
+        body: JSON.stringify({ history, favorites: this.favorites || [], importedPlaylists })
       });
       hypermixData = await res.json();
     } catch (e) {
@@ -3782,10 +3785,10 @@ class App {
     if (mixedForYou) this.registerTrackList('ytm-mixed', mixedForYou);
 
     const isAudioPlaying = (this.nativeAudio && !this.nativeAudio.paused) || (window.ytPlayer && window.ytPlayer.isPlaying);
-    const heroThumb = history[0]?.thumbnail || relatedTracks[0]?.thumbnail || '/images/supermix.jpg';
+    const heroThumb = history[0]?.thumbnail || importedPlaylists[0]?.thumbnail || relatedTracks[0]?.thumbnail || '/images/supermix.jpg';
     const topArtistNames = (hypermixData?.artists && hypermixData.artists.length > 0)
       ? hypermixData.artists.join(' • ')
-      : history.slice(0, 3).map(h => h.artist).join(' • ');
+      : (importedPlaylists[0]?.title || history.slice(0, 3).map(h => h.artist).join(' • ') || 'AuraSound AI');
 
     const hour = new Date().getHours();
     let greeting = 'Selamat Datang';
@@ -5451,6 +5454,44 @@ class App {
       album = this.homeAlbums[albumId];
     }
 
+    if (!album && this.playlists) {
+      const pl = this.playlists.find(p => p.id === albumId || String(p.id) === String(albumId));
+      if (pl) {
+        album = {
+          id: pl.id,
+          title: pl.title,
+          artist: pl.source === 'spotify' ? 'Spotify Imported Album' : (pl.source === 'youtube' ? 'YouTube Music Imported Album' : (pl.artist || 'AuraSound Album')),
+          description: pl.description || `Koleksi ${pl.tracks?.length || 0} lagu yang diimpor ke AuraSound.`,
+          thumbnail: pl.thumbnail || '/images/supermix.jpg',
+          tracks: pl.tracks || [],
+          badge: pl.source === 'spotify' ? 'SPOTIFY' : 'ALBUM',
+          year: new Date().getFullYear(),
+          genre: 'Imported Album'
+        };
+      } else if (albumId.startsWith('mix-fusion-')) {
+        const imp = this.playlists.filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+        if (imp.length >= 2) {
+          const mergedTracks = [];
+          const maxT = Math.max(imp[0].tracks?.length || 0, imp[1].tracks?.length || 0);
+          for (let i = 0; i < maxT; i++) {
+            if (imp[0].tracks && imp[0].tracks[i]) mergedTracks.push(imp[0].tracks[i]);
+            if (imp[1].tracks && imp[1].tracks[i]) mergedTracks.push(imp[1].tracks[i]);
+          }
+          album = {
+            id: albumId,
+            title: `${imp[0].title} × ${imp[1].title} Fusion`,
+            artist: `${imp[0].title} & ${imp[1].title}`,
+            description: `Perpaduan crossover harmonis antara album "${imp[0].title}" dan "${imp[1].title}".`,
+            thumbnail: imp[0].thumbnail || imp[1].thumbnail || '/images/supermix.jpg',
+            tracks: mergedTracks,
+            badge: 'FUSION MIX',
+            year: '2026',
+            genre: 'Crossover Hybrid Mix'
+          };
+        }
+      }
+    }
+
     if (!album) {
       detailView.innerHTML = `
         <div class="home-album-detail">
@@ -5794,6 +5835,32 @@ class App {
         }
       } catch (e) {
         console.warn('Failed to load album for playback:', e);
+      }
+    }
+
+    if (!album && this.playlists) {
+      const pl = this.playlists.find(p => p.id === albumId || String(p.id) === String(albumId));
+      if (pl) {
+        album = {
+          id: pl.id,
+          title: pl.title,
+          tracks: pl.tracks || []
+        };
+      } else if (albumId.startsWith('mix-fusion-')) {
+        const imp = this.playlists.filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+        if (imp.length >= 2) {
+          const mergedTracks = [];
+          const maxT = Math.max(imp[0].tracks?.length || 0, imp[1].tracks?.length || 0);
+          for (let i = 0; i < maxT; i++) {
+            if (imp[0].tracks && imp[0].tracks[i]) mergedTracks.push(imp[0].tracks[i]);
+            if (imp[1].tracks && imp[1].tracks[i]) mergedTracks.push(imp[1].tracks[i]);
+          }
+          album = {
+            id: albumId,
+            title: `${imp[0].title} × ${imp[1].title} Fusion`,
+            tracks: mergedTracks
+          };
+        }
       }
     }
 
@@ -6786,6 +6853,9 @@ class App {
       this.playlists.unshift(importedPl);
       this.savePlaylists();
       this.showToast(`Berhasil mengimpor "${importedPl.title}" (${importedPl.tracks.length} lagu)!`, 'success');
+
+      // Invalidate home sections cache so Home immediately renders the new Vinyl Shelf & Supermix
+      this.cachedSections = null;
 
       // Close modal & render
       document.getElementById('modal-import-playlist').classList.remove('active');

@@ -307,7 +307,7 @@ async function fetchCategoryTracks(query, max = 10) {
 /**
  * Main personalized feed generator
  */
-async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-indo'], mood = 'chill', history = [], favorites = [], deviceId = null }) {
+async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-indo'], mood = 'chill', history = [], favorites = [], importedPlaylists = [], deviceId = null }) {
   const validGenres = Array.isArray(genres) && genres.length > 0 ? genres : ['pop-indo'];
   const userMood = MOODS[mood] ? mood : 'chill';
   const moodObj = MOODS[userMood];
@@ -327,10 +327,10 @@ async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-i
   // Fetch mood tracks
   const moodPromise = fetchCategoryTracks(moodObj.query, 12);
 
-  // If user has listening history, compute true YouTube Music UpNext related tracks in parallel!
+  // If user has listening history or imported albums, compute true UpNext and dynamic mix recommendations in parallel!
   let hypermixPromise = Promise.resolve(null);
-  if (Array.isArray(history) && history.length > 0) {
-    hypermixPromise = generateHypermix({ history, favorites }).catch(err => {
+  if ((Array.isArray(history) && history.length > 0) || (Array.isArray(importedPlaylists) && importedPlaylists.length > 0)) {
+    hypermixPromise = generateHypermix({ history, favorites, importedPlaylists }).catch(err => {
       console.warn('Personalized feed hypermix error:', err.message);
       return null;
     });
@@ -463,14 +463,27 @@ async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-i
  * Derives personalized albums and artist/vibe mixes directly from what the user listened to & liked.
  * Strictly avoids hardcoding and strictly omits duplicate Supermix.
  */
-async function generateHypermix({ history = [], favorites = [] } = {}) {
+async function generateHypermix({ history = [], favorites = [], importedPlaylists = [] } = {}) {
   const validHistory = Array.isArray(history) ? history.filter(Boolean) : [];
   const validFavorites = Array.isArray(favorites) ? favorites.filter(Boolean) : [];
+  const validImported = (Array.isArray(importedPlaylists) ? importedPlaylists : [])
+    .filter(p => p && Array.isArray(p.tracks) && p.tracks.length > 0);
 
   const artistCounts = {};
   const historyTracks = [];
   const artistThumbMap = {};
   const seenIds = new Set();
+
+  // Factor in artists from imported playlists (high weight)
+  validImported.forEach(p => {
+    (p.tracks || []).slice(0, 10).forEach(t => {
+      const cleanArtist = (t.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
+      if (cleanArtist && cleanArtist.length > 1 && !cleanArtist.includes('AuraSound')) {
+        artistCounts[cleanArtist] = (artistCounts[cleanArtist] || 0) + 4;
+        if (t.thumbnail && !artistThumbMap[cleanArtist]) artistThumbMap[cleanArtist] = t.thumbnail;
+      }
+    });
+  });
 
   validFavorites.forEach(f => {
     if (f && f.artist) {
@@ -504,26 +517,39 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     if (fallback) sortedArtists = [fallback];
   }
 
-  // Cold start baseline if history & favorites are completely empty
+  // Cold start baseline if history, favorites & imported playlists are completely empty
   if (sortedArtists.length === 0) {
     sortedArtists = ['YOASOBI', 'NewJeans', 'Ado', 'tuki.', 'aespa', 'Stray Kids'];
   }
 
-  // 1. Parallel query YouTube Music Up Next recommendations for recent tracks
+  // 1. Query YouTube Music Up Next recommendations from imported albums, history & favorites
   const recentVideoIds = [];
+
+  // Feed up to 2 tracks from imported albums for instant relevant discovery
+  for (const p of validImported) {
+    for (const t of (p.tracks || [])) {
+      const rawId = (t?.id || '').replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
+      if (rawId && rawId.length === 11 && !recentVideoIds.includes(rawId)) {
+        recentVideoIds.push(rawId);
+        if (recentVideoIds.length >= 2) break;
+      }
+    }
+    if (recentVideoIds.length >= 2) break;
+  }
+
   for (const h of validHistory) {
     const rawId = (h?.id || '').replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
     if (rawId && rawId.length === 11 && !recentVideoIds.includes(rawId)) {
       recentVideoIds.push(rawId);
-      if (recentVideoIds.length >= 3) break;
+      if (recentVideoIds.length >= 4) break;
     }
   }
-  if (recentVideoIds.length < 3) {
+  if (recentVideoIds.length < 4) {
     for (const f of validFavorites) {
       const rawId = (f?.id || '').replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
       if (rawId && rawId.length === 11 && !recentVideoIds.includes(rawId)) {
         recentVideoIds.push(rawId);
-        if (recentVideoIds.length >= 3) break;
+        if (recentVideoIds.length >= 4) break;
       }
     }
   }
@@ -597,11 +623,44 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
   ]);
 
   const mixTracks = [];
-  const addedIds = new Set(seenIds); // Don't repeat songs already in user's history in the "related" section!
+  const addedIds = new Set(seenIds);
 
-  // Interleave true UpNext related tracks from recent songs
-  const maxLen = Math.max(...upNextResults.map(r => r.length), 0);
-  for (let i = 0; i < maxLen; i++) {
+  // Interleave tracks from imported albums
+  const importedTracks = [];
+  if (validImported.length === 1) {
+    (validImported[0].tracks || []).slice(0, 8).forEach(t => {
+      if (t && t.id && !addedIds.has(t.id)) {
+        addedIds.add(t.id);
+        importedTracks.push({
+          ...t,
+          tag: validImported[0].source === 'spotify' ? 'SPOTIFY' : 'ALBUM'
+        });
+      }
+    });
+  } else if (validImported.length >= 2) {
+    const maxImpLen = Math.max(...validImported.map(p => (p.tracks || []).length));
+    for (let i = 0; i < maxImpLen && importedTracks.length < 10; i++) {
+      for (const p of validImported) {
+        const t = p.tracks && p.tracks[i];
+        if (t && t.id && !addedIds.has(t.id)) {
+          addedIds.add(t.id);
+          importedTracks.push({
+            ...t,
+            tag: 'FUSION'
+          });
+        }
+      }
+    }
+  }
+
+  // Interleave: imported tracks, true UpNext related tracks, and related hits
+  const maxUpLen = Math.max(...upNextResults.map(r => r.length), 0);
+  const totalRounds = Math.max(importedTracks.length, maxUpLen);
+
+  for (let i = 0; i < totalRounds; i++) {
+    if (importedTracks[i]) {
+      mixTracks.push(importedTracks[i]);
+    }
     for (const list of upNextResults) {
       if (list[i] && !addedIds.has(list[i].id)) {
         addedIds.add(list[i].id);
@@ -620,7 +679,7 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     });
   });
 
-  // If fewer than 8 tracks found, supplement with top trending songs instead of repeating history
+  // If fewer than 8 tracks found, supplement with top trending songs
   if (mixTracks.length < 8) {
     try {
       const topQuery = sortedArtists[0] ? `top hits mirip ${sortedArtists[0]}` : 'trending music official hits';
@@ -639,10 +698,55 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     historyTracks.forEach(t => mixTracks.push(t));
   }
 
+  // Build Vinyl Shelf cards: Prepend Imported Albums at the beginning of the Tactile Vinyl Shelf!
+  const importedVinylCards = validImported.map(p => ({
+    id: p.id,
+    albumId: p.id,
+    title: p.title,
+    artist: p.source === 'spotify' ? 'Spotify Import' : (p.source === 'youtube' ? 'YouTube Music Import' : (p.artist || 'Album Import')),
+    badge: p.source === 'spotify' ? 'SPOTIFY' : 'ALBUM',
+    thumbnail: p.thumbnail || '/images/supermix.jpg',
+    duration: `${p.tracks?.length || 0} Lagu • Hi-Res`,
+    isAlbum: true,
+    isImported: true,
+    source: p.source || 'imported',
+    type: 'imported'
+  }));
+
+  const allDynamicAlbums = [...importedVinylCards, ...dynamicAlbums.filter(Boolean)];
+
   // 3. Build Algorithmic Dynamic Mixes for "Special Mixed Harmonies" (STRICTLY NO "My Supermix")
   const dynamicMixes = [];
 
-  // Mix 1: Liked Music
+  // If 2+ albums imported, create a special Crossover Fusion Mix!
+  if (validImported.length >= 2) {
+    const albA = validImported[0];
+    const albB = validImported[1];
+    dynamicMixes.push({
+      id: `mix-fusion-${albA.id}-${albB.id}`,
+      albumId: `mix-fusion-${albA.id}-${albB.id}`,
+      title: `${albA.title} × ${albB.title} Fusion`,
+      artist: `Crossover Hybrid Mix dari 2 album yang kamu impor`,
+      thumbnail: albA.thumbnail || albB.thumbnail || '/images/supermix.jpg',
+      type: 'mix',
+      cardType: 'square'
+    });
+  }
+
+  // Dedicated album mixes for imported albums
+  validImported.forEach(p => {
+    dynamicMixes.push({
+      id: p.id,
+      albumId: p.id,
+      title: `${p.title} Mix`,
+      artist: `Album ${p.title} (${p.tracks?.length || 0} lagu)`,
+      thumbnail: p.thumbnail || '/images/supermix.jpg',
+      type: 'mix',
+      cardType: 'square'
+    });
+  });
+
+  // Mix: Liked Music
   if (validFavorites.length > 0) {
     dynamicMixes.push({
       id: 'mix-liked',
@@ -655,7 +759,7 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     });
   }
 
-  // Mix 2: Replay Mix (Lagu yang sering diputar ulang)
+  // Mix: Replay Mix (Lagu yang sering diputar ulang)
   if (historyTracks.length > 0) {
     dynamicMixes.push({
       id: 'mix-replay',
@@ -668,7 +772,7 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     });
   }
 
-  // Mix 3..N: Artist Mixes for each Top Artist
+  // Artist Mixes for each Top Artist
   sortedArtists.slice(0, 4).forEach(art => {
     dynamicMixes.push({
       id: `mix-artist-${cleanSlug(art)}`,
@@ -681,7 +785,7 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     });
   });
 
-  // Mix N+1: Discover Mix
+  // Discover Mix
   dynamicMixes.push({
     id: 'showcase-discover',
     albumId: 'showcase-discover',
@@ -692,7 +796,7 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
     cardType: 'square'
   });
 
-  // Mix N+2: Focus Beats: Lo-fi Study
+  // Focus Beats: Lo-fi Study
   dynamicMixes.push({
     id: 'showcase-focus-beats',
     albumId: 'showcase-focus-beats',
@@ -705,15 +809,25 @@ async function generateHypermix({ history = [], favorites = [] } = {}) {
 
   const artistLabel = sortedArtists.length > 0 ? sortedArtists.join(', ') : 'lagu yang kamu dengar';
 
+  let mixTitle = '✨ Lagu yang Berkaitan';
+  let mixDesc = `Diramu otomatis berdasarkan musik yang kamu dengarkan (${artistLabel}).`;
+  if (validImported.length === 1) {
+    mixTitle = `✨ Terinspirasi dari ${validImported[0].title}`;
+    mixDesc = `Paduan lagu dari album "${validImported[0].title}" dan rekomendasi algoritma AuraSound.`;
+  } else if (validImported.length >= 2) {
+    mixTitle = `✨ Crossover Mix: ${validImported[0].title} & ${validImported[1].title}`;
+    mixDesc = `Perpaduan hybrid dari 2 album yang Anda impor dan riwayat musik Anda.`;
+  }
+
   return {
     success: true,
     isReady: true,
     count: validHistory.length,
     artists: sortedArtists,
-    title: '✨ Lagu yang Berkaitan',
-    description: `Diramu otomatis berdasarkan musik yang kamu dengarkan (${artistLabel}).`,
-    tracks: mixTracks.slice(0, 20),
-    dynamicAlbums: dynamicAlbums.filter(Boolean),
+    title: mixTitle,
+    description: mixDesc,
+    tracks: mixTracks.slice(0, 24),
+    dynamicAlbums: allDynamicAlbums,
     dynamicMixes: dynamicMixes
   };
 }
