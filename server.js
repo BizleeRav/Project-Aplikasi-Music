@@ -2232,7 +2232,7 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
   return null;
 }
 
-function parseTTMLToLyrics(ttmlString) {
+function parseAppleMusicTTML(ttmlString) {
   if (!ttmlString || typeof ttmlString !== 'string') return null;
 
   let leadingSilence = 0;
@@ -2243,11 +2243,8 @@ function parseTTMLToLyrics(ttmlString) {
     if (!str) return 0;
     if (str.includes(':')) {
       const parts = str.split(':');
-      if (parts.length === 3) {
-        return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
-      } else if (parts.length === 2) {
-        return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
-      }
+      if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+      if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
     }
     return parseFloat(str) || 0;
   };
@@ -2260,20 +2257,61 @@ function parseTTMLToLyrics(ttmlString) {
     .replace(/&gt;/g, '>')
     .replace(/&#39;/g, "'");
 
+  // 1. Parse official transliterations (Romaji / Pinyin / Revised Romanization)
+  const translitMap = new Map();
+  const transRegex = /<transliteration\s+[^>]*xml:lang="([^"]+)"[^>]*>([\s\S]*?)<\/transliteration>/gi;
+  let transBlockMatch;
+  let detectedTranslitLang = null;
+
+  while ((transBlockMatch = transRegex.exec(ttmlString)) !== null) {
+    const lang = transBlockMatch[1];
+    if (lang.includes('Latn')) {
+      detectedTranslitLang = lang.split('-')[0];
+      const textTagRegex = /<text\s+[^>]*for="([^"]+)"[^>]*>([\s\S]*?)<\/text>/gi;
+      let textMatch;
+      while ((textMatch = textTagRegex.exec(transBlockMatch[2])) !== null) {
+        const lineKey = textMatch[1];
+        const inner = textMatch[2];
+        const spanRegex = /<span\s+[^>]*begin="([^"]+)"\s+end="([^"]+)"[^>]*>([\s\S]*?)<\/span>/gi;
+        const romajiWords = [];
+        let sm;
+        while ((sm = spanRegex.exec(inner)) !== null) {
+          const wText = decodeXml(sm[3].replace(/<[^>]+>/g, '').trim());
+          if (wText) {
+            romajiWords.push({
+              text: wText,
+              begin: parseFloat(parseTimeStr(sm[1]).toFixed(3)),
+              end: parseFloat(parseTimeStr(sm[2]).toFixed(3))
+            });
+          }
+        }
+        const fullRomajiText = decodeXml(inner.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
+        translitMap.set(lineKey, {
+          text: fullRomajiText,
+          words: romajiWords.length > 0 ? romajiWords : null
+        });
+      }
+      break;
+    }
+  }
+
+  // 2. Parse main lyrics lines (<p> tags)
   const pRegex = /<p\s+[^>]*begin="([^"]+)"[^>]*(?:end="([^"]+)")?[^>]*>([\s\S]*?)<\/p>/gi;
   const spanRegex = /<span\s+[^>]*begin="([^"]+)"\s+end="([^"]+)"[^>]*>([\s\S]*?)<\/span>/gi;
   const items = [];
   let match;
 
   while ((match = pRegex.exec(ttmlString)) !== null) {
+    const fullPTag = match[0];
     const beginStr = match[1];
     const endStr = match[2];
     const time = parseTimeStr(beginStr);
     const endTime = endStr ? parseTimeStr(endStr) : time + 3.0;
 
-    const innerContent = match[3];
+    const keyMatch = fullPTag.match(/(?:itunes:key|lrc:key)="([^"]+)"/i);
+    const lineKey = keyMatch ? keyMatch[1] : null;
 
-    // Extract word/syllable-level timings for Apple Music fluid karaoke wave
+    const innerContent = match[3];
     const words = [];
     let sm;
     while ((sm = spanRegex.exec(innerContent)) !== null) {
@@ -2289,123 +2327,188 @@ function parseTTMLToLyrics(ttmlString) {
       }
     }
 
-    let text = innerContent.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-    text = decodeXml(text);
-
+    let text = decodeXml(innerContent.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
     if (text) {
+      const translit = lineKey ? translitMap.get(lineKey) : null;
       items.push({
         time: parseFloat(time.toFixed(2)),
         endTime: parseFloat(endTime.toFixed(2)),
         text,
-        words: words.length > 0 ? words : null
+        words: words.length > 0 ? words : null,
+        romaji: translit ? translit.text : null,
+        romajiWords: translit ? translit.words : null,
+        lang: detectedTranslitLang
       });
     }
   }
 
-  return items.length > 0 ? { leadingSilence, items } : null;
+  return items.length > 0 ? { leadingSilence, items, lang: detectedTranslitLang } : null;
 }
 
 async function searchBetterLyrics(title, artist, targetDuration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv) {
   const cleanTitle = (title || '').replace(/['"‘’“”]/g, '').trim();
   const cleanArtist = (artist || '').replace(/['"‘’“”]/g, '').trim();
 
-  // Smart Query Sequencing: For CJK songs, Native Script matches Apple Music cache best!
-  const queries = [];
+  // Tier 1: lrc.red Master Apple Music TTML Catalog (Direct, Unrestricted & High-Precision)
+  const lrcRedQueries = [];
+  if (cleanTitle && cleanArtist) lrcRedQueries.push(`${cleanTitle} ${cleanArtist}`);
+  if (cleanArtist && cleanTitle) lrcRedQueries.push(`${cleanArtist} ${cleanTitle}`);
+  if (titleLatin && (artistLatin || cleanArtist)) lrcRedQueries.push(`${titleLatin} ${artistLatin || cleanArtist}`);
+  if (nativeTitle && cleanArtist) lrcRedQueries.push(`${nativeTitle} ${cleanArtist}`);
+  if (titleLatin) lrcRedQueries.push(titleLatin);
+  if (cleanTitle) lrcRedQueries.push(cleanTitle);
+  if (artistLatin || cleanArtist) lrcRedQueries.push(artistLatin || cleanArtist);
 
-  if (nativeTitle) {
-    if (artistLatin) queries.push({ s: nativeTitle, a: artistLatin });
-    if (artistHangul && artistHangul !== artistLatin) queries.push({ s: nativeTitle, a: artistHangul });
-    if (cleanArtist) queries.push({ s: nativeTitle, a: cleanArtist });
-    queries.push({ s: nativeTitle });
-  }
+  const seenLrcRed = new Set();
+  const uniqueLrcRed = lrcRedQueries.filter(q => {
+    const k = q.toLowerCase();
+    if (seenLrcRed.has(k)) return false;
+    seenLrcRed.add(k);
+    return true;
+  });
 
-  if (titleLatin && titleLatin !== cleanTitle && titleLatin !== nativeTitle) {
-    if (artistLatin) queries.push({ s: titleLatin, a: artistLatin });
-    if (cleanArtist) queries.push({ s: titleLatin, a: cleanArtist });
-    queries.push({ s: titleLatin });
-  }
+  const headers = { 'User-Agent': 'AuraSound/4.13 (support@aurasound.app)' };
 
-  if (artistLatin && cleanTitle) {
-    queries.push({ s: cleanTitle, a: artistLatin });
-  }
-  if (artistHangul && artistHangul !== artistLatin && cleanTitle) {
-    queries.push({ s: cleanTitle, a: artistHangul });
-  }
-  if (cleanArtist && cleanTitle) {
-    queries.push({ s: cleanTitle, a: cleanArtist });
-    const primaryArtist = cleanArtist.split(/[&,xX/]| feat\.? | ft\.? /i)[0].trim();
-    if (primaryArtist && primaryArtist !== cleanArtist) {
-      queries.push({ s: cleanTitle, a: primaryArtist });
-    }
-  }
-  if (cleanTitle) {
-    queries.push({ s: cleanTitle });
-  }
+  for (const q of uniqueLrcRed) {
+    try {
+      const sRes = await axios.get('https://lrc.red/search.json', {
+        params: { q },
+        headers,
+        timeout: 3200
+      });
+      const hits = sRes.data?.hits || [];
+      if (hits.length === 0) continue;
 
-  // Deduplicate queries
-  const seenQueries = new Set();
-  const uniqueQueries = [];
-  for (const q of queries) {
-    const key = `${(q.s || '').toLowerCase()}:::${(q.a || '').toLowerCase()}`;
-    if (!seenQueries.has(key)) {
-      seenQueries.add(key);
-      uniqueQueries.push(q);
-    }
-  }
+      let matchedHit = null;
+      const tLower = cleanTitle.toLowerCase();
+      const tlLower = (titleLatin || '').toLowerCase();
+      const ntLower = (nativeTitle || '').toLowerCase();
 
-  for (const q of uniqueQueries) {
-    // Try exact duration first, then without duration if needed
-    const durationsToTry = (!isMv && targetDuration > 0)
-      ? [Math.round(targetDuration), null]
-      : [null];
+      // Priority 1: Exact title match with duration proximity
+      for (const h of hits) {
+        const hTitle = (h.title || '').toLowerCase();
+        const isExactTitle = hTitle === tLower || (ntLower && hTitle === ntLower) || (tlLower && hTitle === tlLower);
+        if (isExactTitle) {
+          if (targetDuration > 0) {
+            const diff = Math.abs((h.duration || 0) - targetDuration);
+            if (diff <= (isMv ? 90 : 15)) {
+              matchedHit = h;
+              break;
+            }
+          } else {
+            matchedHit = h;
+            break;
+          }
+        }
+      }
 
-    for (const dVal of durationsToTry) {
-      try {
-        const params = { s: q.s };
-        if (q.a) params.a = q.a;
-        if (dVal) params.d = dVal;
+      // Priority 2: Substring title match
+      if (!matchedHit) {
+        for (const h of hits) {
+          const hTitle = (h.title || '').toLowerCase();
+          const titleMatches = hTitle.includes(tLower) || tLower.includes(hTitle) ||
+            (tlLower && (hTitle.includes(tlLower) || tlLower.includes(hTitle))) ||
+            (ntLower && (hTitle.includes(ntLower) || ntLower.includes(hTitle)));
 
-        const res = await axios.get('https://api.betterlyrics.org/getLyrics', {
-          params,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            'Referer': 'https://music.youtube.com'
-          },
+          if (titleMatches) {
+            if (targetDuration > 0) {
+              const diff = Math.abs((h.duration || 0) - targetDuration);
+              if (diff <= (isMv ? 90 : 20)) {
+                matchedHit = h;
+                break;
+              }
+            } else {
+              matchedHit = h;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!matchedHit && hits.length > 0 && targetDuration <= 0) {
+        matchedHit = hits[0];
+      }
+
+      if (matchedHit) {
+        const metaRes = await axios.get(`https://lrc.red/s/${matchedHit.isrc}.json`, {
+          headers,
           timeout: 3200
         });
 
-        if (res.data && res.data.ttml) {
-          const parsedResult = parseTTMLToLyrics(res.data.ttml);
-          if (parsedResult && parsedResult.items && parsedResult.items.length > 0) {
-            const parsedItems = parsedResult.items;
-            const syncedLrc = parsedItems.map(item => {
-              const m = Math.floor(item.time / 60);
-              const s = (item.time % 60).toFixed(2);
-              return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${item.text}`;
+        if (metaRes.data?.files?.ttml) {
+          const ttmlRes = await axios.get(metaRes.data.files.ttml, {
+            headers,
+            timeout: 3200
+          });
+
+          const parsed = parseAppleMusicTTML(ttmlRes.data);
+          if (parsed && parsed.items && parsed.items.length > 0) {
+            const syncedLrc = parsed.items.map(it => {
+              const m = Math.floor(it.time / 60);
+              const s = (it.time % 60).toFixed(2);
+              return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${it.text}`;
             }).join('\n');
 
-            const lastItem = parsedItems[parsedItems.length - 1];
-            const studioDur = dVal || (lastItem ? Math.round(lastItem.time + 3) : targetDuration);
-
             return {
-              id: `bl_${Date.now()}`,
+              id: `bl_${matchedHit.isrc}`,
               sourceName: 'Better Lyrics (Apple Music TTML)',
-              trackName: q.s,
-              artistName: q.a || artistLatin || artist,
-              duration: studioDur,
-              leadingSilence: parsedResult.leadingSilence || 0,
-              parsedLyrics: parsedItems,
+              trackName: matchedHit.title,
+              artistName: matchedHit.artist,
+              duration: Math.round(matchedHit.duration || targetDuration),
+              leadingSilence: parsed.leadingSilence || 0,
+              parsedLyrics: parsed.items,
               syncedLyrics: syncedLrc,
-              hasWordSync: parsedItems.some(it => it.words && it.words.length > 0)
+              hasWordSync: parsed.items.some(it => it.words && it.words.length > 0),
+              detectedLang: parsed.lang
             };
           }
         }
-      } catch (e) {
-        // Do NOT break on 401; continue to next query variation!
-        continue;
       }
+    } catch (e) {
+      continue;
     }
   }
+
+  // Tier 2: api.betterlyrics.org fallback for cache hits
+  try {
+    const params = { s: cleanTitle };
+    if (cleanArtist) params.a = cleanArtist;
+    if (!isMv && targetDuration > 0) params.d = Math.round(targetDuration);
+
+    const blRes = await axios.get('https://api.betterlyrics.org/getLyrics', {
+      params,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Referer': 'https://music.youtube.com'
+      },
+      timeout: 2500
+    });
+
+    if (blRes.data && blRes.data.ttml) {
+      const parsed = parseAppleMusicTTML(blRes.data.ttml);
+      if (parsed && parsed.items && parsed.items.length > 0) {
+        const syncedLrc = parsed.items.map(it => {
+          const m = Math.floor(it.time / 60);
+          const s = (it.time % 60).toFixed(2);
+          return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${it.text}`;
+        }).join('\n');
+
+        return {
+          id: `bl_${Date.now()}`,
+          sourceName: 'Better Lyrics (Apple Music TTML)',
+          trackName: cleanTitle,
+          artistName: cleanArtist,
+          duration: targetDuration,
+          leadingSilence: parsed.leadingSilence || 0,
+          parsedLyrics: parsed.items,
+          syncedLyrics: syncedLrc,
+          hasWordSync: parsed.items.some(it => it.words && it.words.length > 0),
+          detectedLang: parsed.lang
+        };
+      }
+    }
+  } catch (e) {}
+
   return null;
 }
 
@@ -2753,11 +2856,17 @@ app.get('/api/lyrics', async (req, res) => {
             begin: Math.max(0, parseFloat((w.begin - autoOffsetSec).toFixed(3))),
             end: Math.max(0, parseFloat((w.end - autoOffsetSec).toFixed(3)))
           })) : null;
+          const adjRomajiWords = it.romajiWords ? it.romajiWords.map(w => ({
+            ...w,
+            begin: Math.max(0, parseFloat((w.begin - autoOffsetSec).toFixed(3))),
+            end: Math.max(0, parseFloat((w.end - autoOffsetSec).toFixed(3)))
+          })) : null;
           return {
             ...it,
             time: adjTime,
             endTime: adjEndTime,
-            words: adjWords
+            words: adjWords,
+            romajiWords: adjRomajiWords
           };
         });
       } else {
@@ -2824,10 +2933,16 @@ app.get('/api/lyrics', async (req, res) => {
 
       if (finalItems.length > 0) {
         try {
-          const romanizer = getLyricsRomanizer();
-          const processed = await romanizer.romanizeLyricsList(finalItems);
-          parsedLyrics = processed.lines;
-          detectedLang = processed.detectedLang;
+          const hasOfficialRomaji = finalItems.some(it => it.romaji);
+          if (hasOfficialRomaji) {
+            parsedLyrics = finalItems;
+            detectedLang = result.detectedLang || 'ja';
+          } else {
+            const romanizer = getLyricsRomanizer();
+            const processed = await romanizer.romanizeLyricsList(finalItems);
+            parsedLyrics = processed.lines;
+            detectedLang = processed.detectedLang;
+          }
         } catch (e) {
           console.warn('Romanizer sync error:', e.message);
           parsedLyrics = finalItems.map(it => ({ ...it, romaji: null, lang: null }));

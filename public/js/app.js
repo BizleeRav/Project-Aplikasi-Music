@@ -2667,10 +2667,14 @@ class App {
 
       let romajiContent = '';
       if (item.romaji) {
-        if (Array.isArray(item.words) && item.words.some(w => w.romaji)) {
-          romajiContent = `<div class="lyric-romaji-text">` + item.words.map(w =>
-            `<span class="cinema-lyric-word-romaji" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.romaji || w.text)}</span>`
-          ).join('') + `</div>`;
+        const rWords = (Array.isArray(item.romajiWords) && item.romajiWords.length > 0)
+          ? item.romajiWords
+          : (Array.isArray(item.words) && item.words.some(w => w.romaji) ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end })) : null);
+
+        if (rWords && rWords.length > 0) {
+          romajiContent = `<div class="lyric-romaji-text">` + rWords.map(w =>
+            `<span class="cinema-lyric-word-romaji" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`
+          ).join(' ') + `</div>`;
         } else {
           romajiContent = `<div class="lyric-romaji-text">${this.escapeHtml(item.romaji)}</div>`;
         }

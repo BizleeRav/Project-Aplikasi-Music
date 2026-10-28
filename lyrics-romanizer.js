@@ -520,10 +520,10 @@ class LyricsRomanizer {
 
     const result = [];
     for (const item of parsedLines) {
-      let romaji = null;
-      let lineLang = null;
+      let romaji = item.romaji || null;
+      let lineLang = item.lang || null;
 
-      if (item.text) {
+      if (!romaji && item.text) {
         if (overallLang === 'ja') {
           // If song is Japanese, any Kanji or Kana line is Japanese (prevents pure Kanji from becoming Chinese Pinyin)
           lineLang = (/[\u3040-\u30ff\u4e00-\u9fff]/.test(item.text)) ? 'ja' : null;
@@ -545,7 +545,7 @@ class LyricsRomanizer {
       }
 
       let updatedWords = item.words || null;
-      if (Array.isArray(item.words) && item.words.length > 0 && lineLang) {
+      if (Array.isArray(item.words) && item.words.length > 0 && lineLang && !item.romajiWords) {
         updatedWords = [];
         const fullTokens = (romaji || '').trim().split(/\s+/).filter(Boolean);
 
@@ -594,6 +594,7 @@ class LyricsRomanizer {
         ...item,
         words: updatedWords,
         romaji: romaji || null,
+        romajiWords: item.romajiWords || null,
         lang: lineLang || null
       });
     }
