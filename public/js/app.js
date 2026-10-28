@@ -2656,9 +2656,25 @@ class App {
     this.cinemaLyricsStream.innerHTML = lines.map((item, idx) => {
       let mainContent = '';
       if (Array.isArray(item.words) && item.words.length > 0) {
-        mainContent = item.words.map(w =>
-          `<span class="cinema-lyric-word" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`
-        ).join('');
+        let searchPos = 0;
+        const lineText = item.text || '';
+        mainContent = item.words.map((w, wIdx) => {
+          let hasSpace = false;
+          if (w.trailingSpace !== undefined && typeof w.trailingSpace === 'boolean') {
+            hasSpace = w.trailingSpace;
+          } else if (lineText) {
+            const fIdx = lineText.indexOf(w.text, searchPos);
+            if (fIdx !== -1) {
+              searchPos = fIdx + w.text.length;
+              hasSpace = (searchPos < lineText.length && /\s/.test(lineText[searchPos]));
+            } else {
+              hasSpace = (wIdx < item.words.length - 1);
+            }
+          } else {
+            hasSpace = (wIdx < item.words.length - 1);
+          }
+          return `<span class="cinema-lyric-word ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
+        }).join('');
       } else {
         mainContent = this.escapeHtml(item.text);
       }
@@ -2667,12 +2683,28 @@ class App {
       if (item.romaji) {
         const rWords = (Array.isArray(item.romajiWords) && item.romajiWords.length > 0)
           ? item.romajiWords
-          : (Array.isArray(item.words) && item.words.some(w => w.romaji) ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end })) : null);
+          : (Array.isArray(item.words) && item.words.some(w => w.romaji) ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end, trailingSpace: w.trailingSpace })) : null);
 
         if (rWords && rWords.length > 0) {
-          romajiContent = `<div class="lyric-romaji-text">` + rWords.map(w =>
-            `<span class="cinema-lyric-word-romaji" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`
-          ).join(' ') + `</div>`;
+          let rSearchPos = 0;
+          const romajiLineText = item.romaji || '';
+          romajiContent = `<div class="lyric-romaji-text">` + rWords.map((w, wIdx) => {
+            let hasSpace = false;
+            if (w.trailingSpace !== undefined && typeof w.trailingSpace === 'boolean') {
+              hasSpace = w.trailingSpace;
+            } else if (romajiLineText) {
+              const fIdx = romajiLineText.indexOf(w.text, rSearchPos);
+              if (fIdx !== -1) {
+                rSearchPos = fIdx + w.text.length;
+                hasSpace = (rSearchPos < romajiLineText.length && /\s/.test(romajiLineText[rSearchPos]));
+              } else {
+                hasSpace = (wIdx < rWords.length - 1);
+              }
+            } else {
+              hasSpace = (wIdx < rWords.length - 1);
+            }
+            return `<span class="cinema-lyric-word-romaji ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
+          }).join('') + `</div>`;
         } else {
           romajiContent = `<div class="lyric-romaji-text">${this.escapeHtml(item.romaji)}</div>`;
         }

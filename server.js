@@ -2410,7 +2410,7 @@ function parseAppleMusicTTML(ttmlString) {
 
   // 2. Parse main lyrics lines (<p> tags)
   const pRegex = /<p\s+[^>]*begin="([^"]+)"[^>]*(?:end="([^"]+)")?[^>]*>([\s\S]*?)<\/p>/gi;
-  const spanRegex = /<span\s+[^>]*begin="([^"]+)"\s+end="([^"]+)"[^>]*>([\s\S]*?)<\/span>/gi;
+  const spanRegex = /<span\s+[^>]*begin="([^"]+)"\s+end="([^"]+)"[^>]*>([\s\S]*?)<\/span>(\s*)/gi;
   const items = [];
   let match;
 
@@ -2430,12 +2430,16 @@ function parseAppleMusicTTML(ttmlString) {
     while ((sm = spanRegex.exec(innerContent)) !== null) {
       const wBegin = parseTimeStr(sm[1]);
       const wEnd = parseTimeStr(sm[2]);
-      const wText = decodeXml(sm[3].replace(/<[^>]+>/g, '').trim());
+      const rawSpanText = sm[3].replace(/<[^>]+>/g, '');
+      const trailingInSpan = /\s+$/.test(rawSpanText);
+      const trailingAfterSpan = Boolean(sm[4] && sm[4].length > 0);
+      const wText = decodeXml(rawSpanText.trim());
       if (wText) {
         words.push({
           text: wText,
           begin: parseFloat(wBegin.toFixed(3)),
-          end: parseFloat(wEnd.toFixed(3))
+          end: parseFloat(wEnd.toFixed(3)),
+          trailingSpace: trailingInSpan || trailingAfterSpan
         });
       }
     }
@@ -3005,7 +3009,9 @@ app.get('/api/lyrics', async (req, res) => {
             while ((sylMatch = syllableRegex.exec(rawLinePayload)) !== null) {
               const startVal = parseInt(sylMatch[1] || sylMatch[3], 10);
               const durVal = parseInt(sylMatch[2] || sylMatch[4], 10);
-              const sylText = (sylMatch[5] || '').trim();
+              const rawSyl = sylMatch[5] || '';
+              const trailingSpace = /\s+$/.test(rawSyl);
+              const sylText = rawSyl.trim();
               if (sylText && !isNaN(startVal) && !isNaN(durVal)) {
                 let wordBeginSec;
                 if (startVal >= lineBaseSec * 500 && startVal > 1000) {
@@ -3019,7 +3025,8 @@ app.get('/api/lyrics', async (req, res) => {
                 words.push({
                   text: sylText,
                   begin: adjBegin,
-                  end: adjEnd
+                  end: adjEnd,
+                  trailingSpace: trailingSpace
                 });
               }
             }
