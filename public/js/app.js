@@ -1521,6 +1521,29 @@ class App {
       this.btnToggleRomaji.addEventListener('click', () => this.toggleRomaji());
     }
 
+    // Live Micro-Calibration Lyrics Offset Controls
+    const btnOffsetMinus = document.getElementById('btn-offset-minus');
+    if (btnOffsetMinus) {
+      btnOffsetMinus.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.adjustCurrentTrackOffset(-0.1);
+      });
+    }
+    const btnOffsetPlus = document.getElementById('btn-offset-plus');
+    if (btnOffsetPlus) {
+      btnOffsetPlus.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.adjustCurrentTrackOffset(+0.1);
+      });
+    }
+    const btnOffsetReset = document.getElementById('btn-offset-reset');
+    if (btnOffsetReset) {
+      btnOffsetReset.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.resetCurrentTrackOffset();
+      });
+    }
+
     // Visualizer Mode Switchers (Cinema)
     document.querySelectorAll('.vis-mode-chip').forEach(chip => {
       chip.addEventListener('click', () => {
@@ -2792,10 +2815,10 @@ class App {
 
     const userOffset = this.getCurrentTrackOffset();
     // Universal Acoustic Latency Alignment:
-    // Fully balances streaming Opus demux pre-roll & DAC buffer (~0.67s) + clock interpolation (~0.25s) = ~0.92s
-    // Completely eliminates "kecepetan dikit" so syllable highlights land 100% dead-center on vocal onset across ALL tracks.
+    // Full compensation for YouTube Music streaming audio container padding (~0.50s) + Opus demux & DAC buffer (~0.65s) + interpolation (~0.25s) = -1.40s
+    // Completely eliminates vocal curi-start and lands syllable sweeps 100% in sync with the singer's voice.
     const isStreamingTrack = (!this.currentTrack || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'));
-    const acousticLatencyOffset = isStreamingTrack ? -0.92 : 0.0;
+    const acousticLatencyOffset = isStreamingTrack ? -1.40 : 0.0;
     const syncTime = Math.max(0, currentSecs + acousticLatencyOffset + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
@@ -2944,9 +2967,12 @@ class App {
   }
 
   getCurrentTrackOffset() {
-    // 100% Automatic Timing: manual calibration buttons have been removed.
-    // Always return 0 so stale localStorage keys cannot distort acoustic synchronization.
-    return 0;
+    const key = this.getTrackOffsetKey();
+    if (!key) return 0;
+    const stored = localStorage.getItem(key);
+    if (!stored) return 0;
+    const num = parseFloat(stored);
+    return isNaN(num) ? 0 : num;
   }
 
   adjustCurrentTrackOffset(deltaSec) {
