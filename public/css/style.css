@@ -7889,11 +7889,11 @@ body.music-playing .cinema-turntable-arm {
   position: relative;
   user-select: none;
   transform-origin: left center;
-  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              filter 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              color 0.2s ease,
-              background 0.2s ease;
+  transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+              filter 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+              color 0.15s ease,
+              background 0.15s ease;
 }
 
 /* Inactive lines when singing is in progress - Apple Music & Better Lyrics depth focus */

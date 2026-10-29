@@ -2227,15 +2227,15 @@ function pickBestLyrics(items, targetDuration, targetArtist, targetTitle = '', i
     if (targetDuration && targetDuration > 0 && item.duration) {
       const diff = Math.abs(item.duration - targetDuration);
       if (diff <= 2) {
-        score += 80;
+        score += 100;
       } else if (diff <= 4) {
-        score += 40;
+        score += 60;
       } else if (diff <= 8) {
-        score += 15;
+        score += 20;
       } else if (isMv && item.duration < targetDuration && (targetDuration - item.duration) <= 90) {
         score += 45;
-      } else if (!isMv && diff > 12) {
-        score -= 80;
+      } else if (!isMv && diff > 8) {
+        score -= 250;
       }
     }
 
@@ -2329,11 +2329,11 @@ async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, a
 
         if (targetDuration > 0 && durSec > 0) {
           const diff = Math.abs(durSec - targetDuration);
-          if (diff <= 2) score += 60;
-          else if (diff <= 4) score += 35;
-          else if (diff <= 8) score += 15;
+          if (diff <= 2) score += 100;
+          else if (diff <= 4) score += 60;
+          else if (diff <= 8) score += 20;
           else if (isMv && durSec < targetDuration && (targetDuration - durSec) <= 90) score += 45;
-          else if (!isMv && diff > 15) score -= 40;
+          else if (!isMv && diff > 8) score -= 250;
 
           // Anti TV-Size Guard: If target is full song (>130s), reject short TV-size versions (<110s)
           if (targetDuration > 130 && durSec < 110) {
@@ -2442,11 +2442,11 @@ async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, art
 
         if (targetDuration > 0 && dur > 0) {
           const diff = Math.abs(dur - targetDuration);
-          if (diff <= 2) score += 60;
-          else if (diff <= 4) score += 35;
-          else if (diff <= 8) score += 15;
+          if (diff <= 2) score += 100;
+          else if (diff <= 4) score += 60;
+          else if (diff <= 8) score += 20;
           else if (isMv && dur < targetDuration && (targetDuration - dur) <= 90) score += 45;
-          else if (!isMv && diff > 15) score -= 40;
+          else if (!isMv && diff > 8) score -= 250;
 
           // Anti TV-Size Guard: If target is full song (>130s), reject short TV-size versions (<110s)
           if (targetDuration > 130 && dur < 110) {
@@ -2578,11 +2578,11 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
 
         if (targetDuration > 0 && dur > 0) {
           const diff = Math.abs(dur - targetDuration);
-          if (diff <= 2) score += 60;
-          else if (diff <= 4) score += 35;
-          else if (diff <= 8) score += 15;
+          if (diff <= 2) score += 100;
+          else if (diff <= 4) score += 60;
+          else if (diff <= 8) score += 20;
           else if (isMv && dur < targetDuration && (targetDuration - dur) <= 90) score += 45;
-          else if (!isMv && diff > 15) score -= 40;
+          else if (!isMv && diff > 8) score -= 250;
 
           // Anti TV-Size Guard: If target is full song (>130s), reject short TV-size versions (<110s)
           if (targetDuration > 130 && dur < 110) {
@@ -2752,7 +2752,9 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
         });
 
         if (items.length > 0) {
-          return { leadingSilence: 0, items, lang: parsed.language };
+          const lsMatch = ttmlString.match(/leadingSilence="([0-9.]+)"/i);
+          const leadingSilence = lsMatch ? (parseFloat(lsMatch[1]) || 0) : 0;
+          return { leadingSilence, items, lang: parsed.language };
         }
       }
     }
@@ -3122,27 +3124,39 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
       // Duration Delta scoring
       if (targetDuration > 0 && (h.duration || 0) > 0) {
         const diff = Math.abs(h.duration - targetDuration);
-        if (diff <= 1.5) score += 200;
-        else if (diff <= 4.0) score += 100;
-        else if (diff <= 8.0) score += 40;
+        if (diff <= 1.5) score += 250;
+        else if (diff <= 3.0) score += 180;
+        else if (diff <= 5.0) score += 90;
+        else if (diff <= 8.0) score += 20;
         else if (isMv && h.duration < targetDuration && (targetDuration - h.duration) <= 90) score += 45;
-        else if (!isMv && diff > 15.0) score -= 600;
-        else if (!isMv && diff > 25.0) score -= 1000;
+        else if (!isMv && diff > 8.0) score -= 600;
+        else if (!isMv && diff > 15.0) score -= 1200;
       }
 
       scoredHits.push({ hit: h, score });
     }
 
-    scoredHits.sort((a, b) => b.score - a.score);
-
+    // Filter valid candidates with strict studio duration tolerance (diff <= 5s, or max 8s if score >= 300)
     const validCandidates = scoredHits.filter(s => {
       if (s.score < 80) return false;
-      // For studio audio, never accept a track that differs by > 15 seconds from the master
       if (!isMv && targetDuration > 0 && s.hit.duration > 0) {
         const diff = Math.abs(s.hit.duration - targetDuration);
-        if (diff > 15.0) return false;
+        if (diff > 8.0) return false;
+        if (diff > 5.0 && s.score < 300) return false;
       }
       return true;
+    });
+
+    // Sort candidates: prioritize highest score, and if scores are close (within 60 pts), pick closest duration
+    validCandidates.sort((a, b) => {
+      if (targetDuration > 0 && a.hit.duration > 0 && b.hit.duration > 0) {
+        const diffA = Math.abs(a.hit.duration - targetDuration);
+        const diffB = Math.abs(b.hit.duration - targetDuration);
+        if (Math.abs(a.score - b.score) <= 60) {
+          return diffA - diffB;
+        }
+      }
+      return b.score - a.score;
     });
 
     for (const cand of validCandidates) {
@@ -3362,36 +3376,47 @@ const mvIntroOffsetCache = new Map();
 async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
   if (!videoId) return 0;
 
-  // 1. Instant 0ms lookup in verified cinematic MV table
+  // 1. If audio and lyrics already share matching timeline (duration diff <= 3s),
+  // they are already synchronized to 0:00 without cinematic video intro -> return 0!
+  if (videoDur > 0 && studioDur > 0 && Math.abs(videoDur - studioDur) <= 3) {
+    return 0;
+  }
+
+  // 2. Lookup in verified cinematic MV table:
+  // Only apply intro offset if audio has cinematic prologue difference (videoDur - studioDur >= 5s)
   if (KNOWN_MV_OFFSETS[videoId] !== undefined) {
+    if (videoDur > 0 && studioDur > 0 && (videoDur - studioDur) < 5) {
+      return 0;
+    }
     return KNOWN_MV_OFFSETS[videoId];
   }
 
   if (!isMv) return 0;
+  if (videoDur > 0 && studioDur > 0 && (videoDur - studioDur) < 5) return 0;
 
   if (mvIntroOffsetCache.has(videoId)) return mvIntroOffsetCache.get(videoId);
 
   let offset = 0;
-  // In 99.9% of songs (official music videos, live recordings, official audio),
-  // music starts at 0:00. The duration difference between YouTube and Apple Music is
-  // outro padding, channel end-screens, or credits.
-  // ONLY check for an intro offset if duration diff is >= 3s AND video chapters explicitly
-  // specify an intro/prologue/story before the song:
-  if (isMv && videoDur > 0 && studioDur > 0 && (videoDur - studioDur) >= 3) {
+  // Safely check chapters if play-dl is available
+  if (isMv && videoDur > 0 && studioDur > 0 && (videoDur - studioDur) >= 5) {
     try {
-      const infoPromise = playdl.video_info(`https://www.youtube.com/watch?v=${videoId}`);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('playdl timeout')), 1800));
-      const info = await Promise.race([infoPromise, timeoutPromise]);
+      let playdl = null;
+      try { playdl = require('play-dl'); } catch (e) {}
+      if (playdl && typeof playdl.video_info === 'function') {
+        const infoPromise = playdl.video_info(`https://www.youtube.com/watch?v=${videoId}`);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('playdl timeout')), 1800));
+        const info = await Promise.race([infoPromise, timeoutPromise]);
 
-      const chapters = info?.video_details?.chapters || [];
-      if (chapters.length >= 2) {
-        const firstChap = chapters[0];
-        const secondChap = chapters[1];
-        const firstTitle = (firstChap.title || '').toLowerCase();
-        const isIntroPrologue = /intro|prologue|opening|story|drama|skit|scene|monologue/i.test(firstTitle);
+        const chapters = info?.video_details?.chapters || [];
+        if (chapters.length >= 2) {
+          const firstChap = chapters[0];
+          const secondChap = chapters[1];
+          const firstTitle = (firstChap.title || '').toLowerCase();
+          const isIntroPrologue = /intro|prologue|opening|story|drama|skit|scene|monologue/i.test(firstTitle);
 
-        if (firstChap.seconds === 0 && isIntroPrologue && secondChap && secondChap.seconds > 0 && secondChap.seconds < 90) {
-          offset = secondChap.seconds;
+          if (firstChap.seconds === 0 && isIntroPrologue && secondChap && secondChap.seconds > 0 && secondChap.seconds < 90) {
+            offset = secondChap.seconds;
+          }
         }
       }
     } catch (e) {
@@ -3472,7 +3497,10 @@ app.get('/api/lyrics', async (req, res) => {
             timeout: 2500
           });
           if (getRes.data && getRes.data.syncedLyrics) {
-            syncedResult = { ...getRes.data, sourceName: 'LRCLib' };
+            const getDur = getRes.data.duration;
+            if (!duration || !getDur || Math.abs(getDur - duration) <= 5 || (isMv && duration - getDur <= 90)) {
+              syncedResult = { ...getRes.data, sourceName: 'LRCLib' };
+            }
           }
         } catch (e) {}
       }
@@ -3573,50 +3601,53 @@ app.get('/api/lyrics', async (req, res) => {
 
     let parsedLyrics = null;
     let detectedLang = null;
-    let netOffsetSec = 0;
+    let netShiftSec = 0;
 
     if (result && result.syncedLyrics) {
-      // 1. Automatic Offset Detection from LRC Header: [offset:+/-ms]
-      // Standard LRC specification: +ms means lyrics are delayed (display later), -ms means lyrics are advanced (display earlier)
+      // 1. LRC Header Offset: [offset:+/-ms] and adjustOffsetMs (in seconds)
+      let lrcOffsetSec = 0;
       const offsetMatch = result.syncedLyrics.match(/\[offset:\s*([+-]?\d+)\]/i);
       if (offsetMatch) {
-        netOffsetSec += (parseInt(offsetMatch[1], 10) || 0) / 1000;
+        lrcOffsetSec = (parseInt(offsetMatch[1], 10) || 0) / 1000;
       }
       if (result.adjustOffsetMs) {
-        netOffsetSec += (result.adjustOffsetMs / 1000);
+        lrcOffsetSec += (result.adjustOffsetMs / 1000);
       }
 
       // 2. High-Precision MV Cinematic Intro Alignment
-      // Guard: If track is confirmed pure studio audio (YouTube Music source, Topic channel, or Official Audio),
-      // force introOffset = 0 so studio master audio and studio lyrics run on the exact same timeline from 00:00.
       const trackSource = (req.query.source || '').toLowerCase();
       const isTopicChannel = Boolean(rawArtist && /- Topic$/i.test(rawArtist.trim()));
       const isOfficialAudio = Boolean(rawTitle && /\b(?:official\s*audio|audio)\b/i.test(rawTitle) && !/\b(?:mv|m\/v|music\s*video|official\s*video)\b/i.test(rawTitle));
       const isPureStudioTrack = !isMv && ((trackSource === 'ytmusic') || isTopicChannel || isOfficialAudio);
 
-      if (!isPureStudioTrack && isMv && videoId && duration > 0 && result.duration > 0) {
-        const introOffset = await getMvIntroOffset(videoId, duration, result.duration, isMv);
-        if (introOffset > 0) {
-          netOffsetSec += introOffset;
-        }
+      let mvIntroDelaySec = 0;
+      if (!isPureStudioTrack && isMv && videoId && duration > 0 && result.duration > 0 && (duration - result.duration) >= 5) {
+        mvIntroDelaySec = await getMvIntroOffset(videoId, duration, result.duration, isMv);
       }
+
+      // 3. Apple Music TTML Leading Silence
+      const leadingSilenceSec = Number(result.leadingSilence) || 0;
+
+      // Net clean adjustment:
+      // adjustedTime = Math.max(0, time - lrcOffsetSec + mvIntroDelaySec + leadingSilenceSec)
+      netShiftSec = -lrcOffsetSec + mvIntroDelaySec + leadingSilenceSec;
 
       let items = [];
 
       if (result.parsedLyrics && Array.isArray(result.parsedLyrics) && result.parsedLyrics.length > 0) {
         // High-Precision Syllable-Level items from BetterLyrics (Apple Music TTML)
         items = result.parsedLyrics.map(it => {
-          const adjTime = Math.max(0, parseFloat((it.time + netOffsetSec).toFixed(3)));
-          const adjEndTime = it.endTime ? Math.max(0, parseFloat((it.endTime + netOffsetSec).toFixed(3))) : undefined;
+          const adjTime = Math.max(0, parseFloat((it.time + netShiftSec).toFixed(3)));
+          const adjEndTime = it.endTime ? Math.max(0, parseFloat((it.endTime + netShiftSec).toFixed(3))) : undefined;
           const adjWords = it.words ? it.words.map(w => ({
             ...w,
-            begin: Math.max(0, parseFloat((w.begin + netOffsetSec).toFixed(3))),
-            end: Math.max(0, parseFloat((w.end + netOffsetSec).toFixed(3)))
+            begin: Math.max(0, parseFloat((w.begin + netShiftSec).toFixed(3))),
+            end: Math.max(0, parseFloat((w.end + netShiftSec).toFixed(3)))
           })) : null;
           const adjRomajiWords = it.romajiWords ? it.romajiWords.map(w => ({
             ...w,
-            begin: Math.max(0, parseFloat((w.begin + netOffsetSec).toFixed(3))),
-            end: Math.max(0, parseFloat((w.end + netOffsetSec).toFixed(3)))
+            begin: Math.max(0, parseFloat((w.begin + netShiftSec).toFixed(3))),
+            end: Math.max(0, parseFloat((w.end + netShiftSec).toFixed(3)))
           })) : null;
           return {
             ...it,
@@ -3636,7 +3667,7 @@ app.get('/api/lyrics', async (req, res) => {
             const m = parseInt(match[1], 10);
             const s = parseFloat(match[2]);
             const lineBaseSec = m * 60 + s;
-            const time = Math.max(0, parseFloat((lineBaseSec + netOffsetSec).toFixed(2)));
+            const time = Math.max(0, parseFloat((lineBaseSec + netShiftSec).toFixed(2)));
             const rawLinePayload = match[3].trim();
 
             // Universal Asian Syllable Extractor:
@@ -3663,8 +3694,8 @@ app.get('/api/lyrics', async (req, res) => {
                   wordBeginSec = startVal / 1000.0;
                 }
                 const wordEndSec = wordBeginSec + Math.max(0.05, durVal / 1000.0);
-                const adjBegin = Math.max(0, parseFloat((wordBeginSec + netOffsetSec).toFixed(3)));
-                const adjEnd = Math.max(0, parseFloat((wordEndSec + netOffsetSec).toFixed(3)));
+                const adjBegin = Math.max(0, parseFloat((wordBeginSec + netShiftSec).toFixed(3)));
+                const adjEnd = Math.max(0, parseFloat((wordEndSec + netShiftSec).toFixed(3)));
                 words.push({
                   text: sylText,
                   begin: adjBegin,
@@ -3765,7 +3796,7 @@ app.get('/api/lyrics', async (req, res) => {
       plainLyrics: result.plainLyrics || null,
       parsedLyrics: parsedLyrics || null,
       detectedLang: detectedLang || null,
-      autoOffset: netOffsetSec,
+      autoOffset: netShiftSec,
       hasRomaji: Boolean(parsedLyrics && parsedLyrics.some(l => Boolean(l.romaji)))
     } : {
       found: false,

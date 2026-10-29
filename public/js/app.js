@@ -2752,10 +2752,23 @@ class App {
   }
 
   getCurrentPlaybackTime() {
+    let t = 0;
     if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
-      return this.nativeAudio ? (this.nativeAudio.currentTime || 0) : 0;
+      t = this.nativeAudio ? (this.nativeAudio.currentTime || 0) : 0;
+    } else {
+      t = window.ytPlayer ? (window.ytPlayer.getCurrentTime() || 0) : 0;
     }
-    return window.ytPlayer ? (window.ytPlayer.getCurrentTime() || 0) : 0;
+
+    // Web Audio API DSP Output Latency Compensation:
+    // If equalizer/DSP AudioContext is active, subtract outputLatency so lyrics sweeps land precisely on speaker audio
+    if (window.audioEngine && window.audioEngine.audioCtx) {
+      const ctx = window.audioEngine.audioCtx;
+      const latency = (ctx.outputLatency || ctx.baseLatency) || 0;
+      if (latency > 0 && latency < 0.25) {
+        t = Math.max(0, t - latency);
+      }
+    }
+    return t;
   }
 
   startLyricsSyncLoop() {
@@ -2821,15 +2834,33 @@ class App {
 
     // Universal Acoustic Latency Alignment:
     // Real-time synchronization aligned directly with player audio presentation clock.
-    // Zero baseline delay ensures syllable sweeps land precisely on acoustic vocal onset without trailing lag.
     const userOffset = this.getCurrentTrackOffset();
     const syncTime = Math.max(0, currentSecs + userOffset);
+
+    // High-Precision Binary Search for active lyrics line
     let activeIdx = -1;
-    for (let i = 0; i < this.currentLyricsData.length; i++) {
-      if (syncTime >= this.currentLyricsData[i].time) {
-        activeIdx = i;
-      } else {
+    const lyrics = this.currentLyricsData;
+    let low = 0;
+    let high = lyrics.length - 1;
+
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const cur = lyrics[mid];
+      const next = lyrics[mid + 1];
+      const start = cur.time;
+      const end = cur.endTime !== undefined ? cur.endTime : (next ? next.time : (start + 5.0));
+
+      if (syncTime >= start && syncTime < end) {
+        activeIdx = mid;
         break;
+      } else if (syncTime < start) {
+        high = mid - 1;
+      } else {
+        if (!next || syncTime < next.time) {
+          activeIdx = mid;
+          break;
+        }
+        low = mid + 1;
       }
     }
 
@@ -2920,16 +2951,14 @@ class App {
         words.forEach(w => {
           const begin = parseFloat(w.getAttribute('data-begin'));
           const end = parseFloat(w.getAttribute('data-end'));
-          const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.08 : (end - begin);
 
-          if (syncTime >= begin && syncTime < end) {
-            let fillPct = ((syncTime - begin) / duration) * 100;
-            if (isNaN(fillPct)) fillPct = 0;
-            fillPct = Math.min(100, Math.max(0, fillPct));
+          if (syncTime >= begin && syncTime <= end) {
+            const progress = Math.min(1, Math.max(0, (syncTime - begin) / Math.max(0.05, end - begin)));
+            const fillPct = progress * 100;
             w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
             w.classList.add('active');
             w.classList.remove('passed');
-          } else if (syncTime >= end) {
+          } else if (syncTime > end) {
             w.style.setProperty('--fill-pct', '100%');
             w.classList.remove('active');
             w.classList.add('passed');
@@ -2943,16 +2972,14 @@ class App {
         romajiWords.forEach(w => {
           const begin = parseFloat(w.getAttribute('data-begin'));
           const end = parseFloat(w.getAttribute('data-end'));
-          const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.08 : (end - begin);
 
-          if (syncTime >= begin && syncTime < end) {
-            let fillPct = ((syncTime - begin) / duration) * 100;
-            if (isNaN(fillPct)) fillPct = 0;
-            fillPct = Math.min(100, Math.max(0, fillPct));
+          if (syncTime >= begin && syncTime <= end) {
+            const progress = Math.min(1, Math.max(0, (syncTime - begin) / Math.max(0.05, end - begin)));
+            const fillPct = progress * 100;
             w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
             w.classList.add('active');
             w.classList.remove('passed');
-          } else if (syncTime >= end) {
+          } else if (syncTime > end) {
             w.style.setProperty('--fill-pct', '100%');
             w.classList.remove('active');
             w.classList.add('passed');
