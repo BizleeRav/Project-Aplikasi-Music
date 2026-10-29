@@ -8074,49 +8074,7 @@ body.music-playing .cinema-turntable-arm {
   letter-spacing: 0.2px;
 }
 
-/* Studio Cinema Micro-Offset Calibration Tool */
-.cinema-offset-ctrl {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 2px 6px;
-  margin-left: auto;
-}
 
-.btn-offset-adjust {
-  background: transparent;
-  border: none;
-  color: #94a3b8;
-  font-size: 0.68rem;
-  font-weight: 700;
-  cursor: pointer;
-  padding: 2px 5px;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-  user-select: none;
-}
-
-.btn-offset-adjust:hover {
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.15);
-}
-
-.btn-offset-adjust:active {
-  transform: scale(0.92);
-}
-
-.offset-display {
-  font-family: monospace;
-  font-size: 0.7rem;
-  font-weight: 800;
-  color: #38bdf8;
-  padding: 0 4px;
-  min-width: 42px;
-  text-align: center;
-}
 
 /* Apple Music & Better Lyrics Syllable-Level Liquid Light Animation */
 .cinema-lyric-word {

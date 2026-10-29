@@ -159,7 +159,6 @@ class App {
     this.btnToggleRomaji = document.getElementById('btn-toggle-romaji');
     this.isRomajiEnabled = localStorage.getItem('aurasound_romaji_enabled') !== 'false';
     this.cinemaLeadInDots = document.getElementById('cinema-lead-in-dots');
-    this.cinemaOffsetDisplay = document.getElementById('cinema-offset-display');
     this.currentLyricsLang = null;
     this.currentHasRomaji = false;
     this.currentLyricsData = [];
@@ -1521,29 +1520,6 @@ class App {
       this.btnToggleRomaji.addEventListener('click', () => this.toggleRomaji());
     }
 
-    // Live Micro-Calibration Lyrics Offset Controls
-    const btnOffsetMinus = document.getElementById('btn-offset-minus');
-    if (btnOffsetMinus) {
-      btnOffsetMinus.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.adjustCurrentTrackOffset(-0.1);
-      });
-    }
-    const btnOffsetPlus = document.getElementById('btn-offset-plus');
-    if (btnOffsetPlus) {
-      btnOffsetPlus.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.adjustCurrentTrackOffset(+0.1);
-      });
-    }
-    const btnOffsetReset = document.getElementById('btn-offset-reset');
-    if (btnOffsetReset) {
-      btnOffsetReset.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.resetCurrentTrackOffset();
-      });
-    }
-
     // Visualizer Mode Switchers (Cinema)
     document.querySelectorAll('.vis-mode-chip').forEach(chip => {
       chip.addEventListener('click', () => {
@@ -1627,21 +1603,13 @@ class App {
       });
     }
 
-    // Keyboard shortcuts for Studio Cinema (Escape to close, [ and ] for micro-offset, \ to reset)
+    // Keyboard shortcuts for Studio Cinema (Escape to close)
     window.addEventListener('keydown', (e) => {
       const activeEl = document.activeElement;
       if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) return;
 
       if (e.key === 'Escape' && this.cinemaModal && this.cinemaModal.classList.contains('active')) {
         this.closeStudioCinema();
-      } else if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
-        if (e.key === '[') {
-          this.adjustCurrentTrackOffset(-0.10);
-        } else if (e.key === ']') {
-          this.adjustCurrentTrackOffset(+0.10);
-        } else if (e.key === '\\') {
-          this.resetCurrentTrackOffset();
-        }
       }
     });
 
@@ -2482,7 +2450,6 @@ class App {
 
       this.currentLeadingSilence = Number(data.leadingSilence) || 0;
       this.hasWordSync = Boolean(data.hasWordSync);
-      this.updateOffsetDisplay();
 
       // Primary: Use pre-romanized parsedLyrics if available from server
       if (data.found && data.parsedLyrics && Array.isArray(data.parsedLyrics) && data.parsedLyrics.length > 0) {
@@ -2813,13 +2780,12 @@ class App {
       return;
     }
 
-    const userOffset = this.getCurrentTrackOffset();
     // Universal Acoustic Latency Alignment:
     // Full compensation for YouTube Music streaming audio container padding (~0.50s) + Opus demux & DAC buffer (~0.65s) + mastering lead (~0.35s) = -1.50s
-    // Completely eliminates vocal curi-start and lands syllable sweeps 100% in sync with the singer's voice.
+    // Completely eliminates vocal curi-start and lands syllable sweeps 100% in sync with the singer's voice automatically.
     const isStreamingTrack = (!this.currentTrack || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'));
     const acousticLatencyOffset = isStreamingTrack ? -1.50 : 0.0;
-    const syncTime = Math.max(0, currentSecs + acousticLatencyOffset + userOffset);
+    const syncTime = Math.max(0, currentSecs + acousticLatencyOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
       if (syncTime >= this.currentLyricsData[i].time) {
@@ -2961,53 +2927,7 @@ class App {
     }
   }
 
-  getTrackOffsetKey() {
-    if (!this.currentTrack) return null;
-    return `aura_offset_${this.currentTrack.id || (this.currentTrack.title + '_' + (this.currentTrack.artist || ''))}`;
-  }
 
-  getCurrentTrackOffset() {
-    const key = this.getTrackOffsetKey();
-    if (!key) return 0;
-    const stored = localStorage.getItem(key);
-    if (!stored) return 0;
-    const num = parseFloat(stored);
-    return isNaN(num) ? 0 : num;
-  }
-
-  adjustCurrentTrackOffset(deltaSec) {
-    const key = this.getTrackOffsetKey();
-    if (!key) return;
-    let cur = this.getCurrentTrackOffset();
-    cur = Math.round((cur + deltaSec) * 100) / 100;
-    cur = Math.max(-5.0, Math.min(5.0, cur));
-    localStorage.setItem(key, String(cur));
-    this.updateOffsetDisplay();
-    const t = this.getCurrentPlaybackTime();
-    this.updateActiveLyricsLine(t);
-    this.showToast(`Kalibrasi lirik: ${cur > 0 ? '+' : ''}${cur.toFixed(2)}s`, 'info');
-  }
-
-  resetCurrentTrackOffset() {
-    const key = this.getTrackOffsetKey();
-    if (!key) return;
-    localStorage.removeItem(key);
-    this.updateOffsetDisplay();
-    const t = this.getCurrentPlaybackTime();
-    this.updateActiveLyricsLine(t);
-    this.showToast('Offset lirik direset ke 0.00s', 'info');
-  }
-
-  updateOffsetDisplay() {
-    if (!this.cinemaOffsetDisplay) {
-      this.cinemaOffsetDisplay = document.getElementById('cinema-offset-display');
-    }
-    if (this.cinemaOffsetDisplay) {
-      const offset = this.getCurrentTrackOffset();
-      this.cinemaOffsetDisplay.textContent = `${offset > 0 ? '+' : ''}${offset.toFixed(2)}s`;
-      this.cinemaOffsetDisplay.style.color = offset !== 0 ? 'var(--accent-glow, #38ef7d)' : 'var(--text-muted, #8e8ea0)';
-    }
-  }
 
   escapeHtml(str) {
     if (!str) return '';
