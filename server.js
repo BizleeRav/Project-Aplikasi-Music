@@ -1953,6 +1953,15 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   let title = (rawTitle || '').trim();
   let artist = (rawArtist || '').trim();
 
+  const isChannelPublisher = !artist || LABEL_CHANNEL_REGEX.test(artist) || /labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(artist);
+
+  // 0. Handle parenthetical OST / Drama / Game theme song annotations
+  // e.g. 有点甜 (《萌三国》网游主题曲|《微微一笑很倾城》电视剧插曲)
+  const parenOstMatch = title.match(/^([^(（\[【《]+?)\s*[(（\[【《][^)]*(?:主题曲|插曲|片尾曲|片头曲|原声带|网游|电视剧|电影|OST|BGM|Theme|Soundtrack)[^)）\]】》]*[)）\]】》]?/i);
+  if (parenOstMatch && parenOstMatch[1].trim().length >= 2) {
+    title = parenOstMatch[1].trim();
+  }
+
   // 1. Strip obvious junk tags in brackets at start/end
   const junkPattern = /\s*[\[(【](?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|audio|mv|m\/v|hd|4k|full\s*audio|visualizer|teaser|trailer|clip|special\s*clip|performance\s*video|dance\s*practice)[\])】]/gi;
   title = title.replace(junkPattern, ' ').trim();
@@ -1961,9 +1970,7 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   // Strip leading video tags like 【MV】, 【Official Video】, [MV]
   title = title.replace(/^\s*[【\[](?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|audio|mv|m\/v|hd|4k)[】\]]\s*/i, '').trim();
 
-  const isChannelPublisher = !artist || LABEL_CHANNEL_REGEX.test(artist) || /labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(artist);
-
-  // 1. Handle leading Chinese book title bracket 《Title》 at start of string (e.g. 《芒种》音阙诗听/赵方婧)
+  // 2. Handle leading Chinese book title bracket 《Title》 at start of string (e.g. 《芒种》音阙诗听/赵方婧)
   const leadingBookTitle = title.match(/^\s*《([^》]+)》\s*(.*)$/);
   if (leadingBookTitle && !/official|mv|audio|video|hd|4k|remix|live/i.test(leadingBookTitle[1])) {
     title = leadingBookTitle[1].trim();
@@ -1975,55 +1982,50 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
       }
     }
   } else {
-    // 2. Check leading artist tag: 【Artist】 Title (e.g. 【Ado】新時代, 【Eve】廻廻奇譚)
+    // 3. Leading artist tag: 【Artist】 Title (e.g. 【Ado】新時代, 【Eve】廻廻奇譚)
     const leadingArtistMatch = title.match(/^\s*[【\[]([^】\]]+)[】\]]\s*(.+)$/);
     if (leadingArtistMatch && !/official|mv|audio|video|hd|4k|remix|live/i.test(leadingArtistMatch[1])) {
-      artist = leadingArtistMatch[1].trim();
+      if (isChannelPublisher || !artist) {
+        artist = leadingArtistMatch[1].trim();
+      }
       title = leadingArtistMatch[2].trim();
     } else {
-      // 3. Handle matching quotes pattern: Artist "Song Title" or Artist 'Song Title'
-      let matchedInside = null;
-      let matchedBefore = null;
-
-      // Double quotes (safely allows internal apostrophes like "I CAN'T STOP ME")
-      const doubleQuoteMatch = title.match(/^(.+?)\s*["“”]([^"“”]+)["“”](.*)$/);
-      if (doubleQuoteMatch && doubleQuoteMatch[2].trim().length > 0) {
-        matchedBefore = doubleQuoteMatch[1].trim();
-        matchedInside = doubleQuoteMatch[2].trim();
-      } else {
-        // Single quotes
-        const singleQuoteMatch = title.match(/^(.+?)\s*['‘’]([^'‘’]+)['‘’](.*)$/);
-        if (singleQuoteMatch && singleQuoteMatch[2].trim().length > 0) {
-          matchedBefore = singleQuoteMatch[1].trim();
-          matchedInside = singleQuoteMatch[2].trim();
-        } else {
-          // Asian corner brackets after artist: Artist「Title」, Artist『Title』, Artist【Title】
-          const cornerBracketMatch = title.match(/^(.+?)\s*[「『【《]([^」』】》]+)[」』】》](.*)$/);
-          if (cornerBracketMatch && cornerBracketMatch[2].trim().length > 0) {
-            const inside = cornerBracketMatch[2].trim();
-            if (!/^(?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|mv|hd|4k|live|remix|lyrics?|full\s*audio|visualizer)$/i.test(inside)) {
-              matchedBefore = cornerBracketMatch[1].trim();
-              matchedInside = inside;
-            }
-          }
-        }
-      }
-
-      if (matchedInside) {
-        title = matchedInside;
-        if (matchedBefore && matchedBefore.length > 0) {
-          if (isChannelPublisher || !artist || matchedBefore.length < 50 || /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(matchedBefore)) {
-            artist = matchedBefore;
+      // 4. Quotes / Corner brackets: Artist 「Title」, Artist 『Title』
+      const cornerBracketMatch = title.match(/^(.+?)\s*[「『【《]([^」』】》]+)[」』】》](.*)$/);
+      if (cornerBracketMatch && cornerBracketMatch[2].trim().length > 0) {
+        const inside = cornerBracketMatch[2].trim();
+        const before = cornerBracketMatch[1].trim();
+        if (!/^(?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|mv|hd|4k|live|remix|lyrics?|full\s*audio|visualizer)$/i.test(inside)) {
+          title = inside;
+          if ((isChannelPublisher || !artist) && before.length > 0) {
+            artist = before;
           }
         }
       } else if (title.includes(' _ ')) {
         const parts = title.split(' _ ');
-        title = parts.slice(1).join(' _ ').trim();
-        if (parts[0].trim().length > 1 && isChannelPublisher) artist = parts[0].trim();
+        if (isChannelPublisher && parts[0].trim().length > 1) {
+          artist = parts[0].trim();
+          title = parts.slice(1).join(' _ ').trim();
+        }
       } else if (title.includes(' - ')) {
-        const parts = title.split(' - ');
-        title = parts.slice(1).join(' - ').trim();
-        if (parts[0].trim().length > 1 && isChannelPublisher) artist = parts[0].trim();
+        const dashParts = title.split(' - ');
+        const p0 = dashParts[0].trim();
+        const p1 = dashParts.slice(1).join(' - ').trim();
+        if (isChannelPublisher && p0.length > 1) {
+          artist = p0;
+          title = p1;
+        } else {
+          // Bilingual title handling e.g. 'ひゅるりらぱっぱ - HYURURIRAPAPPA'
+          const hasCjk0 = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(p0);
+          const hasCjk1 = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(p1);
+          if (hasCjk0 && !hasCjk1) {
+            title = p0;
+          } else if (!hasCjk0 && hasCjk1) {
+            title = p1;
+          } else {
+            title = p0;
+          }
+        }
       }
     }
   }
@@ -3402,10 +3404,23 @@ async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
   return offset;
 }
 
+function parseDurationSec(raw) {
+  if (!raw) return 0;
+  if (typeof raw === 'number') return Math.round(raw);
+  const s = String(raw).trim();
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  if (s.includes(':')) {
+    const parts = s.split(':').map(p => parseInt(p, 10) || 0);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+  }
+  return parseInt(s, 10) || 0;
+}
+
 app.get('/api/lyrics', async (req, res) => {
   const rawTitle = req.query.title;
   const rawArtist = req.query.artist;
-  const duration = parseInt(req.query.duration, 10) || 0;
+  const duration = parseDurationSec(req.query.duration);
   const videoId = req.query.videoId || '';
 
   if (!rawTitle) {
@@ -3558,16 +3573,17 @@ app.get('/api/lyrics', async (req, res) => {
 
     let parsedLyrics = null;
     let detectedLang = null;
-    let autoOffsetSec = 0;
+    let netOffsetSec = 0;
 
     if (result && result.syncedLyrics) {
       // 1. Automatic Offset Detection from LRC Header: [offset:+/-ms]
+      // Standard LRC specification: +ms means lyrics are delayed (display later), -ms means lyrics are advanced (display earlier)
       const offsetMatch = result.syncedLyrics.match(/\[offset:\s*([+-]?\d+)\]/i);
       if (offsetMatch) {
-        autoOffsetSec = (parseInt(offsetMatch[1], 10) || 0) / 1000;
+        netOffsetSec += (parseInt(offsetMatch[1], 10) || 0) / 1000;
       }
       if (result.adjustOffsetMs) {
-        autoOffsetSec += (result.adjustOffsetMs / 1000);
+        netOffsetSec += (result.adjustOffsetMs / 1000);
       }
 
       // 2. High-Precision MV Cinematic Intro Alignment
@@ -3581,7 +3597,7 @@ app.get('/api/lyrics', async (req, res) => {
       if (!isPureStudioTrack && isMv && videoId && duration > 0 && result.duration > 0) {
         const introOffset = await getMvIntroOffset(videoId, duration, result.duration, isMv);
         if (introOffset > 0) {
-          autoOffsetSec -= introOffset;
+          netOffsetSec += introOffset;
         }
       }
 
@@ -3590,17 +3606,17 @@ app.get('/api/lyrics', async (req, res) => {
       if (result.parsedLyrics && Array.isArray(result.parsedLyrics) && result.parsedLyrics.length > 0) {
         // High-Precision Syllable-Level items from BetterLyrics (Apple Music TTML)
         items = result.parsedLyrics.map(it => {
-          const adjTime = Math.max(0, parseFloat((it.time - autoOffsetSec).toFixed(3)));
-          const adjEndTime = it.endTime ? Math.max(0, parseFloat((it.endTime - autoOffsetSec).toFixed(3))) : undefined;
+          const adjTime = Math.max(0, parseFloat((it.time + netOffsetSec).toFixed(3)));
+          const adjEndTime = it.endTime ? Math.max(0, parseFloat((it.endTime + netOffsetSec).toFixed(3))) : undefined;
           const adjWords = it.words ? it.words.map(w => ({
             ...w,
-            begin: Math.max(0, parseFloat((w.begin - autoOffsetSec).toFixed(3))),
-            end: Math.max(0, parseFloat((w.end - autoOffsetSec).toFixed(3)))
+            begin: Math.max(0, parseFloat((w.begin + netOffsetSec).toFixed(3))),
+            end: Math.max(0, parseFloat((w.end + netOffsetSec).toFixed(3)))
           })) : null;
           const adjRomajiWords = it.romajiWords ? it.romajiWords.map(w => ({
             ...w,
-            begin: Math.max(0, parseFloat((w.begin - autoOffsetSec).toFixed(3))),
-            end: Math.max(0, parseFloat((w.end - autoOffsetSec).toFixed(3)))
+            begin: Math.max(0, parseFloat((w.begin + netOffsetSec).toFixed(3))),
+            end: Math.max(0, parseFloat((w.end + netOffsetSec).toFixed(3)))
           })) : null;
           return {
             ...it,
@@ -3619,33 +3635,36 @@ app.get('/api/lyrics', async (req, res) => {
           if (match) {
             const m = parseInt(match[1], 10);
             const s = parseFloat(match[2]);
-            const time = Math.max(0, parseFloat((m * 60 + s - autoOffsetSec).toFixed(2)));
-            const rawLinePayload = match[3].trim();
             const lineBaseSec = m * 60 + s;
+            const time = Math.max(0, parseFloat((lineBaseSec + netOffsetSec).toFixed(2)));
+            const rawLinePayload = match[3].trim();
 
             // Universal Asian Syllable Extractor:
-            // 1. QQ Music format: <offset_ms,dur_ms>word or <offset_ms,dur_ms,0>word
-            // 2. Kugou format: (start_ms,dur_ms)word
+            // 1. QQ Music format: <offset_ms,dur_ms>word or <offset_ms,dur_ms,0>word (offset relative to line start)
+            // 2. Kugou format: (start_ms,dur_ms)word (start absolute from track beginning)
             const syllableRegex = /(?:<(\d+),(\d+)(?:,\d+)?>|\((\d+),(\d+)\))([^\(<]+)/g;
             const words = [];
             let sylMatch;
 
             while ((sylMatch = syllableRegex.exec(rawLinePayload)) !== null) {
-              const startVal = parseInt(sylMatch[1] || sylMatch[3], 10);
-              const durVal = parseInt(sylMatch[2] || sylMatch[4], 10);
+              const isQQ = sylMatch[1] !== undefined;
+              const startVal = parseInt(isQQ ? sylMatch[1] : sylMatch[3], 10);
+              const durVal = parseInt(isQQ ? sylMatch[2] : sylMatch[4], 10);
               const rawSyl = sylMatch[5] || '';
               const trailingSpace = /\s+$/.test(rawSyl);
               const sylText = rawSyl.trim();
               if (sylText && !isNaN(startVal) && !isNaN(durVal)) {
                 let wordBeginSec;
-                if (startVal >= lineBaseSec * 500 && startVal > 1000) {
-                  wordBeginSec = startVal / 1000.0;
-                } else {
+                if (isQQ) {
+                  // QQ Music: startVal is relative offset in ms from lineBaseSec
                   wordBeginSec = lineBaseSec + (startVal / 1000.0);
+                } else {
+                  // Kugou: startVal is absolute timestamp in ms from song start
+                  wordBeginSec = startVal / 1000.0;
                 }
                 const wordEndSec = wordBeginSec + Math.max(0.05, durVal / 1000.0);
-                const adjBegin = Math.max(0, parseFloat((wordBeginSec - autoOffsetSec).toFixed(3)));
-                const adjEnd = Math.max(0, parseFloat((wordEndSec - autoOffsetSec).toFixed(3)));
+                const adjBegin = Math.max(0, parseFloat((wordBeginSec + netOffsetSec).toFixed(3)));
+                const adjEnd = Math.max(0, parseFloat((wordEndSec + netOffsetSec).toFixed(3)));
                 words.push({
                   text: sylText,
                   begin: adjBegin,
@@ -3746,7 +3765,7 @@ app.get('/api/lyrics', async (req, res) => {
       plainLyrics: result.plainLyrics || null,
       parsedLyrics: parsedLyrics || null,
       detectedLang: detectedLang || null,
-      autoOffset: autoOffsetSec,
+      autoOffset: netOffsetSec,
       hasRomaji: Boolean(parsedLyrics && parsedLyrics.some(l => Boolean(l.romaji)))
     } : {
       found: false,

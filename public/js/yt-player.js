@@ -206,8 +206,8 @@ class YTPlayerManager {
     const raw = this.player.getCurrentTime() || 0;
     const now = performance.now();
 
-    // If paused, stopped, or not playing, lock to exact raw time
-    if (!this.isPlaying) {
+    // If paused, stopped, buffering, or not playing, lock to exact raw time
+    if (!this.isPlaying || this._isBuffering) {
       this._lastRawTime = raw;
       this._lastRawTimestamp = now;
       this._interpolatedTime = raw;
@@ -229,6 +229,10 @@ class YTPlayerManager {
     // Advance clock continuously at real-time rate (monotonically forward)
     // Clamped to 0.1s to prevent runaway spikes if CPU lagged or tab was hidden
     this._interpolatedTime += Math.min(dt, 0.1);
+
+    // Strict Anti-Runaway Clamp:
+    // When YouTube iframe stalls or buffers, never let clock drift more than 280ms ahead of last confirmed audio tick
+    this._interpolatedTime = Math.min(this._interpolatedTime, this._lastRawTime + 0.28);
 
     // When YouTube iframe delivers a new time tick (~every 250ms)
     if (raw !== this._lastRawTime) {
@@ -270,10 +274,14 @@ class YTPlayerManager {
     // YT.PlayerState: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
     if (playerState === 1) {
       this.isPlaying = true;
+      this._isBuffering = false;
       if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = true;
       if (this.onStateChangeCallback) this.onStateChangeCallback(true);
+    } else if (playerState === 3) {
+      this._isBuffering = true;
     } else if (playerState === 2 || playerState === 0) {
       this.isPlaying = false;
+      this._isBuffering = false;
       if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = false;
       if (this.onStateChangeCallback) this.onStateChangeCallback(false);
 
