@@ -2475,15 +2475,25 @@ class App {
     }
 
     // 3. Show sleek animated loading state
-    this.cinemaLyricsStream.innerHTML = `
-      <div class="cinema-lyrics-status">
-        <div class="cinema-lyrics-pulse-wave">
-          <span></span><span></span><span></span><span></span><span></span>
-        </div>
-        <div class="cinema-lyrics-status-text">Mencari lirik terbaik & sinkronisasi tempo...</div>
-        <div class="cinema-lyrics-status-sub">${this.escapeHtml(track.title)}</div>
-      </div>
-    `;
+    const loadingBox = document.getElementById('cinema-lyrics-loading');
+    const loadingSub = document.getElementById('cinema-lyrics-loading-sub');
+    const emptyBox = document.getElementById('cinema-lyrics-empty');
+    const noteEl = document.getElementById('lyrics-loading-note');
+    const fallbackBox = document.getElementById('cinema-lyrics-fallback');
+
+    if (noteEl) noteEl.style.display = 'none';
+    if (emptyBox) emptyBox.style.display = 'none';
+    if (fallbackBox) fallbackBox.style.display = 'none';
+    if (!this.braccatoLyricsEl) {
+      this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
+    }
+    if (this.braccatoLyricsEl) {
+      this.braccatoLyricsEl.style.display = 'none';
+    }
+    if (loadingBox) {
+      if (loadingSub) loadingSub.textContent = track.title || '';
+      loadingBox.style.display = 'flex';
+    }
     if (this.cinemaLyricsBadge) {
       this.cinemaLyricsBadge.style.display = 'inline-flex';
       this.cinemaLyricsBadge.className = 'cinema-lyrics-badge loading';
@@ -2598,21 +2608,21 @@ class App {
           this.cinemaLyricsBadge.className = 'cinema-lyrics-badge info';
           this.cinemaLyricsBadge.textContent = 'INSTRUMENTAL';
         }
-        if (this.btnToggleRomaji) {
-          this.btnToggleRomaji.style.display = 'none';
-        }
-        if (this.cinemaLeadInDots) {
-          this.cinemaLeadInDots.style.display = 'none';
-        }
-        this.cinemaLyricsStream.innerHTML = `
-          <div class="cinema-lyrics-empty">
+        if (this.btnToggleRomaji) this.btnToggleRomaji.style.display = 'none';
+        if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
+        if (loadingBox) loadingBox.style.display = 'none';
+        if (this.braccatoLyricsEl) this.braccatoLyricsEl.style.display = 'none';
+        if (fallbackBox) fallbackBox.style.display = 'none';
+        if (emptyBox) {
+          emptyBox.innerHTML = `
             <div class="cinema-lyrics-empty-icon">
               <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
             </div>
             <div class="cinema-lyrics-empty-title">Trek Instrumental</div>
             <div class="cinema-lyrics-empty-desc">Lagu ini tidak memiliki vokal. Nikmati alunan instrumen & resonansi visualizer studio.</div>
-          </div>
-        `;
+          `;
+          emptyBox.style.display = 'flex';
+        }
         return;
       }
 
@@ -2621,37 +2631,38 @@ class App {
         this.cinemaLyricsBadge.className = 'cinema-lyrics-badge muted';
         this.cinemaLyricsBadge.textContent = 'TIDAK ADA LIRIK';
       }
-      if (this.btnToggleRomaji) {
-        this.btnToggleRomaji.style.display = 'none';
-      }
-      if (this.cinemaLeadInDots) {
-        this.cinemaLeadInDots.style.display = 'none';
-      }
-      this.cinemaLyricsStream.innerHTML = `
-        <div class="cinema-lyrics-empty">
+      if (this.btnToggleRomaji) this.btnToggleRomaji.style.display = 'none';
+      if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
+      if (loadingBox) loadingBox.style.display = 'none';
+      if (this.braccatoLyricsEl) this.braccatoLyricsEl.style.display = 'none';
+      if (fallbackBox) fallbackBox.style.display = 'none';
+      if (emptyBox) {
+        emptyBox.innerHTML = `
           <div class="cinema-lyrics-empty-icon">
             <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
           </div>
           <div class="cinema-lyrics-empty-title">Lirik Belum Tersedia</div>
           <div class="cinema-lyrics-empty-desc">Lirik untuk lagu "<b>${this.escapeHtml(track.title)}</b>" belum terdaftar dalam database sinkronisasi.</div>
-        </div>
-      `;
+        `;
+        emptyBox.style.display = 'flex';
+      }
     } catch (err) {
       if (this.currentLyricsTrackId !== trackId) return;
-      if (this.cinemaLyricsBadge) {
-        this.cinemaLyricsBadge.style.display = 'none';
-      }
-      if (this.btnToggleRomaji) {
-        this.btnToggleRomaji.style.display = 'none';
-      }
-      if (this.cinemaLeadInDots) {
-        this.cinemaLeadInDots.style.display = 'none';
-      }
-      this.cinemaLyricsStream.innerHTML = `
-        <div class="cinema-lyrics-empty">
+      if (this.cinemaLyricsBadge) this.cinemaLyricsBadge.style.display = 'none';
+      if (this.btnToggleRomaji) this.btnToggleRomaji.style.display = 'none';
+      if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
+      const loadingBox = document.getElementById('cinema-lyrics-loading');
+      const emptyBox = document.getElementById('cinema-lyrics-empty');
+      const fallbackBox = document.getElementById('cinema-lyrics-fallback');
+      if (loadingBox) loadingBox.style.display = 'none';
+      if (this.braccatoLyricsEl) this.braccatoLyricsEl.style.display = 'none';
+      if (fallbackBox) fallbackBox.style.display = 'none';
+      if (emptyBox) {
+        emptyBox.innerHTML = `
           <div class="cinema-lyrics-empty-desc">Gagal memuat lirik. Silakan periksa koneksi internet Anda.</div>
-        </div>
-      `;
+        `;
+        emptyBox.style.display = 'flex';
+      }
     }
   }
 
@@ -2755,9 +2766,25 @@ class App {
       panel.classList.toggle('hide-romaji', !this.isRomajiEnabled);
     }
 
+    const loadingBox = document.getElementById('cinema-lyrics-loading');
+    const emptyBox = document.getElementById('cinema-lyrics-empty');
+    const noteEl = document.getElementById('lyrics-loading-note');
+    const fallbackBox = document.getElementById('cinema-lyrics-fallback');
+
+    if (loadingBox) loadingBox.style.display = 'none';
+    if (emptyBox) emptyBox.style.display = 'none';
+    if (noteEl) noteEl.style.display = 'none';
+
     // Connect to Better Lyrics official Custom Element (<braccato-lyrics>)
     if (!this.braccatoLyricsEl) {
       this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
+      if (this.braccatoLyricsEl) {
+        this.braccatoLyricsEl.addEventListener('braccato:line-click', (e) => {
+          if (e && e.detail && typeof e.detail.timeS === 'number') {
+            this.seekToTimestamp(e.detail.timeS);
+          }
+        });
+      }
     }
 
     const finalBraccato = (braccatoData && Array.isArray(braccatoData) && braccatoData.length > 0)
@@ -2765,9 +2792,8 @@ class App {
       : this.formatToBraccatoLyrics(lines);
 
     if (this.braccatoLyricsEl && finalBraccato && finalBraccato.length > 0) {
+      if (fallbackBox) fallbackBox.style.display = 'none';
       this.braccatoLyricsEl.style.display = 'block';
-      const loadingEl = document.getElementById('lyrics-loading-note');
-      if (loadingEl) loadingEl.style.display = 'none';
 
       // Feed official Lyric[] format directly to Better Lyrics core
       this.braccatoLyricsEl.lyrics = finalBraccato;
@@ -2778,44 +2804,48 @@ class App {
     }
 
     // Fallback: Custom HTML renderer if braccato-lyrics is not available
-    this.cinemaLyricsStream.innerHTML = lines.map((item, idx) => {
-      let mainContent = '';
-      if (Array.isArray(item.words) && item.words.length > 0) {
-        mainContent = item.words.map((w, wIdx) => {
-          const hasSpace = (w.trailingSpace !== false);
-          return `<span class="cinema-lyric-word ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
-        }).join('');
-      } else {
-        mainContent = this.escapeHtml(item.text);
-      }
-
-      const hasWordSync = (Array.isArray(item.words) && item.words.length > 0);
-
-      let romajiContent = '';
-      if (item.romaji) {
-        const rWords = hasWordSync ? (
-          (Array.isArray(item.romajiWords) && item.romajiWords.length > 0)
-            ? item.romajiWords
-            : (Array.isArray(item.words) && item.words.some(w => w.romaji) ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end, trailingSpace: w.trailingSpace })) : null)
-        ) : null;
-
-        if (rWords && rWords.length > 0) {
-          romajiContent = `<div class="lyric-romaji-text">` + rWords.map((w, wIdx) => {
+    if (this.braccatoLyricsEl) this.braccatoLyricsEl.style.display = 'none';
+    if (fallbackBox) {
+      fallbackBox.style.display = 'block';
+      fallbackBox.innerHTML = lines.map((item, idx) => {
+        let mainContent = '';
+        if (Array.isArray(item.words) && item.words.length > 0) {
+          mainContent = item.words.map((w, wIdx) => {
             const hasSpace = (w.trailingSpace !== false);
-            return `<span class="cinema-lyric-word-romaji ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
-          }).join('') + `</div>`;
+            return `<span class="cinema-lyric-word ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
+          }).join('');
         } else {
-          romajiContent = `<div class="lyric-romaji-text">${this.escapeHtml(item.romaji)}</div>`;
+          mainContent = this.escapeHtml(item.text);
         }
-      }
 
-      return `
-        <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''} ${hasWordSync ? 'has-word-sync' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
-          <div class="lyric-main-text">${mainContent}</div>
-          ${romajiContent}
-        </div>
-      `;
-    }).join('');
+        const hasWordSync = (Array.isArray(item.words) && item.words.length > 0);
+
+        let romajiContent = '';
+        if (item.romaji) {
+          const rWords = hasWordSync ? (
+            (Array.isArray(item.romajiWords) && item.romajiWords.length > 0)
+              ? item.romajiWords
+              : (Array.isArray(item.words) && item.words.some(w => w.romaji) ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end, trailingSpace: w.trailingSpace })) : null)
+          ) : null;
+
+          if (rWords && rWords.length > 0) {
+            romajiContent = `<div class="lyric-romaji-text">` + rWords.map((w, wIdx) => {
+              const hasSpace = (w.trailingSpace !== false);
+              return `<span class="cinema-lyric-word-romaji ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
+            }).join('') + `</div>`;
+          } else {
+            romajiContent = `<div class="lyric-romaji-text">${this.escapeHtml(item.romaji)}</div>`;
+          }
+        }
+
+        return `
+          <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''} ${hasWordSync ? 'has-word-sync' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
+            <div class="lyric-main-text">${mainContent}</div>
+            ${romajiContent}
+          </div>
+        `;
+      }).join('');
+    }
   }
 
   getCurrentPlaybackTime() {

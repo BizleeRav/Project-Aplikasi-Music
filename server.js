@@ -1793,7 +1793,7 @@ async function resolveCanonicalTrackMetadata(videoId, rawTitle, rawArtist) {
       if (!cleanTitle) cleanTitle = cached.title || '';
       if (!cleanArtist || LABEL_CHANNEL_REGEX.test(cleanArtist)) cleanArtist = cached.artist || cleanArtist;
       duration = cached.duration || 0;
-    } else {
+    } else if (!cleanTitle || !cleanArtist || LABEL_CHANNEL_REGEX.test(cleanArtist)) {
       try {
         const yt = await getInnertube();
         if (yt && typeof yt.getBasicInfo === 'function') {
@@ -2286,12 +2286,12 @@ async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, a
 
         score = applyVersionMismatchPenalty(score, name, title);
 
-        return { song, durSec, score };
+        return { song, durSec, score, isTitleMatch };
       });
 
       scored.sort((a, b) => b.score - a.score);
       const best = scored[0];
-      if (best && best.song?.id && best.score >= 30) {
+      if (best && best.song?.id && best.score >= 50 && best.isTitleMatch) {
         const neLyrUrl = `https://music.163.com/api/song/lyric?os=pc&id=${best.song.id}&lv=-1&kv=-1&tv=-1&yv=-1`;
         const neLyrRes = await axios.get(neLyrUrl, { timeout: 3500 });
 
@@ -2475,13 +2475,13 @@ async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, art
 
         score = applyVersionMismatchPenalty(score, sName, title);
 
-        return { song: s, score };
+        return { song: s, score, isTitleMatch };
       });
 
       scoredSongs.sort((a, b) => b.score - a.score);
 
-      for (const { song, score } of scoredSongs.slice(0, 3)) {
-        if (!song.hash || score < 35) continue;
+      for (const { song, score, isTitleMatch } of scoredSongs.slice(0, 3)) {
+        if (!song.hash || score < 50 || !isTitleMatch) continue;
         const candUrl = `http://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword=&duration=&hash=${song.hash}`;
         const candRes = await axios.get(candUrl, { timeout: 3500 });
         const cands = candRes.data?.candidates || [];
@@ -2613,12 +2613,12 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
 
         score = applyVersionMismatchPenalty(score, sName, title);
 
-        return { song: s, score };
+        return { song: s, score, isTitleMatch };
       });
 
       scored.sort((a, b) => b.score - a.score);
       const best = scored[0];
-      if (best && best.song?.songmid && best.score >= 35) {
+      if (best && best.song?.songmid && best.score >= 50 && best.isTitleMatch) {
         const lyrUrl = `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${best.song.songmid}&format=json&nobase64=1`;
         const lyrRes = await axios.get(lyrUrl, {
           headers: { 'Referer': 'https://y.qq.com', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -2988,38 +2988,41 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
     for (const p of parts) artistVariants.add(p);
   }
 
-  // 2.5 Bridge to Apple Music Master Catalog via iTunes Search (Resolves Korean/Japanese titles & aliases)
+  // 2.5 Bridge to Apple Music Master Catalog via iTunes Search (Only when Asian, bracketed, or multi-artist)
   let appleTrack = null;
   let appleArtist = null;
   let appleDur = 0;
-  try {
-    const itunesTerm = `${strippedTitle || cleanTitle} ${cleanArtist}`.trim();
-    const itunesRes = await axios.get('https://itunes.apple.com/search', {
-      params: {
-        term: itunesTerm,
-        entity: 'song',
-        country: isJapanese ? 'JP' : 'US',
-        limit: 3
-      },
-      timeout: 2000
-    });
-    const itHit = (itunesRes.data?.results || []).find(h => {
-      if (!h || !h.trackName) return false;
-      const hArtist = (h.artistName || '').toLowerCase();
-      const qArtist = cleanArtist.toLowerCase();
-      const artistMatch = hArtist.includes(qArtist) || qArtist.includes(hArtist) || !cleanArtist;
-      const durMatch = !targetDuration || !h.trackTimeMillis || Math.abs(Math.round(h.trackTimeMillis / 1000) - targetDuration) <= 6;
-      return artistMatch || durMatch;
-    }) || itunesRes.data?.results?.[0];
+  const needsAppleBridge = isAsian || /[(（\[【《]/.test(cleanTitle) || cleanArtist.includes('&') || cleanArtist.includes(',');
+  if (needsAppleBridge) {
+    try {
+      const itunesTerm = `${strippedTitle || cleanTitle} ${cleanArtist}`.trim();
+      const itunesRes = await axios.get('https://itunes.apple.com/search', {
+        params: {
+          term: itunesTerm,
+          entity: 'song',
+          country: isJapanese ? 'JP' : 'US',
+          limit: 3
+        },
+        timeout: 1500
+      });
+      const itHit = (itunesRes.data?.results || []).find(h => {
+        if (!h || !h.trackName) return false;
+        const hArtist = (h.artistName || '').toLowerCase();
+        const qArtist = cleanArtist.toLowerCase();
+        const artistMatch = hArtist.includes(qArtist) || qArtist.includes(hArtist) || !cleanArtist;
+        const durMatch = !targetDuration || !h.trackTimeMillis || Math.abs(Math.round(h.trackTimeMillis / 1000) - targetDuration) <= 6;
+        return artistMatch || durMatch;
+      }) || itunesRes.data?.results?.[0];
 
-    if (itHit && itHit.trackName) {
-      appleTrack = itHit.trackName;
-      appleArtist = itHit.artistName;
-      appleDur = itHit.trackTimeMillis ? Math.round(itHit.trackTimeMillis / 1000) : 0;
-      if (appleTrack) titleVariants.add(appleTrack);
-      if (appleArtist) artistVariants.add(appleArtist);
-    }
-  } catch (e) {}
+      if (itHit && itHit.trackName) {
+        appleTrack = itHit.trackName;
+        appleArtist = itHit.artistName;
+        appleDur = itHit.trackTimeMillis ? Math.round(itHit.trackTimeMillis / 1000) : 0;
+        if (appleTrack) titleVariants.add(appleTrack);
+        if (appleArtist) artistVariants.add(appleArtist);
+      }
+    } catch (e) {}
+  }
 
   // 3. STAGE 1: Better Lyrics Primary Provider (lyrics-api.binimum.org)
   const binimumQueries = [];
@@ -3037,41 +3040,51 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
     if (t && t.length >= 2) binimumQueries.push({ track: t, artist: '' });
   }
 
-  // Deduplicate queries
+  // Deduplicate queries - top 3
   const seenBin = new Set();
   const uniqueBinQueries = binimumQueries.filter(q => {
     const k = `${q.track.toLowerCase()}___${q.artist.toLowerCase()}`;
     if (seenBin.has(k)) return false;
     seenBin.add(k);
     return true;
-  }).slice(0, 5);
+  }).slice(0, 3);
 
   let ttmlUrl = null;
   let pickedDuration = targetDuration || 180;
   let pickedTrackName = cleanTitle;
   let pickedArtistName = cleanArtist;
 
-  for (const q of uniqueBinQueries) {
+  // Run binimum queries concurrently with instant early exit on first hit
+  if (uniqueBinQueries.length > 0) {
     try {
-      const bRes = await axios.get('https://lyrics-api.binimum.org/', {
-        params: {
-          track: q.track,
-          artist: q.artist,
-          duration: targetDuration > 0 ? Math.round(targetDuration) : undefined
-        },
-        timeout: 2500
+      const binPromises = uniqueBinQueries.map(async (q) => {
+        const bRes = await axios.get('https://lyrics-api.binimum.org/', {
+          params: {
+            track: q.track,
+            artist: q.artist,
+            duration: targetDuration > 0 ? Math.round(targetDuration) : undefined
+          },
+          timeout: 2000
+        });
+        const hits = bRes.data?.results || [];
+        if (hits.length > 0 && hits[0].lyricsUrl) {
+          return {
+            ttmlUrl: hits[0].lyricsUrl,
+            pickedDuration: hits[0].duration ? Math.round(hits[0].duration / 1000) : (targetDuration || 180),
+            pickedTrackName: hits[0].trackName || q.track,
+            pickedArtistName: hits[0].artistName || q.artist || cleanArtist
+          };
+        }
+        throw new Error('No binimum hit');
       });
-      const hits = bRes.data?.results || [];
-      if (hits.length > 0 && hits[0].lyricsUrl) {
-        ttmlUrl = hits[0].lyricsUrl;
-        pickedDuration = hits[0].duration ? Math.round(hits[0].duration / 1000) : (targetDuration || 180);
-        pickedTrackName = hits[0].trackName || q.track;
-        pickedArtistName = hits[0].artistName || q.artist || cleanArtist;
-        break;
+      const winner = await Promise.any(binPromises);
+      if (winner && winner.ttmlUrl) {
+        ttmlUrl = winner.ttmlUrl;
+        pickedDuration = winner.pickedDuration;
+        pickedTrackName = winner.pickedTrackName;
+        pickedArtistName = winner.pickedArtistName;
       }
-    } catch (e) {
-      continue;
-    }
+    } catch (e) {}
   }
 
   // 4. STAGE 2: Direct lrc.red Search Fallback (Zero Intermediate .json Hop)
@@ -3088,33 +3101,42 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
       if (seenLrc.has(k)) return false;
       seenLrc.add(k);
       return true;
-    }).slice(0, 4);
+    }).slice(0, 2);
 
-    for (const q of uniqueLrc) {
+    if (uniqueLrc.length > 0) {
       try {
-        const sRes = await axios.get('https://lrc.red/search.json', {
-          params: { q },
-          headers: { 'User-Agent': 'AuraSound/4.14 (support@aurasound.app)' },
-          timeout: 2500
-        });
-        const hits = sRes.data?.hits || [];
-        if (hits.length > 0) {
-          let bestHit = hits[0];
-          if (targetDuration > 0) {
-            const sorted = [...hits].sort((a, b) => Math.abs((a.duration || 0) - targetDuration) - Math.abs((b.duration || 0) - targetDuration));
-            if (Math.abs((sorted[0].duration || 0) - targetDuration) <= 8) {
-              bestHit = sorted[0];
+        const lrcPromises = uniqueLrc.map(async (q) => {
+          const sRes = await axios.get('https://lrc.red/search.json', {
+            params: { q },
+            headers: { 'User-Agent': 'AuraSound/4.14 (support@aurasound.app)' },
+            timeout: 2000
+          });
+          const hits = sRes.data?.hits || [];
+          if (hits.length > 0) {
+            let bestHit = hits[0];
+            if (targetDuration > 0) {
+              const sorted = [...hits].sort((a, b) => Math.abs((a.duration || 0) - targetDuration) - Math.abs((b.duration || 0) - targetDuration));
+              if (Math.abs((sorted[0].duration || 0) - targetDuration) <= 8) {
+                bestHit = sorted[0];
+              }
             }
+            return {
+              ttmlUrl: `https://lrc.red/s/${bestHit.isrc}.ttml`,
+              pickedDuration: bestHit.duration || targetDuration,
+              pickedTrackName: bestHit.title || cleanTitle,
+              pickedArtistName: bestHit.artist || cleanArtist
+            };
           }
-          ttmlUrl = `https://lrc.red/s/${bestHit.isrc}.ttml`;
-          pickedDuration = bestHit.duration || targetDuration;
-          pickedTrackName = bestHit.title || cleanTitle;
-          pickedArtistName = bestHit.artist || cleanArtist;
-          break;
+          throw new Error('No lrc.red hit');
+        });
+        const lrcWinner = await Promise.any(lrcPromises);
+        if (lrcWinner && lrcWinner.ttmlUrl) {
+          ttmlUrl = lrcWinner.ttmlUrl;
+          pickedDuration = lrcWinner.pickedDuration;
+          pickedTrackName = lrcWinner.pickedTrackName;
+          pickedArtistName = lrcWinner.pickedArtistName;
         }
-      } catch (e) {
-        continue;
-      }
+      } catch (e) {}
     }
   }
 
@@ -3248,12 +3270,17 @@ app.get('/api/lyrics', async (req, res) => {
     duration = meta.duration;
   }
 
-  // 2. Resolve dynamic audio segments via SponsorBlock Public API (zero hardcode)
-  const segs = await resolveDynamicAudioSegments(videoId, duration);
+  const isMvExplicit = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
+
+  // 2. Resolve dynamic audio segments via SponsorBlock ONLY for explicit MVs/Videos (skips 2s delay on studio songs)
+  let segs = { introOffsetSec: 0, effectiveSongDuration: duration, detectedVideoDuration: duration, totalNonMusicDuration: 0 };
+  if (videoId && isMvExplicit && duration > 30) {
+    try {
+      segs = await resolveDynamicAudioSegments(videoId, duration);
+    } catch (e) {}
+  }
   const introOffsetSec = segs.introOffsetSec || 0;
   const effectiveSongDuration = segs.effectiveSongDuration > 0 ? segs.effectiveSongDuration : duration;
-
-  const isMvExplicit = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
   const isMv = isMvExplicit || introOffsetSec > 0;
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv });
 
@@ -3340,7 +3367,7 @@ app.get('/api/lyrics', async (req, res) => {
 
     // Step C: Try LRCLib for Synced Lyrics (or fallback if Asian engines had no match)
     if (!syncedResult) {
-      const candidates = buildSearchCandidates(title, artist, nativeTitle, nativeArtist, artistLatin, artistHangul, titleLatin);
+      const candidates = buildSearchCandidates(title, artist, nativeTitle, nativeArtist, artistLatin, artistHangul, titleLatin).slice(0, 3);
       for (const c of candidates) {
         try {
           if (c.type === 'get') {
@@ -3350,7 +3377,7 @@ app.get('/api/lyrics', async (req, res) => {
                 artist_name: c.artist
               },
               headers,
-              timeout: 4000
+              timeout: 2000
             });
             if (getRes.data) {
               if (getRes.data.syncedLyrics) {
@@ -3366,7 +3393,7 @@ app.get('/api/lyrics', async (req, res) => {
             const searchRes = await axios.get('https://lrclib.net/api/search', {
               params: { q: c.q },
               headers,
-              timeout: 4000
+              timeout: 2000
             });
             if (Array.isArray(searchRes.data) && searchRes.data.length > 0) {
               const picked = pickBestLyrics(searchRes.data, effectiveSongDuration, artistLatin || artist, titleLatin || title, isMv);
@@ -3384,15 +3411,20 @@ app.get('/api/lyrics', async (req, res) => {
       }
     }
 
-    // Step D: If song didn't find synced lyrics in LRCLib, try external master engines!
+    // Step D: If song didn't find synced lyrics in LRCLib, try external master engines concurrently
     if (!syncedResult) {
-      syncedResult = await searchQQMusicLyrics(title, artist, effectiveSongDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
-      if (!syncedResult) {
-        syncedResult = await searchNetEaseLyrics(title, artist, effectiveSongDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
-      }
-      if (!syncedResult) {
-        syncedResult = await searchKugouLyrics(title, artist, effectiveSongDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv);
-      }
+      const fallbackEngines = [
+        searchQQMusicLyrics(title, artist, effectiveSongDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv),
+        searchNetEaseLyrics(title, artist, effectiveSongDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv),
+        searchKugouLyrics(title, artist, effectiveSongDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv)
+      ];
+      try {
+        const anyHit = await Promise.any(fallbackEngines.map(p => p.then(res => {
+          if (res) return res;
+          throw new Error('No hit');
+        })));
+        if (anyHit) syncedResult = anyHit;
+      } catch (e) {}
     }
 
     // Fallback: If still no Synced Lyrics anywhere, use plain text lyrics
