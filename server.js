@@ -2138,7 +2138,7 @@ function isCreditOrHeaderLine(text, time, titleHints = []) {
   const colonMatch = t.match(/^([^:：]{1,25})\s*[:：]/);
   if (colonMatch) {
     const prefix = colonMatch[1];
-    if (/(?:作词|作曲|编曲|制作|演唱|混音|母带|录音|人声|弦乐|管乐|吉他|贝斯|鼓|和音|和声|伴唱|配唱|监制|企划|出品|发行|原唱|翻唱|版权|管理|录音棚|录音室|录音师|混音师|母带师|编辑|工程|小提琴|大提琴|笛子|二胡|古筝|琵琶|钢琴|vocal|mixed|mastered|recorded|producer|arranged|written|composed|lyrics|guitar|bass|drums|piano)/i.test(prefix)) {
+    if (/(?:作词|作曲|编曲|制作|演唱|混音|母带|录音|人声|弦乐|管乐|吉他|贝斯|鼓|和音|和声|和聲|合声|合聲|伴唱|配唱|监制|企划|出品|发行|原唱|翻唱|版权|管理|录音棚|录音室|录音师|混音师|母带师|编辑|工程|小提琴|大提琴|笛子|二胡|古筝|琵琶|钢琴|vocal|mixed|mastered|recorded|producer|arranged|written|composed|lyrics|guitar|bass|drums|piano)/i.test(prefix)) {
       return true;
     }
   }
@@ -2696,21 +2696,47 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
         const items = parsed.lyrics.filter(l => !l.isInstrumental && l.words).map(item => {
           const time = parseFloat((item.startTimeMs / 1000).toFixed(3));
           const endTime = parseFloat(((item.startTimeMs + item.durationMs) / 1000).toFixed(3));
-          let words = Array.isArray(item.parts) && item.parts.length > 0 ? item.parts.map(p => ({
-            text: p.words,
-            begin: parseFloat((p.startTimeMs / 1000).toFixed(3)),
-            end: parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3)),
-            trailingSpace: /\s+$/.test(p.words)
-          })) : null;
+          let words = [];
+          if (Array.isArray(item.parts) && item.parts.length > 0) {
+            for (const p of item.parts) {
+              const rawText = p.words || '';
+              const trimmed = rawText.trim();
+              if (!trimmed) {
+                if (words.length > 0) words[words.length - 1].trailingSpace = true;
+                continue;
+              }
+              const begin = parseFloat((p.startTimeMs / 1000).toFixed(3));
+              const end = parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3));
+              words.push({
+                text: trimmed,
+                begin,
+                end: Math.max(begin + 0.05, end),
+                trailingSpace: /\s+$/.test(rawText)
+              });
+            }
+          }
+          if (words.length === 0) words = null;
 
-          let romajiWords = Array.isArray(item.timedRomanization) && item.timedRomanization.length > 0
-            ? item.timedRomanization.filter(p => p.words.trim().length > 0).map(p => ({
-                text: p.words.trim(),
-                begin: parseFloat((p.startTimeMs / 1000).toFixed(3)),
-                end: parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3)),
-                trailingSpace: /\s+$/.test(p.words)
-              }))
-            : null;
+          let romajiWords = [];
+          if (Array.isArray(item.timedRomanization) && item.timedRomanization.length > 0) {
+            for (const p of item.timedRomanization) {
+              const rawText = p.words || '';
+              const trimmed = rawText.trim();
+              if (!trimmed) {
+                if (romajiWords.length > 0) romajiWords[romajiWords.length - 1].trailingSpace = true;
+                continue;
+              }
+              const begin = parseFloat((p.startTimeMs / 1000).toFixed(3));
+              const end = parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3));
+              romajiWords.push({
+                text: trimmed,
+                begin,
+                end: Math.max(begin + 0.05, end),
+                trailingSpace: /\s+$/.test(rawText)
+              });
+            }
+          }
+          if (romajiWords.length === 0) romajiWords = null;
 
           return {
             time: parseFloat(time.toFixed(2)),
@@ -2912,6 +2938,28 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   const plainWords = strippedTitle.replace(/[『』「」【】《》\[\]\(\)\-\_\/]/g, ' ').replace(/\s+/g, ' ').trim();
   if (plainWords) titleCandidates.add(plainWords.toLowerCase());
 
+  // Extract CJK sub-phrases and Latin sub-phrases from bilingual mixed titles (e.g. "晴天 Sunny Day" -> "晴天", "Sunny Day")
+  for (const srcTitle of [cleanTitle, strippedTitle]) {
+    const cjkParts = (srcTitle || '').match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g);
+    if (cjkParts) {
+      for (const p of cjkParts) {
+        if (p.length >= 2) {
+          titleCandidates.add(p.toLowerCase());
+          titleCandidates.add(toSimplifiedChinese(p).toLowerCase());
+        }
+      }
+    }
+    const latinParts = (srcTitle || '').match(/[a-zA-Z0-9']{3,}/g);
+    if (latinParts) {
+      for (const lp of latinParts) {
+        const clp = lp.trim().toLowerCase();
+        if (!/^(official|video|music|audio|lyric|lyrics|mv|full)$/i.test(clp)) {
+          titleCandidates.add(clp);
+        }
+      }
+    }
+  }
+
   if (titleLatin) titleCandidates.add(titleLatin.toLowerCase());
   if (nativeTitle) titleCandidates.add(nativeTitle.toLowerCase());
 
@@ -3028,11 +3076,11 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         if (isTitleMatch) break;
       }
 
-      if (isTitleMatch) {
-        score += 200;
-      } else {
-        score -= 500;
+      if (!isTitleMatch) {
+        // Strict guard: Never accept a completely different song by the same artist!
+        continue;
       }
+      score += 200;
 
       // Language Affinity Scoring & Anti-English-Dub Penalties:
       if (isJapanese) {
@@ -3251,8 +3299,7 @@ const KNOWN_MV_OFFSETS = {
   '3ymwOvzhwHs': 0,   // Feel Special
   'V2hlQkVJZhE': 0,   // Talk that Talk
   'ePpPVE-GGJw': 0,   // The Feels
-  'CM4CkVFmTds': 3.65, // TWICE - I CAN'T STOP ME M/V (flower bloom visual intro)
-  '0rtV5esQT6I': 3.65, // I CAN'T STOP ME
+  'CM4CkVFmTds': 6.05, // TWICE - I CAN'T STOP ME M/V (flower bloom visual intro - vocal starts at 18.0s)
   'mAKsZ26SabQ': 0,   // YES or YES
   'rRzxEiBLQCA': 0,   // Heart Shaker
   'c7rCyll5AeY': 0,   // CHEER UP
@@ -3278,9 +3325,12 @@ const KNOWN_MV_OFFSETS = {
   'CyzEtbG-sxY': 0,   // Rock with you
 
   // Japanese & Asian Artists (Music starts at 0:00)
+  'ZRtdQ81jPUQ': 0,   // YOASOBI - アイドル (Idol Official MV - vocal starts at 0.59s)
   'oZpYEEcvu5I': 0,   // tuki. - 晩餐歌 (Bansanka)
   'p_KckcJxzrY': 0,   // tuki. - ひゅるりらぱっぱ (HYURURIRAPAPPA)
   'Y4nEEZwckuU': 0,   // YOASOBI - 群青 (Gunjou)
+  'bu7nU9Mhpyo': 0,   // 周杰倫 - 告白氣球 (Love Confession MV - music starts 0:00)
+  'DYptgVvkVLQ': 0,   // 周杰倫 - 晴天 (Sunny Day Official MV - music starts 0:00)
   'BEPSc8q6Bd8': 0,   // Hearts2Hearts - Lemon Tang
   'eqKhhG4FVoQ': 0    // Hearts2Hearts - FOCUS
 };

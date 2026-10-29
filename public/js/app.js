@@ -2820,12 +2820,10 @@ class App {
     }
 
     // Universal Acoustic Latency Alignment:
-    // Precision hardware DAC buffer & Web Audio Opus decoding alignment (150ms standard, matching Better Lyrics):
-    // Eliminates the previous -1.50s artificial lag so syllable sweeps and line highlights land 100% in sync with the singer's voice.
-    const isStreamingTrack = (!this.currentTrack || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'));
-    const acousticLatencyOffset = isStreamingTrack ? -0.15 : -0.04;
+    // Real-time synchronization aligned directly with player audio presentation clock.
+    // Zero baseline delay ensures syllable sweeps land precisely on acoustic vocal onset without trailing lag.
     const userOffset = this.getCurrentTrackOffset();
-    const syncTime = Math.max(0, currentSecs + acousticLatencyOffset + userOffset);
+    const syncTime = Math.max(0, currentSecs + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
       if (syncTime >= this.currentLyricsData[i].time) {
@@ -2922,7 +2920,7 @@ class App {
         words.forEach(w => {
           const begin = parseFloat(w.getAttribute('data-begin'));
           const end = parseFloat(w.getAttribute('data-end'));
-          const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.3 : (end - begin);
+          const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.08 : (end - begin);
 
           if (syncTime >= begin && syncTime < end) {
             let fillPct = ((syncTime - begin) / duration) * 100;
@@ -2945,7 +2943,7 @@ class App {
         romajiWords.forEach(w => {
           const begin = parseFloat(w.getAttribute('data-begin'));
           const end = parseFloat(w.getAttribute('data-end'));
-          const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.3 : (end - begin);
+          const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.08 : (end - begin);
 
           if (syncTime >= begin && syncTime < end) {
             let fillPct = ((syncTime - begin) / duration) * 100;
