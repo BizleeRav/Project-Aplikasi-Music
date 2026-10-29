@@ -7974,7 +7974,8 @@ body.music-playing .cinema-turntable-arm {
 }
 
 /* Hide Romaji when toggled off */
-.cinema-lyrics-panel.hide-romaji .lyric-romaji-text {
+.cinema-lyrics-panel.hide-romaji .lyric-romaji-text,
+.cinema-lyrics-panel.hide-romaji .unit-romaji {
   display: none !important;
 }
 
@@ -8076,7 +8077,77 @@ body.music-playing .cinema-turntable-arm {
 
 
 
-/* Apple Music & Better Lyrics Syllable-Level Liquid Light Animation */
+/* =============================================================================
+   Better Lyrics Unit-Paired Word Architecture (Native + Romaji 1:1 Lock)
+   ============================================================================= */
+.cinema-lyric-unit {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: bottom;
+  align-items: flex-start;
+  margin-right: 0;
+  position: relative;
+  will-change: transform;
+}
+
+.cinema-lyric-unit.has-space {
+  margin-right: 0.28em;
+}
+
+.cinema-lyric-unit .unit-main {
+  display: inline-block;
+  color: rgba(255, 255, 255, 0.40);
+  line-height: 1.25;
+  will-change: background;
+}
+
+.cinema-lyric-line.active .cinema-lyric-unit .unit-main {
+  background: linear-gradient(
+    90deg,
+    #ffffff calc(var(--fill-pct, 0%) - 8%),
+    rgba(255, 255, 255, 0.98) var(--fill-pct, 0%),
+    rgba(255, 255, 255, 0.38) var(--fill-pct, 0%)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.cinema-lyric-line.active .cinema-lyric-unit.passed .unit-main {
+  background: #ffffff;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: #ffffff;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
+}
+
+.cinema-lyric-unit .unit-romaji {
+  display: block;
+  font-size: 0.50em;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  margin-top: 0.12em;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  color: rgba(148, 163, 184, 0.45);
+  will-change: background;
+}
+
+.cinema-lyric-line.active .cinema-lyric-unit .unit-romaji {
+  background: linear-gradient(
+    90deg,
+    #38bdf8 calc(var(--fill-pct, 0%) - 8%),
+    #7dd3fc var(--fill-pct, 0%),
+    rgba(148, 163, 184, 0.40) var(--fill-pct, 0%)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.cinema-lyric-line.active .cinema-lyric-unit.passed .unit-romaji {
+  background: #7dd3fc;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: #7dd3fc;
+}
+
 .cinema-lyric-word {
   display: inline-block;
   margin-right: 0;

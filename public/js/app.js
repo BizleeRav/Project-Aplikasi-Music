@@ -2680,13 +2680,19 @@ class App {
       panel.classList.toggle('hide-romaji', !this.isRomajiEnabled);
     }
 
-    // Render Lyrics: Original Script + Syllable Spans + Romaji/Pinyin
+    // Render Lyrics: Better Lyrics Unit-Paired Word Architecture (Native + Romaji 1:1 Lock)
     this.cinemaLyricsStream.innerHTML = lines.map((item, idx) => {
-      let mainContent = '';
-      if (Array.isArray(item.words) && item.words.length > 0) {
+      const hasWordSync = (Array.isArray(item.words) && item.words.length > 0);
+      let lineInnerHtml = '';
+
+      if (hasWordSync) {
         let searchPos = 0;
         const lineText = item.text || '';
-        mainContent = item.words.map((w, wIdx) => {
+        const rWords = (Array.isArray(item.romajiWords) && item.romajiWords.length === item.words.length)
+          ? item.romajiWords
+          : null;
+
+        const unitsHtml = item.words.map((w, wIdx) => {
           let hasSpace = false;
           if (w.trailingSpace !== undefined && typeof w.trailingSpace === 'boolean') {
             hasSpace = w.trailingSpace;
@@ -2701,51 +2707,39 @@ class App {
           } else {
             hasSpace = (wIdx < item.words.length - 1);
           }
-          return `<span class="cinema-lyric-word ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
-        }).join('');
-      } else {
-        mainContent = this.escapeHtml(item.text);
-      }
 
-      const hasWordSync = (Array.isArray(item.words) && item.words.length > 0);
-
-      let romajiContent = '';
-      if (item.romaji) {
-        const rWords = hasWordSync ? (
-          (Array.isArray(item.romajiWords) && item.romajiWords.length > 0)
-            ? item.romajiWords
-            : (Array.isArray(item.words) && item.words.some(w => w.romaji) ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end, trailingSpace: w.trailingSpace })) : null)
-        ) : null;
-
-        if (rWords && rWords.length > 0) {
-          let rSearchPos = 0;
-          const romajiLineText = item.romaji || '';
-          romajiContent = `<div class="lyric-romaji-text">` + rWords.map((w, wIdx) => {
-            let hasSpace = false;
-            if (romajiLineText) {
-              const fIdx = romajiLineText.indexOf(w.text, rSearchPos);
-              if (fIdx !== -1) {
-                rSearchPos = fIdx + w.text.length;
-                hasSpace = (rSearchPos < romajiLineText.length && /\s/.test(romajiLineText[rSearchPos]));
-              } else {
-                hasSpace = (wIdx < rWords.length - 1);
-              }
-            } else if (w.trailingSpace !== undefined && typeof w.trailingSpace === 'boolean') {
-              hasSpace = w.trailingSpace;
-            } else {
-              hasSpace = (wIdx < rWords.length - 1);
+          // Determine paired romaji/pronunciation for this exact word/syllable
+          const rText = w.romaji || (rWords ? rWords[wIdx]?.text : '');
+          let showRomaji = false;
+          if (rText && rText.trim()) {
+            const cleanR = rText.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const cleanW = (w.text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            // Do not show duplicate romaji if word is identical Latin/English
+            if (cleanR && cleanR !== cleanW) {
+              showRomaji = true;
             }
-            return `<span class="cinema-lyric-word-romaji ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
-          }).join('') + `</div>`;
-        } else {
-          romajiContent = `<div class="lyric-romaji-text">${this.escapeHtml(item.romaji)}</div>`;
-        }
+          }
+
+          return `
+            <span class="cinema-lyric-unit ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">
+              <span class="unit-main">${this.escapeHtml(w.text)}</span>
+              ${showRomaji ? `<span class="unit-romaji">${this.escapeHtml(rText)}</span>` : ''}
+            </span>
+          `;
+        }).join('');
+
+        lineInnerHtml = `<div class="lyric-main-text">${unitsHtml}</div>`;
+      } else {
+        // Line-Sync only (LRC fallback): clean, elegant line highlight
+        lineInnerHtml = `
+          <div class="lyric-main-text">${this.escapeHtml(item.text)}</div>
+          ${item.romaji ? `<div class="lyric-romaji-text">${this.escapeHtml(item.romaji)}</div>` : ''}
+        `;
       }
 
       return `
         <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''} ${hasWordSync ? 'has-word-sync' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
-          <div class="lyric-main-text">${mainContent}</div>
-          ${romajiContent}
+          ${lineInnerHtml}
         </div>
       `;
     }).join('');
@@ -2892,75 +2886,78 @@ class App {
         if (idx < activeIdx) {
           // Past lines: ensure all syllables are fully swept and marked passed
           if (line.classList.contains('has-word-sync')) {
-            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji');
-            allWords.forEach(w => {
-              w.style.setProperty('--fill-pct', '100%');
-              w.classList.remove('active');
-              w.classList.add('passed');
+            const allUnits = line.querySelectorAll('.cinema-lyric-unit, .cinema-lyric-word, .cinema-lyric-word-romaji');
+            allUnits.forEach(u => {
+              u.style.setProperty('--fill-pct', '100%');
+              u.classList.remove('active');
+              u.classList.add('passed');
             });
           }
         } else if (idx > activeIdx) {
           // Future lines: reset syllables to initial unhighlighted state
           if (line.classList.contains('has-word-sync')) {
-            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji');
-            allWords.forEach(w => {
-              w.style.setProperty('--fill-pct', '0%');
-              w.classList.remove('active', 'passed');
+            const allUnits = line.querySelectorAll('.cinema-lyric-unit, .cinema-lyric-word, .cinema-lyric-word-romaji');
+            allUnits.forEach(u => {
+              u.style.setProperty('--fill-pct', '0%');
+              u.classList.remove('active', 'passed');
             });
           }
         }
       });
     }
 
-    // Syllable-Level Continuous Gradient Sweep Animation (Apple Music & Better Lyrics standard)
+    // Syllable-Level Continuous Gradient Sweep Animation (Better Lyrics standard)
     if (activeIdx >= 0) {
       const activeLineEl = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${activeIdx}"]`);
       if (activeLineEl && activeLineEl.classList.contains('has-word-sync')) {
-        const words = activeLineEl.querySelectorAll('.cinema-lyric-word');
-        words.forEach(w => {
-          const begin = parseFloat(w.getAttribute('data-begin'));
-          const end = parseFloat(w.getAttribute('data-end'));
+        const units = activeLineEl.querySelectorAll('.cinema-lyric-unit, .cinema-lyric-word');
+        units.forEach(u => {
+          const begin = parseFloat(u.getAttribute('data-begin'));
+          const end = parseFloat(u.getAttribute('data-end'));
           const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.08 : (end - begin);
 
           if (syncTime >= begin && syncTime < end) {
             let fillPct = ((syncTime - begin) / duration) * 100;
             if (isNaN(fillPct)) fillPct = 0;
             fillPct = Math.min(100, Math.max(0, fillPct));
-            w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
-            w.classList.add('active');
-            w.classList.remove('passed');
+            u.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
+            u.classList.add('active');
+            u.classList.remove('passed');
           } else if (syncTime >= end) {
-            w.style.setProperty('--fill-pct', '100%');
-            w.classList.remove('active');
-            w.classList.add('passed');
+            u.style.setProperty('--fill-pct', '100%');
+            u.classList.remove('active');
+            u.classList.add('passed');
           } else {
-            w.style.setProperty('--fill-pct', '0%');
-            w.classList.remove('active', 'passed');
+            u.style.setProperty('--fill-pct', '0%');
+            u.classList.remove('active', 'passed');
           }
         });
 
+        // Backward compatibility for standalone romaji words if any
         const romajiWords = activeLineEl.querySelectorAll('.cinema-lyric-word-romaji');
-        romajiWords.forEach(w => {
-          const begin = parseFloat(w.getAttribute('data-begin'));
-          const end = parseFloat(w.getAttribute('data-end'));
-          const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.08 : (end - begin);
+        if (romajiWords && romajiWords.length > 0) {
+          romajiWords.forEach(w => {
+            const begin = parseFloat(w.getAttribute('data-begin'));
+            const end = parseFloat(w.getAttribute('data-end'));
+            const duration = (isNaN(end) || isNaN(begin) || end <= begin) ? 0.08 : (end - begin);
 
-          if (syncTime >= begin && syncTime < end) {
-            let fillPct = ((syncTime - begin) / duration) * 100;
-            if (isNaN(fillPct)) fillPct = 0;
-            fillPct = Math.min(100, Math.max(0, fillPct));
-            w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
-            w.classList.add('active');
-            w.classList.remove('passed');
-          } else if (syncTime >= end) {
-            w.style.setProperty('--fill-pct', '100%');
-            w.classList.remove('active');
-            w.classList.add('passed');
-          } else {
-            w.style.setProperty('--fill-pct', '0%');
-            w.classList.remove('active', 'passed');
-          }
-        });
+            if (syncTime >= begin && syncTime < end) {
+              let fillPct = ((syncTime - begin) / duration) * 100;
+              if (isNaN(fillPct)) fillPct = 0;
+              fillPct = Math.min(100, Math.max(0, fillPct));
+              w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
+              w.classList.add('active');
+              w.classList.remove('passed');
+            } else if (syncTime >= end) {
+              w.style.setProperty('--fill-pct', '100%');
+              w.classList.remove('active');
+              w.classList.add('passed');
+            } else {
+              w.style.setProperty('--fill-pct', '0%');
+              w.classList.remove('active', 'passed');
+            }
+          });
+        }
       }
     }
   }
