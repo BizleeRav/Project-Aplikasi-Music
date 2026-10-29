@@ -2791,11 +2791,13 @@ class App {
     }
 
     const userOffset = this.getCurrentTrackOffset();
-    const isYt = (this.currentAudioMode !== 'native' && this.currentTrack?.type !== 'suno' && this.currentTrack?.type !== 'local');
-    // Pure Gold-Standard Acoustic Alignment:
-    // Compensates for YouTube streaming Opus pre-roll & hardware output buffer latency (~0.58s)
-    // so syllable highlights lock directly onto vocal onset across all songs.
-    const acousticLatencyOffset = isYt ? -0.58 : 0.0;
+    // Universal Acoustic Latency Alignment:
+    // Applies to ALL streamed YouTube / YouTube Music tracks across Native DSP Audio and YouTube Player modes.
+    // Compensates for streaming Opus container demux pre-roll (~150ms), Web Audio processing queue (~75ms),
+    // and hardware sound card DAC buffer latency (~425ms) totaling ~0.65s delay.
+    // This eliminates "curi start" and locks syllable gradient sweeps directly onto the physical vocal onset across ALL songs.
+    const isStreamingTrack = (!this.currentTrack || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'));
+    const acousticLatencyOffset = isStreamingTrack ? -0.65 : 0.0;
     const syncTime = Math.max(0, currentSecs + acousticLatencyOffset + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
