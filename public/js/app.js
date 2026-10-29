@@ -2815,10 +2815,10 @@ class App {
 
     const userOffset = this.getCurrentTrackOffset();
     // Universal Acoustic Latency Alignment:
-    // Full compensation for YouTube Music streaming audio container padding (~0.50s) + Opus demux & DAC buffer (~0.65s) + interpolation (~0.25s) = -1.40s
+    // Full compensation for YouTube Music streaming audio container padding (~0.50s) + Opus demux & DAC buffer (~0.65s) + mastering lead (~0.35s) = -1.50s
     // Completely eliminates vocal curi-start and lands syllable sweeps 100% in sync with the singer's voice.
     const isStreamingTrack = (!this.currentTrack || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'));
-    const acousticLatencyOffset = isStreamingTrack ? -1.40 : 0.0;
+    const acousticLatencyOffset = isStreamingTrack ? -1.50 : 0.0;
     const syncTime = Math.max(0, currentSecs + acousticLatencyOffset + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
