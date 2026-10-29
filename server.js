@@ -2694,27 +2694,100 @@ function generateInterpolatedWords(text, begin, end) {
   });
 }
 
-let _braccatoTTMLParser = null;
-async function getBraccatoTTMLParser() {
-  if (!_braccatoTTMLParser) {
+let _braccatoParsers = null;
+async function getBraccatoParsers() {
+  if (!_braccatoParsers) {
     try {
-      const { parseTTMLContent } = await import('@braccato/parsers');
-      _braccatoTTMLParser = parseTTMLContent;
+      _braccatoParsers = await import('@braccato/parsers');
     } catch (e) {
       console.warn('Failed to load @braccato/parsers:', e.message);
     }
   }
-  return _braccatoTTMLParser;
+  return _braccatoParsers;
+}
+
+async function getBraccatoTTMLParser() {
+  const p = await getBraccatoParsers();
+  return p?.parseTTMLContent || null;
+}
+
+function parseLyricsTimeStr(str) {
+  if (!str) return 0;
+  if (typeof str === 'number') return str;
+  if (str.includes(':')) {
+    const parts = str.split(':');
+    if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+    if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+  }
+  return parseFloat(str) || 0;
 }
 
 async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
   if (!ttmlString || typeof ttmlString !== 'string') return null;
 
   try {
-    const parseTTML = await getBraccatoTTMLParser();
-    if (parseTTML) {
-      const parsed = parseTTML(ttmlString, { songDurationMs: (durationSec || 180) * 1000 });
+    const parsers = await getBraccatoParsers();
+    if (parsers?.parseTTMLContent) {
+      const parsed = parsers.parseTTMLContent(ttmlString, {
+        songDurationMs: (durationSec || 180) * 1000,
+        instrumentalGapMs: 5000
+      });
       if (parsed && Array.isArray(parsed.lyrics) && parsed.lyrics.length > 0) {
+        // Extract official Apple transliteration if present (<transliteration xml:lang="...-Latn">)
+        const translitMap = new Map();
+        const transRegex = /<transliteration\s+[^>]*xml:lang="([^"]+)"[^>]*>([\s\S]*?)<\/transliteration>/gi;
+        let transBlockMatch;
+        let detectedTranslitLang = null;
+
+        while ((transBlockMatch = transRegex.exec(ttmlString)) !== null) {
+          const lang = transBlockMatch[1];
+          if (lang.includes('Latn')) {
+            detectedTranslitLang = lang.split('-')[0];
+            const textTagRegex = /<text\s+[^>]*for="([^"]+)"[^>]*>([\s\S]*?)<\/text>/gi;
+            let textMatch;
+            while ((textMatch = textTagRegex.exec(transBlockMatch[2])) !== null) {
+              const lineKey = textMatch[1];
+              const inner = textMatch[2];
+              const spanRegex = /<span\s+([\s\S]*?)>([\s\S]*?)<\/span>/gi;
+              const romajiWords = [];
+              let sm;
+              while ((sm = spanRegex.exec(inner)) !== null) {
+                const sAttrs = sm[1];
+                const bMatch = sAttrs.match(/\bbegin="([^"]+)"/i);
+                const eMatch = sAttrs.match(/\bend="([^"]+)"/i);
+                if (bMatch && eMatch) {
+                  const wText = (sm[2].replace(/<[^>]+>/g, '').trim());
+                  if (wText) {
+                    romajiWords.push({
+                      startTimeMs: Math.round(parseLyricsTimeStr(bMatch[1]) * 1000),
+                      durationMs: Math.max(50, Math.round((parseLyricsTimeStr(eMatch[1]) - parseLyricsTimeStr(bMatch[1])) * 1000)),
+                      words: /\s+$/.test(sm[2]) ? `${wText} ` : wText
+                    });
+                  }
+                }
+              }
+              const fullRomajiText = inner.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+              translitMap.set(lineKey, {
+                text: fullRomajiText,
+                parts: romajiWords.length > 0 ? romajiWords : undefined
+              });
+            }
+            break;
+          }
+        }
+
+        // Apply transliteration to parsed.lyrics directly & delete any translations
+        for (const l of parsed.lyrics) {
+          if (l.key && translitMap.has(l.key)) {
+            const tr = translitMap.get(l.key);
+            l.romanization = tr.text;
+            if (tr.parts) l.timedRomanization = tr.parts;
+          }
+          // Zero machine translation as requested
+          delete l.translation;
+          delete l.translations;
+        }
+
         const items = parsed.lyrics.filter(l => !l.isInstrumental && l.words).map(item => {
           const time = parseFloat((item.startTimeMs / 1000).toFixed(3));
           const endTime = parseFloat(((item.startTimeMs + item.durationMs) / 1000).toFixed(3));
@@ -2739,42 +2812,26 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
           }
           if (words.length === 0) words = null;
 
-          let romajiWords = [];
-          if (Array.isArray(item.timedRomanization) && item.timedRomanization.length > 0) {
-            for (const p of item.timedRomanization) {
-              const rawText = p.words || '';
-              const trimmed = rawText.trim();
-              if (!trimmed) {
-                if (romajiWords.length > 0) romajiWords[romajiWords.length - 1].trailingSpace = true;
-                continue;
-              }
-              const begin = parseFloat((p.startTimeMs / 1000).toFixed(3));
-              const end = parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3));
-              romajiWords.push({
-                text: trimmed,
-                begin,
-                end: Math.max(begin + 0.05, end),
-                trailingSpace: /\s+$/.test(rawText)
-              });
-            }
-          }
-          if (romajiWords.length === 0) romajiWords = null;
-
           return {
             time: parseFloat(time.toFixed(3)),
             endTime: parseFloat(endTime.toFixed(3)),
             text: item.words,
             words,
             romaji: item.romanization || null,
-            romajiWords,
-            lang: parsed.language || null
+            lang: parsed.language || detectedTranslitLang || null
           };
         });
 
         if (items.length > 0) {
           const lsMatch = ttmlString.match(/leadingSilence="([0-9.]+)"/i);
           const leadingSilence = lsMatch ? (parseFloat(lsMatch[1]) || 0) : 0;
-          return { leadingSilence, items, braccatoLyrics: parsed.lyrics, lang: parsed.language };
+          return {
+            leadingSilence,
+            items,
+            braccatoLyrics: parsed.lyrics,
+            lang: parsed.language || detectedTranslitLang || null,
+            isWordSynced: Boolean(parsed.isWordSynced)
+          };
         }
       }
     }
@@ -2784,6 +2841,114 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
 
   // Synchronous regex fallback
   return parseAppleMusicTTML(ttmlString);
+}
+
+async function parseAnyLyricsToBraccato(sourceData, durationSec, title, artist) {
+  if (!sourceData) return null;
+  const parsers = await getBraccatoParsers();
+  const durMs = (durationSec || 180) * 1000;
+
+  // 1. If source already provided braccatoLyrics
+  if (Array.isArray(sourceData.braccatoLyrics) && sourceData.braccatoLyrics.length > 0) {
+    return {
+      lyrics: sourceData.braccatoLyrics,
+      lang: sourceData.detectedLang || null,
+      isWordSynced: Boolean(sourceData.hasWordSync)
+    };
+  }
+
+  // 2. If source gave TTML string
+  if (sourceData.ttmlString) {
+    if (parsers?.parseTTMLContent) {
+      const parsed = parsers.parseTTMLContent(sourceData.ttmlString, { songDurationMs: durMs, instrumentalGapMs: 5000 });
+      if (parsed && Array.isArray(parsed.lyrics) && parsed.lyrics.length > 0) {
+        return {
+          lyrics: parsed.lyrics,
+          lang: parsed.language || null,
+          isWordSynced: Boolean(parsed.isWordSynced)
+        };
+      }
+    }
+  }
+
+  // 3. If source gave NetEase YRC parsed items
+  if (Array.isArray(sourceData.parsedLyrics) && sourceData.parsedLyrics.length > 0) {
+    const braccatoLyrics = sourceData.parsedLyrics.map(it => {
+      const startTimeMs = Math.round(it.time * 1000);
+      const durationMs = it.endTime ? Math.max(500, Math.round((it.endTime - it.time) * 1000)) : 3500;
+      return {
+        startTimeMs,
+        durationMs,
+        words: it.text,
+        parts: it.words ? it.words.map(w => ({
+          startTimeMs: Math.round(w.begin * 1000),
+          durationMs: Math.max(50, Math.round((w.end - w.begin) * 1000)),
+          words: (w.trailingSpace !== false) ? `${w.text} ` : w.text
+        })) : undefined
+      };
+    });
+    return {
+      lyrics: braccatoLyrics,
+      lang: null,
+      isWordSynced: sourceData.parsedLyrics.some(it => it.words && it.words.length > 0)
+    };
+  }
+
+  // 4. If source gave syncedLyrics (LRC / QRC / Kugou / LRCLib)
+  if (sourceData.syncedLyrics && typeof sourceData.syncedLyrics === 'string') {
+    let raw = sourceData.syncedLyrics;
+    // Pre-clean inline translation slash: "夜に駆ける / 向夜晚奔去" -> "夜に駆ける"
+    raw = raw.split('\n').map(line => {
+      if (line.includes('/') && !line.includes('<') && !line.includes('(')) {
+        const parts = line.split('/');
+        if (parts[0].trim().length > 0 && parts[1].trim().length > 0) {
+          return parts[0].trim();
+        }
+      }
+      return line;
+    }).join('\n');
+
+    if (parsers) {
+      try {
+        let parsed = null;
+        if (parsers.parseLRC) {
+          parsed = parsers.parseLRC(raw, durMs, { instrumentalGapMs: 5000 });
+          if (parsers.lrcFixers && Array.isArray(parsed)) {
+            parsers.lrcFixers(parsed);
+          }
+        } else if (parsers.detectParser) {
+          parsed = parsers.detectParser(raw).parse(raw, durMs);
+        }
+        if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+          return {
+            lyrics: parsed,
+            lang: null,
+            isWordSynced: parsed.some(l => l.parts && l.parts.length > 0)
+          };
+        }
+      } catch (e) {
+        console.warn('Braccato parse error for synced lyrics:', e.message);
+      }
+    }
+  }
+
+  // 5. If source gave plainLyrics
+  if (sourceData.plainLyrics && typeof sourceData.plainLyrics === 'string') {
+    if (parsers?.PlainParser) {
+      try {
+        const parsed = parsers.PlainParser.parse(sourceData.plainLyrics, durMs);
+        if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+          return {
+            lyrics: parsed,
+            lang: null,
+            isWordSynced: false
+          };
+        }
+      } catch (e) {}
+    }
+  }
+
+  return null;
 }
 
 function parseAppleMusicTTML(ttmlString) {
@@ -3489,222 +3654,144 @@ app.get('/api/lyrics', async (req, res) => {
 
         netShiftSec = mvIntroDelaySec - lrcOffsetSec + leadingSilenceSec;
       }
+    }
 
-      let items = [];
+    let unifiedLyrics = null;
+    if (result) {
+      // 1. Unified Better Lyrics Engine Parser for ALL sources (TTML, LRC, QRC, YRC, Plain)
+      const parsedBraccato = await parseAnyLyricsToBraccato(result, duration || result.duration, title, artist);
+      unifiedLyrics = parsedBraccato?.lyrics || null;
+      detectedLang = parsedBraccato?.lang || (result.detectedLang ? result.detectedLang.split('-')[0].toLowerCase() : null);
 
-      if (result.parsedLyrics && Array.isArray(result.parsedLyrics) && result.parsedLyrics.length > 0) {
-        // High-Precision Syllable-Level items from BetterLyrics (Apple Music TTML)
-        items = result.parsedLyrics.map(it => {
-          const adjTime = Math.max(0, parseFloat((it.time + netShiftSec).toFixed(3)));
-          const adjEndTime = it.endTime ? Math.max(0, parseFloat((it.endTime + netShiftSec).toFixed(3))) : undefined;
-          const adjWords = it.words ? it.words.map(w => ({
-            ...w,
-            begin: Math.max(0, parseFloat((w.begin + netShiftSec).toFixed(3))),
-            end: Math.max(0, parseFloat((w.end + netShiftSec).toFixed(3)))
-          })) : null;
-          const adjRomajiWords = it.romajiWords ? it.romajiWords.map(w => ({
-            ...w,
-            begin: Math.max(0, parseFloat((w.begin + netShiftSec).toFixed(3))),
-            end: Math.max(0, parseFloat((w.end + netShiftSec).toFixed(3)))
-          })) : null;
+      if (unifiedLyrics && Array.isArray(unifiedLyrics) && unifiedLyrics.length > 0) {
+        // Apply netShiftSec (MV intro offset / sync timing)
+        if (netShiftSec !== 0) {
+          const shiftMs = Math.round(netShiftSec * 1000);
+          for (const l of unifiedLyrics) {
+            l.startTimeMs = Math.max(0, l.startTimeMs + shiftMs);
+            if (Array.isArray(l.parts)) {
+              for (const p of l.parts) {
+                p.startTimeMs = Math.max(0, p.startTimeMs + shiftMs);
+              }
+            }
+            if (Array.isArray(l.timedRomanization)) {
+              for (const p of l.timedRomanization) {
+                p.startTimeMs = Math.max(0, p.startTimeMs + shiftMs);
+              }
+            }
+          }
+        }
+
+        // Sort ascending by timestamp
+        unifiedLyrics.sort((a, b) => a.startTimeMs - b.startTimeMs);
+
+        // Deduplicate collision timestamps (< 80ms)
+        const dedupedLyrics = [];
+        for (let i = 0; i < unifiedLyrics.length; i++) {
+          const curr = unifiedLyrics[i];
+          if (dedupedLyrics.length === 0) {
+            dedupedLyrics.push(curr);
+            continue;
+          }
+          const prev = dedupedLyrics[dedupedLyrics.length - 1];
+          if (Math.abs(curr.startTimeMs - prev.startTimeMs) < 80) {
+            if (isKorean) {
+              const prevKo = /[\uac00-\ud7af]/.test(prev.words || '');
+              const currKo = /[\uac00-\ud7af]/.test(curr.words || '');
+              if (!prevKo && currKo) dedupedLyrics[dedupedLyrics.length - 1] = curr;
+              continue;
+            } else if (isJapanese) {
+              const prevJp = /[\u3040-\u30ff]/.test(prev.words || '');
+              const currJp = /[\u3040-\u30ff]/.test(curr.words || '');
+              if (!prevJp && currJp) dedupedLyrics[dedupedLyrics.length - 1] = curr;
+              continue;
+            } else {
+              if ((!prev.parts && curr.parts) || ((curr.words || '').length > (prev.words || '').length)) {
+                dedupedLyrics[dedupedLyrics.length - 1] = curr;
+              }
+              continue;
+            }
+          }
+          dedupedLyrics.push(curr);
+        }
+        unifiedLyrics = dedupedLyrics;
+
+        // Ensure reasonable line durations
+        for (let i = 0; i < unifiedLyrics.length; i++) {
+          const curr = unifiedLyrics[i];
+          if (!curr.durationMs || curr.durationMs <= 0) {
+            if (i < unifiedLyrics.length - 1) {
+              const nextStart = unifiedLyrics[i + 1].startTimeMs;
+              curr.durationMs = Math.max(500, Math.min(6000, nextStart - curr.startTimeMs - 80));
+            } else {
+              curr.durationMs = 4500;
+            }
+          } else if (i === unifiedLyrics.length - 1 && curr.durationMs > 10000) {
+            curr.durationMs = 4500;
+          }
+        }
+
+        // Filter out early credit headers & producer/composer lines before vocal onset
+        const titleHints = [title, titleLatin, nativeTitle, artistLatin, artistHangul, result.trackName].filter(Boolean);
+        unifiedLyrics = unifiedLyrics.filter(it => it.isInstrumental || !isCreditOrHeaderLine(it.words, it.startTimeMs / 1000, titleHints));
+
+        // ABSOLUTE ZERO TRANSLATION: Remove any translation fields across all lines
+        for (const l of unifiedLyrics) {
+          delete l.translation;
+          delete l.translations;
+        }
+
+        // Singable Phonetic Romanization: ONLY on sung lines (immune to instrumental off-by-1 offsets)
+        const sungLines = unifiedLyrics.filter(l => !l.isInstrumental && l.words && l.words.trim());
+        if (sungLines.length > 0) {
+          try {
+            const romanizer = getLyricsRomanizer();
+            const processed = await romanizer.romanizeLyricsList(
+              sungLines.map(l => ({ text: l.words, time: l.startTimeMs / 1000 }))
+            );
+            if (processed && Array.isArray(processed.lines)) {
+              let sungIdx = 0;
+              for (const l of unifiedLyrics) {
+                if (!l.isInstrumental && l.words && l.words.trim()) {
+                  const r = processed.lines[sungIdx++];
+                  if (r && r.romaji) {
+                    l.romanization = r.romaji;
+                  }
+                }
+              }
+              detectedLang = processed.detectedLang || detectedLang;
+            }
+          } catch (e) {
+            console.warn('Lyrics romanization error:', e.message);
+          }
+        }
+
+        // Build parsedLyrics for backward-compatible client consumers
+        parsedLyrics = unifiedLyrics.filter(l => !l.isInstrumental && l.words && l.words.trim()).map(l => {
+          const time = parseFloat((l.startTimeMs / 1000).toFixed(3));
+          const endTime = parseFloat(((l.startTimeMs + l.durationMs) / 1000).toFixed(3));
+          let words = null;
+          if (Array.isArray(l.parts) && l.parts.length > 0) {
+            words = l.parts.map(p => ({
+              text: p.words.trim(),
+              begin: parseFloat((p.startTimeMs / 1000).toFixed(3)),
+              end: parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3)),
+              trailingSpace: /\s+$/.test(p.words)
+            }));
+          }
           return {
-            ...it,
-            time: adjTime,
-            endTime: adjEndTime,
-            words: adjWords,
-            romajiWords: adjRomajiWords
+            time,
+            endTime,
+            text: l.words,
+            words,
+            romaji: l.romanization || null,
+            lang: detectedLang
           };
         });
-      } else {
-        // Parse from LRC format (with support for QQ Music <offset,dur> & Kugou (start,dur) syllable sync)
-        const lrcLines = result.syncedLyrics.split('\n');
-        const lrcRegex = /^\[(\d{2}):(\d{2})(?:[.:](\d+))?\]\s*(.*)$/;
-        for (const line of lrcLines) {
-          const match = line.trim().match(lrcRegex);
-          if (match) {
-            const m = parseInt(match[1], 10);
-            const s = parseInt(match[2], 10) + (match[3] ? parseFloat('0.' + match[3]) : 0);
-            const lineBaseSec = m * 60 + s;
-            const time = Math.max(0, parseFloat((lineBaseSec + netShiftSec).toFixed(2)));
-            let rawLinePayload = match[4].trim();
-
-            // Handle inline translation merged with slash (e.g. "夜に駆ける / 向夜晚奔去" or "사랑해 / 사란해")
-            if (rawLinePayload.includes('/')) {
-              const slashIdx = rawLinePayload.indexOf('/');
-              const beforeSlash = rawLinePayload.substring(0, slashIdx).trim();
-              const afterSlash = rawLinePayload.substring(slashIdx + 1).trim();
-              if (beforeSlash.length > 0 && afterSlash.length > 0 && !beforeSlash.includes('<') && !beforeSlash.includes('(')) {
-                rawLinePayload = beforeSlash;
-              }
-            }
-
-            // Universal Asian Syllable Extractor:
-            // Determine timestamp mode once per line based on first syllable
-            const firstSylMatch = /(?:<(\d+),(\d+)(?:,\d+)?>|\((\d+),(\d+)\))/i.exec(rawLinePayload);
-            let isAbsoluteMs = false;
-            if (firstSylMatch) {
-              const firstStartVal = parseInt(firstSylMatch[1] !== undefined ? firstSylMatch[1] : firstSylMatch[3], 10);
-              isAbsoluteMs = firstStartVal > 0 && Math.abs((firstStartVal / 1000.0) - lineBaseSec) <= 1.5;
-            }
-
-            const syllableRegex = /(?:<(\d+),(\d+)(?:,\d+)?>|\((\d+),(\d+)\))([^\(<]+)/g;
-            const words = [];
-            let sylMatch;
-
-            while ((sylMatch = syllableRegex.exec(rawLinePayload)) !== null) {
-              const isQQ = sylMatch[1] !== undefined;
-              const startVal = parseInt(isQQ ? sylMatch[1] : sylMatch[3], 10);
-              const durVal = parseInt(isQQ ? sylMatch[2] : sylMatch[4], 10);
-              const rawSyl = sylMatch[5] || '';
-              const trailingSpace = /\s+$/.test(rawSyl);
-              const sylText = rawSyl.trim();
-              if (sylText && !isNaN(startVal) && !isNaN(durVal)) {
-                let wordBeginSec;
-                if (isAbsoluteMs) {
-                  wordBeginSec = startVal / 1000.0;
-                } else {
-                  wordBeginSec = lineBaseSec + (startVal / 1000.0);
-                }
-                const wordEndSec = wordBeginSec + Math.max(0.05, durVal / 1000.0);
-                const adjBegin = Math.max(0, parseFloat((wordBeginSec + netShiftSec).toFixed(3)));
-                const adjEnd = Math.max(0, parseFloat((wordEndSec + netShiftSec).toFixed(3)));
-                words.push({
-                  text: sylText,
-                  begin: adjBegin,
-                  end: adjEnd,
-                  trailingSpace: trailingSpace
-                });
-              }
-            }
-
-            let text = rawLinePayload.replace(/\(\d+,\d+\)/g, '').replace(/<[^>]+>/g, '').trim();
-            if (text) {
-              items.push({
-                time,
-                text,
-                words: words.length > 0 ? words : null
-              });
-            }
-          }
-        }
-      }
-
-      // 1. Sort strictly by timestamp ascending so lyrics never jump out of order
-      items.sort((a, b) => a.time - b.time);
-
-      // Deduplicate lines with identical or near-identical timestamps (< 0.08s)
-      const dedupedItems = [];
-      for (let i = 0; i < items.length; i++) {
-        const curr = items[i];
-        if (dedupedItems.length === 0) {
-          dedupedItems.push(curr);
-          continue;
-        }
-        const prev = dedupedItems[dedupedItems.length - 1];
-        if (Math.abs(curr.time - prev.time) < 0.08) {
-          // Collision: prioritize the original language line
-          if (isKorean) {
-            const prevHasKo = /[\uac00-\ud7af]/.test(prev.text);
-            const currHasKo = /[\uac00-\ud7af]/.test(curr.text);
-            if (!prevHasKo && currHasKo) {
-              dedupedItems[dedupedItems.length - 1] = curr;
-            }
-            continue;
-          } else if (isJapanese) {
-            const prevHasJp = /[\u3040-\u30ff]/.test(prev.text);
-            const currHasJp = /[\u3040-\u30ff]/.test(curr.text);
-            if (!prevHasJp && currHasJp) {
-              dedupedItems[dedupedItems.length - 1] = curr;
-            }
-            continue;
-          } else {
-            if ((!prev.words && curr.words) || (curr.text.length > prev.text.length)) {
-              dedupedItems[dedupedItems.length - 1] = curr;
-            }
-            continue;
-          }
-        }
-        dedupedItems.push(curr);
-      }
-      items = dedupedItems;
-
-      // Populate accurate endTime for every line so syllables in LRC-fallback songs never get NaN or rushed tempo
-      for (let i = 0; i < items.length; i++) {
-        if (!items[i].endTime) {
-          if (i < items.length - 1) {
-            const nextTime = items[i + 1].time;
-            items[i].endTime = Math.max(items[i].time + 0.5, Math.min(items[i].time + 6.0, nextTime - 0.1));
-          } else {
-            const totalDur = duration || (result ? result.duration : 0) || 180;
-            items[i].endTime = Math.max(items[i].time + 0.5, Math.min(totalDur, items[i].time + 4.5));
-          }
-          items[i].endTime = parseFloat(items[i].endTime.toFixed(2));
-        }
-      }
-
-      // 2. Filter out early credit headers & producer/composer lines before vocal onset (up to 30s)
-      const titleHints = [title, titleLatin, nativeTitle, artistLatin, artistHangul, result.trackName].filter(Boolean);
-      const cleanItems = items.filter(it => !isCreditOrHeaderLine(it.text, it.time, titleHints));
-      const finalItems = cleanItems.length > 0 ? cleanItems : items;
-
-      if (finalItems.length > 0) {
-        try {
-          const romanizer = getLyricsRomanizer();
-          const processed = await romanizer.romanizeLyricsList(finalItems);
-          parsedLyrics = processed.lines;
-          detectedLang = processed.detectedLang || (result.detectedLang ? result.detectedLang.split('-')[0].toLowerCase() : null);
-        } catch (e) {
-          console.warn('Romanizer sync error:', e.message);
-          parsedLyrics = finalItems.map(it => ({ ...it, romaji: null, lang: null }));
-        }
-      }
-    } else if (result && result.plainLyrics) {
-      const rawLines = result.plainLyrics.split('\n')
-        .map(l => l.trim())
-        .filter(l => l.length > 0 && !l.startsWith('[') && !l.startsWith('('));
-      const dur = duration || result.duration || 180;
-      const interval = dur / (rawLines.length + 1);
-      const items = rawLines.map((text, idx) => ({
-        time: Math.floor(interval * (idx + 0.6)),
-        text,
-        words: null
-      }));
-      if (items.length > 0) {
-        try {
-          const romanizer = getLyricsRomanizer();
-          const processed = await romanizer.romanizeLyricsList(items);
-          parsedLyrics = processed.lines;
-          detectedLang = processed.detectedLang;
-        } catch (e) {
-          console.warn('Romanizer plain error:', e.message);
-          parsedLyrics = items.map(it => ({ ...it, romaji: null, lang: null }));
-        }
       }
     }
 
-    const braccatoLyrics = (result && Array.isArray(result.braccatoLyrics) && result.braccatoLyrics.length > 0)
-      ? result.braccatoLyrics.map((bl, i) => {
-          const matchParsed = parsedLyrics ? parsedLyrics[i] : null;
-          return {
-            ...bl,
-            romanization: bl.romanization || matchParsed?.romaji || undefined
-          };
-        })
-      : (parsedLyrics || []).map(it => {
-          const startTimeMs = Math.round(it.time * 1000);
-          const durationMs = it.endTime ? Math.round((it.endTime - it.time) * 1000) : 3500;
-          return {
-            startTimeMs,
-            durationMs: Math.max(500, durationMs),
-            words: it.text,
-            parts: it.words ? it.words.map(w => ({
-              startTimeMs: Math.round(w.begin * 1000),
-              durationMs: Math.max(50, Math.round((w.end - w.begin) * 1000)),
-              words: w.trailingSpace ? `${w.text} ` : w.text
-            })) : undefined,
-            romanization: it.romaji || undefined
-          };
-        });
+    const braccatoLyrics = (unifiedLyrics && unifiedLyrics.length > 0) ? unifiedLyrics : null;
 
     const payload = result ? {
       found: true,
