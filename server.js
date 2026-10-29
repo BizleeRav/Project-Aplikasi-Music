@@ -1770,6 +1770,7 @@ const CHINESE_ARTIST_ALIASES = [
 ];
 
 const KNOWN_SONG_CANONICAL_TITLES = {
+  // Japanese Canonical Titles
   'うっせぇわ': ['Usseewa'],
   '新時代': ['New Genesis', 'Shinjidai'],
   '唱': ['Show'],
@@ -1804,11 +1805,145 @@ const KNOWN_SONG_CANONICAL_TITLES = {
   '満ちてゆく': ['Michiteyuku', 'Overflowing'],
   '白日': ['Hakujitsu'],
   '一途': ['Ichizu'],
-  '逆夢': ['Sakayume']
+  '逆夢': ['Sakayume'],
+
+  // Korean Canonical Titles (Hangul <-> Latin / Apple Music title mappings)
+  '손오공': ['Super', 'Sonogong'],
+  '음악의 신': ['God of Music'],
+  '마에스트로': ['MAESTRO'],
+  '봄날': ['Spring Day'],
+  '피 땀 눈물': ['Blood Sweat & Tears'],
+  '작은 것들을 위한 시': ['Boy With Luv'],
+  '불타오르네': ['FIRE'],
+  '쩔어': ['DOPE'],
+  '상남자': ['Boy In Luv'],
+  '디토': ['Ditto'],
+  '어텐션': ['Attention'],
+  '하입보이': ['Hype Boy'],
+  '쿠키': ['Cookie'],
+  '슈퍼샤이': ['Super Shy'],
+  '하우 스위트': ['How Sweet'],
+  '러브 다이브': ['LOVE DIVE'],
+  '애프터 라이크': ['After LIKE'],
+  '아이엠': ['I AM'],
+  '일레븐': ['ELEVEN'],
+  '해야': ['HEYA'],
+  '배디': ['Baddie'],
+  '넥스트 레벨': ['Next Level'],
+  '블랙맘바': ['Black Mamba'],
+  '드라마': ['Drama'],
+  '스파이시': ['Spicy'],
+  '슈퍼노바': ['Supernova'],
+  '아마겟돈': ['Armageddon'],
+  '클락션': ['Klaxon'],
+  '퀸카': ['Queencard'],
+  '누드': ['Nxde'],
+  '톰보이': ['TOMBOY'],
+  '슈퍼레이디': ['Super Lady'],
+  '이지': ['EASY'],
+  '안티프래자일': ['ANTIFRAGILE'],
+  '피어리스': ['FEARLESS'],
+  '퍼펙트 나이트': ['Perfect Night'],
+  '크레이지': ['CRAZY'],
+  '스마트': ['Smart'],
+  '특': ['S-Class'],
+  '신메뉴': ["God's Menu"],
+  '매니악': ['MANIAC'],
+  '칙칙붐': ['Chk Chk Boom'],
+  '백 도어': ['Back Door'],
+  '밤편지': ['Through the Night'],
+  '좋은 날': ['Good Day'],
+  '너랑 나': ['YOU & I'],
+  '팔레트': ['Palette'],
+  '에잇': ['eight'],
+  '라일락': ['LILAC'],
+  '치어업': ['CHEER UP'],
+  '우아하게': ['Like OOH-AHH'],
+  '티티': ['TT'],
+  '라이키': ['LIKEY'],
+  '왓 이즈 러브': ['What is Love?'],
+  '팬시': ['FANCY'],
+  '필 스페셜': ['Feel Special'],
+  '알콜프리': ['Alcohol-Free'],
+  '톡댓톡': ['Talk that Talk'],
+  '마그네틱': ['Magnetic'],
+  '체리시': ['Cherish'],
+  '쉬시': ['SHEESH'],
+  '드립': ['DRIP'],
+  '배터 업': ['BATTER UP'],
+  '포에버': ['FOREVER'],
+  '빨간 맛': ['Red Flavor'],
+  '사이코': ['Psycho'],
+  '필 마이 리듬': ['Feel My Rhythm'],
+  '코스믹': ['Cosmic'],
+  '달라달라': ['DALLA DALLA'],
+  '워너비': ['WANNABE'],
+  '낫 샤이': ['Not Shy'],
+  '스니커즈': ['SNEAKERS'],
+  '첫 만남은 계획대로 되지 않아': ['plot twist'],
+
+  // Chinese Canonical Titles (Mandopop / Traditional <-> Simplified)
+  '晴天': ['Sunny Day', 'Qing Tian'],
+  '告白氣球': ['Love Confession', 'Gao Bai Qi Qiu', '告白气球'],
+  '簡單愛': ['Simple Love', 'Jian Dan Ai', '简单爱'],
+  '稻香': ['Rice Field', 'Dao Xiang'],
+  '夜曲': ['Nocturne', 'Ye Qu'],
+  '青花瓷': ['Blue and White Porcelain', 'Qing Hua Ci'],
+  '不能說的秘密': ['Secret', 'Bu Neng Shuo De Mi Mi', '不能说的秘密'],
+  '七里香': ['Common Jasmine Orange', 'Qi Li Xiang'],
+  '光年之外': ['Light Years Away', 'Guang Nian Zhi Wai'],
+  '修煉愛情': ['Practice Love', 'Xiu Lian Ai Qing', '修炼爱情']
 };
 
+// Master Traditional to Simplified Chinese character conversion dictionary
+const TRAD_TO_SIMP_MAP = {
+  '倫': '伦', '傑': '杰', '棋': '棋', '紫': '紫', '鄧': '邓', '陳': '陈', '迅': '迅',
+  '奕': '奕', '謙': '谦', '薛': '薛', '榮': '荣', '浩': '浩', '學': '学', '友': '友',
+  '華': '华', '劉': '刘', '氣': '气', '球': '球', '愛': '爱', '說': '说', '聽': '听',
+  '點': '点', '開': '开', '關': '关', '飛': '飞', '見': '见', '會': '会', '來': '来',
+  '過': '过', '時': '时', '後': '后', '動': '动', '頭': '头', '風': '风', '車': '车',
+  '電': '电', '長': '长', '門': '门', '間': '间', '問': '问', '題': '题', '國': '国',
+  '場': '场', '聲': '声', '樂': '乐', '發': '发', '變': '变', '無': '无', '為': '为',
+  '給': '给', '對': '对', '讓': '让', '這': '这', '個': '个', '們': '们', '還': '还',
+  '樣': '样', '體': '体', '戀': '恋', '約': '约', '定': '定', '夢': '梦', '離': '离',
+  '難': '难', '與': '与', '親': '亲', '紅': '红', '綠': '绿', '藍': '蓝', '黃': '黄',
+  '楓': '枫', '簡': '简', '單': '单', '靜': '静', '煉': '炼', '情': '情', '影': '影',
+  '退': '退', '蒲': '蒲', '公': '公', '英': '英', '北': '北', '夜': '夜', '曲': '曲',
+  '稻': '稻', '香': '香', '青': '青', '花': '花', '瓷': '瓷', '秘': '秘', '密': '密',
+  '哭': '哭', '等': '等', '課': '课', '光': '光', '年': '年', '外': '外', '葉': '叶',
+  '惠': '惠', '美': '美', '雙': '双', '截': '截', '棍': '棍', '龍': '龙', '拳': '拳',
+  '軌': '轨', '跡': '迹', '斷': '断', '絃': '弦', '藉': '借', '口': '口', '園': '园',
+  '遊': '游', '會': '会', '髮': '发', '雪': '雪', '麥': '麦', '芽': '芽', '糖': '糖',
+  '霍': '霍', '元': '元', '甲': '甲', '菊': '菊', '台': '台', '金': '金', '彩': '彩',
+  '虹': '虹', '甜': '甜', '蜜': '蜜', '現': '现', '代': '代', '詞': '词', '編': '编',
+  '製': '制', '作': '作', '演': '演', '唱': '唱', '錄': '录', '音': '音', '師': '师',
+  '寫': '写', '專': '专', '輯': '辑', '帶': '带', '處': '处', '理': '理', '監': '监',
+  '企': '企', '劃': '划', '產': '产', '品': '品', '發': '发', '行': '行', '原': '原',
+  '創': '创', '翻': '翻', '評': '评', '論': '论', '廣': '广', '東': '东', '話': '话',
+  '語': '语', '網': '网', '絡': '络', '傳': '传', '統': '统', '節': '节', '目': '目',
+  '劇': '剧', '場': '场', '視': '视', '頻': '频', '線': '线', '上': '上', '級': '级',
+  '屬': '属', '優': '优', '質': '质', '勝': '胜', '負': '负', '獲': '获', '獎': '奖',
+  '寶': '宝', '貝': '贝', '兒': '儿', '童': '童', '歲': '岁', '月': '月', '憶': '忆',
+  '認': '认', '真': '真', '識': '识', '別': '别', '歸': '归', '宿': '宿', '遠': '远',
+  '近': '近', '邊': '边', '緣': '缘', '份': '份', '運': '运', '機': '机', '遇': '遇',
+  '面': '面', '嚮': '向', '往': '往', '覺': '觉', '得': '得', '意': '意', '義': '义',
+  '懷': '怀', '念': '念', '想': '想', '望': '望', '傷': '伤', '心': '心', '痛': '痛',
+  '淚': '泪', '流': '流', '溫': '温', '柔': '柔', '熱': '热', '冷': '冷', '漠': '漠',
+  '孤': '孤', '獨': '独', '寂': '寂', '寞': '寞', '歡': '欢', '笑': '笑', '悲': '悲',
+  '哀': '哀', '愁': '愁', '苦': '苦', '快': '快', '慢': '慢', '重': '重', '輕': '轻',
+  '深': '深', '淺': '浅', '高': '高', '低': '低', '張': '张', '王': '王', '李': '李',
+  '趙': '赵', '孫': '孙', '周': '周', '吳': '吴', '鄭': '郑', '馮': '冯', '蘇': '苏',
+  '綠': '绿', '派': '派', '對': '对', '車': '车', '飛': '飞', '落': '落', '日': '日',
+  '草': '草', '東': '东', '沒': '没', '有': '有'
+};
+
+function toSimplifiedChinese(str) {
+  if (!str) return '';
+  return str.split('').map(c => TRAD_TO_SIMP_MAP[c] || c).join('');
+}
+
 function normalizeForCompare(str) {
-  return (str || '')
+  return toSimplifiedChinese(str || '')
     .toLowerCase()
     .replace(/[\s\-_:–—|()（）[\]【】'\"“”‘’·/.,]/g, '')
     .trim();
@@ -1954,8 +2089,9 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   }
 
   if (!artistLatin) {
+    const simpArt = toSimplifiedChinese(artist);
     for (const alias of CHINESE_ARTIST_ALIASES) {
-      if (alias.match.test(artist) || (isChannelPublisher && alias.match.test(rawTitle || ''))) {
+      if (alias.match.test(artist) || alias.match.test(simpArt) || (isChannelPublisher && (alias.match.test(rawTitle || '') || alias.match.test(toSimplifiedChinese(rawTitle || ''))))) {
         artistLatin = alias.latin;
         if (!nativeArtist && alias.native) nativeArtist = alias.native;
         break;
@@ -1964,10 +2100,15 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   }
 
   // Canonical title resolution for Japanese / Chinese tracks
+  const simpTit = toSimplifiedChinese(title);
   if (!titleLatin && KNOWN_SONG_CANONICAL_TITLES[title]) {
     titleLatin = KNOWN_SONG_CANONICAL_TITLES[title][0];
+  } else if (!titleLatin && KNOWN_SONG_CANONICAL_TITLES[simpTit]) {
+    titleLatin = KNOWN_SONG_CANONICAL_TITLES[simpTit][0];
   } else if (!titleLatin && nativeTitle && KNOWN_SONG_CANONICAL_TITLES[nativeTitle]) {
     titleLatin = KNOWN_SONG_CANONICAL_TITLES[nativeTitle][0];
+  } else if (!titleLatin && nativeTitle && KNOWN_SONG_CANONICAL_TITLES[toSimplifiedChinese(nativeTitle)]) {
+    titleLatin = KNOWN_SONG_CANONICAL_TITLES[toSimplifiedChinese(nativeTitle)][0];
   }
 
   // If not in aliases, extract clean Latin and Korean separately
@@ -2111,12 +2252,19 @@ function pickBestLyrics(items, targetDuration, targetArtist, targetTitle = '', i
 }
 
 async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv) {
+  const simpTitle = toSimplifiedChinese(title);
+  const simpArtist = toSimplifiedChinese(artist);
+  const simpNativeTitle = toSimplifiedChinese(nativeTitle);
+
   const queries = [
+    simpArtist && simpTitle ? `${simpArtist} ${simpTitle}` : null,
     artistLatin && title ? `${artistLatin} ${title}` : null,
     artistHangul && nativeTitle ? `${artistHangul} ${nativeTitle}` : null,
     artistHangul && title ? `${artistHangul} ${title}` : null,
     nativeTitle && artist ? `${artist} ${nativeTitle}` : null,
+    simpNativeTitle && simpArtist ? `${simpArtist} ${simpNativeTitle}` : null,
     titleLatin && artistLatin ? `${artistLatin} ${titleLatin}` : null,
+    simpTitle ? simpTitle : null,
     nativeTitle ? nativeTitle : null,
     `${artist} ${title}`,
     title
@@ -2220,12 +2368,19 @@ async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, a
 }
 
 async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv) {
+  const simpTitle = toSimplifiedChinese(title);
+  const simpArtist = toSimplifiedChinese(artist);
+  const simpNativeTitle = toSimplifiedChinese(nativeTitle);
+
   const queries = [
+    simpArtist && simpTitle ? `${simpArtist} ${simpTitle}` : null,
     artistLatin && title ? `${artistLatin} ${title}` : null,
     artistHangul && nativeTitle ? `${artistHangul} ${nativeTitle}` : null,
     artistHangul && title ? `${artistHangul} ${title}` : null,
     nativeTitle && artist ? `${artist} ${nativeTitle}` : null,
+    simpNativeTitle && simpArtist ? `${simpArtist} ${simpNativeTitle}` : null,
     titleLatin && artistLatin ? `${artistLatin} ${titleLatin}` : null,
+    simpTitle ? simpTitle : null,
     nativeTitle ? nativeTitle : null,
     `${artist} ${title}`,
     title
@@ -2346,12 +2501,19 @@ async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, art
 }
 
 async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, artistLatin, artistHangul, titleLatin, isMv) {
+  const simpTitle = toSimplifiedChinese(title);
+  const simpArtist = toSimplifiedChinese(artist);
+  const simpNativeTitle = toSimplifiedChinese(nativeTitle);
+
   const queries = [
+    simpArtist && simpTitle ? `${simpArtist} ${simpTitle}` : null,
     artistLatin && title ? `${artistLatin} ${title}` : null,
     artistHangul && nativeTitle ? `${artistHangul} ${nativeTitle}` : null,
     artistHangul && title ? `${artistHangul} ${title}` : null,
     nativeTitle && artist ? `${artist} ${nativeTitle}` : null,
+    simpNativeTitle && simpArtist ? `${simpArtist} ${simpNativeTitle}` : null,
     titleLatin && artistLatin ? `${artistLatin} ${titleLatin}` : null,
+    simpTitle ? simpTitle : null,
     nativeTitle ? nativeTitle : null,
     `${artist} ${title}`,
     title
@@ -2709,15 +2871,39 @@ function parseAppleMusicTTML(ttmlString) {
 async function searchBetterLyrics(title, artist, targetDuration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv, nativeArtist) {
   const cleanTitle = (title || '').replace(/['"‘’“”]/g, '').trim();
   const cleanArtist = (artist || '').replace(/['"‘’“”]/g, '').replace(/\([0-9]+\)/g, '').trim();
+  const simpTitle = toSimplifiedChinese(cleanTitle);
+  const simpArtist = toSimplifiedChinese(cleanArtist);
+
+  const hasKana = /[\u3040-\u30ff]/.test(title) || /[\u3040-\u30ff]/.test(artist) || Boolean(nativeTitle && /[\u3040-\u30ff]/.test(nativeTitle)) || Boolean(nativeArtist && /[\u3040-\u30ff]/.test(nativeArtist));
+  const hasHangul = /[\uac00-\ud7af]/.test(title) || /[\uac00-\ud7af]/.test(artist) || Boolean(nativeTitle && /[\uac00-\ud7af]/.test(nativeTitle)) || Boolean(nativeArtist && /[\uac00-\ud7af]/.test(nativeArtist)) || Boolean(artistHangul);
+  const hasHanzi = /[\u4e00-\u9fff]/.test(title) || /[\u4e00-\u9fff]/.test(artist) || Boolean(nativeTitle && /[\u4e00-\u9fff]/.test(nativeTitle)) || Boolean(nativeArtist && /[\u4e00-\u9fff]/.test(nativeArtist));
+
+  const isJapanese = hasKana || (hasHanzi && !hasHangul && /yoasobi|ado\b|aimyon|kenshi\s*yonezu|yorushika|tuki\b|zutomayo|eve\b|vocaloid|hatsune\s*miku|hololive|lisa\b|king\s*gnu|radwimps|one\s*ok\s*rock|official\s*hige\s*dandism|vaundy|fujii\s*kaze/i.test(`${title} ${artist}`));
+  const isKorean = hasHangul || Boolean(artistHangul) || (!hasKana && /newjeans|bts|blackpink|aespa|twice|le\s*sserafim|stray\s*kids|ive|seventeen|itzy|nmixx|gidle|\(g\)i-dle|red\s*velvet|exo|iu\b|taeyeon|jungkook|illit|babymonster|riize|tws|boynextdoor|zerobaseone/i.test(`${title} ${artist}`));
+  const isChinese = !isJapanese && hasHanzi;
+  const isAsian = isJapanese || isKorean || isChinese;
 
   // Robust Title Candidates (Stripping Live, MV, Official Video, and splitting 'Artist - Title')
   const strippedTitle = cleanTitle.replace(/\s*[\(\[\{]?(?:official\s*)?(?:music\s*video|mv|live|concert|the first take|audio|lyrics?|lyric\s*video)[\)\]\}]?\s*/gi, ' ').trim();
-  const titleCandidates = new Set([cleanTitle.toLowerCase(), strippedTitle.toLowerCase()]);
+  const strippedSimp = simpTitle.replace(/\s*[\(\[\{]?(?:official\s*)?(?:music\s*video|mv|live|concert|the first take|audio|lyrics?|lyric\s*video)[\)\]\}]?\s*/gi, ' ').trim();
+
+  const titleCandidates = new Set([
+    cleanTitle.toLowerCase(),
+    strippedTitle.toLowerCase(),
+    simpTitle.toLowerCase(),
+    strippedSimp.toLowerCase()
+  ]);
+
+  // Strip apostrophes and punctuation for English/Latin tracks (e.g. "I CAN'T STOP ME" -> "I CANT STOP ME")
+  const noApos = cleanTitle.replace(/['"‘’“”]/g, '').trim().toLowerCase();
+  if (noApos) titleCandidates.add(noApos);
+
   if (strippedTitle.includes(' - ')) {
     const parts = strippedTitle.split(' - ');
     if (parts[1]) titleCandidates.add(parts[1].trim().toLowerCase());
     if (parts[0]) titleCandidates.add(parts[0].trim().toLowerCase());
   }
+
   // Extract CJK quotation and title brackets: 『 』, 「 」, 【 】, 《 》
   const bracketMatches = strippedTitle.matchAll(/[『「【《]([^』」】》]+)[』」】》]/g);
   for (const bm of bracketMatches) {
@@ -2730,7 +2916,7 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   if (nativeTitle) titleCandidates.add(nativeTitle.toLowerCase());
 
   // Add canonical synonyms from KNOWN_SONG_CANONICAL_TITLES
-  const canonLookups = [cleanTitle, strippedTitle, nativeTitle].filter(Boolean);
+  const canonLookups = [cleanTitle, strippedTitle, nativeTitle, simpTitle, strippedSimp].filter(Boolean);
   for (const cl of canonLookups) {
     if (KNOWN_SONG_CANONICAL_TITLES[cl]) {
       for (const syn of KNOWN_SONG_CANONICAL_TITLES[cl]) {
@@ -2751,13 +2937,21 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
 
   // Tier 1: lrc.red Master Apple Music TTML Catalog (Direct, Unrestricted & High-Precision)
   const lrcRedQueries = [];
+  // 1. Direct Title + Artist exact combinations (Native, Simplified, Latin)
   for (const tc of titleCandidates) {
-    if (tc && artistLatin) lrcRedQueries.push(`${tc} ${artistLatin}`);
     if (tc && cleanArtist) lrcRedQueries.push(`${tc} ${cleanArtist}`);
+    if (tc && simpArtist && simpArtist !== cleanArtist) lrcRedQueries.push(`${tc} ${simpArtist}`);
+    if (tc && artistLatin && artistLatin.toLowerCase() !== cleanArtist.toLowerCase()) lrcRedQueries.push(`${tc} ${artistLatin}`);
+  }
+  // 2. Full Artist Catalog queries (essential for songs known under alternative titles or non-indexed titles on lrc.red)
+  if (cleanArtist) lrcRedQueries.push(cleanArtist);
+  if (simpArtist && simpArtist !== cleanArtist) lrcRedQueries.push(simpArtist);
+  if (artistLatin && artistLatin.toLowerCase() !== cleanArtist.toLowerCase()) lrcRedQueries.push(artistLatin);
+  if (nativeArtist && nativeArtist.toLowerCase() !== cleanArtist.toLowerCase()) lrcRedQueries.push(nativeArtist);
+  // 3. Standalone Title queries
+  for (const tc of titleCandidates) {
     if (tc) lrcRedQueries.push(tc);
   }
-  if (artistLatin) lrcRedQueries.push(artistLatin);
-  if (cleanArtist) lrcRedQueries.push(cleanArtist);
 
   const seenLrcRed = new Set();
   const uniqueLrcRed = lrcRedQueries.filter(q => {
@@ -2768,6 +2962,7 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   });
 
   const headers = { 'User-Agent': 'AuraSound/4.13 (support@aurasound.app)' };
+  const allHits = [];
 
   for (const q of uniqueLrcRed) {
     try {
@@ -2777,62 +2972,120 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         timeout: 3200
       });
       const hits = sRes.data?.hits || [];
-      if (hits.length === 0) continue;
-
-      let matchedHit = null;
       for (const h of hits) {
-        const ht = (h.title || '').toLowerCase();
-        const ha = (h.artist || '').toLowerCase();
-        const ca = cleanArtist.toLowerCase();
-
-        // Verify artist matches to avoid false hits (e.g. Stam1na for Yuuri)
-        const artMatch = (ca && (ha.includes(ca) || ca.includes(ha))) ||
-                         (artistLatin && (ha.includes(artistLatin.toLowerCase()) || artistLatin.toLowerCase().includes(ha))) ||
-                         (nativeArtist && (ha.includes(nativeArtist.toLowerCase()) || nativeArtist.toLowerCase().includes(ha))) ||
-                         (artistHangul && (ha.includes(artistHangul.toLowerCase()) || artistHangul.toLowerCase().includes(ha)));
-        if (ca && !artMatch) {
-          continue;
+        if (!allHits.some(x => x.isrc === h.isrc)) {
+          allHits.push(h);
         }
+      }
+      if (allHits.length >= 50) break;
+    } catch (e) {
+      continue;
+    }
+  }
 
-        let isTitleMatch = false;
-        const htTokens = ht.split(/[\s\-\_\/·・|｜『』「」【】《》\(\)]+/).map(t => t.trim()).filter(Boolean);
-        for (const c of titleCandidates) {
-          if (ht === c || ht.includes(c) || c.includes(ht)) {
+  if (allHits.length > 0) {
+    const normTargetArtist = normalizeForCompare(cleanArtist);
+    const scoredHits = [];
+
+    for (const h of allHits) {
+      let score = 0;
+      const ht = (h.title || '').trim();
+      const ha = (h.artist || '').trim();
+      const normHitTitle = normalizeForCompare(ht);
+      const normHitArtist = normalizeForCompare(ha);
+      const ca = cleanArtist.toLowerCase();
+
+      // Verify artist matches to avoid false hits (e.g. Stam1na for Yuuri)
+      const artMatch = (ca && (ha.toLowerCase().includes(ca) || ca.includes(ha.toLowerCase()))) ||
+                       (normHitArtist && normTargetArtist && (normHitArtist.includes(normTargetArtist) || normTargetArtist.includes(normHitArtist))) ||
+                       (artistLatin && (ha.toLowerCase().includes(artistLatin.toLowerCase()) || artistLatin.toLowerCase().includes(ha.toLowerCase()))) ||
+                       (nativeArtist && (ha.toLowerCase().includes(nativeArtist.toLowerCase()) || nativeArtist.toLowerCase().includes(ha.toLowerCase()))) ||
+                       (artistHangul && (ha.toLowerCase().includes(artistHangul.toLowerCase()) || artistHangul.toLowerCase().includes(ha.toLowerCase())));
+      if (ca && !artMatch) {
+        continue;
+      }
+      score += 150;
+
+      // Verify title matches
+      let isTitleMatch = false;
+      for (const tc of titleCandidates) {
+        const normTc = normalizeForCompare(tc);
+        if (!normTc || normTc.length < 2) continue;
+        if (!normHitTitle || normHitTitle.length < 2) continue;
+
+        if (normHitTitle === normTc || normHitTitle.includes(normTc) || normTc.includes(normHitTitle)) {
+          isTitleMatch = true;
+          break;
+        }
+        // Token match for multi-word or bilingual titles like "晩餐歌 - Bansanka"
+        const htTokens = ht.split(/[\s\-\_\/·・|｜『』「」【】《》\(\)]+/).map(t => normalizeForCompare(t)).filter(t => t.length >= 2);
+        for (const tok of htTokens) {
+          if (tok === normTc || tok.includes(normTc) || normTc.includes(tok)) {
             isTitleMatch = true;
             break;
           }
-          for (const tok of htTokens) {
-            if (tok === c || tok.includes(c) || c.includes(tok)) {
-              isTitleMatch = true;
-              break;
-            }
-            // Typo / phonetic tolerance (e.g. hyurirapappa vs hyururirapappa)
-            if (c.length >= 6 && tok.length >= 6) {
-              if (tok.startsWith(c.slice(0, 4)) && tok.endsWith(c.slice(-4))) {
-                isTitleMatch = true;
-                break;
-              }
-            }
-          }
-          if (isTitleMatch) break;
         }
+        if (isTitleMatch) break;
+      }
 
-        if (isTitleMatch) {
-          if (targetDuration > 0) {
-            const diff = Math.abs((h.duration || 0) - targetDuration);
-            if (diff <= (isMv ? 90 : 35)) {
-              matchedHit = h;
-              break;
-            }
-          } else {
-            matchedHit = h;
-            break;
-          }
+      if (isTitleMatch) {
+        score += 200;
+      } else {
+        score -= 500;
+      }
+
+      // Language Affinity Scoring & Anti-English-Dub Penalties:
+      if (isJapanese) {
+        if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(ht)) score += 350; // Native Japanese Kanji & Kana bonus!
+        if (/english\s*ver|eng\s*ver|\(english\)|e-side/i.test(ht) || /e-side/i.test(h.album || '')) {
+          score -= 800; // Anti English dub penalty!
+        }
+      } else if (isKorean) {
+        if (/[\uac00-\ud7af]/.test(ht)) score += 350; // Native Hangul bonus
+        if (/english\s*ver|eng\s*ver|\(english\)/i.test(ht)) {
+          score -= 800; // Anti English dub penalty!
+        }
+      } else if (isChinese) {
+        if (/[\u4e00-\u9fff]/.test(ht)) score += 350; // Native Hanzi bonus
+        if (/english\s*ver|eng\s*ver|\(english\)/i.test(ht)) {
+          score -= 800;
         }
       }
 
-      if (matchedHit) {
-        const metaRes = await axios.get(`https://lrc.red/s/${matchedHit.isrc}.json`, {
+      // Penalize live / acoustic / remix if target song isn't live / acoustic / remix
+      if (/live|现场|演唱会/i.test(ht) && !/live/i.test(cleanTitle)) score -= 350;
+      if (/acoustic|弾き語り/i.test(ht) && !/acoustic|弾き語り/i.test(cleanTitle)) score -= 350;
+      if (/remix|workout/i.test(ht) && !/remix|workout/i.test(cleanTitle)) score -= 350;
+
+      // Duration Delta scoring
+      if (targetDuration > 0 && (h.duration || 0) > 0) {
+        const diff = Math.abs(h.duration - targetDuration);
+        if (diff <= 1.5) score += 200;
+        else if (diff <= 4.0) score += 100;
+        else if (diff <= 8.0) score += 40;
+        else if (isMv && h.duration < targetDuration && (targetDuration - h.duration) <= 90) score += 45;
+        else if (!isMv && diff > 15.0) score -= 600;
+        else if (!isMv && diff > 25.0) score -= 1000;
+      }
+
+      scoredHits.push({ hit: h, score });
+    }
+
+    scoredHits.sort((a, b) => b.score - a.score);
+
+    const validCandidates = scoredHits.filter(s => {
+      if (s.score < 80) return false;
+      // For studio audio, never accept a track that differs by > 15 seconds from the master
+      if (!isMv && targetDuration > 0 && s.hit.duration > 0) {
+        const diff = Math.abs(s.hit.duration - targetDuration);
+        if (diff > 15.0) return false;
+      }
+      return true;
+    });
+
+    for (const cand of validCandidates) {
+      try {
+        const metaRes = await axios.get(`https://lrc.red/s/${cand.hit.isrc}.json`, {
           headers,
           timeout: 3200
         });
@@ -2843,7 +3096,15 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             timeout: 3200
           });
 
-          const parsed = await parseAppleMusicTTMLAsync(ttmlRes.data, matchedHit.duration || targetDuration);
+          // Anti-English-Dub TTML Validation:
+          // If song is Asian, but TTML declares xml:lang="en" and contains zero Asian characters, reject!
+          const isEn = /xml:lang="en"/i.test(ttmlRes.data);
+          const hasAsianChars = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(ttmlRes.data);
+          if (isAsian && isEn && !hasAsianChars) {
+            continue;
+          }
+
+          const parsed = await parseAppleMusicTTMLAsync(ttmlRes.data, cand.hit.duration || targetDuration);
           if (parsed && parsed.items && parsed.items.length > 0) {
             const syncedLrc = parsed.items.map(it => {
               const m = Math.floor(it.time / 60);
@@ -2852,11 +3113,11 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             }).join('\n');
 
             return {
-              id: `bl_${matchedHit.isrc}`,
+              id: `bl_${cand.hit.isrc}`,
               sourceName: 'Better Lyrics (Apple Music TTML)',
-              trackName: matchedHit.title,
-              artistName: matchedHit.artist,
-              duration: Math.round(matchedHit.duration || targetDuration),
+              trackName: cand.hit.title,
+              artistName: cand.hit.artist,
+              duration: Math.round(cand.hit.duration || targetDuration),
               leadingSilence: parsed.leadingSilence || 0,
               parsedLyrics: parsed.items,
               syncedLyrics: syncedLrc,
@@ -2865,9 +3126,9 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             };
           }
         }
+      } catch (e) {
+        continue;
       }
-    } catch (e) {
-      continue;
     }
   }
 
@@ -3083,7 +3344,7 @@ app.get('/api/lyrics', async (req, res) => {
   const { title, artist, artistLatin, artistHangul, nativeTitle, nativeArtist, titleLatin } = cleanLyricsTrackInfo(rawTitle, rawArtist);
   const isMv = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
 
-  const cacheKey = `${title.toLowerCase()}___${artist.toLowerCase()}___${duration}`;
+  const cacheKey = `${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${duration}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
