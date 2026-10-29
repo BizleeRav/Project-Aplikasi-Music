@@ -2434,12 +2434,12 @@ class App {
     this.updateLyricsOffsetUI();
 
     // 1. If lyrics already cached in track instance (and not forcing refresh)
-    if (!forceRefresh && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0) {
+    if (!forceRefresh && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
       this.lyricsAlignPending = Boolean(track._lyricsAlignPending);
-      this.displayLyricsList(this.currentLyricsData, track._lyricsType || 'synced', track._lyricsLang, this.currentHasRomaji);
+      this.displayLyricsList(this.currentLyricsData, track._lyricsType || 'synced', track._lyricsLang, this.currentHasRomaji, this.hasWordSync);
       const curTime = this.getCurrentPlaybackTime();
       this.updateActiveLyricsLine(curTime);
       return;
@@ -2484,20 +2484,21 @@ class App {
       this.btnToggleRomaji.style.display = 'none';
     }
 
-    const durSec = (overrideDuration && Number(overrideDuration) > 0)
+    const actualDuration = (overrideDuration && Number(overrideDuration) > 0)
       ? Math.round(Number(overrideDuration))
-      : (Number(track.seconds) || this.parseDuration(track.duration) || (window.audioEngine?.getDuration() ? Math.round(window.audioEngine.getDuration()) : 0));
-    if (durSec > 0 && (!track.seconds || forceRefresh)) track.seconds = durSec;
+      : (Number(track.seconds) || this.parseDuration(track.duration) || (this.nativeAudio?.duration ? Math.round(this.nativeAudio.duration) : 0) || (window.audioEngine?.getDuration() ? Math.round(window.audioEngine.getDuration()) : 0));
+    if (actualDuration > 0 && (!track.seconds || forceRefresh)) track.seconds = actualDuration;
 
     try {
       const isTopicTrack = (typeof track.artist === 'string' && track.artist.toLowerCase().includes('- topic')) ||
                            (typeof track.author === 'string' && track.author.toLowerCase().includes('- topic')) ||
                            (track.source === 'ytmusic');
+      const videoId = track.id || track.videoId || '';
       const queryParams = new URLSearchParams({
         title: track.title || '',
         artist: track.artist || '',
-        duration: durSec > 0 ? String(durSec) : '',
-        videoId: track.id || '',
+        duration: actualDuration > 0 ? String(actualDuration) : '',
+        videoId: videoId,
         source: track.source || (isTopicTrack ? 'ytmusic' : '')
       });
       if (forceRefresh) {
@@ -2524,6 +2525,7 @@ class App {
         track._lyricsLang = data.detectedLang || null;
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
+        track._cachedForTrackId = trackId;
 
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync);
         const curTime = this.getCurrentPlaybackTime();
@@ -2711,23 +2713,8 @@ class App {
     this.cinemaLyricsStream.innerHTML = lines.map((item, idx) => {
       let mainContent = '';
       if (Array.isArray(item.words) && item.words.length > 0) {
-        let searchPos = 0;
-        const lineText = item.text || '';
         mainContent = item.words.map((w, wIdx) => {
-          let hasSpace = false;
-          if (w.trailingSpace !== undefined && typeof w.trailingSpace === 'boolean') {
-            hasSpace = w.trailingSpace;
-          } else if (lineText) {
-            const fIdx = lineText.indexOf(w.text, searchPos);
-            if (fIdx !== -1) {
-              searchPos = fIdx + w.text.length;
-              hasSpace = (searchPos < lineText.length && /\s/.test(lineText[searchPos]));
-            } else {
-              hasSpace = (wIdx < item.words.length - 1);
-            }
-          } else {
-            hasSpace = (wIdx < item.words.length - 1);
-          }
+          const hasSpace = (w.trailingSpace !== false);
           return `<span class="cinema-lyric-word ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
         }).join('');
       } else {
@@ -2745,23 +2732,8 @@ class App {
         ) : null;
 
         if (rWords && rWords.length > 0) {
-          let rSearchPos = 0;
-          const romajiLineText = item.romaji || '';
           romajiContent = `<div class="lyric-romaji-text">` + rWords.map((w, wIdx) => {
-            let hasSpace = false;
-            if (romajiLineText) {
-              const fIdx = romajiLineText.indexOf(w.text, rSearchPos);
-              if (fIdx !== -1) {
-                rSearchPos = fIdx + w.text.length;
-                hasSpace = (rSearchPos < romajiLineText.length && /\s/.test(romajiLineText[rSearchPos]));
-              } else {
-                hasSpace = (wIdx < rWords.length - 1);
-              }
-            } else if (w.trailingSpace !== undefined && typeof w.trailingSpace === 'boolean') {
-              hasSpace = w.trailingSpace;
-            } else {
-              hasSpace = (wIdx < rWords.length - 1);
-            }
+            const hasSpace = (w.trailingSpace !== false);
             return `<span class="cinema-lyric-word-romaji ${hasSpace ? 'has-space' : ''}" data-begin="${w.begin}" data-end="${w.end}">${this.escapeHtml(w.text)}</span>`;
           }).join('') + `</div>`;
         } else {
@@ -2780,26 +2752,33 @@ class App {
 
   getCurrentPlaybackTime() {
     let rawTime = 0;
-    if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
-      rawTime = this.nativeAudio ? (this.nativeAudio.currentTime || 0) : 0;
-    } else {
-      rawTime = window.ytPlayer ? (window.ytPlayer.getCurrentTime() || 0) : 0;
+    const isNative = (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local');
+
+    if (isNative && this.nativeAudio) {
+      rawTime = this.nativeAudio.currentTime || 0;
+      // When nativeAudio is seeking, paused, or buffering (readyState < 3), trust raw currentTime directly
+      if (this.nativeAudio.seeking || this.nativeAudio.readyState < 3 || this.nativeAudio.paused) {
+        this._lastRawMediaTime = rawTime;
+        this._clockAnchorMedia = rawTime;
+        this._clockAnchorPerf = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        return rawTime;
+      }
+    } else if (window.ytPlayer) {
+      rawTime = window.ytPlayer.getCurrentTime() || 0;
     }
 
-    // High-Resolution 120FPS Real-Time Clock Interpolator:
-    // Browser audio.currentTime and ytPlayer.getCurrentTime update at only ~4-10Hz.
-    // Use performance.now() extrapolation between raw clock ticks for buttery-smooth 120fps word sweeps.
     const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 
     if (this.isPlaying) {
-      if (this._lastRawMediaTime === undefined || this._lastRawMediaTime !== rawTime || !this._clockAnchorPerf) {
+      if (this._lastRawMediaTime === undefined || Math.abs(this._lastRawMediaTime - rawTime) > 0.15 || !this._clockAnchorPerf) {
         this._lastRawMediaTime = rawTime;
         this._clockAnchorMedia = rawTime;
         this._clockAnchorPerf = now;
       }
       const elapsedSec = (now - this._clockAnchorPerf) / 1000;
-      // Guard against background tab suspend or excessive drift
-      if (elapsedSec >= 0 && elapsedSec < 0.6) {
+      // Cap max drift: max 0.04s for nativeAudio (since browser audio updates frequently), 0.25s for YouTube iframe
+      const maxDrift = isNative ? 0.04 : 0.25;
+      if (elapsedSec >= 0 && elapsedSec < maxDrift) {
         rawTime = this._clockAnchorMedia + elapsedSec;
       }
     } else {
@@ -2808,20 +2787,7 @@ class App {
       this._clockAnchorPerf = now;
     }
 
-    let t = rawTime;
-
-    // Web Audio API DSP Output Latency Compensation & Visual Perception Lead (+0.035s / 35ms):
-    let latency = 0;
-    if (window.audioEngine && window.audioEngine.audioCtx) {
-      const ctx = window.audioEngine.audioCtx;
-      latency = (ctx.outputLatency || ctx.baseLatency) || 0;
-      if (latency > 0.25) latency = 0;
-    }
-
-    // Subtract audio output latency and add +0.035s visual perception lead so highlight lands exactly with vocal onset
-    t = Math.max(0, t - latency + 0.035);
-
-    return t;
+    return Math.max(0, rawTime);
   }
 
   startLyricsSyncLoop() {
@@ -2981,7 +2947,7 @@ class App {
         if (idx < activeIdx) {
           // Past lines: ensure all syllables are fully swept and marked passed
           if (line.classList.contains('has-word-sync')) {
-            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji');
+            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji, .lyric-word, .romaji-word');
             allWords.forEach(w => {
               w.style.setProperty('--fill-pct', '100%');
               w.classList.remove('active');
@@ -2991,7 +2957,7 @@ class App {
         } else if (idx > activeIdx) {
           // Future lines: reset syllables to initial unhighlighted state
           if (line.classList.contains('has-word-sync')) {
-            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji');
+            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji, .lyric-word, .romaji-word');
             allWords.forEach(w => {
               w.style.setProperty('--fill-pct', '0%');
               w.classList.remove('active', 'passed');
@@ -3005,45 +2971,34 @@ class App {
     if (activeIdx >= 0) {
       const activeLineEl = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${activeIdx}"]`);
       if (activeLineEl && activeLineEl.classList.contains('has-word-sync')) {
-        const words = activeLineEl.querySelectorAll('.cinema-lyric-word');
-        const romajiWords = activeLineEl.querySelectorAll('.cinema-lyric-word-romaji');
-        const isOneToOne = (words.length > 0 && romajiWords.length === words.length);
+        const words = activeLineEl.querySelectorAll('.cinema-lyric-word, .lyric-word');
+        const romajiWords = activeLineEl.querySelectorAll('.cinema-lyric-word-romaji, .romaji-word');
 
-        words.forEach((w, wIdx) => {
-          const begin = parseFloat(w.getAttribute('data-begin'));
-          const end = parseFloat(w.getAttribute('data-end'));
+        words.forEach((wordEl, wIdx) => {
+          const wBegin = parseFloat(wordEl.dataset.begin !== undefined ? wordEl.dataset.begin : wordEl.getAttribute('data-begin'));
+          const wEnd = parseFloat(wordEl.dataset.end !== undefined ? wordEl.dataset.end : wordEl.getAttribute('data-end'));
+          const dur = Math.max(0.04, wEnd - wBegin);
+          const pct = syncTime <= wBegin ? 0 : (syncTime >= wEnd ? 100 : ((syncTime - wBegin) / dur) * 100);
 
-          let fillPct = '0%';
-          let state = 'unpassed';
-
-          if (syncTime >= begin && syncTime <= end) {
-            const progress = Math.min(1, Math.max(0, (syncTime - begin) / Math.max(0.05, end - begin)));
-            fillPct = `${(progress * 100).toFixed(1)}%`;
-            state = 'active';
-          } else if (syncTime > end) {
-            fillPct = '100%';
-            state = 'passed';
-          }
-
-          w.style.setProperty('--fill-pct', fillPct);
-          if (state === 'active') {
-            w.classList.add('active');
-            w.classList.remove('passed');
-          } else if (state === 'passed') {
-            w.classList.remove('active');
-            w.classList.add('passed');
+          wordEl.style.setProperty('--fill-pct', `${pct.toFixed(1)}%`);
+          if (pct > 0 && pct < 100) {
+            wordEl.classList.add('active');
+            wordEl.classList.remove('passed');
+          } else if (pct >= 100) {
+            wordEl.classList.remove('active');
+            wordEl.classList.add('passed');
           } else {
-            w.classList.remove('active', 'passed');
+            wordEl.classList.remove('active', 'passed');
           }
 
           // 1:1 Direct Link: highlight corresponding romaji word synchronously
-          if (isOneToOne && romajiWords[wIdx]) {
+          if (romajiWords[wIdx]) {
             const rw = romajiWords[wIdx];
-            rw.style.setProperty('--fill-pct', fillPct);
-            if (state === 'active') {
+            rw.style.setProperty('--fill-pct', `${pct.toFixed(1)}%`);
+            if (pct > 0 && pct < 100) {
               rw.classList.add('active');
               rw.classList.remove('passed');
-            } else if (state === 'passed') {
+            } else if (pct >= 100) {
               rw.classList.remove('active');
               rw.classList.add('passed');
             } else {
@@ -3052,27 +3007,25 @@ class App {
           }
         });
 
-        // If romaji words don't have 1:1 count, sweep them independently using the exact same syncTime
-        if (!isOneToOne && romajiWords.length > 0) {
-          romajiWords.forEach(w => {
-            const begin = parseFloat(w.getAttribute('data-begin'));
-            const end = parseFloat(w.getAttribute('data-end'));
-
-            if (syncTime >= begin && syncTime <= end) {
-              const progress = Math.min(1, Math.max(0, (syncTime - begin) / Math.max(0.05, end - begin)));
-              const fillPct = progress * 100;
-              w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
-              w.classList.add('active');
-              w.classList.remove('passed');
-            } else if (syncTime > end) {
-              w.style.setProperty('--fill-pct', '100%');
-              w.classList.remove('active');
-              w.classList.add('passed');
+        // If romaji words count differs (fallback)
+        if (romajiWords.length > words.length) {
+          for (let rIdx = words.length; rIdx < romajiWords.length; rIdx++) {
+            const rw = romajiWords[rIdx];
+            const rBegin = parseFloat(rw.dataset.begin !== undefined ? rw.dataset.begin : rw.getAttribute('data-begin'));
+            const rEnd = parseFloat(rw.dataset.end !== undefined ? rw.dataset.end : rw.getAttribute('data-end'));
+            const dur = Math.max(0.04, rEnd - rBegin);
+            const pct = syncTime <= rBegin ? 0 : (syncTime >= rEnd ? 100 : ((syncTime - rBegin) / dur) * 100);
+            rw.style.setProperty('--fill-pct', `${pct.toFixed(1)}%`);
+            if (pct > 0 && pct < 100) {
+              rw.classList.add('active');
+              rw.classList.remove('passed');
+            } else if (pct >= 100) {
+              rw.classList.remove('active');
+              rw.classList.add('passed');
             } else {
-              w.style.setProperty('--fill-pct', '0%');
-              w.classList.remove('active', 'passed');
+              rw.classList.remove('active', 'passed');
             }
-          });
+          }
         }
       }
     }

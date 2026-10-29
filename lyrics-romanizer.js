@@ -788,8 +788,8 @@ class LyricsRomanizer {
 
     const result = [];
     for (const item of parsedLines) {
-      // 1. Preserve official <transliteration> from Apple Music TTML if already complete
-      if (item.romaji && Array.isArray(item.romajiWords) && item.romajiWords.length > 0) {
+      // 1. If line already has official romaji and romajiWords, but has NO words array to align, keep it directly
+      if (item.romaji && Array.isArray(item.romajiWords) && item.romajiWords.length > 0 && (!Array.isArray(item.words) || item.words.length === 0)) {
         result.push(item);
         continue;
       }
@@ -798,17 +798,18 @@ class LyricsRomanizer {
       let lineLang = null;
 
       // Always inspect text to identify the actual source script language
-      if (item.text) {
-        if (/[\u3040-\u30ff]/.test(item.text) || (overallLang === 'ja' && /[\u4e00-\u9fff]/.test(item.text))) {
+      const inspectText = item.text || (Array.isArray(item.words) ? item.words.map(w => w.text).join('') : '');
+      if (inspectText) {
+        if (/[\u3040-\u30ff]/.test(inspectText) || (overallLang === 'ja' && /[\u4e00-\u9fff]/.test(inspectText))) {
           lineLang = 'ja';
-        } else if (/[\uac00-\ud7af\u1100-\u11ff]/.test(item.text) || overallLang === 'ko') {
+        } else if (/[\uac00-\ud7af\u1100-\u11ff]/.test(inspectText) || overallLang === 'ko') {
           lineLang = 'ko';
-        } else if (/[\u4e00-\u9fff]/.test(item.text) && !/[\u3040-\u30ff]/.test(item.text)) {
+        } else if (/[\u4e00-\u9fff]/.test(inspectText) && !/[\u3040-\u30ff]/.test(inspectText)) {
           lineLang = 'zh';
         } else if (item.lang && item.lang !== 'en') {
           lineLang = item.lang.split('-')[0].toLowerCase();
         } else {
-          lineLang = this.detectLanguage(item.text);
+          lineLang = this.detectLanguage(inspectText);
         }
       }
 
@@ -821,7 +822,7 @@ class LyricsRomanizer {
       }
 
       let updatedWords = item.words || null;
-      if (Array.isArray(item.words) && item.words.length > 0 && lineLang) {
+      if (Array.isArray(item.words) && item.words.length > 0) {
         if (lineLang === 'ja') {
           updatedWords = await this.alignJapaneseWords(item.text, item.words);
         } else if (lineLang === 'ko') {
@@ -833,27 +834,25 @@ class LyricsRomanizer {
         }
       }
 
-      // 1:1 Syllable Lock: Bind Romaji syllables 100% to the exact begin/end of the original words
+      // 1:1 Syllable Lock: Bind Romaji syllables 100% to the exact begin/end of updatedWords
       let computedRomajiWords = null;
-      if (Array.isArray(updatedWords) && updatedWords.length > 0 && updatedWords.some(w => w.begin !== undefined)) {
+      if (Array.isArray(updatedWords) && updatedWords.length > 0 && updatedWords.some(w => w.romaji)) {
         computedRomajiWords = updatedWords.map(w => ({
           text: w.romaji || w.text,
           begin: w.begin,
           end: w.end,
-          trailingSpace: (lineLang === 'zh' || lineLang === 'ja') ? true : (w.trailingSpace !== false)
+          trailingSpace: lineLang === 'zh' ? true : (w.trailingSpace !== false)
         }));
-      } else if (item.romajiWords) {
+      } else if (Array.isArray(item.romajiWords) && item.romajiWords.length > 0) {
         computedRomajiWords = item.romajiWords;
       }
-      // Note: If original line has NO word sync (line-synced only), computedRomajiWords remains NULL.
-      // We NEVER fake-interpolate syllable sweeps on line-synced songs so timing remains 100% honest and accurate.
 
       result.push({
         ...item,
         words: updatedWords,
-        romaji: romaji || null,
+        romaji: romaji || item.romaji || null,
         romajiWords: computedRomajiWords,
-        lang: lineLang || null
+        lang: lineLang || item.lang || null
       });
     }
 

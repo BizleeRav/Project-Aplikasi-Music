@@ -3495,10 +3495,43 @@ app.get('/api/lyrics', async (req, res) => {
       }
 
       // 3. Apple Music TTML Leading Silence
-      const leadingSilenceSec = Number(result.leadingSilence) || 0;
+      let leadingSilenceSec = Number(result.leadingSilence) || 0;
 
-      // Net clean adjustment applied directly to all timestamps
-      netShiftSec = mvIntroDelaySec - lrcOffsetSec + leadingSilenceSec;
+      const isBetterLyricsOrTtml = Boolean(
+        (result.sourceName && /better\s*lyrics|apple\s*music/i.test(result.sourceName)) ||
+        (result.id && String(result.id).startsWith('bl_'))
+      );
+
+      // ATURAN MUTLAK: Jika duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 3.0:
+      // Audio yang diputar ADALAH versi studio yang sama dengan lirik!
+      if (duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 3.0) {
+        mvIntroDelaySec = 0;
+        lrcOffsetSec = 0;
+        leadingSilenceSec = 0;
+        netShiftSec = 0;
+      } else {
+        // Jika selisih durasi > 3 detik:
+        // SELALU set leadingSilenceSec = 0 dan lrcOffsetSec = 0 untuk sumber Apple Music TTML (Better Lyrics)
+        if (isBetterLyricsOrTtml) {
+          leadingSilenceSec = 0;
+          lrcOffsetSec = 0;
+        }
+
+        // HANYA gunakan mvIntroDelaySec dari SponsorBlock jika:
+        // (duration - result.duration) >= 4.0 DAN segmen SponsorBlock benar-benar menjelaskan selisih durasi MV dan lagu studio
+        if (duration > 0 && result.duration > 0 && mvIntroDelaySec > 0) {
+          const videoDur = (segs.detectedVideoDuration > 0 ? segs.detectedVideoDuration : duration);
+          const durDelta = videoDur - result.duration;
+          const explainedByIntro = Math.abs((videoDur - mvIntroDelaySec) - result.duration) <= 5.0;
+          const explainedByTotalNonMusic = segs.totalNonMusicDuration > 0 && Math.abs((videoDur - segs.totalNonMusicDuration) - result.duration) <= 6.0;
+          const isCinematicIntro = (mvIntroDelaySec >= 15.0 && durDelta >= mvIntroDelaySec - 2.0);
+          if (!(durDelta >= 4.0 && (explainedByIntro || explainedByTotalNonMusic || isCinematicIntro))) {
+            mvIntroDelaySec = 0;
+          }
+        }
+
+        netShiftSec = mvIntroDelaySec - lrcOffsetSec + leadingSilenceSec;
+      }
 
       let items = [];
 
