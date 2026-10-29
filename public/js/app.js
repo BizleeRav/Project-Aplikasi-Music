@@ -2756,38 +2756,56 @@ class App {
 
     if (isNative && this.nativeAudio) {
       rawTime = this.nativeAudio.currentTime || 0;
-      // When nativeAudio is seeking, paused, or buffering (readyState < 3), trust raw currentTime directly
-      if (this.nativeAudio.seeking || this.nativeAudio.readyState < 3 || this.nativeAudio.paused) {
-        this._lastRawMediaTime = rawTime;
-        this._clockAnchorMedia = rawTime;
+      if (this.nativeAudio.seeking || this.nativeAudio.readyState < 2 || this.nativeAudio.paused) {
+        this._lastMediaTime = rawTime;
         this._clockAnchorPerf = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        this._lastEmittedPlaybackTime = rawTime;
         return rawTime;
       }
     } else if (window.ytPlayer) {
       rawTime = window.ytPlayer.getCurrentTime() || 0;
+      if (!window.ytPlayer.isPlaying || window.ytPlayer._isBuffering) {
+        this._lastMediaTime = rawTime;
+        this._clockAnchorPerf = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        this._lastEmittedPlaybackTime = rawTime;
+        return rawTime;
+      }
     }
 
     const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 
-    if (this.isPlaying) {
-      if (this._lastRawMediaTime === undefined || Math.abs(this._lastRawMediaTime - rawTime) > 0.15 || !this._clockAnchorPerf) {
-        this._lastRawMediaTime = rawTime;
-        this._clockAnchorMedia = rawTime;
-        this._clockAnchorPerf = now;
-      }
-      const elapsedSec = (now - this._clockAnchorPerf) / 1000;
-      // Cap max drift: max 0.04s for nativeAudio (since browser audio updates frequently), 0.25s for YouTube iframe
-      const maxDrift = isNative ? 0.04 : 0.25;
-      if (elapsedSec >= 0 && elapsedSec < maxDrift) {
-        rawTime = this._clockAnchorMedia + elapsedSec;
-      }
-    } else {
-      this._lastRawMediaTime = rawTime;
+    if (!this.isPlaying) {
+      this._lastMediaTime = rawTime;
+      this._clockAnchorPerf = now;
+      this._lastEmittedPlaybackTime = rawTime;
+      return Math.max(0, rawTime);
+    }
+
+    // Better Lyrics Carried-Clock Engine:
+    // Update anchor whenever raw media time refreshes (different from previous frame's reading)
+    // or when a seek/jump occurred (|rawTime - _lastMediaTime| > 0.6s)
+    if (this._lastMediaTime === undefined || this._lastMediaTime !== rawTime || !this._clockAnchorPerf) {
+      this._lastMediaTime = rawTime;
       this._clockAnchorMedia = rawTime;
       this._clockAnchorPerf = now;
     }
 
-    return Math.max(0, rawTime);
+    let computedTime = rawTime;
+    if (isNative) {
+      // In Chromium HTMLAudioElement, carried clock smoothly bridges between hardware buffer ticks
+      const carriedMs = Math.min(Math.max(now - this._clockAnchorPerf, 0), 100);
+      const rate = this.nativeAudio?.playbackRate || 1.0;
+      computedTime = this._clockAnchorMedia + (carriedMs * rate) / 1000;
+    }
+
+    // Strict Monotonic Guarantee (Better Lyrics standard):
+    // Clock must never move backwards during forward playback unless an explicit user seek occurs (> 0.5s jump)
+    if (this._lastEmittedPlaybackTime !== undefined && Math.abs(computedTime - this._lastEmittedPlaybackTime) < 0.5) {
+      computedTime = Math.max(this._lastEmittedPlaybackTime, computedTime);
+    }
+    this._lastEmittedPlaybackTime = computedTime;
+
+    return Math.max(0, computedTime);
   }
 
   startLyricsSyncLoop() {
@@ -2815,9 +2833,10 @@ class App {
 
   seekToTimestamp(seekTime) {
     const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    this._lastRawMediaTime = seekTime;
+    this._lastMediaTime = seekTime;
     this._clockAnchorMedia = seekTime;
     this._clockAnchorPerf = now;
+    this._lastEmittedPlaybackTime = seekTime;
 
     if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
       if (this.nativeAudio) {
@@ -6975,8 +6994,12 @@ class App {
       this.cinemaTimeDuration.textContent = this.formatTime(dur);
     }
 
-    // Dynamic Sing-Along lyrics line highlight & autoscroll
-    this.updateActiveLyricsLine(current);
+    // Dynamic Sing-Along lyrics line highlight & autoscroll:
+    // When playing, startLyricsSyncLoop (rAF at 60/120fps) is the sole high-precision driver.
+    // Only call updateActiveLyricsLine here when paused or seeking while stopped to prevent clock collision.
+    if (!this.isPlaying) {
+      this.updateActiveLyricsLine(current);
+    }
   }
 
   formatTime(secs) {

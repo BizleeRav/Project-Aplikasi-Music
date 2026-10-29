@@ -193,6 +193,7 @@ class YTPlayerManager {
     this._lastRawTime = seconds;
     this._lastRawTimestamp = performance.now();
     this._interpolatedTime = seconds;
+    this._lastEmittedTime = seconds;
     if (this.player && this.isReady) {
       this.player.seekTo(seconds, true);
     }
@@ -211,6 +212,7 @@ class YTPlayerManager {
       this._lastRawTime = raw;
       this._lastRawTimestamp = now;
       this._interpolatedTime = raw;
+      this._lastEmittedTime = raw;
       return raw;
     }
 
@@ -219,6 +221,7 @@ class YTPlayerManager {
       this._lastRawTime = raw;
       this._lastRawTimestamp = now;
       this._interpolatedTime = raw;
+      this._lastEmittedTime = raw;
       return raw;
     }
 
@@ -249,11 +252,17 @@ class YTPlayerManager {
         this._interpolatedTime = calibratedTarget;
       } else {
         // Continuous Phase-Locked Loop (PLL) damping filter:
-        // Smoothly pull clock towards target by 20% of phase difference without jitter.
-        // Result: 100% fluid, zero stutter, perfectly in sync with acoustic vocal onset.
-        this._interpolatedTime += phaseError * 0.20;
+        // Smoothly pull clock towards target without ever moving backwards
+        const nextTime = this._interpolatedTime + phaseError * 0.20;
+        this._interpolatedTime = Math.max(this._lastEmittedTime || 0, nextTime);
       }
     }
+
+    // Strict Monotonic Guarantee during forward playback: clock must NEVER retreat
+    if (this._lastEmittedTime !== undefined && Math.abs(this._interpolatedTime - this._lastEmittedTime) < 0.5) {
+      this._interpolatedTime = Math.max(this._lastEmittedTime, this._interpolatedTime);
+    }
+    this._lastEmittedTime = this._interpolatedTime;
 
     return this._interpolatedTime;
   }
@@ -308,7 +317,7 @@ class YTPlayerManager {
         try {
           const state = this.player.getPlayerState ? this.player.getPlayerState() : -1;
           if (state === 1 || this.isPlaying) {
-            const current = this.player.getCurrentTime ? (this.player.getCurrentTime() || 0) : 0;
+            const current = this.getCurrentTime();
             const duration = this.player.getDuration ? (this.player.getDuration() || 0) : 0;
             if (this.onProgressCallback) {
               this.onProgressCallback(current, duration);

@@ -8090,12 +8090,13 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .cinema-lyric-line.active .cinema-lyric-word {
-  /* Liquid Light Crisp-Front Sweep: 0% white until sweep arrives, soft feathered trailing beam */
+  /* Better Lyrics Clean-Front Sweep: 100% crisp, zero negative-percent math bugs */
   background: linear-gradient(
     90deg,
-    #ffffff calc(var(--fill-pct, 0%) - 8%),
-    rgba(255, 255, 255, 0.98) var(--fill-pct, 0%),
-    rgba(255, 255, 255, 0.38) var(--fill-pct, 0%)
+    #ffffff 0%,
+    #ffffff var(--fill-pct, 0%),
+    rgba(255, 255, 255, 0.38) var(--fill-pct, 0%),
+    rgba(255, 255, 255, 0.38) 100%
   );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -8104,7 +8105,7 @@ body.music-playing .cinema-turntable-arm {
 
 .cinema-lyric-line.active .cinema-lyric-word.active {
   transform: none; /* Keep text geometry 100% stable without word collisions */
-  filter: none;
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.40));
   transition: none !important;
 }
 
@@ -8130,12 +8131,13 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji {
-  /* Liquid Light Crisp-Front Sweep for Romaji / Pinyin / Romaja */
+  /* Better Lyrics Clean-Front Sweep for Romaji / Pinyin / Romaja */
   background: linear-gradient(
     90deg,
-    #38bdf8 calc(var(--fill-pct, 0%) - 8%),
+    #38bdf8 0%,
     #7dd3fc var(--fill-pct, 0%),
-    rgba(148, 163, 184, 0.40) var(--fill-pct, 0%)
+    rgba(148, 163, 184, 0.40) var(--fill-pct, 0%),
+    rgba(148, 163, 184, 0.40) 100%
   );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -8144,7 +8146,7 @@ body.music-playing .cinema-turntable-arm {
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji.active {
   transform: none; /* Keep layout 100% stable */
-  filter: none;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.40));
   transition: none !important;
 }
 

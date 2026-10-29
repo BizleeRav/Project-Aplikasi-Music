@@ -2759,8 +2759,8 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
           if (romajiWords.length === 0) romajiWords = null;
 
           return {
-            time: parseFloat(time.toFixed(2)),
-            endTime: parseFloat(endTime.toFixed(2)),
+            time: parseFloat(time.toFixed(3)),
+            endTime: parseFloat(endTime.toFixed(3)),
             text: item.words,
             words,
             romaji: item.romanization || null,
