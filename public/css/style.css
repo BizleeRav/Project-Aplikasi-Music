@@ -8081,8 +8081,8 @@ body.music-playing .cinema-turntable-arm {
   display: inline-block;
   margin-right: 0;
   color: rgba(255, 255, 255, 0.40);
-  transition: filter 0.15s ease;
-  will-change: background;
+  transition: none !important;
+  will-change: background, --fill-pct;
 }
 
 .cinema-lyric-word.has-space {
@@ -8099,11 +8099,13 @@ body.music-playing .cinema-turntable-arm {
   );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  transition: none !important;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word.active {
   transform: none; /* Keep text geometry 100% stable without word collisions */
   filter: none;
+  transition: none !important;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word.passed {
@@ -8112,14 +8114,15 @@ body.music-playing .cinema-turntable-arm {
   -webkit-text-fill-color: #ffffff;
   transform: none;
   filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
+  transition: none !important;
 }
 
 .cinema-lyric-word-romaji {
   display: inline-block;
   margin-right: 0;
   color: rgba(148, 163, 184, 0.45);
-  transition: filter 0.15s ease;
-  will-change: background;
+  transition: none !important;
+  will-change: background, --fill-pct;
 }
 
 .cinema-lyric-word-romaji.has-space {
@@ -8136,11 +8139,13 @@ body.music-playing .cinema-turntable-arm {
   );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  transition: none !important;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji.active {
   transform: none; /* Keep layout 100% stable */
   filter: none;
+  transition: none !important;
 }
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji.passed {
@@ -8149,6 +8154,13 @@ body.music-playing .cinema-turntable-arm {
   -webkit-text-fill-color: #7dd3fc;
   transform: none;
   filter: none;
+  transition: none !important;
+}
+
+.lyric-word,
+.romaji-word {
+  transition: none !important;
+  will-change: background, --fill-pct;
 }
 
 /* Cinema Floating Controller Dock */

@@ -1253,6 +1253,18 @@ class App {
       }
     });
 
+    this.nativeAudio.addEventListener('loadedmetadata', () => {
+      if (this.currentTrack && this.nativeAudio.duration && !isNaN(this.nativeAudio.duration)) {
+        const actualDur = Math.round(this.nativeAudio.duration);
+        const initialDur = Number(this.currentTrack.seconds) || this.parseDuration(this.currentTrack.duration) || 0;
+        if (initialDur > 0 && Math.abs(actualDur - initialDur) > 2) {
+          console.log(`[Audio] Loaded metadata duration mismatch: initial=${initialDur}s, actual=${actualDur}s. Refreshing lyrics...`);
+          this.currentTrack.seconds = actualDur;
+          this.renderCinemaLyrics(this.currentTrack, actualDur, true);
+        }
+      }
+    });
+
     this.nativeAudio.addEventListener('ended', () => {
       setBufferingState(false);
       this.playNext();
@@ -1281,6 +1293,16 @@ class App {
       window.ytPlayer.onProgressCallback = (current, duration) => {
         if (this.currentAudioMode !== 'native' && (!this.currentTrack || this.currentTrack.type === 'youtube' || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'))) {
           this.updateProgress(current, duration);
+          if (this.currentTrack && duration > 0 && !this._lastYtDurationChecked) {
+            this._lastYtDurationChecked = true;
+            const actualDur = Math.round(duration);
+            const initialDur = Number(this.currentTrack.seconds) || this.parseDuration(this.currentTrack.duration) || 0;
+            if (initialDur > 0 && Math.abs(actualDur - initialDur) > 2) {
+              console.log(`[YouTube] Player duration mismatch: initial=${initialDur}s, actual=${actualDur}s. Refreshing lyrics...`);
+              this.currentTrack.seconds = actualDur;
+              this.renderCinemaLyrics(this.currentTrack, actualDur, true);
+            }
+          }
           if (!this._lastStateSaveTime || Date.now() - this._lastStateSaveTime > 3000) {
             this._lastStateSaveTime = Date.now();
             this.persistPlaybackState();
@@ -2396,7 +2418,7 @@ class App {
     this.renderCinemaLyrics(this.currentTrack);
   }
 
-  async renderCinemaLyrics(track) {
+  async renderCinemaLyrics(track, overrideDuration = null, forceRefresh = false) {
     if (!this.cinemaLyricsStream || !track) return;
 
     this.activeLyricIdx = -1;
@@ -2411,8 +2433,8 @@ class App {
     this.currentLyricsTrackId = trackId;
     this.updateLyricsOffsetUI();
 
-    // 1. If lyrics already cached in track instance
-    if (track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh)
+    if (!forceRefresh && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2462,8 +2484,10 @@ class App {
       this.btnToggleRomaji.style.display = 'none';
     }
 
-    const durSec = Number(track.seconds) || this.parseDuration(track.duration) || (window.audioEngine?.getDuration() ? Math.round(window.audioEngine.getDuration()) : 0);
-    if (durSec > 0 && !track.seconds) track.seconds = durSec;
+    const durSec = (overrideDuration && Number(overrideDuration) > 0)
+      ? Math.round(Number(overrideDuration))
+      : (Number(track.seconds) || this.parseDuration(track.duration) || (window.audioEngine?.getDuration() ? Math.round(window.audioEngine.getDuration()) : 0));
+    if (durSec > 0 && (!track.seconds || forceRefresh)) track.seconds = durSec;
 
     try {
       const isTopicTrack = (typeof track.artist === 'string' && track.artist.toLowerCase().includes('- topic')) ||
@@ -2476,6 +2500,9 @@ class App {
         videoId: track.id || '',
         source: track.source || (isTopicTrack ? 'ytmusic' : '')
       });
+      if (forceRefresh) {
+        queryParams.set('nocache', '1');
+      }
 
       const res = await fetch(`/api/lyrics?${queryParams.toString()}`);
       if (!res.ok) throw new Error('Network error');
@@ -2752,22 +2779,48 @@ class App {
   }
 
   getCurrentPlaybackTime() {
-    let t = 0;
+    let rawTime = 0;
     if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
-      t = this.nativeAudio ? (this.nativeAudio.currentTime || 0) : 0;
+      rawTime = this.nativeAudio ? (this.nativeAudio.currentTime || 0) : 0;
     } else {
-      t = window.ytPlayer ? (window.ytPlayer.getCurrentTime() || 0) : 0;
+      rawTime = window.ytPlayer ? (window.ytPlayer.getCurrentTime() || 0) : 0;
     }
 
-    // Web Audio API DSP Output Latency Compensation:
-    // If equalizer/DSP AudioContext is active, subtract outputLatency so lyrics sweeps land precisely on speaker audio
+    // High-Resolution 120FPS Real-Time Clock Interpolator:
+    // Browser audio.currentTime and ytPlayer.getCurrentTime update at only ~4-10Hz.
+    // Use performance.now() extrapolation between raw clock ticks for buttery-smooth 120fps word sweeps.
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
+    if (this.isPlaying) {
+      if (this._lastRawMediaTime === undefined || this._lastRawMediaTime !== rawTime || !this._clockAnchorPerf) {
+        this._lastRawMediaTime = rawTime;
+        this._clockAnchorMedia = rawTime;
+        this._clockAnchorPerf = now;
+      }
+      const elapsedSec = (now - this._clockAnchorPerf) / 1000;
+      // Guard against background tab suspend or excessive drift
+      if (elapsedSec >= 0 && elapsedSec < 0.6) {
+        rawTime = this._clockAnchorMedia + elapsedSec;
+      }
+    } else {
+      this._lastRawMediaTime = rawTime;
+      this._clockAnchorMedia = rawTime;
+      this._clockAnchorPerf = now;
+    }
+
+    let t = rawTime;
+
+    // Web Audio API DSP Output Latency Compensation & Visual Perception Lead (+0.035s / 35ms):
+    let latency = 0;
     if (window.audioEngine && window.audioEngine.audioCtx) {
       const ctx = window.audioEngine.audioCtx;
-      const latency = (ctx.outputLatency || ctx.baseLatency) || 0;
-      if (latency > 0 && latency < 0.25) {
-        t = Math.max(0, t - latency);
-      }
+      latency = (ctx.outputLatency || ctx.baseLatency) || 0;
+      if (latency > 0.25) latency = 0;
     }
+
+    // Subtract audio output latency and add +0.035s visual perception lead so highlight lands exactly with vocal onset
+    t = Math.max(0, t - latency + 0.035);
+
     return t;
   }
 
@@ -2795,6 +2848,11 @@ class App {
   }
 
   seekToTimestamp(seekTime) {
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    this._lastRawMediaTime = seekTime;
+    this._clockAnchorMedia = seekTime;
+    this._clockAnchorPerf = now;
+
     if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
       if (this.nativeAudio) {
         this.nativeAudio.currentTime = seekTime;
@@ -6520,6 +6578,10 @@ class App {
     }
 
     this.currentTrack = track;
+    this._lastYtDurationChecked = false;
+    this._lastRawMediaTime = 0;
+    this._clockAnchorMedia = 0;
+    this._clockAnchorPerf = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 
     // Reset seekbar and time displays immediately for the new track
     const fallbackDur = this.parseDuration(track.duration) || 180;

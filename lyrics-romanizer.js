@@ -595,15 +595,32 @@ class LyricsRomanizer {
           if (ch === '地' && !diNounCharIndices.has(cursor)) {
             py = 'de';
           }
-          wPinyin.push(py);
+          wPinyin.push({ text: py, isZh: Boolean(t.isZh) });
           cursor++;
         } else {
-          wPinyin.push(ch === '地' ? 'de' : ch);
+          wPinyin.push({ text: ch === '地' ? 'de' : ch, isZh: false });
         }
       }
+
+      // Natural join: Don't insert spaces between consecutive Latin letters / numbers (e.g. "Hah," or "Baby")
+      let romaji = '';
+      for (let i = 0; i < wPinyin.length; i++) {
+        const curr = wPinyin[i];
+        if (i === 0) {
+          romaji = curr.text;
+          continue;
+        }
+        const prev = wPinyin[i - 1];
+        if (!prev.isZh && !curr.isZh && /^[A-Za-z0-9'.,!?-]+$/.test(prev.text) && /^[A-Za-z0-9'.,!?-]+$/.test(curr.text)) {
+          romaji += curr.text;
+        } else {
+          romaji += ' ' + curr.text;
+        }
+      }
+
       return {
         ...w,
-        romaji: wPinyin.join(' ').trim() || w.text
+        romaji: romaji.trim() || w.text
       };
     });
   }
@@ -664,37 +681,47 @@ class LyricsRomanizer {
         }
       }
 
-      // 3. Flatten into character-by-character readings
+      // 3. Intelligent character-by-character readings splitter (never sever small youon ゃ, ゅ, ょ, ぁ, ぃ, ぅ, ぇ, ぉ, ー)
+      const smallKanaRegex = /^[ゃゅょぁぃぅぇぉーャュョァィゥェォ]/;
       const charReadings = [];
       for (const ft of furiganaTokens) {
-        if (ft.text.length === 1) {
+        if (ft.text.length <= 1) {
           charReadings.push({ char: ft.text, reading: ft.reading });
         } else if (ft.text === ft.reading) {
           for (const ch of ft.text) {
             charReadings.push({ char: ch, reading: ch });
           }
         } else {
-          const perCharLen = Math.max(1, Math.floor(ft.reading.length / ft.text.length));
           let readIdx = 0;
           for (let i = 0; i < ft.text.length; i++) {
-            const ch = ft.text[i];
             const isLast = (i === ft.text.length - 1);
-            const rChunk = isLast ? ft.reading.substring(readIdx) : ft.reading.substr(readIdx, perCharLen);
-            readIdx += perCharLen;
-            charReadings.push({ char: ch, reading: rChunk });
+            if (isLast) {
+              charReadings.push({ char: ft.text[i], reading: ft.reading.substring(readIdx) });
+              break;
+            }
+            const remainingChars = ft.text.length - i;
+            const remainingReading = ft.reading.length - readIdx;
+            let targetLen = Math.max(1, Math.floor(remainingReading / remainingChars));
+            while (readIdx + targetLen < ft.reading.length && smallKanaRegex.test(ft.reading[readIdx + targetLen])) {
+              targetLen++;
+            }
+            charReadings.push({ char: ft.text[i], reading: ft.reading.substr(readIdx, targetLen) });
+            readIdx += targetLen;
           }
         }
       }
 
-      // 4. Sequential search matching based on searchPos
+      // 4. Sequential search matching based on searchPos with Katakana/Hiragana normalized equivalence
       let searchPos = 0;
       const raw = [];
       for (const w of words) {
         let wReading = '';
         for (const ch of w.text) {
+          const chHira = wanakana.toHiragana(ch);
           let foundIdx = -1;
           for (let idx = searchPos; idx < charReadings.length; idx++) {
-            if (charReadings[idx].char === ch) {
+            const crHira = wanakana.toHiragana(charReadings[idx].char);
+            if (charReadings[idx].char === ch || (chHira && crHira && chHira === crHira)) {
               foundIdx = idx;
               break;
             }
@@ -709,24 +736,28 @@ class LyricsRomanizer {
         raw.push({ ...w, wReading });
       }
 
-      // 5. Convert to Romaji with sokuon (っ / ッ) consonant doubling and wanakana speedup
+      // 5. Convert to Romaji with phonetic sokuon (っ / ッ) and youon lookahead
       const result = [];
       for (let i = 0; i < raw.length; i++) {
         const item = raw[i];
         let wReading = item.wReading;
         let wRomaji = '';
 
-        if (/[っッ]$/.test(wReading) && i < raw.length - 1) {
-          const nextReading = raw[i + 1].wReading;
-          const nextRom = wanakana.toRomaji(nextReading || '').trim();
-          const consonantMatch = nextRom.match(/^[bcdfghjklmnpqrstvwxyz]/i);
-          const nextConsonant = consonantMatch ? consonantMatch[0].toLowerCase() : '';
-          const baseReading = wReading.slice(0, -1);
-          let baseRomaji = wanakana.toRomaji(baseReading);
-          if (nextConsonant) {
-            wRomaji = baseRomaji + nextConsonant;
+        if (i < raw.length - 1) {
+          const nextReading = raw[i + 1].wReading || '';
+          if (/[っッ]$/.test(wReading)) {
+            // Sokuon gemination
+            const nextRom = wanakana.toRomaji(nextReading).trim();
+            const consonantMatch = nextRom.match(/^[bcdfghjklmnpqrstvwxyz]/i);
+            const nextConsonant = consonantMatch ? consonantMatch[0].toLowerCase() : '';
+            const baseReading = wReading.slice(0, -1);
+            const baseRomaji = wanakana.toRomaji(baseReading);
+            wRomaji = nextConsonant ? (baseRomaji + nextConsonant) : wanakana.toRomaji(wReading);
+          } else if (smallKanaRegex.test(nextReading)) {
+            // Attached small youon glide
+            wRomaji = wanakana.toRomaji(wReading + nextReading);
           } else {
-            wRomaji = wanakana.toRomaji(wReading);
+            wRomaji = wanakana.toRomaji(wReading || item.text);
           }
         } else {
           wRomaji = wanakana.toRomaji(wReading || item.text);
@@ -757,6 +788,12 @@ class LyricsRomanizer {
 
     const result = [];
     for (const item of parsedLines) {
+      // 1. Preserve official <transliteration> from Apple Music TTML if already complete
+      if (item.romaji && Array.isArray(item.romajiWords) && item.romajiWords.length > 0) {
+        result.push(item);
+        continue;
+      }
+
       let romaji = item.romaji || null;
       let lineLang = null;
 
