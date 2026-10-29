@@ -1790,8 +1790,8 @@ async function resolveCanonicalTrackMetadata(videoId, rawTitle, rawArtist) {
   if (videoId) {
     if (ytMetadataCache.has(videoId)) {
       const cached = ytMetadataCache.get(videoId);
-      cleanTitle = cached.title || cleanTitle;
-      cleanArtist = cached.artist || cleanArtist;
+      if (!cleanTitle) cleanTitle = cached.title || '';
+      if (!cleanArtist || LABEL_CHANNEL_REGEX.test(cleanArtist)) cleanArtist = cached.artist || cleanArtist;
       duration = cached.duration || 0;
     } else {
       try {
@@ -1813,18 +1813,20 @@ async function resolveCanonicalTrackMetadata(videoId, rawTitle, rawArtist) {
             }
 
             const bTitle = bInfo.title || '';
-            const quoteMatch = bTitle.match(/^(.+?)\s*[-_–—]?\s*['"“‘「『【《]([^'"”’」』】》]+)['"”’」』】》]/);
-            if (quoteMatch) {
-              const prefixArtist = quoteMatch[1].trim();
-              const insideTitle = quoteMatch[2].trim();
-              if (insideTitle.length > 0 && !/^(?:official|music\s*video|mv|audio|live|remix|hd|4k)$/i.test(insideTitle)) {
-                cleanTitle = insideTitle;
-                if (!cleanArtist || LABEL_CHANNEL_REGEX.test(cleanArtist)) {
-                  cleanArtist = prefixArtist;
+            if (!cleanTitle || cleanTitle.length < 2) {
+              const quoteMatch = bTitle.match(/^(.+?)\s*[-_–—]?\s*['"“‘「『【《]([^'"”’」』】》]+)['"”’」』】》]/);
+              if (quoteMatch) {
+                const prefixArtist = quoteMatch[1].trim();
+                const insideTitle = quoteMatch[2].trim();
+                if (insideTitle.length > 0 && !/^(?:official|music\s*video|mv|audio|live|remix|hd|4k)$/i.test(insideTitle)) {
+                  cleanTitle = insideTitle;
+                  if (!cleanArtist || LABEL_CHANNEL_REGEX.test(cleanArtist)) {
+                    cleanArtist = prefixArtist;
+                  }
                 }
+              } else if (bTitle) {
+                cleanTitle = bTitle;
               }
-            } else if (bTitle && (!cleanTitle || cleanTitle.length < 2)) {
-              cleanTitle = bTitle;
             }
 
             ytMetadataCache.set(videoId, {
@@ -2931,304 +2933,184 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   const isChinese = !isJapanese && hasHanzi;
   const isAsian = isJapanese || isKorean || isChinese;
 
-  // Robust Title Candidates (Stripping Live, MV, Official Video, and splitting 'Artist - Title')
+  // 1. Build Smart Title Variants (Stripping Live, MV, Official Video, and splitting 'Artist - Title')
   const strippedTitle = cleanTitle.replace(/\s*[\(\[\{]?(?:official\s*)?(?:music\s*video|mv|live|concert|the first take|audio|lyrics?|lyric\s*video)[\)\]\}]?\s*/gi, ' ').trim();
   const strippedSimp = simpTitle.replace(/\s*[\(\[\{]?(?:official\s*)?(?:music\s*video|mv|live|concert|the first take|audio|lyrics?|lyric\s*video)[\)\]\}]?\s*/gi, ' ').trim();
 
-  const titleCandidates = new Set([
-    cleanTitle.toLowerCase(),
-    strippedTitle.toLowerCase(),
-    simpTitle.toLowerCase(),
-    strippedSimp.toLowerCase()
-  ]);
-
-  // Strip apostrophes and punctuation for English/Latin tracks (e.g. "I CAN'T STOP ME" -> "I CANT STOP ME")
-  const noApos = cleanTitle.replace(/['"‘’“”]/g, '').trim().toLowerCase();
-  if (noApos) titleCandidates.add(noApos);
-
-  if (strippedTitle.includes(' - ')) {
-    const parts = strippedTitle.split(' - ');
-    if (parts[1]) titleCandidates.add(parts[1].trim().toLowerCase());
-    if (parts[0]) titleCandidates.add(parts[0].trim().toLowerCase());
-  }
+  const titleVariants = new Set([cleanTitle]);
+  if (strippedTitle) titleVariants.add(strippedTitle);
+  if (simpTitle) titleVariants.add(simpTitle);
+  if (strippedSimp) titleVariants.add(strippedSimp);
+  if (titleLatin) titleVariants.add(titleLatin);
+  if (nativeTitle) titleVariants.add(nativeTitle);
 
   // Extract CJK quotation and title brackets: 『 』, 「 」, 【 】, 《 》
   const bracketMatches = strippedTitle.matchAll(/[『「【《]([^』」】》]+)[』」】》]/g);
   for (const bm of bracketMatches) {
-    if (bm[1]) titleCandidates.add(bm[1].trim().toLowerCase());
+    if (bm[1]) titleVariants.add(bm[1].trim());
   }
-  const plainWords = strippedTitle.replace(/[『』「」【】《》\[\]\(\)\-\_\/]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (plainWords) titleCandidates.add(plainWords.toLowerCase());
 
-  // Extract CJK sub-phrases and Latin sub-phrases from bilingual mixed titles (e.g. "晴天 Sunny Day" -> "晴天", "Sunny Day")
-  for (const srcTitle of [cleanTitle, strippedTitle]) {
-    const cjkParts = (srcTitle || '').match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g);
-    if (cjkParts) {
-      for (const p of cjkParts) {
-        if (p.length >= 2) {
-          titleCandidates.add(p.toLowerCase());
-          titleCandidates.add(toSimplifiedChinese(p).toLowerCase());
-        }
-      }
+  // Extract bilingual paren sub-titles (e.g. "클락션 (Klaxon)" -> "Klaxon", "클락션")
+  const biMatch = cleanTitle.match(/^([^(（\[【《]+?)\s*[(（\[【《]([^)）\]】》]+)[)）\]】》]$/);
+  if (biMatch) {
+    const p1 = biMatch[1].trim();
+    const p2 = biMatch[2].trim();
+    if (!/official|mv|audio|video|remix|live/i.test(p2)) {
+      titleVariants.add(p1);
+      titleVariants.add(p2);
     }
   }
 
-  if (titleLatin) titleCandidates.add(titleLatin.toLowerCase());
-  if (nativeTitle) titleCandidates.add(nativeTitle.toLowerCase());
+  // Strip apostrophes and punctuation for English/Latin tracks (e.g. "I CAN'T STOP ME" -> "I CANT STOP ME")
+  const noApos = cleanTitle.replace(/['"‘’“”]/g, '').trim();
+  if (noApos) titleVariants.add(noApos);
 
+  // 2. Build Smart Artist Variants
+  const artistVariants = new Set([cleanArtist]);
+  if (simpArtist && simpArtist !== cleanArtist) artistVariants.add(simpArtist);
+  if (artistLatin && artistLatin.toLowerCase() !== cleanArtist.toLowerCase()) artistVariants.add(artistLatin);
+  if (artistHangul) artistVariants.add(artistHangul);
+  if (nativeArtist) artistVariants.add(nativeArtist);
 
+  // Specific Group Aliases (Essential for Apple Music TTML / Better Lyrics Master Catalog)
+  if (/g\s*i-?dle|\(g\)i-?dle/i.test(cleanArtist)) {
+    artistVariants.add('i-dle');
+    artistVariants.add('(G)I-DLE');
+    artistVariants.add('GIDLE');
+  }
+  if (/newjeans/i.test(cleanArtist)) artistVariants.add('NewJeans');
+  if (/le\s*sserafim/i.test(cleanArtist)) artistVariants.add('LE SSERAFIM');
+  if (/blackpink/i.test(cleanArtist)) artistVariants.add('BLACKPINK');
 
-  // Add romanized cleanTitle via LyricsRomanizer
+  // Split multiple artists (e.g. "ROSÉ & Bruno Mars" -> "ROSÉ", "Bruno Mars")
+  if (cleanArtist.includes('&') || cleanArtist.includes(',')) {
+    const parts = cleanArtist.split(/[&,]/).map(p => p.trim()).filter(p => p.length >= 2);
+    for (const p of parts) artistVariants.add(p);
+  }
+
+  // 2.5 Bridge to Apple Music Master Catalog via iTunes Search (Resolves Korean/Japanese titles & aliases)
+  let appleTrack = null;
+  let appleArtist = null;
+  let appleDur = 0;
   try {
-    const romanizer = getLyricsRomanizer();
-    const romTitle = await romanizer.romanizeLine(cleanTitle, isJapanese ? 'ja' : isKorean ? 'ko' : isChinese ? 'zh' : undefined);
-    if (romTitle && romTitle.length >= 2 && romTitle.toLowerCase() !== cleanTitle.toLowerCase()) {
-      titleCandidates.add(romTitle.toLowerCase());
+    const itunesTerm = `${strippedTitle || cleanTitle} ${cleanArtist}`.trim();
+    const itunesRes = await axios.get('https://itunes.apple.com/search', {
+      params: {
+        term: itunesTerm,
+        entity: 'song',
+        country: isJapanese ? 'JP' : 'US',
+        limit: 3
+      },
+      timeout: 2000
+    });
+    const itHit = (itunesRes.data?.results || []).find(h => {
+      if (!h || !h.trackName) return false;
+      const hArtist = (h.artistName || '').toLowerCase();
+      const qArtist = cleanArtist.toLowerCase();
+      const artistMatch = hArtist.includes(qArtist) || qArtist.includes(hArtist) || !cleanArtist;
+      const durMatch = !targetDuration || !h.trackTimeMillis || Math.abs(Math.round(h.trackTimeMillis / 1000) - targetDuration) <= 6;
+      return artistMatch || durMatch;
+    }) || itunesRes.data?.results?.[0];
+
+    if (itHit && itHit.trackName) {
+      appleTrack = itHit.trackName;
+      appleArtist = itHit.artistName;
+      appleDur = itHit.trackTimeMillis ? Math.round(itHit.trackTimeMillis / 1000) : 0;
+      if (appleTrack) titleVariants.add(appleTrack);
+      if (appleArtist) artistVariants.add(appleArtist);
     }
   } catch (e) {}
 
-  // If Japanese kana/kanji, add natural Romaji conversion via wanakana
-  try {
-    if (wanakana && wanakana.isJapanese(strippedTitle)) {
-      const rTitle = wanakana.toRomaji(strippedTitle).trim().toLowerCase();
-      if (rTitle && rTitle !== strippedTitle.toLowerCase()) {
-        titleCandidates.add(rTitle);
-      }
+  // 3. STAGE 1: Better Lyrics Primary Provider (lyrics-api.binimum.org)
+  const binimumQueries = [];
+  if (appleTrack && appleArtist) {
+    binimumQueries.push({ track: appleTrack, artist: appleArtist });
+  }
+  for (const t of titleVariants) {
+    if (!t || t.length < 2) continue;
+    for (const a of artistVariants) {
+      if (!a || a.length < 2) continue;
+      binimumQueries.push({ track: t, artist: a });
     }
-  } catch (e) {}
-
-  // Tier 1: lrc.red Master Apple Music TTML Catalog (Direct, Unrestricted & High-Precision)
-  const lrcRedQueries = [];
-  // 1. Direct Title + Artist exact combinations (Native, Simplified, Latin)
-  for (const tc of titleCandidates) {
-    if (tc && cleanArtist) lrcRedQueries.push(`${tc} ${cleanArtist}`);
-    if (tc && simpArtist && simpArtist !== cleanArtist) lrcRedQueries.push(`${tc} ${simpArtist}`);
-    if (tc && artistLatin && artistLatin.toLowerCase() !== cleanArtist.toLowerCase()) lrcRedQueries.push(`${tc} ${artistLatin}`);
   }
-  // 2. Full Artist Catalog queries (essential for songs known under alternative titles or non-indexed titles on lrc.red)
-  if (cleanArtist) lrcRedQueries.push(cleanArtist);
-  if (simpArtist && simpArtist !== cleanArtist) lrcRedQueries.push(simpArtist);
-  if (artistLatin && artistLatin.toLowerCase() !== cleanArtist.toLowerCase()) lrcRedQueries.push(artistLatin);
-  if (nativeArtist && nativeArtist.toLowerCase() !== cleanArtist.toLowerCase()) lrcRedQueries.push(nativeArtist);
-  // 3. Standalone Title queries
-  for (const tc of titleCandidates) {
-    if (tc) lrcRedQueries.push(tc);
+  for (const t of titleVariants) {
+    if (t && t.length >= 2) binimumQueries.push({ track: t, artist: '' });
   }
 
-  const seenLrcRed = new Set();
-  const uniqueLrcRed = lrcRedQueries.filter(q => {
-    const k = q.toLowerCase();
-    if (seenLrcRed.has(k)) return false;
-    seenLrcRed.add(k);
+  // Deduplicate queries
+  const seenBin = new Set();
+  const uniqueBinQueries = binimumQueries.filter(q => {
+    const k = `${q.track.toLowerCase()}___${q.artist.toLowerCase()}`;
+    if (seenBin.has(k)) return false;
+    seenBin.add(k);
     return true;
-  });
+  }).slice(0, 5);
 
-  const headers = { 'User-Agent': 'AuraSound/4.13 (support@aurasound.app)' };
-  const allHits = [];
+  let ttmlUrl = null;
+  let pickedDuration = targetDuration || 180;
+  let pickedTrackName = cleanTitle;
+  let pickedArtistName = cleanArtist;
 
-  for (const q of uniqueLrcRed) {
+  for (const q of uniqueBinQueries) {
     try {
-      const sRes = await axios.get('https://lrc.red/search.json', {
-        params: { q },
-        headers,
-        timeout: 3200
+      const bRes = await axios.get('https://lyrics-api.binimum.org/', {
+        params: {
+          track: q.track,
+          artist: q.artist,
+          duration: targetDuration > 0 ? Math.round(targetDuration) : undefined
+        },
+        timeout: 2500
       });
-      const hits = sRes.data?.hits || [];
-      for (const h of hits) {
-        if (!allHits.some(x => x.isrc === h.isrc)) {
-          allHits.push(h);
-        }
+      const hits = bRes.data?.results || [];
+      if (hits.length > 0 && hits[0].lyricsUrl) {
+        ttmlUrl = hits[0].lyricsUrl;
+        pickedDuration = hits[0].duration ? Math.round(hits[0].duration / 1000) : (targetDuration || 180);
+        pickedTrackName = hits[0].trackName || q.track;
+        pickedArtistName = hits[0].artistName || q.artist || cleanArtist;
+        break;
       }
-      if (allHits.length >= 50) break;
     } catch (e) {
       continue;
     }
   }
 
-  if (allHits.length > 0) {
-    const normTargetArtist = normalizeForCompare(cleanArtist);
-    const scoredHits = [];
-
-    for (const h of allHits) {
-      let score = 0;
-      const ht = (h.title || '').trim();
-      const ha = (h.artist || '').trim();
-      const normHitTitle = normalizeForCompare(ht);
-      const normHitArtist = normalizeForCompare(ha);
-      const ca = cleanArtist.toLowerCase();
-
-      // Verify artist matches to avoid false hits (e.g. Stam1na for Yuuri)
-      const artMatch = (ca && (ha.toLowerCase().includes(ca) || ca.includes(ha.toLowerCase()))) ||
-                       (normHitArtist && normTargetArtist && (normHitArtist.includes(normTargetArtist) || normTargetArtist.includes(normHitArtist))) ||
-                       (artistLatin && (ha.toLowerCase().includes(artistLatin.toLowerCase()) || artistLatin.toLowerCase().includes(ha.toLowerCase()))) ||
-                       (nativeArtist && (ha.toLowerCase().includes(nativeArtist.toLowerCase()) || nativeArtist.toLowerCase().includes(ha.toLowerCase()))) ||
-                       (artistHangul && (ha.toLowerCase().includes(artistHangul.toLowerCase()) || artistHangul.toLowerCase().includes(ha.toLowerCase())));
-      if (ca && !artMatch) {
-        continue;
-      }
-      score += 150;
-
-      // Verify title matches
-      let isTitleMatch = false;
-      for (const tc of titleCandidates) {
-        const normTc = normalizeForCompare(tc);
-        if (!normTc || normTc.length < 2) continue;
-        if (!normHitTitle || normHitTitle.length < 2) continue;
-
-        if (normHitTitle === normTc) {
-          isTitleMatch = true;
-          break;
-        }
-        if (normTc.length >= 5 && normHitTitle.length >= 5 && (normHitTitle.includes(normTc) || normTc.includes(normHitTitle))) {
-          isTitleMatch = true;
-          break;
-        }
-        // Exact component match for bilingual titles (e.g. "ひゅるりらぱっぱ - HYURURIRAPAPPA")
-        const htTokens = ht.split(/[\s\-\_\/·・|｜『』「」【】《》\(\)]+/).map(t => normalizeForCompare(t)).filter(t => t.length >= 2);
-        for (const tok of htTokens) {
-          if (tok === normTc) {
-            isTitleMatch = true;
-            break;
-          }
-        }
-        if (isTitleMatch) break;
-      }
-
-      if (!isTitleMatch) {
-        // Strict guard: Never accept a completely different song by the same artist!
-        continue;
-      }
-      score += 200;
-
-      // Language Affinity Scoring & Anti-Foreign-Dub Penalties:
-      if (isJapanese) {
-        if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(ht)) score += 350; // Native Japanese Kanji & Kana bonus!
-        if (!/english\s*ver|eng\s*ver|\(english\)|e-side/i.test(cleanTitle) && (/english\s*ver|eng\s*ver|\(english\)|e-side/i.test(ht) || /e-side/i.test(h.album || ''))) {
-          score -= 1000; // Anti English dub penalty!
-        }
-        if (!/korean\s*ver|kor\s*ver/i.test(cleanTitle) && /korean\s*ver|kor\s*ver/i.test(ht)) {
-          score -= 1000;
-        }
-      } else if (isKorean) {
-        if (/[\uac00-\ud7af]/.test(ht)) score += 350; // Native Hangul bonus
-        if (!/english\s*ver|eng\s*ver|\(english\)/i.test(cleanTitle) && /english\s*ver|eng\s*ver|\(english\)/i.test(ht)) {
-          score -= 1000; // Anti English dub penalty!
-        }
-        if (!/japanese\s*ver|jp\s*ver|\(japanese\)/i.test(cleanTitle) && /japanese\s*ver|jp\s*ver|\(japanese\)/i.test(ht)) {
-          score -= 1000; // Anti Japanese dub penalty!
-        }
-        if (!/chinese\s*ver|cn\s*ver|\(chinese\)/i.test(cleanTitle) && /chinese\s*ver|cn\s*ver|\(chinese\)/i.test(ht)) {
-          score -= 1000;
-        }
-      } else if (isChinese) {
-        if (/[\u4e00-\u9fff]/.test(ht)) score += 350; // Native Hanzi bonus
-        if (!/english\s*ver|eng\s*ver|\(english\)/i.test(cleanTitle) && /english\s*ver|eng\s*ver|\(english\)/i.test(ht)) {
-          score -= 1000;
-        }
-        if (!/japanese\s*ver|korean\s*ver/i.test(cleanTitle) && /japanese\s*ver|korean\s*ver/i.test(ht)) {
-          score -= 1000;
-        }
-      }
-
-      // Penalize live / acoustic / remix if target song isn't live / acoustic / remix
-      if (/live|现场|演唱会/i.test(ht) && !/live/i.test(cleanTitle)) score -= 350;
-      if (/acoustic|弾き語り/i.test(ht) && !/acoustic|弾き語り/i.test(cleanTitle)) score -= 350;
-      if (/remix|workout/i.test(ht) && !/remix|workout/i.test(cleanTitle)) score -= 350;
-
-      // Heavy penalty for version mismatch (e.g. Japanese Ver vs Korean Ver, sped up, live, etc.)
-      score = applyVersionMismatchPenalty(score, ht, cleanTitle);
-
-      // Duration Delta scoring
-      if (targetDuration > 0 && (h.duration || 0) > 0) {
-        const diff = Math.abs(h.duration - targetDuration);
-        if (diff <= 1.5) score += 250;
-        else if (diff <= 3.0) score += 180;
-        else if (diff <= 5.0) score += 90;
-        else if (diff <= 8.0) score += 20;
-        else if (isMv && h.duration < targetDuration && (targetDuration - h.duration) <= 90) score += 45;
-        else if (!isMv && diff > 8.0) score -= 600;
-        else if (!isMv && diff > 15.0) score -= 1200;
-      }
-
-      scoredHits.push({ hit: h, score });
+  // 4. STAGE 2: Direct lrc.red Search Fallback (Zero Intermediate .json Hop)
+  if (!ttmlUrl) {
+    const lrcRedQueries = [];
+    for (const t of titleVariants) {
+      if (t && cleanArtist) lrcRedQueries.push(`${t} ${cleanArtist}`);
+      if (t && artistLatin && artistLatin.toLowerCase() !== cleanArtist.toLowerCase()) lrcRedQueries.push(`${t} ${artistLatin}`);
+      if (t) lrcRedQueries.push(t);
     }
-
-    // Filter valid candidates with duration tolerance against effectiveSongDuration (diff <= 4.0s for studio track, up to 25s shorter for MV outro credits)
-    const validCandidates = scoredHits.filter(s => {
-      if (s.score < 80) return false;
-      if (targetDuration > 0 && s.hit.duration > 0) {
-        const diff = Math.abs(s.hit.duration - targetDuration);
-        if (isMv) {
-          // For MVs, studio track duration can be shorter than video duration by up to 25s (due to outro credits/silence)
-          if (s.hit.duration <= targetDuration && (targetDuration - s.hit.duration) <= 25.0) {
-            // Valid MV match!
-          } else if (diff <= 7.0) {
-            // Valid close match
-          } else {
-            return false;
-          }
-        } else {
-          if (diff > 7.0) return false;
-          if (diff > 4.0 && s.score < 300) return false;
-        }
-      }
+    const seenLrc = new Set();
+    const uniqueLrc = lrcRedQueries.filter(q => {
+      const k = q.toLowerCase();
+      if (seenLrc.has(k)) return false;
+      seenLrc.add(k);
       return true;
-    });
+    }).slice(0, 4);
 
-    // Sort candidates: prioritize highest score, and if scores are close (within 60 pts), pick closest duration
-    validCandidates.sort((a, b) => {
-      if (targetDuration > 0 && a.hit.duration > 0 && b.hit.duration > 0) {
-        const diffA = Math.abs(a.hit.duration - targetDuration);
-        const diffB = Math.abs(b.hit.duration - targetDuration);
-        if (Math.abs(a.score - b.score) <= 60) {
-          return diffA - diffB;
-        }
-      }
-      return b.score - a.score;
-    });
-
-    for (const cand of validCandidates) {
+    for (const q of uniqueLrc) {
       try {
-        const metaRes = await axios.get(`https://lrc.red/s/${cand.hit.isrc}.json`, {
-          headers,
-          timeout: 3200
+        const sRes = await axios.get('https://lrc.red/search.json', {
+          params: { q },
+          headers: { 'User-Agent': 'AuraSound/4.14 (support@aurasound.app)' },
+          timeout: 2500
         });
-
-        if (metaRes.data?.files?.ttml) {
-          const ttmlRes = await axios.get(metaRes.data.files.ttml, {
-            headers,
-            timeout: 3200
-          });
-
-          // Anti-English-Dub TTML Validation:
-          // If song is Asian, but TTML declares xml:lang="en" and contains zero Asian characters, reject!
-          const isEn = /xml:lang="en"/i.test(ttmlRes.data);
-          const hasAsianChars = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(ttmlRes.data);
-          if (isAsian && isEn && !hasAsianChars) {
-            continue;
+        const hits = sRes.data?.hits || [];
+        if (hits.length > 0) {
+          let bestHit = hits[0];
+          if (targetDuration > 0) {
+            const sorted = [...hits].sort((a, b) => Math.abs((a.duration || 0) - targetDuration) - Math.abs((b.duration || 0) - targetDuration));
+            if (Math.abs((sorted[0].duration || 0) - targetDuration) <= 8) {
+              bestHit = sorted[0];
+            }
           }
-
-          const parsed = await parseAppleMusicTTMLAsync(ttmlRes.data, cand.hit.duration || targetDuration);
-          if (parsed && parsed.items && parsed.items.length > 0) {
-            const syncedLrc = parsed.items.map(it => {
-              const m = Math.floor(it.time / 60);
-              const s = (it.time % 60).toFixed(2);
-              return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${it.text}`;
-            }).join('\n');
-
-            return {
-              id: `bl_${cand.hit.isrc}`,
-              sourceName: 'Better Lyrics (Apple Music TTML)',
-              trackName: cand.hit.title,
-              artistName: cand.hit.artist,
-              duration: Math.round(cand.hit.duration || targetDuration),
-              leadingSilence: parsed.leadingSilence || 0,
-              parsedLyrics: parsed.items,
-              syncedLyrics: syncedLrc,
-              hasWordSync: parsed.items.some(it => it.words && it.words.length > 0),
-              detectedLang: parsed.lang
-            };
-          }
+          ttmlUrl = `https://lrc.red/s/${bestHit.isrc}.ttml`;
+          pickedDuration = bestHit.duration || targetDuration;
+          pickedTrackName = bestHit.title || cleanTitle;
+          pickedArtistName = bestHit.artist || cleanArtist;
+          break;
         }
       } catch (e) {
         continue;
@@ -3236,7 +3118,49 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
     }
   }
 
-  // Tier 2: api.betterlyrics.org fallback for cache hits
+  // 5. Fetch & Parse Apple Music TTML with Millisecond Syllable Precision
+  if (ttmlUrl) {
+    try {
+      const ttmlRes = await axios.get(ttmlUrl, {
+        headers: { 'User-Agent': 'AuraSound/4.14 (support@aurasound.app)' },
+        timeout: 3200
+      });
+
+      // Anti-English-Dub TTML Validation:
+      // If song is Asian, but TTML declares xml:lang="en" and contains zero Asian characters, reject!
+      const isEn = /xml:lang="en"/i.test(ttmlRes.data);
+      const hasAsianChars = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(ttmlRes.data);
+      if (isAsian && isEn && !hasAsianChars) {
+        // Dub rejected
+      } else {
+        const parsed = await parseAppleMusicTTMLAsync(ttmlRes.data, pickedDuration || targetDuration);
+        if (parsed && parsed.items && parsed.items.length > 0) {
+          const syncedLrc = parsed.items.map(it => {
+            const m = Math.floor(it.time / 60);
+            const s = (it.time % 60).toFixed(2);
+            return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${it.text}`;
+          }).join('\n');
+
+          return {
+            id: `bl_${ttmlUrl.split('/').pop().replace(/\.ttml$/i, '')}`,
+            sourceName: 'Better Lyrics (Apple Music TTML)',
+            trackName: pickedTrackName,
+            artistName: pickedArtistName,
+            duration: Math.round(pickedDuration || targetDuration),
+            leadingSilence: parsed.leadingSilence || 0,
+            parsedLyrics: parsed.items,
+            syncedLyrics: syncedLrc,
+            hasWordSync: parsed.items.some(it => it.words && it.words.length > 0),
+            detectedLang: parsed.lang
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Better Lyrics TTML fetch/parse error:', e.message);
+    }
+  }
+
+  // Tier 3: api.betterlyrics.org fallback for cache hits
   try {
     const params = { s: cleanTitle };
     if (cleanArtist) params.a = cleanArtist;
