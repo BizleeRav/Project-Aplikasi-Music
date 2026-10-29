@@ -146,6 +146,7 @@ class App {
     this.cinemaVinylThumb = document.getElementById('cinema-vinyl-thumb');
     this.cinemaTurntableDeck = document.querySelector('.cinema-turntable-deck');
     this.cinemaLyricsStream = document.getElementById('cinema-lyrics-stream');
+    this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
     this.cinemaLyricsBadge = document.getElementById('cinema-lyrics-badge');
     this.cinemaProgressBar = document.getElementById('cinema-progress-bar');
     this.cinemaTimeCurrent = document.getElementById('cinema-time-current');
@@ -1625,6 +1626,14 @@ class App {
       });
     }
 
+    if (this.braccatoLyricsEl) {
+      this.braccatoLyricsEl.addEventListener('braccato:line-click', (e) => {
+        if (e && e.detail && typeof e.detail.timeS === 'number') {
+          this.seekToTimestamp(e.detail.timeS);
+        }
+      });
+    }
+
     // Keyboard shortcuts for Studio Cinema (Escape to close)
     window.addEventListener('keydown', (e) => {
       const activeEl = document.activeElement;
@@ -2439,7 +2448,7 @@ class App {
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
       this.lyricsAlignPending = Boolean(track._lyricsAlignPending);
-      this.displayLyricsList(this.currentLyricsData, track._lyricsType || 'synced', track._lyricsLang, this.currentHasRomaji, this.hasWordSync);
+      this.displayLyricsList(this.currentLyricsData, track._lyricsType || 'synced', track._lyricsLang, this.currentHasRomaji, this.hasWordSync, track._braccatoLyrics);
       const curTime = this.getCurrentPlaybackTime();
       this.updateActiveLyricsLine(curTime);
       return;
@@ -2527,7 +2536,8 @@ class App {
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
 
-        this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync);
+        track._braccatoLyrics = data.braccatoLyrics || null;
+        this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
         const curTime = this.getCurrentPlaybackTime();
         this.updateActiveLyricsLine(curTime);
         return;
@@ -2645,7 +2655,43 @@ class App {
     }
   }
 
-  displayLyricsList(lines, type = 'synced', lang = null, hasRomaji = false, hasWordSync = false) {
+  formatToBraccatoLyrics(lines) {
+    if (!lines || !Array.isArray(lines) || lines.length === 0) return null;
+    return lines.map(item => {
+      const startTimeMs = Math.round((item.time || 0) * 1000);
+      const endTimeMs = item.endTime ? Math.round(item.endTime * 1000) : (startTimeMs + 3500);
+      const durationMs = Math.max(500, endTimeMs - startTimeMs);
+
+      let parts = undefined;
+      if (Array.isArray(item.words) && item.words.length > 0) {
+        parts = item.words.map(w => ({
+          startTimeMs: Math.round((w.begin || 0) * 1000),
+          durationMs: Math.max(50, Math.round(((w.end || w.begin) - w.begin) * 1000)),
+          words: w.trailingSpace ? `${w.text} ` : w.text
+        }));
+      }
+
+      let timedRomanization = undefined;
+      if (Array.isArray(item.romajiWords) && item.romajiWords.length > 0) {
+        timedRomanization = item.romajiWords.map(w => ({
+          startTimeMs: Math.round((w.begin || 0) * 1000),
+          durationMs: Math.max(50, Math.round(((w.end || w.begin) - w.begin) * 1000)),
+          words: w.trailingSpace ? `${w.text} ` : w.text
+        }));
+      }
+
+      return {
+        startTimeMs,
+        durationMs,
+        words: item.text || '',
+        parts,
+        romanization: item.romaji || undefined,
+        timedRomanization
+      };
+    });
+  }
+
+  displayLyricsList(lines, type = 'synced', lang = null, hasRomaji = false, hasWordSync = false, braccatoData = null) {
     if (!this.cinemaLyricsStream) return;
 
     this.currentLyricsLang = lang || this.currentLyricsLang;
@@ -2709,7 +2755,29 @@ class App {
       panel.classList.toggle('hide-romaji', !this.isRomajiEnabled);
     }
 
-    // Render Lyrics: Original Script + Syllable Spans + Romaji/Pinyin
+    // Connect to Better Lyrics official Custom Element (<braccato-lyrics>)
+    if (!this.braccatoLyricsEl) {
+      this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
+    }
+
+    const finalBraccato = (braccatoData && Array.isArray(braccatoData) && braccatoData.length > 0)
+      ? braccatoData
+      : this.formatToBraccatoLyrics(lines);
+
+    if (this.braccatoLyricsEl && finalBraccato && finalBraccato.length > 0) {
+      this.braccatoLyricsEl.style.display = 'block';
+      const loadingEl = document.getElementById('lyrics-loading-note');
+      if (loadingEl) loadingEl.style.display = 'none';
+
+      // Feed official Lyric[] format directly to Better Lyrics core
+      this.braccatoLyricsEl.lyrics = finalBraccato;
+      this.braccatoLyricsEl.playing = this.isPlaying;
+      const curTime = this.getCurrentPlaybackTime();
+      this.braccatoLyricsEl.currentTime = Math.max(0, curTime + this.getCurrentTrackOffset());
+      return;
+    }
+
+    // Fallback: Custom HTML renderer if braccato-lyrics is not available
     this.cinemaLyricsStream.innerHTML = lines.map((item, idx) => {
       let mainContent = '';
       if (Array.isArray(item.words) && item.words.length > 0) {
@@ -2870,15 +2938,25 @@ class App {
   }
 
   updateActiveLyricsLine(currentSecs) {
-    if (!this.cinemaLyricsStream || !this.currentLyricsData || this.currentLyricsData.length === 0) {
-      if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
+    if (!this.cinemaLyricsStream) return;
+
+    const userOffset = this.getCurrentTrackOffset();
+    const syncTime = Math.max(0, currentSecs + userOffset);
+
+    // Primary: Drive Better Lyrics Native Custom Element (<braccato-lyrics>)
+    if (!this.braccatoLyricsEl) {
+      this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
+    }
+    if (this.braccatoLyricsEl && this.braccatoLyricsEl.style.display !== 'none' && this.braccatoLyricsEl.lyrics && this.braccatoLyricsEl.lyrics.length > 0) {
+      this.braccatoLyricsEl.currentTime = syncTime;
+      this.braccatoLyricsEl.playing = this.isPlaying;
       return;
     }
 
-    // Universal Acoustic Latency Alignment:
-    // Real-time synchronization aligned directly with player audio presentation clock.
-    const userOffset = this.getCurrentTrackOffset();
-    const syncTime = Math.max(0, currentSecs + userOffset);
+    if (!this.currentLyricsData || this.currentLyricsData.length === 0) {
+      if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
+      return;
+    }
 
     // High-Precision Binary Search for active lyrics line
     let activeIdx = -1;
@@ -6876,6 +6954,9 @@ class App {
 
   updatePlayState(isPlaying) {
     this.isPlaying = Boolean(isPlaying);
+    if (this.braccatoLyricsEl) {
+      this.braccatoLyricsEl.playing = this.isPlaying;
+    }
     if (isPlaying) {
       if (window.audioEngine) window.audioEngine.resume();
       this.startLyricsSyncLoop();

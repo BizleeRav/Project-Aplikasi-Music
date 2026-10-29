@@ -240,21 +240,13 @@ class YTPlayerManager {
     // When YouTube iframe delivers a new time tick (~every 250ms)
     if (raw !== this._lastRawTime) {
       this._lastRawTime = raw;
+      const phaseError = raw - this._interpolatedTime;
 
-      // Acoustic Audio IPC Lead Compensation (~65ms):
-      // By the time YouTube posts `raw` across cross-origin iframe boundaries,
-      // the sound from the speakers has already advanced by ~65ms.
-      const calibratedTarget = raw + 0.065;
-      const phaseError = calibratedTarget - this._interpolatedTime;
-
-      // If phase error is large (> 0.35s): user scrubbed/seeked or track buffered -> snap immediately
-      if (Math.abs(phaseError) > 0.35) {
-        this._interpolatedTime = calibratedTarget;
+      // Fast convergence: snap directly if drift exceeds 150ms, otherwise blend tightly
+      if (Math.abs(phaseError) > 0.15) {
+        this._interpolatedTime = raw;
       } else {
-        // Continuous Phase-Locked Loop (PLL) damping filter:
-        // Smoothly pull clock towards target without ever moving backwards
-        const nextTime = this._interpolatedTime + phaseError * 0.20;
-        this._interpolatedTime = Math.max(this._lastEmittedTime || 0, nextTime);
+        this._interpolatedTime = this._interpolatedTime + phaseError * 0.75;
       }
     }
 

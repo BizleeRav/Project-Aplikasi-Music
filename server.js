@@ -2774,7 +2774,7 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
         if (items.length > 0) {
           const lsMatch = ttmlString.match(/leadingSilence="([0-9.]+)"/i);
           const leadingSilence = lsMatch ? (parseFloat(lsMatch[1]) || 0) : 0;
-          return { leadingSilence, items, lang: parsed.language };
+          return { leadingSilence, items, braccatoLyrics: parsed.lyrics, lang: parsed.language };
         }
       }
     }
@@ -3149,6 +3149,7 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             duration: Math.round(pickedDuration || targetDuration),
             leadingSilence: parsed.leadingSilence || 0,
             parsedLyrics: parsed.items,
+            braccatoLyrics: parsed.braccatoLyrics || null,
             syncedLyrics: syncedLrc,
             hasWordSync: parsed.items.some(it => it.words && it.words.length > 0),
             detectedLang: parsed.lang
@@ -3649,6 +3650,30 @@ app.get('/api/lyrics', async (req, res) => {
       }
     }
 
+    const braccatoLyrics = (result && Array.isArray(result.braccatoLyrics) && result.braccatoLyrics.length > 0)
+      ? result.braccatoLyrics.map((bl, i) => {
+          const matchParsed = parsedLyrics ? parsedLyrics[i] : null;
+          return {
+            ...bl,
+            romanization: bl.romanization || matchParsed?.romaji || undefined
+          };
+        })
+      : (parsedLyrics || []).map(it => {
+          const startTimeMs = Math.round(it.time * 1000);
+          const durationMs = it.endTime ? Math.round((it.endTime - it.time) * 1000) : 3500;
+          return {
+            startTimeMs,
+            durationMs: Math.max(500, durationMs),
+            words: it.text,
+            parts: it.words ? it.words.map(w => ({
+              startTimeMs: Math.round(w.begin * 1000),
+              durationMs: Math.max(50, Math.round((w.end - w.begin) * 1000)),
+              words: w.trailingSpace ? `${w.text} ` : w.text
+            })) : undefined,
+            romanization: it.romaji || undefined
+          };
+        });
+
     const payload = result ? {
       found: true,
       id: result.id,
@@ -3663,6 +3688,7 @@ app.get('/api/lyrics', async (req, res) => {
       syncedLyrics: result.syncedLyrics || null,
       plainLyrics: result.plainLyrics || null,
       parsedLyrics: parsedLyrics || null,
+      braccatoLyrics: braccatoLyrics && braccatoLyrics.length > 0 ? braccatoLyrics : null,
       detectedLang: detectedLang || null,
       autoOffset: 0,
       hasRomaji: Boolean(parsedLyrics && parsedLyrics.some(l => Boolean(l.romaji)))
