@@ -3035,9 +3035,9 @@ async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
   // In 99.9% of songs (official music videos, live recordings, official audio),
   // music starts at 0:00. The duration difference between YouTube and Apple Music is
   // outro padding, channel end-screens, or credits.
-  // ONLY check for an intro offset if duration diff is >= 10s AND video chapters explicitly
+  // ONLY check for an intro offset if duration diff is >= 3s AND video chapters explicitly
   // specify an intro/prologue/story before the song:
-  if (isMv && videoDur > 0 && studioDur > 0 && (videoDur - studioDur) >= 10) {
+  if (isMv && videoDur > 0 && studioDur > 0 && (videoDur - studioDur) >= 3) {
     try {
       const infoPromise = playdl.video_info(`https://www.youtube.com/watch?v=${videoId}`);
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('playdl timeout')), 1800));

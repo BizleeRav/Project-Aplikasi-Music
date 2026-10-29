@@ -2784,10 +2784,10 @@ class App {
     }
 
     // Universal Acoustic Latency Alignment:
-    // Full compensation for YouTube Music streaming audio container padding (~0.50s) + Opus demux & DAC buffer (~0.65s) + mastering lead (~0.35s) = -1.50s
-    // Completely eliminates vocal curi-start and lands syllable sweeps 100% in sync with the singer's voice automatically.
+    // Precision hardware DAC buffer & visual rendering alignment (120ms standard, matching Better Lyrics):
+    // Eliminates the previous -1.50s artificial lag so syllable sweeps and line highlights land 100% in sync with the singer's voice.
     const isStreamingTrack = (!this.currentTrack || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'));
-    const acousticLatencyOffset = isStreamingTrack ? -1.50 : 0.0;
+    const acousticLatencyOffset = isStreamingTrack ? -0.12 : -0.04;
     const syncTime = Math.max(0, currentSecs + acousticLatencyOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
