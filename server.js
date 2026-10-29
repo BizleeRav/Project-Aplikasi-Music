@@ -3022,7 +3022,7 @@ const KNOWN_MV_OFFSETS = {
 const mvIntroOffsetCache = new Map();
 
 async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
-  if (!videoId) return 0;
+  if (!videoId || !isMv) return 0;
 
   // 1. Instant 0ms lookup in verified cinematic MV table
   if (KNOWN_MV_OFFSETS[videoId] !== undefined) {
@@ -3231,7 +3231,14 @@ app.get('/api/lyrics', async (req, res) => {
       }
 
       // 2. High-Precision MV Cinematic Intro Alignment
-      if (videoId && duration > 0 && result.duration > 0) {
+      // Guard: If track is confirmed pure studio audio (YouTube Music source, Topic channel, or Official Audio),
+      // force introOffset = 0 so studio master audio and studio lyrics run on the exact same timeline from 00:00.
+      const trackSource = (req.query.source || '').toLowerCase();
+      const isTopicChannel = Boolean(rawArtist && /- Topic$/i.test(rawArtist.trim()));
+      const isOfficialAudio = Boolean(rawTitle && /\b(?:official\s*audio|audio)\b/i.test(rawTitle) && !/\b(?:mv|m\/v|music\s*video|official\s*video)\b/i.test(rawTitle));
+      const isPureStudioTrack = (trackSource === 'ytmusic') || isTopicChannel || isOfficialAudio;
+
+      if (!isPureStudioTrack && isMv && videoId && duration > 0 && result.duration > 0) {
         const introOffset = await getMvIntroOffset(videoId, duration, result.duration, isMv);
         if (introOffset > 0) {
           autoOffsetSec -= introOffset;

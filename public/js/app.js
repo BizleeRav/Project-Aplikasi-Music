@@ -2434,11 +2434,15 @@ class App {
     if (durSec > 0 && !track.seconds) track.seconds = durSec;
 
     try {
+      const isTopicTrack = (typeof track.artist === 'string' && track.artist.toLowerCase().includes('- topic')) ||
+                           (typeof track.author === 'string' && track.author.toLowerCase().includes('- topic')) ||
+                           (track.source === 'ytmusic');
       const queryParams = new URLSearchParams({
         title: track.title || '',
         artist: track.artist || '',
         duration: durSec > 0 ? String(durSec) : '',
-        videoId: track.id || ''
+        videoId: track.id || '',
+        source: track.source || (isTopicTrack ? 'ytmusic' : '')
       });
 
       const res = await fetch(`/api/lyrics?${queryParams.toString()}`);
@@ -2784,10 +2788,10 @@ class App {
     }
 
     // Universal Acoustic Latency Alignment:
-    // Precision hardware DAC buffer & visual rendering alignment (120ms standard, matching Better Lyrics):
+    // Precision hardware DAC buffer & Web Audio Opus decoding alignment (150ms standard, matching Better Lyrics):
     // Eliminates the previous -1.50s artificial lag so syllable sweeps and line highlights land 100% in sync with the singer's voice.
     const isStreamingTrack = (!this.currentTrack || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'));
-    const acousticLatencyOffset = isStreamingTrack ? -0.12 : -0.04;
+    const acousticLatencyOffset = isStreamingTrack ? -0.15 : -0.04;
     const syncTime = Math.max(0, currentSecs + acousticLatencyOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
