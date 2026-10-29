@@ -13,6 +13,18 @@ document.addEventListener('load', (e) => {
   }
 }, true);
 
+const AURASOUND_BETTER_LYRICS_THEME = `
+/*
+blyrics-early-scroll-consider-s = 0.72;
+blyrics-line-scroll-duration = 450ms;
+blyrics-target-scroll-pos-ratio = 0.38;
+blyrics-swipe-lead-ratio = 0.12;
+blyrics-swipe-duration-ratio = 1.25;
+blyrics-line-synced-animation-delay = 40;
+blyrics-letter-wave = true;
+*/
+`;
+
 class App {
   constructor() {
     this.currentTrack = null;
@@ -1627,6 +1639,9 @@ class App {
     }
 
     if (this.braccatoLyricsEl) {
+      if (this.braccatoLyricsEl.theme !== AURASOUND_BETTER_LYRICS_THEME) {
+        this.braccatoLyricsEl.theme = AURASOUND_BETTER_LYRICS_THEME;
+      }
       this.braccatoLyricsEl.addEventListener('braccato:line-click', (e) => {
         if (e && e.detail && typeof e.detail.timeS === 'number') {
           this.seekToTimestamp(e.detail.timeS);
@@ -2795,11 +2810,18 @@ class App {
       if (fallbackBox) fallbackBox.style.display = 'none';
       this.braccatoLyricsEl.style.display = 'block';
 
+      if (this.braccatoLyricsEl.theme !== AURASOUND_BETTER_LYRICS_THEME) {
+        this.braccatoLyricsEl.theme = AURASOUND_BETTER_LYRICS_THEME;
+      }
+
       // Feed official Lyric[] format directly to Better Lyrics core
       this.braccatoLyricsEl.lyrics = finalBraccato;
-      this.braccatoLyricsEl.playing = this.isPlaying;
+      if (this.braccatoLyricsEl.playing !== this.isPlaying) {
+        this.braccatoLyricsEl.playing = this.isPlaying;
+      }
       const curTime = this.getCurrentPlaybackTime();
-      this.braccatoLyricsEl.currentTime = Math.max(0, curTime + this.getCurrentTrackOffset());
+      const AUDIO_LATENCY_COMPENSATION_SEC = 0.12;
+      this.braccatoLyricsEl.currentTime = Math.max(0, curTime + this.getCurrentTrackOffset() + AUDIO_LATENCY_COMPENSATION_SEC);
       return;
     }
 
@@ -2889,12 +2911,11 @@ class App {
     }
 
     let computedTime = rawTime;
-    if (isNative) {
-      // In Chromium HTMLAudioElement, carried clock smoothly bridges between hardware buffer ticks
-      const carriedMs = Math.min(Math.max(now - this._clockAnchorPerf, 0), 100);
-      const rate = this.nativeAudio?.playbackRate || 1.0;
-      computedTime = this._clockAnchorMedia + (carriedMs * rate) / 1000;
-    }
+    // In both Chromium HTMLAudio and YouTube iframe API, smoothly bridge between media polling ticks (100% stutter-free)
+    const carriedCapMs = isNative ? 120 : 350;
+    const carriedMs = Math.min(Math.max(now - this._clockAnchorPerf, 0), carriedCapMs);
+    const rate = (isNative ? this.nativeAudio?.playbackRate : (window.ytPlayer?.getPlaybackRate?.() || 1.0)) || 1.0;
+    computedTime = this._clockAnchorMedia + (carriedMs * rate) / 1000;
 
     // Strict Monotonic Guarantee (Better Lyrics standard):
     // Clock must never move backwards during forward playback unless an explicit user seek occurs (> 0.5s jump)
@@ -2970,16 +2991,20 @@ class App {
   updateActiveLyricsLine(currentSecs) {
     if (!this.cinemaLyricsStream) return;
 
+    // Hardware buffer output latency lead (+120ms) ensures word highlighting triggers exactly on audio onset
+    const AUDIO_LATENCY_COMPENSATION_SEC = 0.12;
     const userOffset = this.getCurrentTrackOffset();
-    const syncTime = Math.max(0, currentSecs + userOffset);
+    const syncTime = Math.max(0, currentSecs + userOffset + AUDIO_LATENCY_COMPENSATION_SEC);
 
     // Primary: Drive Better Lyrics Native Custom Element (<braccato-lyrics>)
     if (!this.braccatoLyricsEl) {
       this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
     }
     if (this.braccatoLyricsEl && this.braccatoLyricsEl.style.display !== 'none' && this.braccatoLyricsEl.lyrics && this.braccatoLyricsEl.lyrics.length > 0) {
+      if (this.braccatoLyricsEl.playing !== this.isPlaying) {
+        this.braccatoLyricsEl.playing = this.isPlaying;
+      }
       this.braccatoLyricsEl.currentTime = syncTime;
-      this.braccatoLyricsEl.playing = this.isPlaying;
       return;
     }
 

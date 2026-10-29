@@ -29,10 +29,11 @@
 			var(--blyrics-inactive-opacity, 0.3)
 	);
 
-	--blyrics-richsync-timing-offset: 0.150s;
-	--blyrics-timing-offset: 0.115s;
+	--blyrics-richsync-timing-offset: 0.120s;
+	--blyrics-timing-offset: 0.120s;
 
-	--blyrics-scroll-timing-offset: 0.5s;
+	--blyrics-scroll-timing-offset: 0.720s;
+	--blyrics-target-scroll-pos-ratio: 0.38;
 
 	/* Typography */
 	/* The stack behind --noto-sans-universal is 32 Noto families and the extension is what loads
@@ -636,7 +637,8 @@ braccato-lyrics {
   width: 100%;
   height: 100%;
   overflow-y: auto;
-  scroll-behavior: smooth;
+  scroll-behavior: auto !important;
+  overscroll-behavior-y: contain;
   --blyrics-font-size: 2.2rem;
   --blyrics-font-weight: 700;
   --blyrics-line-height: 1.4;

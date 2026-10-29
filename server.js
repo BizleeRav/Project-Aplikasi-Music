@@ -3628,9 +3628,8 @@ app.get('/api/lyrics', async (req, res) => {
       // Audio yang diputar ADALAH versi studio yang sama dengan lirik!
       if (duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 3.0) {
         mvIntroDelaySec = 0;
-        lrcOffsetSec = 0;
         leadingSilenceSec = 0;
-        netShiftSec = 0;
+        netShiftSec = isBetterLyricsOrTtml ? 0 : -lrcOffsetSec;
       } else {
         // Jika selisih durasi > 3 detik:
         // SELALU set leadingSilenceSec = 0 dan lrcOffsetSec = 0 untuk sumber Apple Music TTML (Better Lyrics)
