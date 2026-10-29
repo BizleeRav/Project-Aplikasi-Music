@@ -2534,7 +2534,7 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
             begin: parseFloat((p.startTimeMs / 1000).toFixed(3)),
             end: parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3)),
             trailingSpace: /\s+$/.test(p.words)
-          })) : generateInterpolatedWords(item.words, time, endTime);
+          })) : null;
 
           let romajiWords = Array.isArray(item.timedRomanization) && item.timedRomanization.length > 0
             ? item.timedRomanization.filter(p => p.words.trim().length > 0).map(p => ({
@@ -2543,7 +2543,7 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
                 end: parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3)),
                 trailingSpace: /\s+$/.test(p.words)
               }))
-            : (item.romanization ? generateInterpolatedWords(item.romanization, time, endTime) : null);
+            : null;
 
           return {
             time: parseFloat(time.toFixed(2)),
@@ -2683,11 +2683,8 @@ function parseAppleMusicTTML(ttmlString) {
     let text = decodeXml(innerContent.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
     if (text) {
       const translit = lineKey ? translitMap.get(lineKey) : null;
-      let finalWords = words.length > 0 ? words : generateInterpolatedWords(text, time, endTime);
-      let finalRomajiWords = translit?.words || null;
-      if (!finalRomajiWords && translit?.text) {
-        finalRomajiWords = generateInterpolatedWords(translit.text, time, endTime);
-      }
+      let finalWords = (Array.isArray(words) && words.length > 0) ? words : null;
+      let finalRomajiWords = (translit?.words && translit.words.length > 0) ? translit.words : null;
 
       items.push({
         time: parseFloat(time.toFixed(2)),
@@ -3347,8 +3344,8 @@ app.get('/api/lyrics', async (req, res) => {
 
       if (finalItems.length > 0) {
         try {
-          const hasOfficialRomaji = finalItems.some(it => it.romaji);
-          if (hasOfficialRomaji) {
+          const hasCompleteOfficialRomaji = finalItems.some(it => it.romaji) && finalItems.some(it => it.romajiWords && it.romajiWords.length > 0);
+          if (hasCompleteOfficialRomaji) {
             parsedLyrics = finalItems;
             const rawLang = result.detectedLang || 'ja';
             detectedLang = rawLang.split('-')[0].toLowerCase();
@@ -3356,7 +3353,7 @@ app.get('/api/lyrics', async (req, res) => {
             const romanizer = getLyricsRomanizer();
             const processed = await romanizer.romanizeLyricsList(finalItems);
             parsedLyrics = processed.lines;
-            detectedLang = processed.detectedLang;
+            detectedLang = processed.detectedLang || (result.detectedLang ? result.detectedLang.split('-')[0].toLowerCase() : null);
           }
         } catch (e) {
           console.warn('Romanizer sync error:', e.message);

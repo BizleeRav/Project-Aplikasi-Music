@@ -711,7 +711,7 @@ class LyricsRomanizer {
       let romaji = item.romaji || null;
       let lineLang = item.lang || null;
 
-      if (!romaji && item.text) {
+      if (!lineLang && item.text) {
         if (overallLang === 'ja' && /[\u3040-\u30ff\u4e00-\u9fff]/.test(item.text)) {
           // If song is Japanese, any Kanji or Kana line is Japanese (prevents pure Kanji from becoming Chinese Pinyin)
           lineLang = 'ja';
@@ -722,18 +722,18 @@ class LyricsRomanizer {
         } else {
           lineLang = this.detectLanguage(item.text);
         }
+      }
 
-        if (lineLang) {
-          romaji = await this.romanizeLine(item.text, lineLang);
-          // If romaji is identical to original (e.g. English line in J-pop song), don't duplicate
-          if (romaji && romaji.toLowerCase().replace(/[^a-z0-9]/g, '') === item.text.toLowerCase().replace(/[^a-z0-9]/g, '')) {
-            romaji = null;
-          }
+      if (!romaji && item.text && lineLang) {
+        romaji = await this.romanizeLine(item.text, lineLang);
+        // If romaji is identical to original (e.g. English line in J-pop song), don't duplicate
+        if (romaji && romaji.toLowerCase().replace(/[^a-z0-9]/g, '') === item.text.toLowerCase().replace(/[^a-z0-9]/g, '')) {
+          romaji = null;
         }
       }
 
       let updatedWords = item.words || null;
-      if (Array.isArray(item.words) && item.words.length > 0 && lineLang && !item.romajiWords) {
+      if (Array.isArray(item.words) && item.words.length > 0 && lineLang) {
         if (lineLang === 'ja') {
           updatedWords = await this.alignJapaneseWords(item.text, item.words);
         } else if (lineLang === 'ko') {
@@ -745,6 +745,7 @@ class LyricsRomanizer {
         }
       }
 
+      // 1:1 Syllable Lock: Bind Romaji syllables 100% to the exact begin/end of the original words
       let computedRomajiWords = item.romajiWords || null;
       if (!computedRomajiWords && Array.isArray(updatedWords) && updatedWords.some(w => w.romaji)) {
         computedRomajiWords = updatedWords.map(w => ({
@@ -753,11 +754,9 @@ class LyricsRomanizer {
           end: w.end,
           trailingSpace: w.trailingSpace !== false
         }));
-      } else if (!computedRomajiWords && romaji && item.time !== undefined) {
-        const beginTime = item.time;
-        const endTime = item.endTime || (item.time + 3.0);
-        computedRomajiWords = this.interpolateLineWords(romaji, beginTime, endTime);
       }
+      // Note: If original line has NO word sync (line-synced only), computedRomajiWords remains NULL.
+      // We NEVER fake-interpolate syllable sweeps on line-synced songs so timing remains 100% honest and accurate.
 
       result.push({
         ...item,

@@ -2671,11 +2671,15 @@ class App {
         mainContent = this.escapeHtml(item.text);
       }
 
+      const hasWordSync = (Array.isArray(item.words) && item.words.length > 0);
+
       let romajiContent = '';
       if (item.romaji) {
-        const rWords = (Array.isArray(item.romajiWords) && item.romajiWords.length > 0)
-          ? item.romajiWords
-          : (Array.isArray(item.words) && item.words.some(w => w.romaji) ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end, trailingSpace: w.trailingSpace })) : null);
+        const rWords = hasWordSync ? (
+          (Array.isArray(item.romajiWords) && item.romajiWords.length > 0)
+            ? item.romajiWords
+            : (Array.isArray(item.words) && item.words.some(w => w.romaji) ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end, trailingSpace: w.trailingSpace })) : null)
+        ) : null;
 
         if (rWords && rWords.length > 0) {
           let rSearchPos = 0;
@@ -2702,7 +2706,6 @@ class App {
         }
       }
 
-      const hasWordSync = (Array.isArray(item.words) && item.words.length > 0) || (Array.isArray(item.romajiWords) && item.romajiWords.length > 0);
       return `
         <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''} ${hasWordSync ? 'has-word-sync' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
           <div class="lyric-main-text">${mainContent}</div>
