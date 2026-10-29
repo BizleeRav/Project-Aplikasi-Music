@@ -2793,9 +2793,9 @@ class App {
     const userOffset = this.getCurrentTrackOffset();
     const isYt = (this.currentAudioMode !== 'native' && this.currentTrack?.type !== 'suno' && this.currentTrack?.type !== 'local');
     // Pure Gold-Standard Acoustic Alignment:
-    // With false MV intro offsets eliminated and syllable glow stabilized,
-    // exact continuous real-time clock ensures syllable highlights lock directly onto vocal onset.
-    const acousticLatencyOffset = 0.0;
+    // Compensates for YouTube streaming Opus pre-roll & hardware output buffer latency (~0.58s)
+    // so syllable highlights lock directly onto vocal onset across all songs.
+    const acousticLatencyOffset = isYt ? -0.58 : 0.0;
     const syncTime = Math.max(0, currentSecs + acousticLatencyOffset + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {

@@ -221,9 +221,9 @@ class YTPlayerManager {
     }
 
     // High-Resolution Micro-Extrapolation between YouTube 250ms ticks
-    // Capped at 0.28s to strictly prevent runaway or forward drift during buffering
+    // Capped at 0.25s to strictly prevent runaway or forward drift
     const elapsedSec = (now - this._lastRawTimestamp) / 1000;
-    const estimated = this._lastRawTime + Math.min(Math.max(0, elapsedSec), 0.28);
+    const estimated = this._lastRawTime + Math.min(Math.max(0, elapsedSec), 0.25);
     this._interpolatedTime = estimated;
     return estimated;
   }
