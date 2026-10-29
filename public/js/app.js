@@ -1610,6 +1610,14 @@ class App {
 
       if (e.key === 'Escape' && this.cinemaModal && this.cinemaModal.classList.contains('active')) {
         this.closeStudioCinema();
+      } else if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
+        if (e.key === '[') {
+          this.adjustCurrentTrackOffset(-0.10); // Lirik kelambatan -> mundurkan offset 100ms
+        } else if (e.key === ']') {
+          this.adjustCurrentTrackOffset(+0.10); // Lirik kecepatan -> majukan offset 100ms
+        } else if (e.key === '\\') {
+          this.resetCurrentTrackOffset();
+        }
       }
     });
 
@@ -2792,7 +2800,8 @@ class App {
     // Eliminates the previous -1.50s artificial lag so syllable sweeps and line highlights land 100% in sync with the singer's voice.
     const isStreamingTrack = (!this.currentTrack || (this.currentTrack.type !== 'suno' && this.currentTrack.type !== 'local'));
     const acousticLatencyOffset = isStreamingTrack ? -0.15 : -0.04;
-    const syncTime = Math.max(0, currentSecs + acousticLatencyOffset);
+    const userOffset = this.getCurrentTrackOffset();
+    const syncTime = Math.max(0, currentSecs + acousticLatencyOffset + userOffset);
     let activeIdx = -1;
     for (let i = 0; i < this.currentLyricsData.length; i++) {
       if (syncTime >= this.currentLyricsData[i].time) {
@@ -2935,6 +2944,54 @@ class App {
   }
 
 
+
+  getTrackOffsetKey() {
+    if (!this.currentTrack) return null;
+    return `aura_offset_${this.currentTrack.id || (this.currentTrack.title + '_' + (this.currentTrack.artist || ''))}`;
+  }
+
+  getCurrentTrackOffset() {
+    const key = this.getTrackOffsetKey();
+    if (!key) return 0;
+    try {
+      const stored = localStorage.getItem(key);
+      if (!stored) return 0;
+      const num = parseFloat(stored);
+      return isNaN(num) ? 0 : num;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  adjustCurrentTrackOffset(deltaSec) {
+    const key = this.getTrackOffsetKey();
+    if (!key) return;
+    try {
+      let cur = this.getCurrentTrackOffset();
+      cur = Math.round((cur + deltaSec) * 100) / 100;
+      cur = Math.max(-10.0, Math.min(10.0, cur));
+      if (cur === 0) {
+        localStorage.removeItem(key);
+      } else {
+        localStorage.setItem(key, String(cur));
+      }
+      const t = this.getCurrentPlaybackTime();
+      this.updateActiveLyricsLine(t);
+      const sign = cur > 0 ? '+' : '';
+      this.showToast(`⏱ Offset Lirik: ${sign}${cur.toFixed(2)}s (Tersimpan)`, 'info');
+    } catch (e) {}
+  }
+
+  resetCurrentTrackOffset() {
+    const key = this.getTrackOffsetKey();
+    if (!key) return;
+    try {
+      localStorage.removeItem(key);
+      const t = this.getCurrentPlaybackTime();
+      this.updateActiveLyricsLine(t);
+      this.showToast('⏱ Offset Lirik direset ke 0.00s', 'info');
+    } catch (e) {}
+  }
 
   escapeHtml(str) {
     if (!str) return '';

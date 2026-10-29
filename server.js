@@ -2985,7 +2985,8 @@ const KNOWN_MV_OFFSETS = {
   '3ymwOvzhwHs': 0,   // Feel Special
   'V2hlQkVJZhE': 0,   // Talk that Talk
   'ePpPVE-GGJw': 0,   // The Feels
-  '0rtV5esQT6I': 0,   // I CAN'T STOP ME
+  'CM4CkVFmTds': 3.65, // TWICE - I CAN'T STOP ME M/V (flower bloom visual intro)
+  '0rtV5esQT6I': 3.65, // I CAN'T STOP ME
   'mAKsZ26SabQ': 0,   // YES or YES
   'rRzxEiBLQCA': 0,   // Heart Shaker
   'c7rCyll5AeY': 0,   // CHEER UP
@@ -3236,7 +3237,7 @@ app.get('/api/lyrics', async (req, res) => {
       const trackSource = (req.query.source || '').toLowerCase();
       const isTopicChannel = Boolean(rawArtist && /- Topic$/i.test(rawArtist.trim()));
       const isOfficialAudio = Boolean(rawTitle && /\b(?:official\s*audio|audio)\b/i.test(rawTitle) && !/\b(?:mv|m\/v|music\s*video|official\s*video)\b/i.test(rawTitle));
-      const isPureStudioTrack = (trackSource === 'ytmusic') || isTopicChannel || isOfficialAudio;
+      const isPureStudioTrack = !isMv && ((trackSource === 'ytmusic') || isTopicChannel || isOfficialAudio);
 
       if (!isPureStudioTrack && isMv && videoId && duration > 0 && result.duration > 0) {
         const introOffset = await getMvIntroOffset(videoId, duration, result.duration, isMv);
