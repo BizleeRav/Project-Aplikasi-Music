@@ -331,34 +331,39 @@ function sortTracksByRelevance(tracks, query) {
   if (!query || !Array.isArray(tracks) || tracks.length <= 1) return tracks;
   const qClean = query.toLowerCase().trim();
   const qWords = qClean.split(/\s+/).filter(w => w.length > 1);
+  const wantsAlternative = /\b(karaoke|cover|remix|dj|instrumental|piano|sped up|slowed|live|acoustic|nightcore)\b/i.test(qClean);
 
-  return [...tracks].sort((a, b) => {
-    const aTitle = (a.title || '').toLowerCase();
-    const bTitle = (b.title || '').toLowerCase();
-    const aArtist = (a.artist || '').toLowerCase();
-    const bArtist = (b.artist || '').toLowerCase();
+  const scored = tracks.map((t, index) => {
+    let score = (tracks.length - index) * 10; // YouTube Music ML baseline
+    const title = (t.title || '').toLowerCase();
+    const artist = (t.artist || '').toLowerCase();
 
-    const getScore = (title, artist) => {
-      let score = 0;
-      // Exact title match (Highest priority)
-      if (title === qClean) score += 200;
-      else if (title.startsWith(qClean)) score += 100;
-      else if (title.includes(qClean)) score += 60;
+    // 1. Filter out knockoffs / karaoke / piano covers if not requested
+    const isKnockoff = /\b(karaoke|originally performed by|tribute to|piano version|piano karaoke|instrumental version|dj remix|sped up|slowed|nightcore|tribute)\b/i.test(title);
+    if (isKnockoff && !wantsAlternative) {
+      score -= 800;
+    }
 
-      // Artist exact match
-      if (artist === qClean) score += 80;
-      else if (artist.includes(qClean)) score += 40;
+    // 2. Exact matches
+    if (title === qClean) score += 200;
+    if (artist === qClean) score += 120;
 
-      // Word-by-word matches
-      for (const w of qWords) {
-        if (title.includes(w)) score += 20;
-        if (artist.includes(w)) score += 15;
-      }
-      return score;
-    };
+    // 3. Word matches
+    for (const w of qWords) {
+      if (title.includes(w)) score += 25;
+      if (artist.includes(w)) score += 35; // Artist match is extremely valuable
+    }
 
-    return getScore(bTitle, bArtist) - getScore(aTitle, aArtist);
+    // 4. Studio master priority
+    if (t.source === 'ytmusic' || t.isOfficial) score += 30;
+    if (title.includes('official audio') || artist.includes('- topic')) score += 40;
+    if (/\b(?:mv|m\/v|official\s*music\s*video)\b/i.test(title) && !wantsAlternative) score -= 20;
+
+    return { track: t, score };
   });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map(s => s.track);
 }
 
 // 2. Search Music on YouTube Music & Official Studio Catalogs (Unlimited Global Catalog)

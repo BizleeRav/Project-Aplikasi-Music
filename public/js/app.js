@@ -1725,16 +1725,19 @@ class App {
     const toggleCinemaEq = () => {
       if (!cinemaEqDrawer) return;
       const isActive = cinemaEqDrawer.classList.toggle('active');
-      if (isActive && window.audioEngine) {
-        const canvas = document.getElementById('cinema-eq-curve-canvas');
-        if (canvas) {
-          const rect = canvas.getBoundingClientRect();
-          if (rect.width > 50) {
-            canvas.width = rect.width * (window.devicePixelRatio || 1);
-            canvas.height = (rect.height || 75) * (window.devicePixelRatio || 1);
+      if (isActive) {
+        this.updateLyricsOffsetUI();
+        if (window.audioEngine) {
+          const canvas = document.getElementById('cinema-eq-curve-canvas');
+          if (canvas) {
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width > 50) {
+              canvas.width = rect.width * (window.devicePixelRatio || 1);
+              canvas.height = (rect.height || 75) * (window.devicePixelRatio || 1);
+            }
           }
+          window.audioEngine.drawEqCurve();
         }
-        window.audioEngine.drawEqCurve();
       }
     };
 
@@ -1802,6 +1805,26 @@ class App {
           }
         });
       }
+    }
+
+    // Studio Cinema Lyrics Timing Calibrator Buttons
+    const btnOffsetMinus = document.getElementById('btn-offset-minus');
+    const btnOffsetPlus = document.getElementById('btn-offset-plus');
+    const btnOffsetReset = document.getElementById('btn-offset-reset');
+    if (btnOffsetMinus) {
+      btnOffsetMinus.addEventListener('click', () => {
+        this.adjustCurrentTrackOffset(-0.10);
+      });
+    }
+    if (btnOffsetPlus) {
+      btnOffsetPlus.addEventListener('click', () => {
+        this.adjustCurrentTrackOffset(0.10);
+      });
+    }
+    if (btnOffsetReset) {
+      btnOffsetReset.addEventListener('click', () => {
+        this.resetCurrentTrackOffset();
+      });
     }
 
     // Suno AI Form submission
@@ -2386,6 +2409,7 @@ class App {
 
     const trackId = track.id || track.videoId || track.title;
     this.currentLyricsTrackId = trackId;
+    this.updateLyricsOffsetUI();
 
     // 1. If lyrics already cached in track instance
     if (track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0) {
@@ -2977,6 +3001,7 @@ class App {
       }
       const t = this.getCurrentPlaybackTime();
       this.updateActiveLyricsLine(t);
+      this.updateLyricsOffsetUI();
       const sign = cur > 0 ? '+' : '';
       this.showToast(`⏱ Offset Lirik: ${sign}${cur.toFixed(2)}s (Tersimpan)`, 'info');
     } catch (e) {}
@@ -2989,8 +3014,23 @@ class App {
       localStorage.removeItem(key);
       const t = this.getCurrentPlaybackTime();
       this.updateActiveLyricsLine(t);
+      this.updateLyricsOffsetUI();
       this.showToast('⏱ Offset Lirik direset ke 0.00s', 'info');
     } catch (e) {}
+  }
+
+  updateLyricsOffsetUI() {
+    const el = document.getElementById('cinema-lyrics-offset-val');
+    if (!el) return;
+    const cur = this.getCurrentTrackOffset();
+    if (cur === 0) {
+      el.textContent = '0.00s (Default)';
+      el.style.color = '#94a3b8';
+    } else {
+      const sign = cur > 0 ? '+' : '';
+      el.textContent = `${sign}${cur.toFixed(2)}s`;
+      el.style.color = cur > 0 ? '#38bdf8' : '#f59e0b';
+    }
   }
 
   escapeHtml(str) {
