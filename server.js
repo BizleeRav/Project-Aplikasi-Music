@@ -1644,6 +1644,33 @@ app.delete('/api/playlists/:id/tracks/:trackId', (req, res) => {
 const lyricsCache = new Map();
 const MAX_LYRICS_CACHE = 500;
 
+function applyVersionMismatchPenalty(score, candidateTitle, targetTitle) {
+  const cTitle = (candidateTitle || '').toLowerCase();
+  const tTitle = (targetTitle || '').toLowerCase();
+  const mismatchKeywords = [
+    /\b(?:japanese|jp)\s*ver/i,
+    /\b(?:english|en|eng)\s*ver/i,
+    /\b(?:korean|kr|kor)\s*ver/i,
+    /\b(?:chinese|zh|cn)\s*ver/i,
+    /\bday\s*ver/i,
+    /\bnight\s*ver/i,
+    /\bacoustic\b/i,
+    /\bremix\b/i,
+    /\bsped\s*up\b/i,
+    /\bslowed\b/i,
+    /\blive\b/i,
+    /\binst(?:rumental)?\b/i,
+    /伴奏/i
+  ];
+
+  for (const regex of mismatchKeywords) {
+    if (regex.test(cTitle) && !regex.test(tTitle)) {
+      score -= 500;
+    }
+  }
+  return score;
+}
+
 function stripTagsAndParens(text) {
   let res = '';
   let i = 0;
@@ -1660,8 +1687,11 @@ function stripTagsAndParens(text) {
         if (depth > 0) tagContent += text[i];
         i++;
       }
-      // Only drop junk tags (feat, official, mv, video, anime, ost, movie, etc.)
-      if (/feat|ft\.|featuring|official|video|audio|mv|m\/v|remaster|hd|hq|4k|lyric|prod|clip|teaser|trailer|from\s+|ost|theme|anime|film|movie|ver\b|version|side\s+[a-z0-9]|part\s*\d+|with\s+|collaboration|主題歌|挿入歌|エンディング|オープニング|主题曲|片尾曲|插曲|歌いました/i.test(tagContent)) {
+      // Preserve language version tags like (Japanese Ver.), (English Ver.), (Korean Ver.), (Chinese Ver.)
+      const isLangVer = /(?:japanese|english|korean|chinese|jp|en|kr|kor|zh|cn)\s*(?:ver|version)/i.test(tagContent);
+      if (isLangVer) {
+        res += ' (' + tagContent.trim() + ') ';
+      } else if (/feat|ft\.|featuring|official|video|audio|mv|m\/v|remaster|hd|hq|4k|lyric|prod|clip|teaser|trailer|from\s+|ost|theme|anime|film|movie|ver\b|version|side\s+[a-z0-9]|part\s*\d+|with\s+|collaboration|主題歌|挿入歌|エンディング|オープニング|主题曲|片尾曲|插曲|歌いました/i.test(tagContent)) {
         // Drop it
       } else {
         res += ' ' + tagContent + ' ';
@@ -2033,9 +2063,32 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   // Remove pipes and trailing info
   title = title.replace(/\|.*$/g, '').replace(/丨.*$/g, '').trim();
 
+  // Detect and cleanly separate Asian + Latin bilingual titles like "클락션 (Klaxon)" or "晴天 (Sunny Day)"
+  let extractedNativeTitle = '';
+  let extractedLatinTitle = '';
+  const bilingualParenMatch = title.match(/^([^(（\[【《]+?)\s*[(（\[【《]([^)）\]】》]+)[)）\]】》]$/);
+  if (bilingualParenMatch) {
+    const pA = bilingualParenMatch[1].trim();
+    const pB = bilingualParenMatch[2].trim();
+    const hasCjkA = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(pA);
+    const hasCjkB = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(pB);
+    const isLatinA = /^[A-Za-z0-9\s'.,!?-]+$/.test(pA);
+    const isLatinB = /^[A-Za-z0-9\s'.,!?-]+$/.test(pB);
+
+    if (hasCjkA && isLatinB && !/official|video|mv|audio|remix|live/i.test(pB)) {
+      extractedNativeTitle = pA;
+      extractedLatinTitle = pB;
+      title = pA; // Keep native title clean!
+    } else if (isLatinA && hasCjkB && !/official|video|mv|audio|remix|live/i.test(pB)) {
+      extractedLatinTitle = pA;
+      extractedNativeTitle = pB;
+      title = pA; // Keep Latin title clean!
+    }
+  }
+
   // Extract Asian characters (Hangul, Hanzi, Kana)
   const asianTitleMatches = title.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g);
-  const nativeTitle = asianTitleMatches ? asianTitleMatches.join(' ').trim() : '';
+  let nativeTitle = extractedNativeTitle || (asianTitleMatches ? asianTitleMatches.join(' ').trim() : '');
 
   const asianArtistMatches = artist.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g);
   let nativeArtist = asianArtistMatches ? asianArtistMatches.join(' ').trim() : '';
@@ -2054,9 +2107,12 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
     .trim();
 
   // Extract clean Latin Title for bilingual titles like "클락션 (Klaxon)"
-  const latinTitleMatches = title.match(/[A-Za-z0-9\s'-]+/g);
-  let titleLatin = latinTitleMatches ? latinTitleMatches.join(' ').replace(/\s+/g, ' ').trim() : '';
-  if (titleLatin.length < 2) titleLatin = '';
+  let titleLatin = extractedLatinTitle;
+  if (!titleLatin) {
+    const latinTitleMatches = title.match(/[A-Za-z0-9\s'-]+/g);
+    titleLatin = latinTitleMatches ? latinTitleMatches.join(' ').replace(/\s+/g, ' ').trim() : '';
+    if (titleLatin.length < 2) titleLatin = '';
+  }
 
   // Clean artist
   artist = stripTagsAndParens(artist);
@@ -2239,6 +2295,8 @@ function pickBestLyrics(items, targetDuration, targetArtist, targetTitle = '', i
       }
     }
 
+    score = applyVersionMismatchPenalty(score, item.trackName, targetTitle);
+
     return { item, score };
   });
 
@@ -2343,6 +2401,8 @@ async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, a
             score -= 500;
           }
         }
+
+        score = applyVersionMismatchPenalty(score, name, title);
 
         return { song, durSec, score };
       });
@@ -2457,6 +2517,8 @@ async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, art
           }
         }
 
+        score = applyVersionMismatchPenalty(score, sName, title);
+
         return { song: s, score };
       });
 
@@ -2491,7 +2553,7 @@ async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, art
               trackName: song.songname || title,
               artistName: song.singername || artistLatin || artist,
               duration: song.duration,
-              adjustOffsetMs: bestCand.adjust || 0,
+              adjustOffsetMs: 0,
               syncedLyrics: decodedLrc
             };
           }
@@ -2592,6 +2654,8 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
             score -= 500;
           }
         }
+
+        score = applyVersionMismatchPenalty(score, sName, title);
 
         return { song: s, score };
       });
@@ -2953,21 +3017,12 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         }
       }
     }
-    const latinParts = (srcTitle || '').match(/[a-zA-Z0-9']{3,}/g);
-    if (latinParts) {
-      for (const lp of latinParts) {
-        const clp = lp.trim().toLowerCase();
-        if (!/^(official|video|music|audio|lyric|lyrics|mv|full)$/i.test(clp)) {
-          titleCandidates.add(clp);
-        }
-      }
-    }
   }
 
   if (titleLatin) titleCandidates.add(titleLatin.toLowerCase());
   if (nativeTitle) titleCandidates.add(nativeTitle.toLowerCase());
 
-  // Add canonical synonyms from KNOWN_SONG_CANONICAL_TITLES
+  // Add canonical synonyms from KNOWN_SONG_CANONICAL_TITLES (Bidirectional: JP <-> EN)
   const canonLookups = [cleanTitle, strippedTitle, nativeTitle, simpTitle, strippedSimp].filter(Boolean);
   for (const cl of canonLookups) {
     if (KNOWN_SONG_CANONICAL_TITLES[cl]) {
@@ -2975,7 +3030,22 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         titleCandidates.add(syn.toLowerCase());
       }
     }
+    // Reverse lookup: check if cl matches any alias in KNOWN_SONG_CANONICAL_TITLES
+    for (const [canonKey, aliases] of Object.entries(KNOWN_SONG_CANONICAL_TITLES)) {
+      if (aliases.some(a => a.toLowerCase() === cl.toLowerCase())) {
+        titleCandidates.add(canonKey.toLowerCase());
+      }
+    }
   }
+
+  // Add romanized cleanTitle via LyricsRomanizer
+  try {
+    const romanizer = getLyricsRomanizer();
+    const romTitle = await romanizer.romanizeLine(cleanTitle, isJapanese ? 'ja' : isKorean ? 'ko' : isChinese ? 'zh' : undefined);
+    if (romTitle && romTitle.length >= 2 && romTitle.toLowerCase() !== cleanTitle.toLowerCase()) {
+      titleCandidates.add(romTitle.toLowerCase());
+    }
+  } catch (e) {}
 
   // If Japanese kana/kanji, add natural Romaji conversion via wanakana
   try {
@@ -3065,14 +3135,18 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         if (!normTc || normTc.length < 2) continue;
         if (!normHitTitle || normHitTitle.length < 2) continue;
 
-        if (normHitTitle === normTc || normHitTitle.includes(normTc) || normTc.includes(normHitTitle)) {
+        if (normHitTitle === normTc) {
           isTitleMatch = true;
           break;
         }
-        // Token match for multi-word or bilingual titles like "晩餐歌 - Bansanka"
+        if (normTc.length >= 5 && normHitTitle.length >= 5 && (normHitTitle.includes(normTc) || normTc.includes(normHitTitle))) {
+          isTitleMatch = true;
+          break;
+        }
+        // Exact component match for bilingual titles (e.g. "ひゅるりらぱっぱ - HYURURIRAPAPPA")
         const htTokens = ht.split(/[\s\-\_\/·・|｜『』「」【】《》\(\)]+/).map(t => normalizeForCompare(t)).filter(t => t.length >= 2);
         for (const tok of htTokens) {
-          if (tok === normTc || tok.includes(normTc) || normTc.includes(tok)) {
+          if (tok === normTc) {
             isTitleMatch = true;
             break;
           }
@@ -3120,6 +3194,9 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
       if (/live|现场|演唱会/i.test(ht) && !/live/i.test(cleanTitle)) score -= 350;
       if (/acoustic|弾き語り/i.test(ht) && !/acoustic|弾き語り/i.test(cleanTitle)) score -= 350;
       if (/remix|workout/i.test(ht) && !/remix|workout/i.test(cleanTitle)) score -= 350;
+
+      // Heavy penalty for version mismatch (e.g. Japanese Ver vs Korean Ver, sped up, live, etc.)
+      score = applyVersionMismatchPenalty(score, ht, cleanTitle);
 
       // Duration Delta scoring
       if (targetDuration > 0 && (h.duration || 0) > 0) {
@@ -3660,19 +3737,35 @@ app.get('/api/lyrics', async (req, res) => {
       } else {
         // Parse from LRC format (with support for QQ Music <offset,dur> & Kugou (start,dur) syllable sync)
         const lrcLines = result.syncedLyrics.split('\n');
-        const lrcRegex = /^\[(\d{2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/;
+        const lrcRegex = /^\[(\d{2}):(\d{2})(?:[.:](\d+))?\]\s*(.*)$/;
         for (const line of lrcLines) {
           const match = line.trim().match(lrcRegex);
           if (match) {
             const m = parseInt(match[1], 10);
-            const s = parseFloat(match[2]);
+            const s = parseInt(match[2], 10) + (match[3] ? parseFloat('0.' + match[3]) : 0);
             const lineBaseSec = m * 60 + s;
             const time = Math.max(0, parseFloat((lineBaseSec + netShiftSec).toFixed(2)));
-            const rawLinePayload = match[3].trim();
+            let rawLinePayload = match[4].trim();
+
+            // Handle inline translation merged with slash (e.g. "夜に駆ける / 向夜晚奔去" or "사랑해 / 사란해")
+            if (rawLinePayload.includes('/')) {
+              const slashIdx = rawLinePayload.indexOf('/');
+              const beforeSlash = rawLinePayload.substring(0, slashIdx).trim();
+              const afterSlash = rawLinePayload.substring(slashIdx + 1).trim();
+              if (beforeSlash.length > 0 && afterSlash.length > 0 && !beforeSlash.includes('<') && !beforeSlash.includes('(')) {
+                rawLinePayload = beforeSlash;
+              }
+            }
 
             // Universal Asian Syllable Extractor:
-            // 1. QQ Music format: <offset_ms,dur_ms>word or <offset_ms,dur_ms,0>word (offset relative to line start)
-            // 2. Kugou format: (start_ms,dur_ms)word (start absolute from track beginning)
+            // Determine timestamp mode once per line based on first syllable
+            const firstSylMatch = /(?:<(\d+),(\d+)(?:,\d+)?>|\((\d+),(\d+)\))/i.exec(rawLinePayload);
+            let isAbsoluteMs = false;
+            if (firstSylMatch) {
+              const firstStartVal = parseInt(firstSylMatch[1] !== undefined ? firstSylMatch[1] : firstSylMatch[3], 10);
+              isAbsoluteMs = firstStartVal > 0 && Math.abs((firstStartVal / 1000.0) - lineBaseSec) <= 1.5;
+            }
+
             const syllableRegex = /(?:<(\d+),(\d+)(?:,\d+)?>|\((\d+),(\d+)\))([^\(<]+)/g;
             const words = [];
             let sylMatch;
@@ -3686,12 +3779,10 @@ app.get('/api/lyrics', async (req, res) => {
               const sylText = rawSyl.trim();
               if (sylText && !isNaN(startVal) && !isNaN(durVal)) {
                 let wordBeginSec;
-                if (isQQ) {
-                  // QQ Music: startVal is relative offset in ms from lineBaseSec
-                  wordBeginSec = lineBaseSec + (startVal / 1000.0);
-                } else {
-                  // Kugou: startVal is absolute timestamp in ms from song start
+                if (isAbsoluteMs) {
                   wordBeginSec = startVal / 1000.0;
+                } else {
+                  wordBeginSec = lineBaseSec + (startVal / 1000.0);
                 }
                 const wordEndSec = wordBeginSec + Math.max(0.05, durVal / 1000.0);
                 const adjBegin = Math.max(0, parseFloat((wordBeginSec + netShiftSec).toFixed(3)));
@@ -3720,6 +3811,42 @@ app.get('/api/lyrics', async (req, res) => {
       // 1. Sort strictly by timestamp ascending so lyrics never jump out of order
       items.sort((a, b) => a.time - b.time);
 
+      // Deduplicate lines with identical or near-identical timestamps (< 0.08s)
+      const dedupedItems = [];
+      for (let i = 0; i < items.length; i++) {
+        const curr = items[i];
+        if (dedupedItems.length === 0) {
+          dedupedItems.push(curr);
+          continue;
+        }
+        const prev = dedupedItems[dedupedItems.length - 1];
+        if (Math.abs(curr.time - prev.time) < 0.08) {
+          // Collision: prioritize the original language line
+          if (isKorean) {
+            const prevHasKo = /[\uac00-\ud7af]/.test(prev.text);
+            const currHasKo = /[\uac00-\ud7af]/.test(curr.text);
+            if (!prevHasKo && currHasKo) {
+              dedupedItems[dedupedItems.length - 1] = curr;
+            }
+            continue;
+          } else if (isJapanese) {
+            const prevHasJp = /[\u3040-\u30ff]/.test(prev.text);
+            const currHasJp = /[\u3040-\u30ff]/.test(curr.text);
+            if (!prevHasJp && currHasJp) {
+              dedupedItems[dedupedItems.length - 1] = curr;
+            }
+            continue;
+          } else {
+            if ((!prev.words && curr.words) || (curr.text.length > prev.text.length)) {
+              dedupedItems[dedupedItems.length - 1] = curr;
+            }
+            continue;
+          }
+        }
+        dedupedItems.push(curr);
+      }
+      items = dedupedItems;
+
       // Populate accurate endTime for every line so syllables in LRC-fallback songs never get NaN or rushed tempo
       for (let i = 0; i < items.length; i++) {
         if (!items[i].endTime) {
@@ -3741,17 +3868,10 @@ app.get('/api/lyrics', async (req, res) => {
 
       if (finalItems.length > 0) {
         try {
-          const needsRomajiProcessing = finalItems.some(it => !it.romaji || (it.words && it.words.length > 0 && (!it.romajiWords || it.romajiWords.length === 0)));
-          if (!needsRomajiProcessing) {
-            parsedLyrics = finalItems;
-            const rawLang = result.detectedLang || 'ja';
-            detectedLang = rawLang.split('-')[0].toLowerCase();
-          } else {
-            const romanizer = getLyricsRomanizer();
-            const processed = await romanizer.romanizeLyricsList(finalItems);
-            parsedLyrics = processed.lines;
-            detectedLang = processed.detectedLang || (result.detectedLang ? result.detectedLang.split('-')[0].toLowerCase() : null);
-          }
+          const romanizer = getLyricsRomanizer();
+          const processed = await romanizer.romanizeLyricsList(finalItems);
+          parsedLyrics = processed.lines;
+          detectedLang = processed.detectedLang || (result.detectedLang ? result.detectedLang.split('-')[0].toLowerCase() : null);
         } catch (e) {
           console.warn('Romanizer sync error:', e.message);
           parsedLyrics = finalItems.map(it => ({ ...it, romaji: null, lang: null }));

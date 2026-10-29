@@ -2948,46 +2948,74 @@ class App {
       const activeLineEl = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${activeIdx}"]`);
       if (activeLineEl && activeLineEl.classList.contains('has-word-sync')) {
         const words = activeLineEl.querySelectorAll('.cinema-lyric-word');
-        words.forEach(w => {
-          const begin = parseFloat(w.getAttribute('data-begin'));
-          const end = parseFloat(w.getAttribute('data-end'));
-
-          if (syncTime >= begin && syncTime <= end) {
-            const progress = Math.min(1, Math.max(0, (syncTime - begin) / Math.max(0.05, end - begin)));
-            const fillPct = progress * 100;
-            w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
-            w.classList.add('active');
-            w.classList.remove('passed');
-          } else if (syncTime > end) {
-            w.style.setProperty('--fill-pct', '100%');
-            w.classList.remove('active');
-            w.classList.add('passed');
-          } else {
-            w.style.setProperty('--fill-pct', '0%');
-            w.classList.remove('active', 'passed');
-          }
-        });
-
         const romajiWords = activeLineEl.querySelectorAll('.cinema-lyric-word-romaji');
-        romajiWords.forEach(w => {
+        const isOneToOne = (words.length > 0 && romajiWords.length === words.length);
+
+        words.forEach((w, wIdx) => {
           const begin = parseFloat(w.getAttribute('data-begin'));
           const end = parseFloat(w.getAttribute('data-end'));
 
+          let fillPct = '0%';
+          let state = 'unpassed';
+
           if (syncTime >= begin && syncTime <= end) {
             const progress = Math.min(1, Math.max(0, (syncTime - begin) / Math.max(0.05, end - begin)));
-            const fillPct = progress * 100;
-            w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
+            fillPct = `${(progress * 100).toFixed(1)}%`;
+            state = 'active';
+          } else if (syncTime > end) {
+            fillPct = '100%';
+            state = 'passed';
+          }
+
+          w.style.setProperty('--fill-pct', fillPct);
+          if (state === 'active') {
             w.classList.add('active');
             w.classList.remove('passed');
-          } else if (syncTime > end) {
-            w.style.setProperty('--fill-pct', '100%');
+          } else if (state === 'passed') {
             w.classList.remove('active');
             w.classList.add('passed');
           } else {
-            w.style.setProperty('--fill-pct', '0%');
             w.classList.remove('active', 'passed');
           }
+
+          // 1:1 Direct Link: highlight corresponding romaji word synchronously
+          if (isOneToOne && romajiWords[wIdx]) {
+            const rw = romajiWords[wIdx];
+            rw.style.setProperty('--fill-pct', fillPct);
+            if (state === 'active') {
+              rw.classList.add('active');
+              rw.classList.remove('passed');
+            } else if (state === 'passed') {
+              rw.classList.remove('active');
+              rw.classList.add('passed');
+            } else {
+              rw.classList.remove('active', 'passed');
+            }
+          }
         });
+
+        // If romaji words don't have 1:1 count, sweep them independently using the exact same syncTime
+        if (!isOneToOne && romajiWords.length > 0) {
+          romajiWords.forEach(w => {
+            const begin = parseFloat(w.getAttribute('data-begin'));
+            const end = parseFloat(w.getAttribute('data-end'));
+
+            if (syncTime >= begin && syncTime <= end) {
+              const progress = Math.min(1, Math.max(0, (syncTime - begin) / Math.max(0.05, end - begin)));
+              const fillPct = progress * 100;
+              w.style.setProperty('--fill-pct', `${fillPct.toFixed(1)}%`);
+              w.classList.add('active');
+              w.classList.remove('passed');
+            } else if (syncTime > end) {
+              w.style.setProperty('--fill-pct', '100%');
+              w.classList.remove('active');
+              w.classList.add('passed');
+            } else {
+              w.style.setProperty('--fill-pct', '0%');
+              w.classList.remove('active', 'passed');
+            }
+          });
+        }
       }
     }
   }

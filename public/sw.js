@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aurasound-v44';
+const CACHE_NAME = 'aurasound-v45';
 const IMAGE_CACHE = 'aurasound-images-v2';
 
 self.addEventListener('install', event => {

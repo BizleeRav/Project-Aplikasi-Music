@@ -567,18 +567,18 @@ class LyricsRomanizer {
 
   alignChineseWords(lineText, words) {
     if (!words || words.length === 0) return words;
-    let s = lineText || '';
-    const diPhs = [];
-    ZH_DI_NOUNS.forEach((w, i) => {
-      if (s.includes(w)) {
-        const ph = '__D_' + i + '__';
-        diPhs.push({ ph, original: w });
-        s = s.split(w).join(ph);
+    const s = lineText || '';
+
+    // Find character indices belonging to noun phrases containing 地
+    const diNounCharIndices = new Set();
+    ZH_DI_NOUNS.forEach(w => {
+      let idx = 0;
+      while ((idx = s.indexOf(w, idx)) !== -1) {
+        for (let c = 0; c < w.length; c++) {
+          diNounCharIndices.add(idx + c);
+        }
+        idx += w.length;
       }
-    });
-    s = s.replace(/地/g, '的');
-    diPhs.forEach(({ ph, original }) => {
-      s = s.split(ph).join(original);
     });
 
     const tokens = pinyin(s, { toneType: 'none', type: 'all' });
@@ -591,10 +591,14 @@ class LyricsRomanizer {
         }
         if (cursor < tokens.length && tokens[cursor].origin === ch) {
           const t = tokens[cursor];
-          wPinyin.push(t.isZh ? t.pinyin : (t.result || ch));
+          let py = t.isZh ? t.pinyin : (t.result || ch);
+          if (ch === '地' && !diNounCharIndices.has(cursor)) {
+            py = 'de';
+          }
+          wPinyin.push(py);
           cursor++;
         } else {
-          wPinyin.push(ch);
+          wPinyin.push(ch === '地' ? 'de' : ch);
         }
       }
       return {
@@ -614,13 +618,9 @@ class LyricsRomanizer {
       }));
     }
 
-    let preProcessed = lineText || '';
-    for (const r of JP_PRE_OVERRIDES) {
-      preProcessed = preProcessed.replace(r.match, r.rep);
-    }
-
     try {
-      const html = await this.kuroshiro.convert(preProcessed, { to: 'hiragana', mode: 'furigana' });
+      // 1. Run furigana on the original lineText without mutating Kanji
+      const html = await this.kuroshiro.convert(lineText || '', { to: 'hiragana', mode: 'furigana' });
       const furiganaTokens = [];
       const rubyRegex = /<ruby>([\s\S]*?)<rp>\(<\/rp><rt>([\s\S]*?)<\/rt><rp>\)<\/rp><\/ruby>/gi;
       let lastIdx = 0;
@@ -638,6 +638,33 @@ class LyricsRomanizer {
         furiganaTokens.push({ text: plain, reading: plain });
       }
 
+      // 2. Apply reading overrides on the reading property without changing the Kanji text
+      const JP_READING_OVERRIDES = [
+        { text: '二人', reading: 'ふたり' },
+        { text: '一人', reading: 'ひとり' },
+        { text: '明日', reading: 'あした' },
+        { text: '昨日', reading: 'きのう' },
+        { text: '今日', reading: 'きょう' },
+        { text: '大人', reading: 'おとな' }
+      ];
+
+      for (let i = 0; i < furiganaTokens.length; i++) {
+        if (i < furiganaTokens.length - 1) {
+          const pairText = furiganaTokens[i].text + furiganaTokens[i + 1].text;
+          const match = JP_READING_OVERRIDES.find(o => o.text === pairText);
+          if (match) {
+            furiganaTokens[i] = { text: match.text, reading: match.reading };
+            furiganaTokens.splice(i + 1, 1);
+            continue;
+          }
+        }
+        const single = JP_READING_OVERRIDES.find(o => o.text === furiganaTokens[i].text);
+        if (single) {
+          furiganaTokens[i].reading = single.reading;
+        }
+      }
+
+      // 3. Flatten into character-by-character readings
       const charReadings = [];
       for (const ft of furiganaTokens) {
         if (ft.text.length === 1) {
@@ -659,30 +686,52 @@ class LyricsRomanizer {
         }
       }
 
-      const result = [];
+      // 4. Sequential search matching based on searchPos
       let searchPos = 0;
+      const raw = [];
       for (const w of words) {
         let wReading = '';
-        const compound = furiganaTokens.find(ft => ft.text === w.text);
-        if (compound) {
-          wReading = compound.reading;
-        } else {
-          for (const ch of w.text) {
-            const match = charReadings.find((cr, idx) => idx >= searchPos && cr.char === ch);
-            if (match) {
-              wReading += match.reading;
-              searchPos = charReadings.indexOf(match) + 1;
-            } else {
-              wReading += ch;
+        for (const ch of w.text) {
+          let foundIdx = -1;
+          for (let idx = searchPos; idx < charReadings.length; idx++) {
+            if (charReadings[idx].char === ch) {
+              foundIdx = idx;
+              break;
             }
           }
+          if (foundIdx !== -1) {
+            wReading += charReadings[foundIdx].reading;
+            searchPos = foundIdx + 1;
+          } else {
+            wReading += ch;
+          }
+        }
+        raw.push({ ...w, wReading });
+      }
+
+      // 5. Convert to Romaji with sokuon (っ / ッ) consonant doubling and wanakana speedup
+      const result = [];
+      for (let i = 0; i < raw.length; i++) {
+        const item = raw[i];
+        let wReading = item.wReading;
+        let wRomaji = '';
+
+        if (/[っッ]$/.test(wReading) && i < raw.length - 1) {
+          const nextReading = raw[i + 1].wReading;
+          const nextRom = wanakana.toRomaji(nextReading || '').trim();
+          const consonantMatch = nextRom.match(/^[bcdfghjklmnpqrstvwxyz]/i);
+          const nextConsonant = consonantMatch ? consonantMatch[0].toLowerCase() : '';
+          const baseReading = wReading.slice(0, -1);
+          let baseRomaji = wanakana.toRomaji(baseReading);
+          if (nextConsonant) {
+            wRomaji = baseRomaji + nextConsonant;
+          } else {
+            wRomaji = wanakana.toRomaji(wReading);
+          }
+        } else {
+          wRomaji = wanakana.toRomaji(wReading || item.text);
         }
 
-        let wRomaji = await this.kuroshiro.convert(wReading || w.text, {
-          to: 'romaji',
-          mode: 'spaced',
-          romajiSystem: 'hepburn'
-        });
         wRomaji = (wRomaji || '')
           .replace(/ō/g, 'ou').replace(/ū/g, 'uu').replace(/ē/g, 'ee').replace(/ā/g, 'aa').replace(/ī/g, 'ii')
           .replace(/Ō/g, 'Ou').replace(/Ū/g, 'Uu').replace(/Ē/g, 'Ee').replace(/Ā/g, 'Aa').replace(/Ī/g, 'Ii')
@@ -690,8 +739,8 @@ class LyricsRomanizer {
           .trim();
 
         result.push({
-          ...w,
-          romaji: wRomaji || w.text
+          ...item,
+          romaji: wRomaji || item.text
         });
       }
       return result;
@@ -748,14 +797,16 @@ class LyricsRomanizer {
       }
 
       // 1:1 Syllable Lock: Bind Romaji syllables 100% to the exact begin/end of the original words
-      let computedRomajiWords = item.romajiWords || null;
-      if (!computedRomajiWords && Array.isArray(updatedWords) && updatedWords.some(w => w.romaji)) {
+      let computedRomajiWords = null;
+      if (Array.isArray(updatedWords) && updatedWords.length > 0 && updatedWords.some(w => w.begin !== undefined)) {
         computedRomajiWords = updatedWords.map(w => ({
           text: w.romaji || w.text,
           begin: w.begin,
           end: w.end,
-          trailingSpace: w.trailingSpace !== false
+          trailingSpace: (lineLang === 'zh' || lineLang === 'ja') ? true : (w.trailingSpace !== false)
         }));
+      } else if (item.romajiWords) {
+        computedRomajiWords = item.romajiWords;
       }
       // Note: If original line has NO word sync (line-synced only), computedRomajiWords remains NULL.
       // We NEVER fake-interpolate syllable sweeps on line-synced songs so timing remains 100% honest and accurate.
