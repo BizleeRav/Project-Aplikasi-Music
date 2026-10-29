@@ -709,16 +709,18 @@ class LyricsRomanizer {
     const result = [];
     for (const item of parsedLines) {
       let romaji = item.romaji || null;
-      let lineLang = item.lang || null;
+      let lineLang = null;
 
-      if (!lineLang && item.text) {
-        if (overallLang === 'ja' && /[\u3040-\u30ff\u4e00-\u9fff]/.test(item.text)) {
-          // If song is Japanese, any Kanji or Kana line is Japanese (prevents pure Kanji from becoming Chinese Pinyin)
+      // Always inspect text to identify the actual source script language
+      if (item.text) {
+        if (/[\u3040-\u30ff]/.test(item.text) || (overallLang === 'ja' && /[\u4e00-\u9fff]/.test(item.text))) {
           lineLang = 'ja';
-        } else if (overallLang === 'ko' && /[\uac00-\ud7af\u1100-\u11ff]/.test(item.text)) {
+        } else if (/[\uac00-\ud7af\u1100-\u11ff]/.test(item.text) || overallLang === 'ko') {
           lineLang = 'ko';
-        } else if (overallLang === 'zh' && /[\u4e00-\u9fff]/.test(item.text) && !/[\u3040-\u30ff]/.test(item.text)) {
+        } else if (/[\u4e00-\u9fff]/.test(item.text) && !/[\u3040-\u30ff]/.test(item.text)) {
           lineLang = 'zh';
+        } else if (item.lang && item.lang !== 'en') {
+          lineLang = item.lang.split('-')[0].toLowerCase();
         } else {
           lineLang = this.detectLanguage(item.text);
         }
