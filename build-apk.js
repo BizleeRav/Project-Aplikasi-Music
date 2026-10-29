@@ -137,6 +137,7 @@ public class MainActivity extends Activity {
 
         webView = findViewById(R.id.webview);
         initWebView();
+        webView.clearCache(true);
         webView.loadUrl(APP_URL);
     }
 
