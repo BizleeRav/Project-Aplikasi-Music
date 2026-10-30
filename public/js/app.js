@@ -2814,16 +2814,16 @@ class App {
         if (this.hasWordSync) {
           if (this.currentLyricsLang === 'ja') {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇯🇵 SYLLABLE ROMAJI`;
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇯🇵 BETTER LYRICS • ROMAJI`;
           } else if (this.currentLyricsLang === 'ko') {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ko';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇰🇷 SYLLABLE ROMAJA`;
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇰🇷 BETTER LYRICS • ROMAJA`;
           } else if (this.currentLyricsLang === 'zh') {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-zh';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 SYLLABLE PINYIN`;
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 BETTER LYRICS • PINYIN`;
           } else {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge synced';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> ✨ APPLE TTML SYNC`;
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> ✨ BETTER LYRICS (TTML)`;
           }
         } else {
           if (this.currentLyricsLang === 'ja') {
@@ -2837,7 +2837,7 @@ class App {
             this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 PINYIN SYNC`;
           } else {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge synced';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> KARAOKE SYNC`;
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> ✨ BETTER LYRICS`;
           }
         }
       } else if (type === 'suno_ai') {
@@ -3078,9 +3078,9 @@ class App {
   updateActiveLyricsLine(currentSecs) {
     if (!this.cinemaLyricsStream) return;
 
-    // Exact on-beat audio synchronization with acoustic lead compensation (+250ms)
-    // Ensures vocal onset hits exactly when the lyric highlight/wipe begins (no "vokal nyanyi duluan")
-    const DEFAULT_ACOUSTIC_LEAD_SEC = 0.25;
+    // Exact on-beat audio synchronization (0.00s zero artificial shift)
+    // Matches the exact vocal onset timestamps of the Better Lyrics TTML stream
+    const DEFAULT_ACOUSTIC_LEAD_SEC = 0.00;
     let syncTime = (typeof currentSecs === 'number') ? currentSecs : (this.getCurrentPlaybackTime() || 0);
     const userOffset = this.getCurrentTrackOffset();
     syncTime = Math.max(0, syncTime + DEFAULT_ACOUSTIC_LEAD_SEC + userOffset);
@@ -3376,8 +3376,8 @@ class App {
   updateLyricsOffsetUI() {
     const cur = this.getCurrentTrackOffset();
     if (this.braccatoLyricsEl) {
-      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', '0.150s');
-      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', '0.115s');
+      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', '0.000s');
+      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', '0.000s');
     }
     const el = document.getElementById('cinema-lyrics-offset-val');
     if (!el) return;
@@ -6909,7 +6909,7 @@ class App {
       if (window.ytPlayer) window.ytPlayer.pause();
       this.currentAudioMode = 'native';
 
-      const streamUrl = `/api/stream-audio?id=${encodeURIComponent(track.id)}`;
+      const streamUrl = `/api/stream-audio?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}`;
       this.nativeAudio.src = streamUrl;
 
       const playPromise = this.nativeAudio.play();

@@ -272,8 +272,8 @@ async function searchYouTubeMusicSongs(query, limit = 25, page = 1) {
     if (!yt || !yt.music) return [];
 
     let res = await yt.music.search(query, { type: 'song' });
-    let shelf = res.contents?.[0];
-    let items = shelf?.contents || [];
+    let shelf = res.contents?.find(c => c.contents && c.contents.some(item => item && item.id)) || res.contents?.[0];
+    let items = shelf?.contents?.filter(item => item && item.id) || [];
 
     // Support deep pagination via YouTube Music continuations
     if (page > 1 && res.has_continuation) {
@@ -326,6 +326,58 @@ async function searchYouTubeMusicSongs(query, limit = 25, page = 1) {
     return [];
   }
 }
+
+const studioTrackCache = new Map(); // videoId -> { id, title, artist, duration, seconds }
+
+async function resolveStudioTrack(videoId, title, artist) {
+  if (!videoId && !title) return null;
+  if (videoId && studioTrackCache.has(videoId)) {
+    return studioTrackCache.get(videoId);
+  }
+
+  try {
+    const yt = await getInnertube();
+    if (!yt || !yt.music) return null;
+
+    let cleanTitle = (title || '').replace(/\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film))\b|【mv】|\[mv\]/gi, '').trim();
+    let cleanArtist = (artist || '').replace(/- topic\b/gi, '').trim();
+
+    // Solo member alias
+    if (/^solo$/i.test(cleanTitle) && /blackpink/i.test(cleanArtist)) {
+      cleanArtist = 'JENNIE';
+    }
+
+    const q = `${cleanTitle} ${cleanArtist}`.trim();
+    if (!q) return null;
+
+    const res = await yt.music.search(q, { type: 'song' });
+    const shelf = res.contents?.find(c => c.contents && c.contents.some(item => item && item.id)) || res.contents?.[0];
+    const items = shelf?.contents?.filter(item => item && item.id) || [];
+    if (items.length > 0) {
+      const normQ = cleanTitle.toLowerCase();
+      const match = items.find(item => {
+        const t = (item.title || '').toLowerCase();
+        return t.includes(normQ) || normQ.includes(t);
+      }) || items[0];
+
+      if (match && match.id) {
+        const result = {
+          id: match.id,
+          title: match.title || cleanTitle,
+          artist: match.artists?.map(a => a.name).join(', ') || cleanArtist,
+          duration: match.duration?.text || '0:00',
+          seconds: match.duration?.seconds || 0
+        };
+        if (videoId) studioTrackCache.set(videoId, result);
+        return result;
+      }
+    }
+  } catch (e) {
+    console.warn('[StudioResolver] error:', e.message);
+  }
+  return null;
+}
+
 
 function sortTracksByRelevance(tracks, query) {
   if (!query || !Array.isArray(tracks) || tracks.length <= 1) return tracks;
@@ -978,9 +1030,27 @@ app.get('/api/proxy-audio', async (req, res) => {
 
 // 5b. Direct YouTube Music Audio Stream for Full Web Audio DSP Equalizer Processing
 app.get('/api/stream-audio', async (req, res) => {
-  const videoId = req.query.id;
+  let videoId = req.query.id;
   if (!videoId) {
     return res.status(400).json({ success: false, error: 'Video ID is required' });
+  }
+
+  // Automatic Clean Studio Audio Resolution:
+  // If video is an MV or has intro bumper, resolve the clean YouTube Music studio cut
+  const title = req.query.title || '';
+  const artist = req.query.artist || '';
+  const preferStudio = req.query.preferStudio !== 'false';
+  if (preferStudio && (title || KNOWN_MV_OFFSETS[videoId] !== undefined)) {
+    const isMv = KNOWN_MV_OFFSETS[videoId] !== undefined || /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film))\b|【mv】|\[mv\]/i.test(title);
+    if (isMv) {
+      try {
+        const studioTrack = await resolveStudioTrack(videoId, title, artist);
+        if (studioTrack && studioTrack.id && studioTrack.id !== videoId) {
+          videoId = studioTrack.id;
+          res.setHeader('X-Resolved-Studio-Id', videoId);
+        }
+      } catch (e) {}
+    }
   }
 
   try {
@@ -3873,20 +3943,33 @@ app.get('/api/lyrics', async (req, res) => {
   const isMvExplicit = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
   const isMv = isMvExplicit || hasKnownMvOffset;
 
-  // 2. Resolve intro offset: Check KNOWN_MV_OFFSETS first (0ms ground truth), fallback to SponsorBlock
+  // 2. Resolve intro offset: Check if resolved to clean studio track first, then KNOWN_MV_OFFSETS, then SponsorBlock
   let introOffsetSec = 0;
   let effectiveSongDuration = duration;
-  if (hasKnownMvOffset) {
+
+  // If track was resolved or can be resolved to a clean studio track, audio has 0s intro!
+  const preferStudio = req.query.preferStudio !== 'false';
+  let matchedStudioTrack = videoId ? studioTrackCache.get(videoId) : null;
+  if (!matchedStudioTrack && preferStudio && isMv) {
+    matchedStudioTrack = await resolveStudioTrack(videoId, rawTitle, rawArtist);
+  }
+
+  if (matchedStudioTrack) {
+    introOffsetSec = 0; // Pure studio track always has 0ms video intro
+    if (matchedStudioTrack.seconds > 0) {
+      effectiveSongDuration = matchedStudioTrack.seconds;
+    }
+  } else if (hasKnownMvOffset) {
     introOffsetSec = KNOWN_MV_OFFSETS[videoId];
   } else if (videoId && duration > 20) {
     try {
       const segs = await resolveDynamicAudioSegments(videoId, duration);
-      if (duration > 0 && effectiveSongDuration > 0 && Math.abs(duration - effectiveSongDuration) <= 4) {
-        introOffsetSec = 0;
-      } else {
-        introOffsetSec = segs.introOffsetSec || 0;
+      if (segs && segs.introOffsetSec > 0) {
+        introOffsetSec = segs.introOffsetSec;
       }
-      if (segs.effectiveSongDuration > 0) effectiveSongDuration = segs.effectiveSongDuration;
+      if (segs && segs.effectiveSongDuration > 0) {
+        effectiveSongDuration = segs.effectiveSongDuration;
+      }
     } catch (e) {}
   }
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset });
@@ -4067,9 +4150,7 @@ app.get('/api/lyrics', async (req, res) => {
       );
 
       // Apply MV intro offset when confirmed present in video
-      if (duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 4 && !hasKnownMvOffset) {
-        netShiftSec = isBetterLyricsOrTtml ? 0 : -lrcOffsetSec;
-      } else if (mvIntroDelaySec > 0) {
+      if (mvIntroDelaySec > 0) {
         netShiftSec = mvIntroDelaySec - (isBetterLyricsOrTtml ? 0 : lrcOffsetSec);
       } else {
         netShiftSec = isBetterLyricsOrTtml ? 0 : -lrcOffsetSec;
