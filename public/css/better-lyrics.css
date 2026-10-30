@@ -1,3 +1,6 @@
+/* Combined Official Better Lyrics Styles for AuraSound */
+
+/* === variables.css === */
 :root {
   /* Optional image paint; themes own the asset and any HDR brightness policy. */
   --blyrics-highlight-image: none;
@@ -33,7 +36,6 @@
 	--blyrics-timing-offset: 0.115s;
 
 	--blyrics-scroll-timing-offset: 0.500s;
-	--blyrics-target-scroll-pos-ratio: 0.38;
 
 	/* Typography */
 	/* The stack behind --noto-sans-universal is 32 Noto families and the extension is what loads
@@ -196,7 +198,10 @@
 		--blyrics-active-scale: 1;
 	}
 }
-@import url("image-highlights.css");
+
+
+/* === lyrics.css === */
+
 
 /* Resolve the default stack at each language boundary. A root-level var() would freeze
    the host's language-specific fallback before the lyric/translation language is known.
@@ -535,6 +540,9 @@
 #blyrics-wrapper {
 	margin-top: 0;
 }
+
+
+/* === instrumental.css === */
 /* Instrumental break styles */
 .blyrics--instrumental-icon {
 	height: var(--blyrics-font-size);
@@ -632,64 +640,148 @@
 }
 
 
-braccato-lyrics {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow-y: auto;
-  scroll-behavior: auto !important;
-  overscroll-behavior-y: contain;
-  --blyrics-font-size: 2.2rem;
-  --blyrics-font-weight: 700;
-  --blyrics-line-height: 1.4;
-  --blyrics-default-font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  --blyrics-lyric-active-color: #ffffff;
-  --blyrics-lyric-inactive-color: rgba(255, 255, 255, 0.28);
-  --blyrics-highlight-color: #38bdf8;
-  --blyrics-glow-color: rgba(56, 189, 248, 0.6);
-  padding: 40px 10px 140px;
+/* === image-highlights.css === */
+/* The renderer adds these classes only for blyrics-image-highlights = true.
+   An SDR image is equally valid. HDR assets and dynamic-range-limit belong to the theme. */
+.blyrics--word.blyrics-word-highlight.blyrics-image-highlight {
+  background: none;
+  mask: none;
+  -webkit-mask: none;
+  color: transparent;
 }
-@media (max-width: 768px) {
-  braccato-lyrics {
-    --blyrics-font-size: 1.55rem;
-    padding: 20px 6px 120px;
+.blyrics-image-fill,
+.blyrics-word-highlight.blyrics-image-highlight .blyrics--letter {
+  background-image: var(--blyrics-highlight-image, none);
+  background-color: var(--blyrics-lyric-active-color, white);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+/* The content-box copy keeps each letter's image; the padding-box copy carries it under glyph overhang. */
+.blyrics-word-highlight.blyrics-image-highlight .blyrics--letter {
+  background-image: var(--blyrics-highlight-image, none), var(--blyrics-highlight-image, none);
+  background-origin: content-box, padding-box;
+}
+.blyrics-image-highlight:not(.blyrics-word-highlight--lettered) .blyrics-image-fill {
+  --blyrics-image-sweep-angle: 90deg;
+  mask-image: linear-gradient(var(--blyrics-image-sweep-angle),
+    #000 calc(100% * var(--lyric-transition-amount-start)),
+    transparent calc(100% * var(--lyric-transition-amount-end) + 1px));
+  mask-repeat: no-repeat;
+}
+.blyrics-image-highlight.blyrics-rtl:not(.blyrics-word-highlight--lettered) .blyrics-image-fill {
+  --blyrics-image-sweep-angle: 270deg;
+}
+.blyrics-image-highlight.blyrics-word-highlight--lettered .blyrics-image-fill {
+  background: none;
+}
+.blyrics-image-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  overflow: visible;
+}
+/* A parallel run reproduces the full inline formatting context, including bidi
+   reordering and every wrapped fragment. No generated text or per-frame measuring. */
+.blyrics-image-glow-run .blyrics-image-glow {
+  position: static;
+  inset: auto;
+  display: inline;
+}
+.blyrics-instrumental-image { display: none; }
+.blyrics--instrumental-icon[data-image-ready] .blyrics-instrumental-image { display: inline; }
+.blyrics--instrumental-icon[data-image-ready] .blyrics-instrumental-color { display: none; }
+@media (forced-colors: active) {
+  .blyrics-image-glow,
+  .blyrics-image-glow-run .blyrics-image-glow { display: none; }
+  .blyrics-image-fill,
+  .blyrics-word-highlight.blyrics-image-highlight .blyrics--letter {
+    background: none;
+    color: CanvasText;
+    -webkit-text-fill-color: CanvasText;
   }
+  .blyrics--instrumental-icon[data-image-ready] .blyrics-instrumental-image { display: none; }
+  .blyrics--instrumental-icon[data-image-ready] .blyrics-instrumental-color { display: inline; }
 }
 
-/* Better Lyrics Native Singable Romanization Subtitle */
-.blyrics--romanized {
-  display: block !important;
-  margin-top: 0.28rem !important;
-  font-size: clamp(0.92rem, 1.8vh, 1.15rem) !important;
-  line-height: 1.35 !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.02em !important;
-  color: rgba(226, 232, 240, 0.72) !important;
-  background: transparent !important;
-  border: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  border-radius: 0 !important;
-  padding: 0 !important;
-  width: auto !important;
-  max-width: 100% !important;
-  white-space: normal !important;
-  word-break: break-word !important;
-  transition: color 0.25s cubic-bezier(0.2, 0, 0, 1), text-shadow 0.25s cubic-bezier(0.2, 0, 0, 1) !important;
+
+/* === stage.css === */
+/* Stage layout: lines absolutely placed by the engine, sized to their text. Only layout is set here;
+   colour, type and animation stay with lyrics.css and the theme. */
+.blyrics-container[data-layout="stage"] {
+	position: absolute !important;
+	inset: 0;
+	padding: 0 !important;
+	overflow: visible;
+	pointer-events: none;
 }
 
-.blyrics--active .blyrics--romanized {
-  color: #38bdf8 !important;
-  text-shadow: 0 0 16px rgba(56, 189, 248, 0.45) !important;
+.blyrics-container[data-layout="stage"] > :is(.blyrics--line, .blyrics-credits) {
+	position: absolute !important;
+	top: 0;
+	right: 0;
+	left: 0;
+	width: fit-content;
+	max-width: 100%;
+	margin: 0 auto !important;
+	padding: 0.1em 0.25em !important;
 }
 
-#cinema-lyrics-panel.hide-romaji .blyrics--romanized {
-  display: none !important;
+/* Layered, so these important declarations outrank any unlayered important one a theme writes,
+   whatever its specificity: the stage alone decides which lines are seen. */
+@layer braccato-stage {
+	.blyrics-container[data-layout="stage"] > :is(.blyrics--line, .blyrics-credits) {
+		opacity: var(--blyrics-stage-opacity, 0) !important;
+	}
+
+	.blyrics-container[data-layout="stage"] > :is(.blyrics--line, .blyrics-credits):not([data-stage-visible]) {
+		visibility: hidden !important;
+	}
 }
 
-@media (max-width: 768px) {
-  .blyrics--romanized {
-    font-size: 0.82rem !important;
-    margin-top: 0.2rem !important;
-  }
+.blyrics-container[data-layout="stage"] > :not(.blyrics--line, .blyrics-credits) {
+	display: none !important;
 }
+
+.blyrics-container[data-layout="stage"] > * {
+	text-align: center;
+	transform-origin: center center !important;
+}
+
+/* The romanization pill is a fit-content block, so text-align cannot place it. */
+.blyrics-container[data-layout="stage"] > .blyrics--line > .blyrics--romanized {
+	margin-right: auto;
+	margin-left: auto;
+}
+
+/* A duet puts each singer on their own side, mirrored for right-to-left lines; everyone together
+   stays centred. */
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:not([data-agent="v2"], [data-agent="v3"], [data-agent="v1000"]):not([data-direction="rtl"]),
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:is([data-agent="v2"], [data-agent="v3"])[data-direction="rtl"] {
+	margin: 0 auto 0 0 !important;
+	text-align: left;
+	transform-origin: left center !important;
+}
+
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:not([data-agent="v2"], [data-agent="v3"], [data-agent="v1000"]):not([data-direction="rtl"]) > .blyrics--romanized,
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:is([data-agent="v2"], [data-agent="v3"])[data-direction="rtl"] > .blyrics--romanized {
+	margin-left: 0;
+}
+
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:is([data-agent="v2"], [data-agent="v3"]):not([data-direction="rtl"]),
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:not([data-agent="v2"], [data-agent="v3"], [data-agent="v1000"])[data-direction="rtl"] {
+	margin: 0 0 0 auto !important;
+	text-align: right;
+	transform-origin: right center !important;
+}
+
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:is([data-agent="v2"], [data-agent="v3"]):not([data-direction="rtl"]) > .blyrics--romanized,
+.blyrics-container[data-layout="stage"][data-stage-duet] > .blyrics--line:not([data-agent="v2"], [data-agent="v3"], [data-agent="v1000"])[data-direction="rtl"] > .blyrics--romanized {
+	margin-right: 0;
+}
+
