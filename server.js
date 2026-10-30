@@ -2803,6 +2803,21 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
             l.romanization = tr.text;
             if (tr.parts) l.timedRomanization = tr.parts;
           }
+          if (l.romanization && (!l.timedRomanization || l.timedRomanization.length === 0)) {
+            try {
+              const romanizer = getLyricsRomanizer();
+              const lTime = l.startTimeMs / 1000;
+              const lEnd = (l.startTimeMs + l.durationMs) / 1000;
+              const rWords = romanizer.interpolateLineWords(l.romanization, lTime, lEnd);
+              if (rWords && rWords.length > 0) {
+                l.timedRomanization = rWords.map(rw => ({
+                  startTimeMs: Math.round(rw.begin * 1000),
+                  durationMs: Math.max(50, Math.round((rw.end - rw.begin) * 1000)),
+                  words: (rw.trailingSpace !== false) ? `${rw.text} ` : rw.text
+                }));
+              }
+            } catch (e) {}
+          }
           // Zero machine translation as requested
           delete l.translation;
           delete l.translations;
@@ -2830,7 +2845,24 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
               });
             }
           }
-          if (words.length === 0) words = null;
+          if (words.length === 0) {
+            try {
+              const romanizer = getLyricsRomanizer();
+              const interpolated = romanizer.interpolateLineWords(item.words, time, endTime);
+              if (interpolated && interpolated.length > 0) {
+                words = interpolated;
+                item.parts = interpolated.map(w => ({
+                  startTimeMs: Math.round(w.begin * 1000),
+                  durationMs: Math.max(50, Math.round((w.end - w.begin) * 1000)),
+                  words: (w.trailingSpace !== false) ? `${w.text} ` : w.text
+                }));
+              } else {
+                words = null;
+              }
+            } catch (e) {
+              words = null;
+            }
+          }
 
           return {
             time: parseFloat(time.toFixed(3)),
@@ -2940,10 +2972,27 @@ async function parseAnyLyricsToBraccato(sourceData, durationSec, title, artist) 
           parsed = parsers.detectParser(raw).parse(raw, durMs);
         }
         if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+          for (const l of parsed) {
+            if (!l.isInstrumental && l.words && (!l.parts || l.parts.length === 0)) {
+              try {
+                const romanizer = getLyricsRomanizer();
+                const lTime = l.startTimeMs / 1000;
+                const lEnd = (l.startTimeMs + l.durationMs) / 1000;
+                const interpolated = romanizer.interpolateLineWords(l.words, lTime, lEnd);
+                if (interpolated && interpolated.length > 0) {
+                  l.parts = interpolated.map(w => ({
+                    startTimeMs: Math.round(w.begin * 1000),
+                    durationMs: Math.max(50, Math.round((w.end - w.begin) * 1000)),
+                    words: (w.trailingSpace !== false) ? `${w.text} ` : w.text
+                  }));
+                }
+              } catch (e) {}
+            }
+          }
           return {
             lyrics: parsed,
             lang: null,
-            isWordSynced: parsed.some(l => l.parts && l.parts.length > 0)
+            isWordSynced: true
           };
         }
       } catch (e) {
@@ -3087,6 +3136,19 @@ function parseAppleMusicTTML(ttmlString) {
       const translit = lineKey ? translitMap.get(lineKey) : null;
       let finalWords = (Array.isArray(words) && words.length > 0) ? words : null;
       let finalRomajiWords = (translit?.words && translit.words.length > 0) ? translit.words : null;
+
+      if (!finalWords && text) {
+        try {
+          const romanizer = getLyricsRomanizer();
+          finalWords = romanizer.interpolateLineWords(text, time, endTime);
+        } catch (e) {}
+      }
+      if (translit && translit.text && !finalRomajiWords) {
+        try {
+          const romanizer = getLyricsRomanizer();
+          finalRomajiWords = romanizer.interpolateLineWords(translit.text, time, endTime);
+        } catch (e) {}
+      }
 
       items.push({
         time: parseFloat(time.toFixed(2)),
@@ -3751,7 +3813,7 @@ app.get('/api/lyrics', async (req, res) => {
   }
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset });
 
-  const cacheKey = `v57___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
+  const cacheKey = `v58___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
