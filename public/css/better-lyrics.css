@@ -29,10 +29,10 @@
 			var(--blyrics-inactive-opacity, 0.3)
 	);
 
-	--blyrics-richsync-timing-offset: 0.000s;
-	--blyrics-timing-offset: 0.000s;
+	--blyrics-richsync-timing-offset: 0.150s;
+	--blyrics-timing-offset: 0.115s;
 
-	--blyrics-scroll-timing-offset: 0.720s;
+	--blyrics-scroll-timing-offset: 0.500s;
 	--blyrics-target-scroll-pos-ratio: 0.38;
 
 	/* Typography */

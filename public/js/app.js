@@ -2469,8 +2469,8 @@ class App {
     this.currentLyricsTrackId = trackId;
     this.updateLyricsOffsetUI();
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v59)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v59' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v60)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v60' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2572,7 +2572,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v59';
+        track._lyricsEngineVersion = 'v60';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
@@ -2831,8 +2831,10 @@ class App {
       this.braccatoLyricsEl.lyrics = finalBraccato;
 
       const userOffset = this.getCurrentTrackOffset();
-      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', `${userOffset.toFixed(3)}s`);
-      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', `${userOffset.toFixed(3)}s`);
+      const richsyncOffset = 0.150 + userOffset;
+      const lineOffset = 0.115 + userOffset;
+      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', `${richsyncOffset.toFixed(3)}s`);
+      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', `${lineOffset.toFixed(3)}s`);
 
       const isNative = (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local');
       if (isNative && this.nativeAudio) {
@@ -3323,8 +3325,10 @@ class App {
   updateLyricsOffsetUI() {
     const cur = this.getCurrentTrackOffset();
     if (this.braccatoLyricsEl) {
-      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', `${cur.toFixed(3)}s`);
-      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', `${cur.toFixed(3)}s`);
+      const richsyncOffset = 0.150 + cur;
+      const lineOffset = 0.115 + cur;
+      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', `${richsyncOffset.toFixed(3)}s`);
+      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', `${lineOffset.toFixed(3)}s`);
     }
     const el = document.getElementById('cinema-lyrics-offset-val');
     if (!el) return;
