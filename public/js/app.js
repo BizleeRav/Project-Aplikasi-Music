@@ -2469,8 +2469,8 @@ class App {
     this.currentLyricsTrackId = trackId;
     this.updateLyricsOffsetUI();
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v60)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v60' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v61)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v61' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2572,7 +2572,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v60';
+        track._lyricsEngineVersion = 'v61';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
@@ -2836,22 +2836,14 @@ class App {
       this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', `${richsyncOffset.toFixed(3)}s`);
       this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', `${lineOffset.toFixed(3)}s`);
 
-      const isNative = (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local');
-      if (isNative && this.nativeAudio) {
-        // Direct native media binding: Better Lyrics automatically tracks native audio in 100% realtime
-        if (this.braccatoLyricsEl.source !== this.nativeAudio) {
-          this.braccatoLyricsEl.source = this.nativeAudio;
-        }
-      } else {
-        if (this.braccatoLyricsEl.source !== null) {
-          this.braccatoLyricsEl.source = null;
-        }
-        if (this.braccatoLyricsEl.playing !== this.isPlaying) {
-          this.braccatoLyricsEl.playing = this.isPlaying;
-        }
-        const curTime = this.getCurrentPlaybackTime();
-        this.braccatoLyricsEl.currentTime = Math.max(0, curTime + userOffset);
+      if (this.braccatoLyricsEl.source !== null) {
+        this.braccatoLyricsEl.source = null;
       }
+      if (this.braccatoLyricsEl.playing !== this.isPlaying) {
+        this.braccatoLyricsEl.playing = this.isPlaying;
+      }
+      const curTime = this.getCurrentPlaybackTime();
+      this.braccatoLyricsEl.currentTime = Math.max(0, curTime + userOffset);
       return;
     }
 
@@ -3032,20 +3024,13 @@ class App {
       this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
     }
     if (this.braccatoLyricsEl && this.braccatoLyricsEl.style.display !== 'none' && this.braccatoLyricsEl.lyrics && this.braccatoLyricsEl.lyrics.length > 0) {
-      const isNative = (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local');
-      if (isNative && this.nativeAudio) {
-        if (this.braccatoLyricsEl.source !== this.nativeAudio) {
-          this.braccatoLyricsEl.source = this.nativeAudio;
-        }
-      } else {
-        if (this.braccatoLyricsEl.source !== null) {
-          this.braccatoLyricsEl.source = null;
-        }
-        if (this.braccatoLyricsEl.playing !== this.isPlaying) {
-          this.braccatoLyricsEl.playing = this.isPlaying;
-        }
-        this.braccatoLyricsEl.currentTime = syncTime;
+      if (this.braccatoLyricsEl.source !== null) {
+        this.braccatoLyricsEl.source = null;
       }
+      if (this.braccatoLyricsEl.playing !== this.isPlaying) {
+        this.braccatoLyricsEl.playing = this.isPlaying;
+      }
+      this.braccatoLyricsEl.currentTime = syncTime;
       return;
     }
 

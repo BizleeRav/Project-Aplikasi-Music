@@ -3240,6 +3240,26 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   if (/le\s*sserafim/i.test(cleanArtist)) artistVariants.add('LE SSERAFIM');
   if (/blackpink/i.test(cleanArtist)) {
     artistVariants.add('BLACKPINK');
+    if (/불장난|playing\s*with\s*fire/i.test(cleanTitle)) {
+      titleVariants.add('PLAYING WITH FIRE');
+      titleVariants.add('불장난');
+    }
+    if (/마지막처럼|as\s*if\s*it(?:'|’)?s\s*your\s*last/i.test(cleanTitle)) {
+      titleVariants.add("As If It's Your Last");
+      titleVariants.add("마지막처럼");
+    }
+    if (/붐바야|boombayah/i.test(cleanTitle)) {
+      titleVariants.add('BOOMBAYAH');
+      titleVariants.add('붐바야');
+    }
+    if (/휘파람|whistle/i.test(cleanTitle)) {
+      titleVariants.add('WHISTLE');
+      titleVariants.add('휘파람');
+    }
+    if (/뚜두뚜두|ddu-du\s*ddu-du/i.test(cleanTitle)) {
+      titleVariants.add('DDU-DU DDU-DU');
+      titleVariants.add('뚜두뚜두');
+    }
     if (/\b(?:solo|you\s*&\s*me|one\s*of\s*the\s*girls|mantra|ruby)\b/i.test(cleanTitle)) {
       artistVariants.add('JENNIE');
       artistVariants.add('Jennie');
@@ -3473,10 +3493,17 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   // 4. STAGE 2: Direct lrc.red Search Fallback (Zero Intermediate .json Hop)
   if (!ttmlUrl) {
     const lrcRedQueries = [];
+    if (cleanArtist) lrcRedQueries.push(cleanArtist);
+    for (const a of artistVariants) {
+      if (a && a.length >= 2 && a.toLowerCase() !== cleanArtist.toLowerCase()) {
+        lrcRedQueries.push(a);
+      }
+    }
     for (const t of titleVariants) {
-      if (t && cleanArtist) lrcRedQueries.push(`${t} ${cleanArtist}`);
-      if (t && artistLatin && artistLatin.toLowerCase() !== cleanArtist.toLowerCase()) lrcRedQueries.push(`${t} ${artistLatin}`);
-      if (t) lrcRedQueries.push(t);
+      if (t) {
+        lrcRedQueries.push(t);
+        if (cleanArtist) lrcRedQueries.push(`${t} ${cleanArtist}`);
+      }
     }
     const seenLrc = new Set();
     const uniqueLrc = lrcRedQueries.filter(q => {
@@ -3484,7 +3511,7 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
       if (seenLrc.has(k)) return false;
       seenLrc.add(k);
       return true;
-    }).slice(0, 2);
+    }).slice(0, 6);
 
     if (uniqueLrc.length > 0) {
       try {
@@ -3512,16 +3539,31 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         if (allLrcHits.length > 0) {
           const scoredLrc = allLrcHits.map(h => {
             let score = 0;
-            const isHitLive = /\b(?:live|tour|dome|concert|the show|budokan)\b/i.test(`${h.album || ''} ${h.title || ''}`);
-            if (isHitLive && !isLiveExplicit) score -= 500;
+            const normHitTitle = normalizeForCompare(h.title || '');
+            const normCleanTitle = normalizeForCompare(cleanTitle);
+
+            const isTitleMatch = normHitTitle.includes(normCleanTitle) || normCleanTitle.includes(normHitTitle) ||
+              Array.from(titleVariants).some(t => {
+                const nt = normalizeForCompare(t);
+                return nt && (normHitTitle.includes(nt) || nt.includes(normHitTitle));
+              });
+
+            if (!isTitleMatch) return { hit: h, score: -1000 };
+            score += 500;
+
+            const isHitLive = /\b(?:live|tour|dome|concert|the show|budokan|special final)\b/i.test(`${h.album || ''} ${h.title || ''}`);
+            if (isHitLive && !isLiveExplicit) score -= 800;
             else if (!isHitLive) score += 200;
+
             if (targetDuration > 0 && h.duration > 0) {
               const diff = Math.abs(h.duration - targetDuration);
-              if (diff <= 4) score += 150;
-              else score -= diff * 10;
+              if (diff <= 4) score += 200;
+              else if (diff <= 8) score += 100;
+              else score -= diff * 15;
             }
             return { hit: h, score };
-          });
+          }).filter(s => s.score > 0);
+
           scoredLrc.sort((a, b) => b.score - a.score);
           const bestLrc = scoredLrc[0]?.hit;
           if (bestLrc) {
@@ -3813,7 +3855,7 @@ app.get('/api/lyrics', async (req, res) => {
   }
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset });
 
-  const cacheKey = `v60___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
+  const cacheKey = `v61___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
