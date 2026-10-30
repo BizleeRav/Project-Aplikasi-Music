@@ -770,6 +770,11 @@ class AudioEngine {
       return;
     }
 
+    // Zero-overhead check on Mobile: Visualizer canvas is hidden on mobile screens (< 768px)
+    if (window.innerWidth <= 768 || this.cinemaCanvas.offsetParent === null) {
+      return;
+    }
+
     const width = this._cachedCinemaWidth || (this.cinemaCanvas.width / (window.devicePixelRatio || 1)) || 600;
     const height = this._cachedCinemaHeight || (this.cinemaCanvas.height / (window.devicePixelRatio || 1)) || 160;
     if (width <= 0 || height <= 0) return;

@@ -1701,9 +1701,10 @@ class App {
       });
     }
 
-    // Interactive Sing-Along Lyrics Click-to-Seek
+    // Interactive Sing-Along Lyrics Click-to-Seek & Touch Awareness
     if (this.cinemaLyricsStream) {
       this.cinemaLyricsStream.addEventListener('click', (e) => {
+        this._userIsScrollingCinema = false;
         const line = e.target.closest('.cinema-lyric-line');
         if (!line) return;
         const timeSec = parseFloat(line.getAttribute('data-time'));
@@ -1711,6 +1712,17 @@ class App {
           this.seekToTimestamp(timeSec);
         }
       });
+
+      const onUserScrollStart = () => {
+        this._userIsScrollingCinema = true;
+        if (this._userScrollCinemaTimeout) clearTimeout(this._userScrollCinemaTimeout);
+        this._userScrollCinemaTimeout = setTimeout(() => {
+          this._userIsScrollingCinema = false;
+        }, 3000);
+      };
+
+      this.cinemaLyricsStream.addEventListener('touchstart', onUserScrollStart, { passive: true });
+      this.cinemaLyricsStream.addEventListener('wheel', onUserScrollStart, { passive: true });
     }
 
     if (this.braccatoLyricsEl) {
@@ -3128,46 +3140,74 @@ class App {
     }
     if (scrollTargetIdx !== this.lastScrolledLyricIdx && scrollTargetIdx >= 0) {
       this.lastScrolledLyricIdx = scrollTargetIdx;
-      const targetLine = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${scrollTargetIdx}"]`);
-      if (targetLine) {
-        const stream = this.cinemaLyricsStream;
-        const lineTop = targetLine.offsetTop;
-        const lineHeight = targetLine.offsetHeight;
-        const streamHeight = stream.clientHeight;
-        const targetScroll = Math.max(0, lineTop - (streamHeight * 0.36) + (lineHeight / 2));
-        stream.scrollTo({ top: targetScroll, behavior: 'smooth' });
+      if (!this._userIsScrollingCinema) {
+        const targetLine = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${scrollTargetIdx}"]`);
+        if (targetLine) {
+          const stream = this.cinemaLyricsStream;
+          const lineTop = targetLine.offsetTop;
+          const lineHeight = targetLine.offsetHeight;
+          const streamHeight = stream.clientHeight;
+          const targetScroll = Math.max(0, lineTop - (streamHeight * 0.36) + (lineHeight / 2));
+          if (Math.abs(stream.scrollTop - targetScroll) > 4) {
+            stream.scrollTo({ top: targetScroll, behavior: 'smooth' });
+          }
+        }
       }
     }
 
     if (activeIdx !== this.activeLyricIdx) {
+      const prevIdx = this.activeLyricIdx;
       this.activeLyricIdx = activeIdx;
       this.cinemaLyricsStream.classList.toggle('has-active', activeIdx >= 0);
 
-      const lines = this.cinemaLyricsStream.querySelectorAll('.cinema-lyric-line');
-      lines.forEach((line, idx) => {
-        const isActive = (idx === activeIdx);
-        line.classList.toggle('active', isActive);
-        if (idx < activeIdx) {
-          // Past lines: ensure all syllables are fully swept and marked passed
-          if (line.classList.contains('has-word-sync')) {
-            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji, .lyric-word, .romaji-word');
-            allWords.forEach(w => {
-              w.style.setProperty('--fill-pct', '100%');
-              w.classList.remove('active');
-              w.classList.add('passed');
-            });
-          }
-        } else if (idx > activeIdx) {
-          // Future lines: reset syllables to initial unhighlighted state
-          if (line.classList.contains('has-word-sync')) {
-            const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji, .lyric-word, .romaji-word');
-            allWords.forEach(w => {
-              w.style.setProperty('--fill-pct', '0%');
-              w.classList.remove('active', 'passed');
-            });
+      // High-performance targeted update: only modify changed lines during normal forward playback
+      if (prevIdx >= 0 && activeIdx === prevIdx + 1) {
+        const prevLine = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${prevIdx}"]`);
+        if (prevLine) {
+          prevLine.classList.remove('active');
+          if (prevLine.classList.contains('has-word-sync')) {
+            const allWords = prevLine.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji, .lyric-word, .romaji-word');
+            for (let i = 0; i < allWords.length; i++) {
+              allWords[i].style.setProperty('--fill-pct', '100%');
+              allWords[i].classList.remove('active');
+              allWords[i].classList.add('passed');
+            }
           }
         }
-      });
+        if (activeIdx >= 0) {
+          const curLine = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${activeIdx}"]`);
+          if (curLine) {
+            curLine.classList.add('active');
+          }
+        }
+      } else {
+        // Full sweep on song start, seek, or skip
+        const lines = this.cinemaLyricsStream.querySelectorAll('.cinema-lyric-line');
+        lines.forEach((line, idx) => {
+          const isActive = (idx === activeIdx);
+          line.classList.toggle('active', isActive);
+          if (idx < activeIdx) {
+            // Past lines: ensure all syllables are fully swept and marked passed
+            if (line.classList.contains('has-word-sync')) {
+              const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji, .lyric-word, .romaji-word');
+              allWords.forEach(w => {
+                w.style.setProperty('--fill-pct', '100%');
+                w.classList.remove('active');
+                w.classList.add('passed');
+              });
+            }
+          } else if (idx > activeIdx) {
+            // Future lines: reset syllables to initial unhighlighted state
+            if (line.classList.contains('has-word-sync')) {
+              const allWords = line.querySelectorAll('.cinema-lyric-word, .cinema-lyric-word-romaji, .lyric-word, .romaji-word');
+              allWords.forEach(w => {
+                w.style.setProperty('--fill-pct', '0%');
+                w.classList.remove('active', 'passed');
+              });
+            }
+          }
+        });
+      }
     }
 
     // Syllable-Level Continuous Gradient Sweep Animation via Pure Binary Search

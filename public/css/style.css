@@ -3137,9 +3137,9 @@ body::after {
     opacity: 0 !important;
     transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.25s ease !important;
     will-change: transform !important;
-    backdrop-filter: blur(10px) !important;
-    -webkit-backdrop-filter: blur(10px) !important;
-    background: rgba(6, 8, 15, 0.98) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: #070913 !important;
   }
 
   .studio-cinema-overlay.active,
@@ -3162,15 +3162,17 @@ body::after {
   }
 
   .cinema-backdrop {
-    filter: blur(20px) brightness(0.2) saturate(1.4) !important;
-    transform: scale(1.05) translateZ(0) !important;
+    filter: blur(12px) brightness(0.2) saturate(1.2) !important;
+    transform: translate3d(0, 0, 0) !important;
+    backface-visibility: hidden !important;
+    will-change: transform !important;
   }
 
-  /* Smooth scrolling without blur recalculations on lyric lines */
+  /* Smooth scrolling without blur recalculations or subpixel text scaling flicker */
   .cinema-lyrics-stream.has-active .cinema-lyric-line:not(.active) {
     filter: none !important;
     opacity: 0.38 !important;
-    transform: scale(0.98) !important;
+    transform: none !important;
   }
 
   /* ========================================================
@@ -3316,6 +3318,8 @@ body::after {
     margin: 0 0 2px 0 !important;
     padding: 2px 0 4px 0 !important;
     box-sizing: border-box !important;
+    isolation: isolate !important;
+    contain: layout style !important;
   }
 
   /* Compact Vinyl Disc so lyrics get the maximum screen height */
@@ -3326,11 +3330,16 @@ body::after {
     min-height: 74px !important;
     margin: 0 auto 2px !important;
     flex-shrink: 0 !important;
+    isolation: isolate !important;
   }
 
   .cinema-vinyl-disc {
     width: 70px !important;
     height: 70px !important;
+    will-change: transform !important;
+    backface-visibility: hidden !important;
+    -webkit-backface-visibility: hidden !important;
+    transform: translate3d(0, 0, 0) rotate(0deg);
   }
 
   .cinema-turntable-arm {
@@ -3407,9 +3416,11 @@ body::after {
     height: 100% !important;
     max-height: 100% !important;
     border-radius: 16px !important;
-    background: rgba(10, 15, 30, 0.82) !important;
-    backdrop-filter: blur(24px) !important;
-    -webkit-backdrop-filter: blur(24px) !important;
+    background: rgba(10, 15, 30, 0.95) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    contain: content !important;
+    isolation: isolate !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     padding: 8px 12px 6px !important;
     overflow: hidden !important;
@@ -3494,6 +3505,8 @@ body::after {
     padding: 6px 4px 28px !important;
     scroll-behavior: smooth !important;
     box-sizing: border-box !important;
+    contain: layout paint !important;
+    will-change: scroll-position !important;
   }
 
   .cinema-lyric-line {
@@ -3505,7 +3518,9 @@ body::after {
     margin-bottom: 2px !important;
     color: rgba(255, 255, 255, 0.45) !important;
     cursor: pointer !important;
-    transition: opacity 0.3s ease, transform 0.3s ease, background 0.25s ease !important;
+    transition: opacity 0.25s ease, background 0.2s ease !important;
+    transform: none !important;
+    contain: layout style !important;
   }
 
   .cinema-lyric-line.active {
@@ -3513,12 +3528,12 @@ body::after {
     font-weight: 800 !important;
     color: #ffffff !important;
     background: linear-gradient(90deg, rgba(56, 189, 248, 0.18), rgba(16, 185, 129, 0.08) 60%, transparent) !important;
-    border-left: none !important;
-    padding-left: 12px !important;
-    text-shadow: 0 0 16px rgba(56, 189, 248, 0.8) !important;
+    border-left: 3px solid #38bdf8 !important;
+    padding-left: 10px !important;
+    text-shadow: 0 0 14px rgba(56, 189, 248, 0.6) !important;
     opacity: 1 !important;
     filter: none !important;
-    transform: scale(1.02) !important;
+    transform: none !important;
   }
 
   .lyric-main-text {
@@ -3558,9 +3573,11 @@ body::after {
   .cinema-dock {
     padding: 8px 12px !important;
     border-radius: 18px !important;
-    background: rgba(11, 16, 32, 0.94) !important;
-    backdrop-filter: blur(28px) !important;
-    -webkit-backdrop-filter: blur(28px) !important;
+    background: rgba(11, 16, 32, 0.98) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    contain: layout paint !important;
+    isolation: isolate !important;
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6) !important;
   }
@@ -8156,12 +8173,12 @@ body.music-playing .cinema-turntable-arm {
 
 
 /* Apple Music & Better Lyrics Syllable-Level Liquid Light Animation */
+/* Apple Music & Better Lyrics Syllable-Level Liquid Light Animation */
 .cinema-lyric-word {
   display: inline-block;
   margin-right: 0;
   color: rgba(255, 255, 255, 0.40);
   transition: none !important;
-  will-change: background, --fill-pct;
 }
 
 .cinema-lyric-word.has-space {
@@ -8184,7 +8201,8 @@ body.music-playing .cinema-turntable-arm {
 
 .cinema-lyric-line.active .cinema-lyric-word.active {
   transform: none; /* Keep text geometry 100% stable without word collisions */
-  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.40));
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.50);
+  filter: none !important;
   transition: none !important;
 }
 
@@ -8193,7 +8211,8 @@ body.music-playing .cinema-turntable-arm {
   -webkit-background-clip: text;
   -webkit-text-fill-color: #ffffff;
   transform: none;
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.25);
+  filter: none !important;
   transition: none !important;
 }
 
@@ -8202,7 +8221,6 @@ body.music-playing .cinema-turntable-arm {
   margin-right: 0;
   color: rgba(148, 163, 184, 0.45);
   transition: none !important;
-  will-change: background, --fill-pct;
 }
 
 .cinema-lyric-word-romaji.has-space {
@@ -8225,7 +8243,8 @@ body.music-playing .cinema-turntable-arm {
 
 .cinema-lyric-line.active .cinema-lyric-word-romaji.active {
   transform: none; /* Keep layout 100% stable */
-  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.40));
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.50);
+  filter: none !important;
   transition: none !important;
 }
 
@@ -8234,11 +8253,11 @@ body.music-playing .cinema-turntable-arm {
   -webkit-background-clip: text;
   -webkit-text-fill-color: #7dd3fc;
   transform: none;
-  filter: none;
+  filter: none !important;
   transition: none !important;
 }
 
-/* Smooth Syllable Animation: Continuous Eased Interpolation for Silky Smooth Visual Sweep */
+/* Smooth Syllable Animation: Ultra-lightweight 60/120fps direct GPU painting */
 .cinema-lyric-word,
 .cinema-lyric-word-romaji,
 .lyric-word,
@@ -8249,8 +8268,7 @@ body.music-playing .cinema-turntable-arm {
 .cinema-lyric-line.active .cinema-lyric-word-romaji,
 .cinema-lyric-line.active .cinema-lyric-word-romaji.active,
 .cinema-lyric-line.active .cinema-lyric-word-romaji.passed {
-  will-change: background-position, --fill-pct, color;
-  transition: color 0.15s ease, transform 0.2s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease;
+  transition: none !important;
 }
 
 /* Cinema Floating Controller Dock */
@@ -11156,6 +11174,8 @@ body.music-playing .cinema-turntable-arm {
     margin: 0 0 2px 0 !important;
     padding: 2px 0 4px 0 !important;
     box-sizing: border-box !important;
+    isolation: isolate !important;
+    contain: layout style !important;
   }
 
   .cinema-vinyl-wrap {
@@ -11165,11 +11185,16 @@ body.music-playing .cinema-turntable-arm {
     min-height: 74px !important;
     margin: 0 auto 2px !important;
     flex-shrink: 0 !important;
+    isolation: isolate !important;
   }
 
   .cinema-vinyl-disc {
     width: 70px !important;
     height: 70px !important;
+    will-change: transform !important;
+    backface-visibility: hidden !important;
+    -webkit-backface-visibility: hidden !important;
+    transform: translate3d(0, 0, 0) rotate(0deg);
   }
 
   .cinema-turntable-arm {
@@ -11200,9 +11225,11 @@ body.music-playing .cinema-turntable-arm {
     height: 100% !important;
     max-height: 100% !important;
     border-radius: 16px !important;
-    background: rgba(10, 15, 30, 0.82) !important;
-    backdrop-filter: blur(24px) !important;
-    -webkit-backdrop-filter: blur(24px) !important;
+    background: rgba(10, 15, 30, 0.95) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    contain: content !important;
+    isolation: isolate !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     padding: 8px 12px 6px !important;
     overflow: hidden !important;
@@ -11222,6 +11249,8 @@ body.music-playing .cinema-turntable-arm {
     padding: 6px 4px 28px !important;
     scroll-behavior: smooth !important;
     box-sizing: border-box !important;
+    contain: layout paint !important;
+    will-change: scroll-position !important;
   }
 
   .cinema-lyric-line {
@@ -11233,9 +11262,11 @@ body.music-playing .cinema-turntable-arm {
     margin-bottom: 4px !important;
     color: rgba(255, 255, 255, 0.45) !important;
     cursor: pointer !important;
-    transition: opacity 0.3s ease, transform 0.3s ease, background 0.25s ease !important;
+    transition: opacity 0.25s ease, background 0.2s ease !important;
     user-select: none !important;
     touch-action: manipulation !important;
+    transform: none !important;
+    contain: layout style !important;
   }
 
   .cinema-lyric-line.active {
@@ -11243,12 +11274,12 @@ body.music-playing .cinema-turntable-arm {
     font-weight: 800 !important;
     color: #ffffff !important;
     background: linear-gradient(90deg, rgba(56, 189, 248, 0.18), rgba(16, 185, 129, 0.08) 65%, transparent) !important;
-    border-left: none !important;
-    padding-left: 12px !important;
-    text-shadow: 0 0 16px rgba(56, 189, 248, 0.8) !important;
+    border-left: 3px solid #38bdf8 !important;
+    padding-left: 10px !important;
+    text-shadow: 0 0 14px rgba(56, 189, 248, 0.6) !important;
     opacity: 1 !important;
     filter: none !important;
-    transform: scale(1.02) !important;
+    transform: none !important;
   }
 
   .lyric-main-text {
@@ -11277,9 +11308,11 @@ body.music-playing .cinema-turntable-arm {
   .cinema-dock {
     padding: 8px 12px !important;
     border-radius: 18px !important;
-    background: rgba(11, 16, 32, 0.94) !important;
-    backdrop-filter: blur(28px) !important;
-    -webkit-backdrop-filter: blur(28px) !important;
+    background: rgba(11, 16, 32, 0.98) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    contain: layout paint !important;
+    isolation: isolate !important;
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6) !important;
   }
