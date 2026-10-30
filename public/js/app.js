@@ -1854,9 +1854,16 @@ class App {
     }
 
     // Studio Cinema Lyrics Timing Calibrator Buttons
+    const btnOffsetMinusLarge = document.getElementById('btn-offset-minus-large');
     const btnOffsetMinus = document.getElementById('btn-offset-minus');
     const btnOffsetPlus = document.getElementById('btn-offset-plus');
+    const btnOffsetPlusLarge = document.getElementById('btn-offset-plus-large');
     const btnOffsetReset = document.getElementById('btn-offset-reset');
+    if (btnOffsetMinusLarge) {
+      btnOffsetMinusLarge.addEventListener('click', () => {
+        this.adjustCurrentTrackOffset(-0.50);
+      });
+    }
     if (btnOffsetMinus) {
       btnOffsetMinus.addEventListener('click', () => {
         this.adjustCurrentTrackOffset(-0.10);
@@ -1865,6 +1872,11 @@ class App {
     if (btnOffsetPlus) {
       btnOffsetPlus.addEventListener('click', () => {
         this.adjustCurrentTrackOffset(0.10);
+      });
+    }
+    if (btnOffsetPlusLarge) {
+      btnOffsetPlusLarge.addEventListener('click', () => {
+        this.adjustCurrentTrackOffset(0.50);
       });
     }
     if (btnOffsetReset) {
@@ -2457,8 +2469,8 @@ class App {
     this.currentLyricsTrackId = trackId;
     this.updateLyricsOffsetUI();
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh)
-    if (!forceRefresh && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v54)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v54' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2560,6 +2572,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
+        track._lyricsEngineVersion = 'v54';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
