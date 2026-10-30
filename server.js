@@ -3158,6 +3158,11 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
 
   // 2. Build Smart Artist Variants
   const artistVariants = new Set([cleanArtist]);
+  const baseArtist = cleanArtist.replace(/\s*-\s*Topic$/i, '').replace(/\s+[0-9]+$/i, '').trim();
+  if (baseArtist && baseArtist !== cleanArtist) artistVariants.add(baseArtist);
+  if (cleanArtist.includes('&')) {
+    cleanArtist.split('&').forEach(p => { if (p.trim()) artistVariants.add(p.trim()); });
+  }
   if (simpArtist && simpArtist !== cleanArtist) artistVariants.add(simpArtist);
   if (artistLatin && artistLatin.toLowerCase() !== cleanArtist.toLowerCase()) artistVariants.add(artistLatin);
   if (artistHangul) artistVariants.add(artistHangul);
@@ -3236,7 +3241,7 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         params: {
           term: itunesTerm,
           entity: 'song',
-          country: isJapanese ? 'JP' : 'US',
+          country: isJapanese ? 'JP' : (isKorean ? 'KR' : 'US'),
           limit: 3
         },
         timeout: 1500
@@ -3609,7 +3614,7 @@ app.get('/api/lyrics', async (req, res) => {
   const isMv = isMvExplicit || introOffsetSec > 0;
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv });
 
-  const cacheKey = `v55___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
+  const cacheKey = `v56___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -3894,6 +3899,13 @@ app.get('/api/lyrics', async (req, res) => {
                   const r = processed.lines[sungIdx++];
                   if (r && r.romaji) {
                     l.romanization = r.romaji;
+                    if (Array.isArray(r.romajiWords) && r.romajiWords.length > 0) {
+                      l.timedRomanization = r.romajiWords.map(rw => ({
+                        startTimeMs: Math.round(rw.begin * 1000),
+                        durationMs: Math.max(50, Math.round((rw.end - rw.begin) * 1000)),
+                        words: (rw.trailingSpace !== false) ? `${rw.text} ` : rw.text
+                      }));
+                    }
                   }
                 }
               }

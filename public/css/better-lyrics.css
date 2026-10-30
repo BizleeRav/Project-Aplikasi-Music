@@ -29,8 +29,8 @@
 			var(--blyrics-inactive-opacity, 0.3)
 	);
 
-	--blyrics-richsync-timing-offset: 0.120s;
-	--blyrics-timing-offset: 0.120s;
+	--blyrics-richsync-timing-offset: 0.000s;
+	--blyrics-timing-offset: 0.000s;
 
 	--blyrics-scroll-timing-offset: 0.720s;
 	--blyrics-target-scroll-pos-ratio: 0.38;
@@ -656,33 +656,31 @@ braccato-lyrics {
   }
 }
 
-/* Better Lyrics Native Romanization Badge (.blyrics--romanized) */
+/* Better Lyrics Native Singable Romanization Subtitle */
 .blyrics--romanized {
-  display: inline-block !important;
-  margin-top: 0.35rem !important;
-  font-size: 0.85rem !important;
+  display: block !important;
+  margin-top: 0.28rem !important;
+  font-size: clamp(0.92rem, 1.8vh, 1.15rem) !important;
   line-height: 1.35 !important;
-  font-weight: 500 !important;
+  font-weight: 600 !important;
   letter-spacing: 0.02em !important;
-  color: rgba(255, 255, 255, 0.72) !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  backdrop-filter: blur(8px) !important;
-  -webkit-backdrop-filter: blur(8px) !important;
-  border-radius: 8px !important;
-  padding: 0.22rem 0.7rem !important;
-  width: fit-content !important;
+  color: rgba(226, 232, 240, 0.72) !important;
+  background: transparent !important;
+  border: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  width: auto !important;
   max-width: 100% !important;
   white-space: normal !important;
   word-break: break-word !important;
-  transition: all 0.25s cubic-bezier(0.2, 0, 0, 1) !important;
+  transition: color 0.25s cubic-bezier(0.2, 0, 0, 1), text-shadow 0.25s cubic-bezier(0.2, 0, 0, 1) !important;
 }
 
 .blyrics--active .blyrics--romanized {
-  color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-color: rgba(255, 255, 255, 0.32) !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+  color: #38bdf8 !important;
+  text-shadow: 0 0 16px rgba(56, 189, 248, 0.45) !important;
 }
 
 #cinema-lyrics-panel.hide-romaji .blyrics--romanized {
@@ -691,7 +689,7 @@ braccato-lyrics {
 
 @media (max-width: 768px) {
   .blyrics--romanized {
-    font-size: 0.75rem !important;
-    padding: 0.18rem 0.55rem !important;
+    font-size: 0.82rem !important;
+    margin-top: 0.2rem !important;
   }
 }
