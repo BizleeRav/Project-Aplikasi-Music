@@ -2820,7 +2820,7 @@ class App {
         this.braccatoLyricsEl.playing = this.isPlaying;
       }
       const curTime = this.getCurrentPlaybackTime();
-      const AUDIO_LATENCY_COMPENSATION_SEC = 0.12;
+      const AUDIO_LATENCY_COMPENSATION_SEC = 0.00;
       this.braccatoLyricsEl.currentTime = Math.max(0, curTime + this.getCurrentTrackOffset() + AUDIO_LATENCY_COMPENSATION_SEC);
       return;
     }
@@ -2992,7 +2992,7 @@ class App {
     if (!this.cinemaLyricsStream) return;
 
     // Hardware buffer output latency lead (+120ms) ensures word highlighting triggers exactly on audio onset
-    const AUDIO_LATENCY_COMPENSATION_SEC = 0.12;
+    const AUDIO_LATENCY_COMPENSATION_SEC = 0.00;
     const userOffset = this.getCurrentTrackOffset();
     const syncTime = Math.max(0, currentSecs + userOffset + AUDIO_LATENCY_COMPENSATION_SEC);
 

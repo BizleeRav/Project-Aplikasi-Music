@@ -1970,15 +1970,26 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
           artist = p0;
           title = p1;
         } else {
-          // Bilingual title handling e.g. 'ひゅるりらぱっぱ - HYURURIRAPAPPA'
-          const hasCjk0 = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(p0);
-          const hasCjk1 = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(p1);
-          if (hasCjk0 && !hasCjk1) {
-            title = p0;
-          } else if (!hasCjk0 && hasCjk1) {
+          const normArtist = normalizeForCompare(artist);
+          const normP0 = normalizeForCompare(p0);
+          const normP1 = normalizeForCompare(p1);
+          if (normP0 && normArtist && (normP0.includes(normArtist) || normArtist.includes(normP0))) {
+            artist = p0;
             title = p1;
-          } else {
+          } else if (normP1 && normArtist && (normP1.includes(normArtist) || normArtist.includes(normP1))) {
+            artist = p1;
             title = p0;
+          } else {
+            // Bilingual title handling e.g. 'ひゅるりらぱっぱ - HYURURIRAPAPPA'
+            const hasCjk0 = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(p0);
+            const hasCjk1 = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(p1);
+            if (hasCjk0 && !hasCjk1) {
+              title = p0;
+            } else if (!hasCjk0 && hasCjk1) {
+              title = p1;
+            } else {
+              title = p1; // Standard YouTube naming is "Artist - Song Title", p1 is the track title!
+            }
           }
         }
       }
@@ -3126,6 +3137,12 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
     }
   }
 
+  if (cleanTitle.includes(' - ')) {
+    const dParts = cleanTitle.split(' - ');
+    if (dParts[0]?.trim()) titleVariants.add(dParts[0].trim());
+    if (dParts[1]?.trim()) titleVariants.add(dParts[1].trim());
+  }
+
   // Strip apostrophes and punctuation for English/Latin tracks (e.g. "I CAN'T STOP ME" -> "I CANT STOP ME")
   const noApos = cleanTitle.replace(/['"‘’“”]/g, '').trim();
   if (noApos) titleVariants.add(noApos);
@@ -3201,25 +3218,28 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
       binimumQueries.push({ track: t, artist: a });
     }
   }
-  for (const t of titleVariants) {
-    if (t && t.length >= 2) binimumQueries.push({ track: t, artist: '' });
+  // Only query without artist if cleanArtist is completely missing
+  if (!cleanArtist) {
+    for (const t of titleVariants) {
+      if (t && t.length >= 2) binimumQueries.push({ track: t, artist: '' });
+    }
   }
 
-  // Deduplicate queries - top 3
+  // Deduplicate queries - top 4
   const seenBin = new Set();
   const uniqueBinQueries = binimumQueries.filter(q => {
     const k = `${q.track.toLowerCase()}___${q.artist.toLowerCase()}`;
     if (seenBin.has(k)) return false;
     seenBin.add(k);
     return true;
-  }).slice(0, 3);
+  }).slice(0, 4);
 
   let ttmlUrl = null;
   let pickedDuration = targetDuration || 180;
   let pickedTrackName = cleanTitle;
   let pickedArtistName = cleanArtist;
 
-  // Run binimum queries concurrently with instant early exit on first hit
+  // Run binimum queries concurrently with artist-validated scoring
   if (uniqueBinQueries.length > 0) {
     try {
       const binPromises = uniqueBinQueries.map(async (q) => {
@@ -3229,16 +3249,48 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             artist: q.artist,
             duration: targetDuration > 0 ? Math.round(targetDuration) : undefined
           },
-          timeout: 2000
+          timeout: 2500
         });
         const hits = bRes.data?.results || [];
-        if (hits.length > 0 && hits[0].lyricsUrl) {
-          return {
-            ttmlUrl: hits[0].lyricsUrl,
-            pickedDuration: hits[0].duration ? Math.round(hits[0].duration / 1000) : (targetDuration || 180),
-            pickedTrackName: hits[0].trackName || q.track,
-            pickedArtistName: hits[0].artistName || q.artist || cleanArtist
-          };
+        if (hits.length > 0) {
+          const validHits = hits.filter(h => {
+            if (!h || !h.lyricsUrl) return false;
+            if (cleanArtist) {
+              const normHitArtist = normalizeForCompare(h.artist_name || '');
+              const normCleanArtist = normalizeForCompare(cleanArtist);
+              const hasArtistMatch = normHitArtist.includes(normCleanArtist) || normCleanArtist.includes(normHitArtist) ||
+                (artistLatin && normHitArtist.includes(normalizeForCompare(artistLatin))) ||
+                (artistHangul && normHitArtist.includes(normalizeForCompare(artistHangul)));
+              if (!hasArtistMatch) return false;
+            }
+            return true;
+          });
+
+          const pool = validHits.length > 0 ? validHits : (cleanArtist ? [] : hits.filter(h => h.lyricsUrl));
+          if (pool.length > 0) {
+            pool.sort((a, b) => {
+              const aWord = a.timing_type === 'word' ? 1 : 0;
+              const bWord = b.timing_type === 'word' ? 1 : 0;
+              if (bWord !== aWord) return bWord - aWord;
+              if (targetDuration > 0) {
+                const aRaw = Number(a.duration) || 0;
+                const aDurSec = aRaw > 1000 ? Math.round(aRaw / 1000) : aRaw;
+                const bRaw = Number(b.duration) || 0;
+                const bDurSec = bRaw > 1000 ? Math.round(bRaw / 1000) : bRaw;
+                return Math.abs(aDurSec - targetDuration) - Math.abs(bDurSec - targetDuration);
+              }
+              return 0;
+            });
+            const best = pool[0];
+            const rawDur = Number(best.duration) || 0;
+            const hitDurSec = rawDur > 1000 ? Math.round(rawDur / 1000) : Math.round(rawDur || targetDuration || 180);
+            return {
+              ttmlUrl: best.lyricsUrl,
+              pickedDuration: hitDurSec,
+              pickedTrackName: best.track_name || q.track,
+              pickedArtistName: best.artist_name || q.artist || cleanArtist
+            };
+          }
         }
         throw new Error('No binimum hit');
       });
@@ -3611,8 +3663,8 @@ app.get('/api/lyrics', async (req, res) => {
       }
 
       // 2. High-Precision MV Cinematic Intro from SponsorBlock
-      let mvIntroDelaySec = introOffsetSec;
-      if (!mvIntroDelaySec && isMv && duration > 0 && result.duration > 0 && (duration - result.duration) >= 5) {
+      let mvIntroDelaySec = (isMv && introOffsetSec >= 1.0) ? introOffsetSec : 0;
+      if (!mvIntroDelaySec && isMv && duration > 0 && result.duration > 0 && (duration - result.duration) >= 4) {
         mvIntroDelaySec = await getMvIntroOffset(videoId, duration, result.duration, isMv);
       }
 
@@ -3624,34 +3676,13 @@ app.get('/api/lyrics', async (req, res) => {
         (result.id && String(result.id).startsWith('bl_'))
       );
 
-      // ATURAN MUTLAK: Jika duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 3.0:
-      // Audio yang diputar ADALAH versi studio yang sama dengan lirik!
-      if (duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 3.0) {
-        mvIntroDelaySec = 0;
-        leadingSilenceSec = 0;
+      // Apply MV intro offset when confirmed present in video
+      if (mvIntroDelaySec > 0) {
+        netShiftSec = mvIntroDelaySec - (isBetterLyricsOrTtml ? 0 : lrcOffsetSec);
+      } else if (duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 3.0) {
         netShiftSec = isBetterLyricsOrTtml ? 0 : -lrcOffsetSec;
       } else {
-        // Jika selisih durasi > 3 detik:
-        // SELALU set leadingSilenceSec = 0 dan lrcOffsetSec = 0 untuk sumber Apple Music TTML (Better Lyrics)
-        if (isBetterLyricsOrTtml) {
-          leadingSilenceSec = 0;
-          lrcOffsetSec = 0;
-        }
-
-        // HANYA gunakan mvIntroDelaySec dari SponsorBlock jika:
-        // (duration - result.duration) >= 4.0 DAN segmen SponsorBlock benar-benar menjelaskan selisih durasi MV dan lagu studio
-        if (duration > 0 && result.duration > 0 && mvIntroDelaySec > 0) {
-          const videoDur = (segs.detectedVideoDuration > 0 ? segs.detectedVideoDuration : duration);
-          const durDelta = videoDur - result.duration;
-          const explainedByIntro = Math.abs((videoDur - mvIntroDelaySec) - result.duration) <= 5.0;
-          const explainedByTotalNonMusic = segs.totalNonMusicDuration > 0 && Math.abs((videoDur - segs.totalNonMusicDuration) - result.duration) <= 6.0;
-          const isCinematicIntro = (mvIntroDelaySec >= 15.0 && durDelta >= mvIntroDelaySec - 2.0);
-          if (!(durDelta >= 4.0 && (explainedByIntro || explainedByTotalNonMusic || isCinematicIntro))) {
-            mvIntroDelaySec = 0;
-          }
-        }
-
-        netShiftSec = mvIntroDelaySec - lrcOffsetSec + leadingSilenceSec;
+        netShiftSec = isBetterLyricsOrTtml ? 0 : -lrcOffsetSec;
       }
     }
 
@@ -3796,6 +3827,8 @@ app.get('/api/lyrics', async (req, res) => {
       found: true,
       id: result.id,
       source: result.sourceName || 'LRCLib',
+      sourceName: result.sourceName || 'Better Lyrics',
+      type: Boolean(result.hasWordSync || (parsedLyrics && parsedLyrics.some(l => l.words && l.words.length > 0))) ? 'syllable' : 'synced',
       title: result.trackName || title,
       artist: result.artistName || artist,
       album: result.albumName || '',
