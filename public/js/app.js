@@ -2523,8 +2523,8 @@ class App {
     this.currentLyricsTrackId = trackId;
     this.updateLyricsOffsetUI();
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v66)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v66' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v69)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v69' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2626,7 +2626,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v66';
+        track._lyricsEngineVersion = 'v69';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
@@ -3078,10 +3078,12 @@ class App {
   updateActiveLyricsLine(currentSecs) {
     if (!this.cinemaLyricsStream) return;
 
-    // Exact on-beat audio synchronization (0.00ms latency)
+    // Exact on-beat audio synchronization with acoustic lead compensation (+250ms)
+    // Ensures vocal onset hits exactly when the lyric highlight/wipe begins (no "vokal nyanyi duluan")
+    const DEFAULT_ACOUSTIC_LEAD_SEC = 0.25;
     let syncTime = (typeof currentSecs === 'number') ? currentSecs : (this.getCurrentPlaybackTime() || 0);
     const userOffset = this.getCurrentTrackOffset();
-    syncTime = Math.max(0, syncTime + userOffset);
+    syncTime = Math.max(0, syncTime + DEFAULT_ACOUSTIC_LEAD_SEC + userOffset);
 
     // Primary: Drive Better Lyrics Native Custom Element (<braccato-lyrics>)
     if (!this.braccatoLyricsEl) {

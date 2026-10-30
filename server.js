@@ -3699,7 +3699,7 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
 // High-precision Verified MV Intro Offset Dictionary (0ms Ground Truth)
 const KNOWN_MV_OFFSETS = {
   // Jennie / BLACKPINK Solo
-  'b73BI9eUkjM': 4.907, // JENNIE - SOLO Official MV (opening camera click / scene intro)
+  'b73BI9eUkjM': 4.907, // JENNIE - SOLO Official MV (vocal at 7.38s, TTML at 2.47s -> offset +4.91s)
 
   // NewJeans
   'ArmDp-zijuc': 0,   // Super Shy (starts 0:00, outro challenge at 1:44)
@@ -3881,13 +3881,17 @@ app.get('/api/lyrics', async (req, res) => {
   } else if (videoId && duration > 20) {
     try {
       const segs = await resolveDynamicAudioSegments(videoId, duration);
-      introOffsetSec = segs.introOffsetSec || 0;
+      if (duration > 0 && effectiveSongDuration > 0 && Math.abs(duration - effectiveSongDuration) <= 4) {
+        introOffsetSec = 0;
+      } else {
+        introOffsetSec = segs.introOffsetSec || 0;
+      }
       if (segs.effectiveSongDuration > 0) effectiveSongDuration = segs.effectiveSongDuration;
     } catch (e) {}
   }
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset });
 
-  const cacheKey = `v66___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
+  const cacheKey = `v69___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -4063,10 +4067,10 @@ app.get('/api/lyrics', async (req, res) => {
       );
 
       // Apply MV intro offset when confirmed present in video
-      if (mvIntroDelaySec > 0) {
-        netShiftSec = mvIntroDelaySec - (isBetterLyricsOrTtml ? 0 : lrcOffsetSec);
-      } else if (duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 3.0) {
+      if (duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 4 && !hasKnownMvOffset) {
         netShiftSec = isBetterLyricsOrTtml ? 0 : -lrcOffsetSec;
+      } else if (mvIntroDelaySec > 0) {
+        netShiftSec = mvIntroDelaySec - (isBetterLyricsOrTtml ? 0 : lrcOffsetSec);
       } else {
         netShiftSec = isBetterLyricsOrTtml ? 0 : -lrcOffsetSec;
       }
