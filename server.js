@@ -2857,22 +2857,7 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
             }
           }
           if (words.length === 0) {
-            try {
-              const romanizer = getLyricsRomanizer();
-              const interpolated = romanizer.interpolateLineWords(item.words, time, endTime);
-              if (interpolated && interpolated.length > 0) {
-                words = interpolated;
-                item.parts = interpolated.map(w => ({
-                  startTimeMs: Math.round(w.begin * 1000),
-                  durationMs: Math.max(50, Math.round((w.end - w.begin) * 1000)),
-                  words: (w.trailingSpace !== false) ? `${w.text} ` : w.text
-                }));
-              } else {
-                words = null;
-              }
-            } catch (e) {
-              words = null;
-            }
+            words = null;
           }
 
           return {
@@ -3902,7 +3887,7 @@ app.get('/api/lyrics', async (req, res) => {
   }
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset });
 
-  const cacheKey = `v65___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
+  const cacheKey = `v66___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -4178,22 +4163,31 @@ app.get('/api/lyrics', async (req, res) => {
           try {
             const romanizer = getLyricsRomanizer();
             const processed = await romanizer.romanizeLyricsList(
-              sungLines.map(l => ({ text: l.words, time: l.startTimeMs / 1000 }))
+              sungLines.map(l => ({
+                text: l.words,
+                time: l.startTimeMs / 1000,
+                romaji: l.romanization || null,
+                words: (Array.isArray(l.parts) && l.parts.length > 0) ? l.parts.filter(p => p.words && p.words.trim()).map(p => ({
+                  text: p.words.trim(),
+                  begin: p.startTimeMs / 1000,
+                  end: (p.startTimeMs + p.durationMs) / 1000
+                })) : null
+              }))
             );
             if (processed && Array.isArray(processed.lines)) {
               let sungIdx = 0;
               for (const l of unifiedLyrics) {
                 if (!l.isInstrumental && l.words && l.words.trim()) {
                   const r = processed.lines[sungIdx++];
-                  if (r && r.romaji) {
+                  if (!l.romanization && r && r.romaji) {
                     l.romanization = r.romaji;
-                    if (Array.isArray(r.romajiWords) && r.romajiWords.length > 0) {
-                      l.timedRomanization = r.romajiWords.map(rw => ({
-                        startTimeMs: Math.round(rw.begin * 1000),
-                        durationMs: Math.max(50, Math.round((rw.end - rw.begin) * 1000)),
-                        words: (rw.trailingSpace !== false) ? `${rw.text} ` : rw.text
-                      }));
-                    }
+                  }
+                  if (!l.timedRomanization && r && Array.isArray(r.romajiWords) && r.romajiWords.length > 0 && Array.isArray(l.parts) && l.parts.length > 0) {
+                    l.timedRomanization = r.romajiWords.map(rw => ({
+                      startTimeMs: Math.round(rw.begin * 1000),
+                      durationMs: Math.max(50, Math.round((rw.end - rw.begin) * 1000)),
+                      words: (rw.trailingSpace !== false) ? `${rw.text} ` : rw.text
+                    }));
                   }
                 }
               }
@@ -4210,12 +4204,22 @@ app.get('/api/lyrics', async (req, res) => {
           const endTime = parseFloat(((l.startTimeMs + l.durationMs) / 1000).toFixed(3));
           let words = null;
           if (Array.isArray(l.parts) && l.parts.length > 0) {
-            words = l.parts.map(p => ({
-              text: p.words.trim(),
-              begin: parseFloat((p.startTimeMs / 1000).toFixed(3)),
-              end: parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3)),
-              trailingSpace: /\s+$/.test(p.words)
-            }));
+            const validParts = [];
+            for (let pi = 0; pi < l.parts.length; pi++) {
+              const p = l.parts[pi];
+              const pText = (p.words || '').trim();
+              if (!pText) {
+                if (validParts.length > 0) validParts[validParts.length - 1].trailingSpace = true;
+                continue;
+              }
+              validParts.push({
+                text: pText,
+                begin: parseFloat((p.startTimeMs / 1000).toFixed(3)),
+                end: parseFloat(((p.startTimeMs + p.durationMs) / 1000).toFixed(3)),
+                trailingSpace: /\s+$/.test(p.words || '')
+              });
+            }
+            if (validParts.length > 0) words = validParts;
           }
           return {
             time,

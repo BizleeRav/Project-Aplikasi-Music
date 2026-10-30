@@ -2523,8 +2523,8 @@ class App {
     this.currentLyricsTrackId = trackId;
     this.updateLyricsOffsetUI();
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v65)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v65' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v66)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v66' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2626,7 +2626,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v65';
+        track._lyricsEngineVersion = 'v66';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
@@ -2757,20 +2757,26 @@ class App {
 
       let parts = undefined;
       if (Array.isArray(item.words) && item.words.length > 0) {
-        parts = item.words.map(w => ({
-          startTimeMs: Math.round((w.begin || 0) * 1000),
-          durationMs: Math.max(50, Math.round(((w.end || w.begin) - w.begin) * 1000)),
-          words: w.trailingSpace ? `${w.text} ` : w.text
-        }));
+        const validWords = item.words.filter(w => w.text && w.text.trim());
+        if (validWords.length > 0) {
+          parts = validWords.map(w => ({
+            startTimeMs: Math.round((w.begin || 0) * 1000),
+            durationMs: Math.max(50, Math.round(((w.end || w.begin) - w.begin) * 1000)),
+            words: w.trailingSpace ? `${w.text} ` : w.text
+          }));
+        }
       }
 
       let timedRomanization = undefined;
       if (Array.isArray(item.romajiWords) && item.romajiWords.length > 0) {
-        timedRomanization = item.romajiWords.map(w => ({
-          startTimeMs: Math.round((w.begin || 0) * 1000),
-          durationMs: Math.max(50, Math.round(((w.end || w.begin) - w.begin) * 1000)),
-          words: w.trailingSpace ? `${w.text} ` : w.text
-        }));
+        const validRomaji = item.romajiWords.filter(w => w.text && w.text.trim());
+        if (validRomaji.length > 0) {
+          timedRomanization = validRomaji.map(w => ({
+            startTimeMs: Math.round((w.begin || 0) * 1000),
+            durationMs: Math.max(50, Math.round(((w.end || w.begin) - w.begin) * 1000)),
+            words: w.trailingSpace ? `${w.text} ` : w.text
+          }));
+        }
       }
 
       return {
