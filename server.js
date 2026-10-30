@@ -135,6 +135,17 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
+// Route download APK Android langsung
+app.get(['/download/apk', '/download/AuraSound.apk'], (req, res) => {
+  const p1 = path.join(__dirname, 'public', 'download', 'AuraSound.apk');
+  const p2 = path.join(__dirname, 'dist', 'AuraSound.apk');
+  const target = fs.existsSync(p1) ? p1 : p2;
+  if (fs.existsSync(target)) {
+    return res.download(target, 'AuraSound.apk');
+  }
+  return res.status(404).send('APK belum tersedia.');
+});
+
 // Persistent Playback State API (disk persistence fallback)
 app.get('/api/user/playback-state', (req, res) => {
   try {

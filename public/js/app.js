@@ -7117,6 +7117,16 @@ class App {
     } else {
       this.stopLyricsSyncLoop();
     }
+
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
+      const tr = this.currentTrack || {};
+      window.AuraSoundAndroid.updatePlaybackState(
+        tr.title || 'AuraSound Music',
+        tr.artist || 'AuraSound',
+        tr.thumbnail || '',
+        Boolean(isPlaying)
+      );
+    }
     if (!this.playPauseBtn) return;
     const playIcon = this.playPauseBtn.querySelector('.icon-play');
     const pauseIcon = this.playPauseBtn.querySelector('.icon-pause');
@@ -7898,6 +7908,15 @@ class App {
       navigator.mediaSession.setActionHandler('pause', () => this.togglePlay());
       navigator.mediaSession.setActionHandler('previoustrack', () => this.playPrev());
       navigator.mediaSession.setActionHandler('nexttrack', () => this.playNext());
+    }
+
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
+      window.AuraSoundAndroid.updatePlaybackState(
+        track.title || 'AuraSound Music',
+        track.artist || 'AuraSound',
+        track.thumbnail || '',
+        Boolean(this.isPlaying)
+      );
     }
   }
 

@@ -168,6 +168,7 @@ class YTPlayerManager {
       this.isPlaying = true;
       if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = true;
       if (this.onStateChangeCallback) this.onStateChangeCallback(true);
+      this.syncAndroidPlayback(true);
       this.player.playVideo();
     }
   }
@@ -177,7 +178,20 @@ class YTPlayerManager {
       this.isPlaying = false;
       if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = false;
       if (this.onStateChangeCallback) this.onStateChangeCallback(false);
+      this.syncAndroidPlayback(false);
       this.player.pauseVideo();
+    }
+  }
+
+  syncAndroidPlayback(isPlaying) {
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
+      const tr = this.currentTrack || {};
+      window.AuraSoundAndroid.updatePlaybackState(
+        tr.title || 'AuraSound Music',
+        tr.artist || 'AuraSound',
+        tr.thumbnail || '',
+        Boolean(isPlaying)
+      );
     }
   }
 
@@ -278,6 +292,7 @@ class YTPlayerManager {
       this._isBuffering = false;
       if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = true;
       if (this.onStateChangeCallback) this.onStateChangeCallback(true);
+      this.syncAndroidPlayback(true);
     } else if (playerState === 3) {
       this._isBuffering = true;
     } else if (playerState === 2 || playerState === 0) {
@@ -285,6 +300,7 @@ class YTPlayerManager {
       this._isBuffering = false;
       if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = false;
       if (this.onStateChangeCallback) this.onStateChangeCallback(false);
+      this.syncAndroidPlayback(false);
 
       if (playerState === 0) {
         // Track ended -> record completion in taste engine and play next in queue
@@ -339,6 +355,15 @@ class YTPlayerManager {
       navigator.mediaSession.setActionHandler('nexttrack', () => {
         if (window.app && window.app.playNext) window.app.playNext();
       });
+    }
+
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
+      window.AuraSoundAndroid.updatePlaybackState(
+        track.title || 'AuraSound Music',
+        track.artist || 'AuraSound',
+        track.thumbnail || '',
+        Boolean(this.isPlaying)
+      );
     }
   }
 }

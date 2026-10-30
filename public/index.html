@@ -15,6 +15,16 @@
   <script type="module" src="/js/better-lyrics-core.js?v=1.16.14"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
+    // AuraSound Android Background Audio & Document Visibility Keeper
+    (function() {
+      try {
+        Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });
+        Object.defineProperty(document, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+        document.addEventListener('visibilitychange', function(e) { e.stopImmediatePropagation(); }, true);
+      } catch(e) {}
+    })();
+  </script>
+  <script>
     // Ultra-Fast Synchronous Pre-Hydration (0ms layout shift / no reset flash)
     (function() {
       try {

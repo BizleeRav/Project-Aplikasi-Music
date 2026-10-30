@@ -65,19 +65,65 @@ fs.writeFileSync(path.join(BUILD_DIR, 'res', 'layout', 'activity_main.xml'), `<?
     android:layout_height="match_parent"
     android:background="#070a12">
 
-    <WebView
+    <com.aurasound.musichub.BackgroundAudioWebView
         android:id="@+id/webview"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 </FrameLayout>
 `);
 
+// 5b. Buat BackgroundAudioWebView.java
+fs.writeFileSync(path.join(BUILD_DIR, 'src', 'com', 'aurasound', 'musichub', 'BackgroundAudioWebView.java'), `package com.aurasound.musichub;
+
+import android.content.Context;
+import android.util.AttributeSet;
+import android.view.View;
+import android.webkit.WebView;
+
+public class BackgroundAudioWebView extends WebView {
+    public BackgroundAudioWebView(Context context) {
+        super(context);
+    }
+
+    public BackgroundAudioWebView(Context context, AttributeSet attrs) {
+        super(context, attrs);
+    }
+
+    public BackgroundAudioWebView(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        // Chromium pauses HTML5 media and JavaScript timers when window is not VISIBLE.
+        // Forcing View.VISIBLE tells Chromium's C++ core that the window is always visible,
+        // so playback and audio streams continue uninterrupted when the screen is locked or app is minimized!
+        super.onWindowVisibilityChanged(View.VISIBLE);
+    }
+
+    @Override
+    public void dispatchWindowVisibilityChanged(int visibility) {
+        super.dispatchWindowVisibilityChanged(View.VISIBLE);
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, View.VISIBLE);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(true);
+    }
+}
+`);
+
 // 6. Buat AndroidManifest.xml
 fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurasound.musichub"
-    android:versionCode="1"
-    android:versionName="1.0.0">
+    android:versionCode="2"
+    android:versionName="1.1.0">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -87,6 +133,10 @@ fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="@string/app_name"
@@ -98,6 +148,7 @@ fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -105,15 +156,444 @@ fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".MediaPlaybackService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 </manifest>
 `);
 
-// 7. Buat MainActivity.java
+// 7. Buat AndroidMediaBridge.java
+fs.writeFileSync(path.join(BUILD_DIR, 'src', 'com', 'aurasound', 'musichub', 'AndroidMediaBridge.java'), `package com.aurasound.musichub;
+
+import android.webkit.JavascriptInterface;
+
+public class AndroidMediaBridge {
+    private MainActivity activity;
+
+    public AndroidMediaBridge(MainActivity activity) {
+        this.activity = activity;
+    }
+
+    @JavascriptInterface
+    public void updatePlaybackState(String title, String artist, String coverUrl, boolean isPlaying) {
+        if (activity != null) {
+            activity.updateMediaNotification(title, artist, coverUrl, isPlaying);
+        }
+    }
+
+    @JavascriptInterface
+    public void stopPlayback() {
+        if (activity != null) {
+            activity.stopMediaService();
+        }
+    }
+
+    @JavascriptInterface
+    public boolean isAndroidApp() {
+        return true;
+    }
+}
+`);
+
+// 8. Buat MediaPlaybackService.java
+fs.writeFileSync(path.join(BUILD_DIR, 'src', 'com', 'aurasound', 'musichub', 'MediaPlaybackService.java'), `package com.aurasound.musichub;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.ServiceInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.drawable.Icon;
+import android.media.MediaMetadata;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
+import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.PowerManager;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+public class MediaPlaybackService extends Service {
+    public static final String CHANNEL_ID = "aurasound_playback_channel";
+    public static final int NOTIFICATION_ID = 1001;
+
+    public static final String ACTION_UPDATE = "ACTION_UPDATE";
+    public static final String ACTION_PLAY_PAUSE = "ACTION_PLAY_PAUSE";
+    public static final String ACTION_PLAY = "ACTION_PLAY";
+    public static final String ACTION_PAUSE = "ACTION_PAUSE";
+    public static final String ACTION_NEXT = "ACTION_NEXT";
+    public static final String ACTION_PREV = "ACTION_PREV";
+    public static final String ACTION_CLOSE = "ACTION_CLOSE";
+
+    private MediaSession mediaSession;
+    private PowerManager.WakeLock wakeLock;
+    private Handler mainHandler;
+
+    private String currentTitle = "AuraSound Music";
+    private String currentArtist = "AuraSound";
+    private String currentCoverUrl = "";
+    private Bitmap currentCoverBitmap = null;
+    private boolean isPlaying = false;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        mainHandler = new Handler(Looper.getMainLooper());
+        createNotificationChannel();
+        initMediaSession();
+
+        Notification initialNotification = buildNotification(currentTitle, currentArtist, null, false);
+        startServiceForeground(initialNotification);
+    }
+
+    private void startServiceForeground(Notification notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+            } else if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void initMediaSession() {
+        try {
+            mediaSession = new MediaSession(this, "AuraSoundSession");
+            mediaSession.setCallback(new MediaSession.Callback() {
+                @Override
+                public void onPlay() {
+                    super.onPlay();
+                    MainActivity.sendMediaAction("play");
+                }
+
+                @Override
+                public void onPause() {
+                    super.onPause();
+                    MainActivity.sendMediaAction("pause");
+                }
+
+                @Override
+                public void onSkipToNext() {
+                    super.onSkipToNext();
+                    MainActivity.sendMediaAction("next");
+                }
+
+                @Override
+                public void onSkipToPrevious() {
+                    super.onSkipToPrevious();
+                    MainActivity.sendMediaAction("prev");
+                }
+
+                @Override
+                public void onStop() {
+                    super.onStop();
+                    MainActivity.sendMediaAction("pause");
+                    stopSelf();
+                }
+            });
+            mediaSession.setActive(true);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID,
+                "AuraSound Playback",
+                NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setDescription("Notifikasi kontrol pemutar musik AuraSound");
+            channel.setShowBadge(false);
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
+        }
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null) {
+            String action = intent.getAction();
+            if (ACTION_UPDATE.equals(action)) {
+                String title = intent.getStringExtra("title");
+                String artist = intent.getStringExtra("artist");
+                String coverUrl = intent.getStringExtra("coverUrl");
+                boolean playing = intent.getBooleanExtra("isPlaying", false);
+                updatePlayback(title, artist, coverUrl, playing);
+            } else if (ACTION_PLAY_PAUSE.equals(action)) {
+                MainActivity.sendMediaAction("play_pause");
+            } else if (ACTION_PLAY.equals(action)) {
+                MainActivity.sendMediaAction("play");
+            } else if (ACTION_PAUSE.equals(action)) {
+                MainActivity.sendMediaAction("pause");
+            } else if (ACTION_NEXT.equals(action)) {
+                MainActivity.sendMediaAction("next");
+            } else if (ACTION_PREV.equals(action)) {
+                MainActivity.sendMediaAction("prev");
+            } else if (ACTION_CLOSE.equals(action)) {
+                MainActivity.sendMediaAction("pause");
+                releaseWakeLock();
+                stopForeground(true);
+                stopSelf();
+            }
+        }
+        return START_NOT_STICKY;
+    }
+
+    private void updatePlayback(String title, String artist, String coverUrl, boolean playing) {
+        this.currentTitle = (title != null && !title.isEmpty()) ? title : "AuraSound Music";
+        this.currentArtist = (artist != null && !artist.isEmpty()) ? artist : "AuraSound";
+        this.isPlaying = playing;
+
+        if (playing) {
+            acquireWakeLock();
+        } else {
+            releaseWakeLock();
+        }
+
+        updateMediaSessionState();
+
+        if (coverUrl != null && !coverUrl.equals(currentCoverUrl) && !coverUrl.isEmpty()) {
+            this.currentCoverUrl = coverUrl;
+            Notification notif = buildNotification(currentTitle, currentArtist, currentCoverBitmap, isPlaying);
+            startServiceForeground(notif);
+            loadCoverBitmapAsync(coverUrl);
+        } else {
+            Notification notif = buildNotification(currentTitle, currentArtist, currentCoverBitmap, isPlaying);
+            startServiceForeground(notif);
+        }
+    }
+
+    private void updateMediaSessionState() {
+        if (mediaSession == null) return;
+        try {
+            long actions = PlaybackState.ACTION_PLAY
+                    | PlaybackState.ACTION_PAUSE
+                    | PlaybackState.ACTION_PLAY_PAUSE
+                    | PlaybackState.ACTION_SKIP_TO_NEXT
+                    | PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                    | PlaybackState.ACTION_STOP;
+
+            int state = isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
+            PlaybackState.Builder stateBuilder = new PlaybackState.Builder()
+                    .setActions(actions)
+                    .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f);
+            mediaSession.setPlaybackState(stateBuilder.build());
+
+            MediaMetadata.Builder metaBuilder = new MediaMetadata.Builder()
+                    .putString(MediaMetadata.METADATA_KEY_TITLE, currentTitle)
+                    .putString(MediaMetadata.METADATA_KEY_ARTIST, currentArtist)
+                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "AuraSound Music Hub");
+
+            if (currentCoverBitmap != null) {
+                metaBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, currentCoverBitmap);
+                metaBuilder.putBitmap(MediaMetadata.METADATA_KEY_ART, currentCoverBitmap);
+            }
+            mediaSession.setMetadata(metaBuilder.build());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void loadCoverBitmapAsync(final String urlStr) {
+        new Thread(() -> {
+            Bitmap bitmap = null;
+            try {
+                URL url = new URL(urlStr);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setDoInput(true);
+                conn.connect();
+                InputStream is = conn.getInputStream();
+                Bitmap raw = BitmapFactory.decodeStream(is);
+                if (raw != null) {
+                    int maxDim = 384;
+                    int w = raw.getWidth();
+                    int h = raw.getHeight();
+                    if (w > maxDim || h > maxDim) {
+                        float ratio = Math.min((float) maxDim / w, (float) maxDim / h);
+                        int targetW = Math.max(1, Math.round(w * ratio));
+                        int targetH = Math.max(1, Math.round(h * ratio));
+                        bitmap = Bitmap.createScaledBitmap(raw, targetW, targetH, true);
+                    } else {
+                        bitmap = raw;
+                    }
+                }
+            } catch (Exception e) {
+                bitmap = null;
+            }
+
+            final Bitmap finalBitmap = bitmap;
+            mainHandler.post(() -> {
+                if (urlStr.equals(currentCoverUrl)) {
+                    currentCoverBitmap = finalBitmap;
+                    updateMediaSessionState();
+                    Notification notif = buildNotification(currentTitle, currentArtist, currentCoverBitmap, isPlaying);
+                    startServiceForeground(notif);
+                }
+            });
+        }).start();
+    }
+
+    private Notification buildNotification(String title, String artist, Bitmap cover, boolean playing) {
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= 23) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+
+        Intent contentIntent = new Intent(this, MainActivity.class);
+        contentIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent contentPendingIntent = PendingIntent.getActivity(this, 0, contentIntent, flags);
+
+        Intent prevIntent = new Intent(this, MediaPlaybackService.class).setAction(ACTION_PREV);
+        PendingIntent prevPending = PendingIntent.getService(this, 1, prevIntent, flags);
+
+        Intent playPauseIntent = new Intent(this, MediaPlaybackService.class).setAction(ACTION_PLAY_PAUSE);
+        PendingIntent playPausePending = PendingIntent.getService(this, 2, playPauseIntent, flags);
+
+        Intent nextIntent = new Intent(this, MediaPlaybackService.class).setAction(ACTION_NEXT);
+        PendingIntent nextPending = PendingIntent.getService(this, 3, nextIntent, flags);
+
+        Intent closeIntent = new Intent(this, MediaPlaybackService.class).setAction(ACTION_CLOSE);
+        PendingIntent closePending = PendingIntent.getService(this, 4, closeIntent, flags);
+
+        Notification.Builder builder;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            builder = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+
+        builder.setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(artist)
+                .setSubText("AuraSound")
+                .setContentIntent(contentPendingIntent)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setOngoing(playing);
+
+        if (cover != null) {
+            builder.setLargeIcon(cover);
+        }
+
+        if (mediaSession != null) {
+            Notification.MediaStyle mediaStyle = new Notification.MediaStyle()
+                    .setMediaSession(mediaSession.getSessionToken())
+                    .setShowActionsInCompactView(0, 1, 2);
+            builder.setStyle(mediaStyle);
+        }
+
+        // Action 0: Prev
+        builder.addAction(new Notification.Action.Builder(
+                Icon.createWithResource(this, android.R.drawable.ic_media_previous),
+                "Prev",
+                prevPending
+        ).build());
+
+        // Action 1: Play / Pause
+        int playIconRes = playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play;
+        String playTitle = playing ? "Pause" : "Play";
+        builder.addAction(new Notification.Action.Builder(
+                Icon.createWithResource(this, playIconRes),
+                playTitle,
+                playPausePending
+        ).build());
+
+        // Action 2: Next
+        builder.addAction(new Notification.Action.Builder(
+                Icon.createWithResource(this, android.R.drawable.ic_media_next),
+                "Next",
+                nextPending
+        ).build());
+
+        // Action 3: Close
+        builder.addAction(new Notification.Action.Builder(
+                Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+                "Close",
+                closePending
+        ).build());
+
+        return builder.build();
+    }
+
+    private void acquireWakeLock() {
+        try {
+            if (wakeLock == null) {
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AuraSound:PlaybackWakeLock");
+                    wakeLock.setReferenceCounted(false);
+                }
+            }
+            if (wakeLock != null && !wakeLock.isHeld()) {
+                wakeLock.acquire(12 * 60 * 60 * 1000L);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void releaseWakeLock() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) {
+                wakeLock.release();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        releaseWakeLock();
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+            mediaSession.release();
+            mediaSession = null;
+        }
+        super.onDestroy();
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+}
+`);
+
+// 9. Buat MainActivity.java
 fs.writeFileSync(path.join(BUILD_DIR, 'src', 'com', 'aurasound', 'musichub', 'MainActivity.java'), `package com.aurasound.musichub;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -123,22 +603,50 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Toast;
 
 public class MainActivity extends Activity {
-    private WebView webView;
+    public static MainActivity instance;
+    private BackgroundAudioWebView webView;
     private static final String APP_URL = "https://project-aplikasi-music.vercel.app";
+    private Handler bridgeHandler = new Handler(Looper.getMainLooper());
+    private Runnable bridgeRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        instance = this;
+
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
         setContentView(R.layout.activity_main);
 
         webView = findViewById(R.id.webview);
         initWebView();
+        requestAudioFocus();
+        requestNotificationPermission();
+
         webView.clearCache(true);
         webView.loadUrl(APP_URL);
+
+        startPeriodicBridgeSync();
+    }
+
+    private void requestAudioFocus() {
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1001);
+            }
+        }
     }
 
     private void initWebView() {
@@ -157,14 +665,15 @@ public class MainActivity extends Activity {
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setOffscreenPreRaster(true);
         settings.setEnableSmoothTransition(true);
-        settings.setUserAgentString(settings.getUserAgentString() + " AuraSoundAndroid/1.0");
+        settings.setUserAgentString(settings.getUserAgentString() + " AuraSoundAndroid/1.2");
+
+        // Expose Native Android Bridge to JavaScript
+        webView.addJavascriptInterface(new AndroidMediaBridge(this), "AuraSoundAndroid");
 
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                // Keep all navigations, YouTube iframe audio, and media streams inside AuraSound WebView
-                // Prevents Android OS from triggering external intent to native YouTube app
                 return false;
             }
 
@@ -172,6 +681,18 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 return false;
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                injectUniversalBridge();
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                injectUniversalBridge();
             }
 
             @Override
@@ -190,6 +711,147 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void startPeriodicBridgeSync() {
+        bridgeRunnable = new Runnable() {
+            @Override
+            public void run() {
+                injectUniversalBridge();
+                bridgeHandler.postDelayed(this, 2500);
+            }
+        };
+        bridgeHandler.postDelayed(bridgeRunnable, 2000);
+    }
+
+    private void injectUniversalBridge() {
+        if (webView == null) return;
+        String js = "(function() {"
+            + "try {"
+            + "  Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });"
+            + "  Object.defineProperty(document, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });"
+            + "  document.hasFocus = function() { return true; };"
+            + "  document.addEventListener('visibilitychange', function(e) { e.stopImmediatePropagation(); }, true);"
+            + "  window.addEventListener('blur', function(e) { e.stopImmediatePropagation(); }, true);"
+            + "  window.addEventListener('pagehide', function(e) { e.stopImmediatePropagation(); }, true);"
+            + "} catch(e) {}"
+            + "if (!window.__aurasound_watchdog_active) {"
+            + "  window.__aurasound_watchdog_active = true;"
+            + "  setInterval(function() {"
+            + "    try {"
+            + "      var isPlaying = false;"
+            + "      var trackTitle = '';"
+            + "      var trackArtist = '';"
+            + "      var trackCover = '';"
+            + "      if (window.app && window.app.currentTrack) {"
+            + "        trackTitle = window.app.currentTrack.title || '';"
+            + "        trackArtist = window.app.currentTrack.artist || '';"
+            + "        trackCover = window.app.currentTrack.thumbnail || '';"
+            + "        if (window.app.isPlaying) isPlaying = true;"
+            + "      } else if (window.ytPlayer && window.ytPlayer.currentTrack) {"
+            + "        trackTitle = window.ytPlayer.currentTrack.title || '';"
+            + "        trackArtist = window.ytPlayer.currentTrack.artist || '';"
+            + "        trackCover = window.ytPlayer.currentTrack.thumbnail || '';"
+            + "        if (window.ytPlayer.isPlaying) isPlaying = true;"
+            + "      }"
+            + "      if (window.ytPlayer && window.ytPlayer.player && typeof window.ytPlayer.player.getPlayerState === 'function') {"
+            + "        var ytState = window.ytPlayer.player.getPlayerState();"
+            + "        if (ytState === 1) {"
+            + "          isPlaying = true;"
+            + "        } else if (ytState === 2 && isPlaying && !window.__userRequestedPause) {"
+            + "          window.ytPlayer.player.playVideo();"
+            + "        }"
+            + "      }"
+            + "      if (window.AuraSoundAndroid && trackTitle) {"
+            + "        if (window.__lastSyncedTitle !== trackTitle || window.__lastSyncedState !== isPlaying) {"
+            + "          window.__lastSyncedTitle = trackTitle;"
+            + "          window.__lastSyncedState = isPlaying;"
+            + "          window.AuraSoundAndroid.updatePlaybackState(trackTitle, trackArtist, trackCover, isPlaying);"
+            + "        }"
+            + "      }"
+            + "    } catch(err) {}"
+            + "  }, 1000);"
+            + "}"
+            + "})();";
+        webView.evaluateJavascript(js, null);
+    }
+
+    public void updateMediaNotification(String title, String artist, String coverUrl, boolean isPlaying) {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(this, MediaPlaybackService.class);
+                intent.setAction(MediaPlaybackService.ACTION_UPDATE);
+                intent.putExtra("title", title);
+                intent.putExtra("artist", artist);
+                intent.putExtra("coverUrl", coverUrl);
+                intent.putExtra("isPlaying", isPlaying);
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent);
+                } else {
+                    startService(intent);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public void stopMediaService() {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(this, MediaPlaybackService.class);
+                stopService(intent);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public static void sendMediaAction(String action) {
+        if (instance != null) {
+            instance.runOnUiThread(() -> instance.handleMediaAction(action));
+        }
+    }
+
+    public void handleMediaAction(String action) {
+        if (webView == null) return;
+        if ("play_pause".equals(action)) {
+            webView.evaluateJavascript("if (window.app && window.app.togglePlay) { window.app.togglePlay(); } else if (window.ytPlayer) { window.ytPlayer.togglePlay(); }", null);
+        } else if ("play".equals(action)) {
+            webView.evaluateJavascript("window.__userRequestedPause = false; if (window.app && window.app.isPlaying === false) { window.app.togglePlay(); } else if (window.ytPlayer) { window.ytPlayer.play(); }", null);
+        } else if ("pause".equals(action)) {
+            webView.evaluateJavascript("window.__userRequestedPause = true; if (window.app && window.app.isPlaying === true) { window.app.togglePlay(); } else if (window.ytPlayer) { window.ytPlayer.pause(); }", null);
+        } else if ("next".equals(action)) {
+            webView.evaluateJavascript("if (window.app && window.app.playNext) { window.app.playNext(); }", null);
+        } else if ("prev".equals(action)) {
+            webView.evaluateJavascript("if (window.app && window.app.playPrev) { window.app.playPrev(); }", null);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Do NOT call webView.onPause() or pauseTimers() - allows uninterrupted background audio playback!
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // Foreground Service keeps the process active while app is minimized
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (bridgeRunnable != null) {
+            bridgeHandler.removeCallbacks(bridgeRunnable);
+        }
+        instance = null;
+        stopMediaService();
+        if (webView != null) {
+            webView.destroy();
+        }
+        super.onDestroy();
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK && webView.canGoBack()) {
@@ -201,7 +863,7 @@ public class MainActivity extends Activity {
 }
 `);
 
-// 8. Eksekusi Kompilasi dengan SDK
+// 10. Eksekusi Kompilasi dengan SDK
 try {
   console.log('📦 [1/6] Mengompilasi resource dengan aapt2...');
   execSync(`"${AAPT2}" compile --dir "${path.join(BUILD_DIR, 'res')}" -o "${path.join(BUILD_DIR, 'compiled_res.zip')}"`, { stdio: 'inherit' });
@@ -210,9 +872,11 @@ try {
   execSync(`"${AAPT2}" link "${path.join(BUILD_DIR, 'compiled_res.zip')}" -I "${PLATFORM_JAR}" --manifest "${path.join(BUILD_DIR, 'AndroidManifest.xml')}" --min-sdk-version 24 --target-sdk-version 35 --java "${path.join(BUILD_DIR, 'gen')}" -o "${path.join(BUILD_DIR, 'initial.apk')}"`, { stdio: 'inherit' });
 
   console.log('☕ [3/6] Mengompilasi kode Java...');
+  const javaSrcDir = path.join(BUILD_DIR, 'src', 'com', 'aurasound', 'musichub');
+  const genDir = path.join(BUILD_DIR, 'gen', 'com', 'aurasound', 'musichub');
   const javaFiles = [
-    `"${path.join(BUILD_DIR, 'gen', 'com', 'aurasound', 'musichub', 'R.java')}"`,
-    `"${path.join(BUILD_DIR, 'src', 'com', 'aurasound', 'musichub', 'MainActivity.java')}"`
+    `"${path.join(genDir, 'R.java')}"`,
+    ...fs.readdirSync(javaSrcDir).filter(f => f.endsWith('.java')).map(f => `"${path.join(javaSrcDir, f)}"`)
   ].join(' ');
 
   execSync(`"${JAVAC}" -d "${path.join(BUILD_DIR, 'bin')}" -cp "${PLATFORM_JAR}" ${javaFiles}`, { stdio: 'inherit' });
@@ -246,9 +910,17 @@ try {
 
   execSync(`"${APKSIGNER}" sign --ks "${keystorePath}" --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --out "${finalApk}" "${alignedApk}"`, { stdio: 'inherit' });
 
+  // Salin ke public/download untuk kemudahan akses download langsung dari website
+  const publicDownloadDir = path.join(PROJECT_ROOT, 'public', 'download');
+  if (!fs.existsSync(publicDownloadDir)) {
+    fs.mkdirSync(publicDownloadDir, { recursive: true });
+  }
+  fs.copyFileSync(finalApk, path.join(publicDownloadDir, 'AuraSound.apk'));
+
   console.log('========================================================');
   console.log('🎉 APK ANDROID BERHASIL DIBUAT!');
   console.log(`📍 Lokasi File: ${finalApk}`);
+  console.log(`🌐 Lokasi Web: ${path.join(publicDownloadDir, 'AuraSound.apk')}`);
   console.log('========================================================');
 } catch (err) {
   console.error('❌ Terjadi kesalahan saat membuat APK:', err.message);
