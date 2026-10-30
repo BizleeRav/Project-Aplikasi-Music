@@ -1710,14 +1710,6 @@ class App {
 
       if (e.key === 'Escape' && this.cinemaModal && this.cinemaModal.classList.contains('active')) {
         this.closeStudioCinema();
-      } else if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
-        if (e.key === '[') {
-          this.adjustCurrentTrackOffset(-0.10); // Lirik kelambatan -> mundurkan offset 100ms
-        } else if (e.key === ']') {
-          this.adjustCurrentTrackOffset(+0.10); // Lirik kecepatan -> majukan offset 100ms
-        } else if (e.key === '\\') {
-          this.resetCurrentTrackOffset();
-        }
       }
     });
 
@@ -1826,7 +1818,6 @@ class App {
       if (!cinemaEqDrawer) return;
       const isActive = cinemaEqDrawer.classList.toggle('active');
       if (isActive) {
-        this.updateLyricsOffsetUI();
         if (window.audioEngine) {
           const canvas = document.getElementById('cinema-eq-curve-canvas');
           if (canvas) {
@@ -1905,38 +1896,6 @@ class App {
           }
         });
       }
-    }
-
-    // Studio Cinema Lyrics Timing Calibrator Buttons
-    const btnOffsetMinusLarge = document.getElementById('btn-offset-minus-large');
-    const btnOffsetMinus = document.getElementById('btn-offset-minus');
-    const btnOffsetPlus = document.getElementById('btn-offset-plus');
-    const btnOffsetPlusLarge = document.getElementById('btn-offset-plus-large');
-    const btnOffsetReset = document.getElementById('btn-offset-reset');
-    if (btnOffsetMinusLarge) {
-      btnOffsetMinusLarge.addEventListener('click', () => {
-        this.adjustCurrentTrackOffset(-0.50);
-      });
-    }
-    if (btnOffsetMinus) {
-      btnOffsetMinus.addEventListener('click', () => {
-        this.adjustCurrentTrackOffset(-0.10);
-      });
-    }
-    if (btnOffsetPlus) {
-      btnOffsetPlus.addEventListener('click', () => {
-        this.adjustCurrentTrackOffset(0.10);
-      });
-    }
-    if (btnOffsetPlusLarge) {
-      btnOffsetPlusLarge.addEventListener('click', () => {
-        this.adjustCurrentTrackOffset(0.50);
-      });
-    }
-    if (btnOffsetReset) {
-      btnOffsetReset.addEventListener('click', () => {
-        this.resetCurrentTrackOffset();
-      });
     }
 
     // Suno AI Form submission
@@ -2521,7 +2480,6 @@ class App {
 
     const trackId = track.id || track.videoId || track.title;
     this.currentLyricsTrackId = trackId;
-    this.updateLyricsOffsetUI();
 
     // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v69)
     if (!forceRefresh && track._lyricsEngineVersion === 'v69' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
@@ -3042,8 +3000,7 @@ class App {
     // Exact on-beat audio synchronization (+0.05s acoustic driver compensation)
     const DEFAULT_ACOUSTIC_LEAD_SEC = 0.05;
     let syncTime = (typeof currentSecs === 'number') ? currentSecs : (this.getCurrentPlaybackTime() || 0);
-    const userOffset = this.getCurrentTrackOffset();
-    syncTime = Math.max(0, syncTime + DEFAULT_ACOUSTIC_LEAD_SEC + userOffset);
+    syncTime = Math.max(0, syncTime + DEFAULT_ACOUSTIC_LEAD_SEC);
 
     if (!this.currentLyricsData || this.currentLyricsData.length === 0) {
       if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
