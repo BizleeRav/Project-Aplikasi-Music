@@ -3609,7 +3609,7 @@ app.get('/api/lyrics', async (req, res) => {
   const isMv = isMvExplicit || introOffsetSec > 0;
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv });
 
-  const cacheKey = `v54___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
+  const cacheKey = `v55___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -3774,12 +3774,6 @@ app.get('/api/lyrics', async (req, res) => {
       let mvIntroDelaySec = (isMv && introOffsetSec >= 2.0) ? introOffsetSec : 0;
       if (!mvIntroDelaySec && isMv && duration > 0 && result.duration > 0 && (duration - result.duration) >= 4) {
         mvIntroDelaySec = await getMvIntroOffset(videoId, duration, result.duration, isMv);
-      }
-
-      // Anti-False-Positive: If video duration is virtually identical to studio duration (<= 2.5s difference),
-      // or if there is no genuine intro story sequence, do not delay lyrics!
-      if (duration > 0 && result.duration > 0 && Math.abs(duration - result.duration) <= 2.5) {
-        mvIntroDelaySec = 0;
       }
 
       // 3. Apple Music TTML Leading Silence
