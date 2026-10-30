@@ -3447,9 +3447,6 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
 // High-precision MV Intro Offset Resolver (Delegates to SponsorBlock Public API)
 async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
   if (!videoId) return 0;
-  if (videoDur > 0 && studioDur > 0 && Math.abs(videoDur - studioDur) <= 3) {
-    return 0;
-  }
   const segs = await resolveDynamicAudioSegments(videoId, videoDur);
   if (segs.introOffsetSec > 0) {
     return segs.introOffsetSec;
@@ -3489,9 +3486,9 @@ app.get('/api/lyrics', async (req, res) => {
 
   const isMvExplicit = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
 
-  // 2. Resolve dynamic audio segments via SponsorBlock ONLY for explicit MVs/Videos (skips 2s delay on studio songs)
+  // 2. Resolve dynamic audio segments via SponsorBlock for ANY video with videoId
   let segs = { introOffsetSec: 0, effectiveSongDuration: duration, detectedVideoDuration: duration, totalNonMusicDuration: 0 };
-  if (videoId && isMvExplicit && duration > 30) {
+  if (videoId && duration > 20) {
     try {
       segs = await resolveDynamicAudioSegments(videoId, duration);
     } catch (e) {}
