@@ -38,8 +38,8 @@ blyrics-letter-wave = true;
   --blyrics-lyric-active-color: #ffffff;
   --blyrics-lyric-inactive-color: rgba(255, 255, 255, 0.32);
   --blyrics-glow-color: rgba(255, 255, 255, 0.65);
-  --blyrics-richsync-timing-offset: 0.000s;
-  --blyrics-timing-offset: 0.000s;
+  --blyrics-richsync-timing-offset: 0.150s;
+  --blyrics-timing-offset: 0.115s;
   --blyrics-scroll-timing-offset: 0.500s;
 }
 
@@ -2891,8 +2891,8 @@ class App {
       this.braccatoLyricsEl.lyrics = finalBraccato;
 
       const userOffset = this.getCurrentTrackOffset();
-      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', '0.000s');
-      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', '0.000s');
+      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', '0.150s');
+      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', '0.115s');
 
       if (this.braccatoLyricsEl.source !== null) {
         this.braccatoLyricsEl.source = null;
@@ -2987,14 +2987,20 @@ class App {
     // or when a seek/jump occurred (|rawTime - _lastMediaTime| > 0.6s)
     if (this._lastMediaTime === undefined || this._lastMediaTime !== rawTime || !this._clockAnchorPerf) {
       this._lastMediaTime = rawTime;
-      this._clockAnchorMedia = rawTime;
+      // If the difference between raw media time and our current extrapolated clock is tiny (< 80ms),
+      // smoothly absorb it so there is zero micro-stutter
+      if (this._clockAnchorPerf && this._lastEmittedPlaybackTime !== undefined && Math.abs(rawTime - this._lastEmittedPlaybackTime) < 0.08) {
+        this._clockAnchorMedia = this._lastEmittedPlaybackTime;
+      } else {
+        this._clockAnchorMedia = rawTime;
+      }
       this._clockAnchorPerf = now;
     }
 
     let computedTime = rawTime;
     // In both Chromium HTMLAudio and YouTube iframe API, smoothly bridge between media polling ticks (100% stutter-free)
-    const carriedCapMs = isNative ? 120 : 350;
-    const carriedMs = Math.min(Math.max(now - this._clockAnchorPerf, 0), carriedCapMs);
+    // Safety cap at 1000ms (never prematurely freeze mid-stream between 250ms browser ticks)
+    const carriedMs = Math.min(Math.max(now - this._clockAnchorPerf, 0), 1000);
     const rate = (isNative ? this.nativeAudio?.playbackRate : (window.ytPlayer?.getPlaybackRate?.() || 1.0)) || 1.0;
     computedTime = this._clockAnchorMedia + (carriedMs * rate) / 1000;
 
@@ -3368,8 +3374,8 @@ class App {
   updateLyricsOffsetUI() {
     const cur = this.getCurrentTrackOffset();
     if (this.braccatoLyricsEl) {
-      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', '0.000s');
-      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', '0.000s');
+      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', '0.150s');
+      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', '0.115s');
     }
     const el = document.getElementById('cinema-lyrics-offset-val');
     if (!el) return;
