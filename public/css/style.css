@@ -8142,68 +8142,9 @@ body.music-playing .cinema-turntable-arm {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
   user-select: none;
   flex-shrink: 0;
-  flex-wrap: wrap;
-}
-
-.cinema-lyrics-offset-dock {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 999px;
-  padding: 2px 6px;
-  font-size: 0.7rem;
-  backdrop-filter: blur(12px);
-}
-
-.cinema-lyrics-offset-dock .offset-label {
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  margin-left: 2px;
-}
-
-.cinema-offset-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.85);
-  border-radius: 999px;
-  padding: 1px 7px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  user-select: none;
-  line-height: 1.5;
-}
-
-.cinema-offset-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.cinema-offset-btn:active {
-  transform: scale(0.95);
-}
-
-.cinema-offset-btn.offset-pill {
-  background: rgba(16, 185, 129, 0.12);
-  border-color: rgba(16, 185, 129, 0.3);
-  color: #10b981;
-  font-weight: 600;
-  padding: 1px 8px;
-}
-
-.cinema-offset-btn.offset-pill:hover {
-  background: rgba(16, 185, 129, 0.22);
 }
 
 .lyrics-hint-text {

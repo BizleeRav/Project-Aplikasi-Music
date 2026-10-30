@@ -1614,16 +1614,6 @@ class App {
       this.btnToggleRomaji.addEventListener('click', () => this.toggleRomaji());
     }
 
-    // Manual Lyrics Sync Offset Controls (+/- 0.05s & Reset)
-    if (this.btnLyricsOffsetMinus) {
-      this.btnLyricsOffsetMinus.addEventListener('click', () => this.adjustCurrentTrackOffset(-0.05));
-    }
-    if (this.btnLyricsOffsetPlus) {
-      this.btnLyricsOffsetPlus.addEventListener('click', () => this.adjustCurrentTrackOffset(0.05));
-    }
-    if (this.btnLyricsOffsetVal) {
-      this.btnLyricsOffsetVal.addEventListener('click', () => this.resetCurrentTrackOffset());
-    }
     if (this.btnLyricsRefresh) {
       this.btnLyricsRefresh.addEventListener('click', () => {
         if (this.currentTrack) {
@@ -1736,14 +1726,6 @@ class App {
       if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
         if (e.key === 'Escape') {
           this.closeStudioCinema();
-        } else if (e.key === '[' || e.key === '{') {
-          const delta = e.shiftKey ? -0.20 : -0.05;
-          this.adjustCurrentTrackOffset(delta);
-        } else if (e.key === ']' || e.key === '}') {
-          const delta = e.shiftKey ? 0.20 : 0.05;
-          this.adjustCurrentTrackOffset(delta);
-        } else if (e.key === '\\' || e.key === '|') {
-          this.resetCurrentTrackOffset();
         }
       }
     });
@@ -2847,7 +2829,6 @@ class App {
     if (panel) {
       panel.classList.toggle('hide-romaji', !this.isRomajiEnabled);
     }
-    this.updateLyricsOffsetUI();
 
     const loadingBox = document.getElementById('cinema-lyrics-loading');
     const emptyBox = document.getElementById('cinema-lyrics-empty');
@@ -3034,11 +3015,10 @@ class App {
   updateActiveLyricsLine(currentSecs) {
     if (!this.cinemaLyricsStream) return;
 
-    // High-Precision 1:1 Audio Synchronization with Stored Track Offset & Acoustic Driver Compensation
-    const trackOffset = this.getCurrentTrackOffset() || 0;
+    // Pure Automatic 1:1 Audio Synchronization (Apple Music & Better Lyrics Master Standard)
     const ACOUSTIC_LEAD_SEC = 0.04; // 40ms acoustic buffer compensation for Web Audio DSP
     let syncTime = (typeof currentSecs === 'number') ? currentSecs : (this.getCurrentPlaybackTime() || 0);
-    syncTime = Math.max(0, syncTime + trackOffset + ACOUSTIC_LEAD_SEC);
+    syncTime = Math.max(0, syncTime + ACOUSTIC_LEAD_SEC);
 
     if (!this.currentLyricsData || this.currentLyricsData.length === 0) {
       if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
