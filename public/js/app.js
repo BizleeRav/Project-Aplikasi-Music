@@ -23,6 +23,60 @@ blyrics-swipe-duration-ratio = 1.25;
 blyrics-line-synced-animation-delay = 40;
 blyrics-letter-wave = true;
 */
+
+:root {
+  --blyrics-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Satoshi", "Inter", sans-serif;
+  --blyrics-font-size: clamp(1.65rem, 2.7vw, 2.45rem);
+  --blyrics-font-weight: 750;
+  --blyrics-line-height: 1.36;
+  --blyrics-padding: 0.85rem;
+  --blyrics-scale: 0.96;
+  --blyrics-active-scale: 1.04;
+  --blyrics-inactive-opacity: 0.32;
+  --blyrics-active-opacity: 1;
+  --blyrics-blur-amount: 1.5px;
+  --blyrics-lyric-active-color: #ffffff;
+  --blyrics-lyric-inactive-color: rgba(255, 255, 255, 0.32);
+  --blyrics-glow-color: rgba(255, 255, 255, 0.65);
+  --blyrics-richsync-timing-offset: 0.150s;
+  --blyrics-timing-offset: 0.115s;
+  --blyrics-scroll-timing-offset: 0.500s;
+}
+
+.blyrics--line {
+  filter: blur(1.5px);
+  opacity: 0.32;
+  transform: scale(0.96);
+  transform-origin: left center;
+  transition: opacity 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+              filter 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+              transform 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+  will-change: transform, opacity, filter;
+  cursor: pointer;
+  padding: 0.75rem 0 !important;
+}
+
+.blyrics--line:hover {
+  opacity: 0.75 !important;
+  filter: blur(0px) !important;
+}
+
+.blyrics--line.blyrics--active {
+  filter: blur(0px) !important;
+  opacity: 1 !important;
+  transform: scale(1.04);
+  color: #ffffff !important;
+  text-shadow: 0 0 24px rgba(255, 255, 255, 0.45), 0 0 40px rgba(56, 189, 248, 0.3);
+}
+
+.blyrics--romanized {
+  font-size: 0.52em !important;
+  font-weight: 500 !important;
+  color: #38bdf8 !important;
+  opacity: 0.88 !important;
+  letter-spacing: 0.04em !important;
+  margin-top: 0.25em !important;
+}
 `;
 
 class App {
@@ -2469,8 +2523,8 @@ class App {
     this.currentLyricsTrackId = trackId;
     this.updateLyricsOffsetUI();
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v62)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v62' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v63)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v63' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2572,7 +2626,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v62';
+        track._lyricsEngineVersion = 'v63';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
