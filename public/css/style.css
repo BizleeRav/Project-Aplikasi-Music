@@ -7881,32 +7881,61 @@ body.music-playing .cinema-turntable-arm {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 86%, transparent 100%);
 }
 
-/* When Better Lyrics Native Engine is active, delegate full scroll containment to braccato-lyrics */
-.cinema-lyrics-stream:has(#braccato-lyrics-view:not([style*="display: none"])) {
-  overflow: hidden !important;
-  padding: 0 !important;
-  gap: 0 !important;
+/* Apple Music Style In-Stream Lead-in Countdown Indicator */
+.cinema-stream-leadin {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  margin: 12px 0 20px 0;
+  width: fit-content;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 9999px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  user-select: none;
+  animation: leadinPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-#braccato-lyrics-view {
+@keyframes leadinPop {
+  0% { transform: scale(0.92); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.stream-leadin-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stream-leadin-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.stream-leadin-dot.active {
+  background: #38bdf8;
+  transform: scale(1.4);
+  box-shadow: 0 0 12px #38bdf8, 0 0 20px rgba(56, 189, 248, 0.6);
+}
+
+.stream-leadin-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f1f5f9;
+}
+
+.cinema-lyrics-fallback {
   display: block;
-  flex: 1 1 100%;
   width: 100%;
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  position: relative;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
-}
-
-#braccato-lyrics-view::-webkit-scrollbar {
-  width: 6px;
-}
-#braccato-lyrics-view::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
 }
 
 .cinema-lyrics-stream::-webkit-scrollbar {

@@ -2863,50 +2863,11 @@ class App {
     if (emptyBox) emptyBox.style.display = 'none';
     if (noteEl) noteEl.style.display = 'none';
 
-    // Connect to Better Lyrics official Custom Element (<braccato-lyrics>)
-    if (!this.braccatoLyricsEl) {
-      this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
-      if (this.braccatoLyricsEl) {
-        this.braccatoLyricsEl.addEventListener('braccato:line-click', (e) => {
-          if (e && e.detail && typeof e.detail.timeS === 'number') {
-            this.seekToTimestamp(e.detail.timeS);
-          }
-        });
-      }
+    // Primary: Native Liquid Light Better Lyrics Engine (Apple Music Syllable Glow)
+    if (this.braccatoLyricsEl) {
+      this.braccatoLyricsEl.style.display = 'none';
     }
 
-    const finalBraccato = (braccatoData && Array.isArray(braccatoData) && braccatoData.length > 0)
-      ? braccatoData
-      : this.formatToBraccatoLyrics(lines);
-
-    if (this.braccatoLyricsEl && finalBraccato && finalBraccato.length > 0) {
-      if (fallbackBox) fallbackBox.style.display = 'none';
-      this.braccatoLyricsEl.style.display = 'block';
-
-      if (this.braccatoLyricsEl.theme !== AURASOUND_BETTER_LYRICS_THEME) {
-        this.braccatoLyricsEl.theme = AURASOUND_BETTER_LYRICS_THEME;
-      }
-
-      // Feed official Lyric[] format directly to Better Lyrics core
-      this.braccatoLyricsEl.lyrics = finalBraccato;
-
-      const userOffset = this.getCurrentTrackOffset();
-      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', '0.150s');
-      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', '0.115s');
-
-      if (this.braccatoLyricsEl.source !== null) {
-        this.braccatoLyricsEl.source = null;
-      }
-      if (this.braccatoLyricsEl.playing !== this.isPlaying) {
-        this.braccatoLyricsEl.playing = this.isPlaying;
-      }
-      const curTime = this.getCurrentPlaybackTime();
-      this.braccatoLyricsEl.currentTime = Math.max(0, curTime + userOffset);
-      return;
-    }
-
-    // Fallback: Custom HTML renderer if braccato-lyrics is not available
-    if (this.braccatoLyricsEl) this.braccatoLyricsEl.style.display = 'none';
     if (fallbackBox) {
       fallbackBox.style.display = 'block';
       fallbackBox.innerHTML = lines.map((item, idx) => {
@@ -3078,30 +3039,16 @@ class App {
   updateActiveLyricsLine(currentSecs) {
     if (!this.cinemaLyricsStream) return;
 
-    // Exact on-beat audio synchronization (0.00s zero artificial shift)
-    // Matches the exact vocal onset timestamps of the Better Lyrics TTML stream
-    const DEFAULT_ACOUSTIC_LEAD_SEC = 0.00;
+    // Exact on-beat audio synchronization (+0.05s acoustic driver compensation)
+    const DEFAULT_ACOUSTIC_LEAD_SEC = 0.05;
     let syncTime = (typeof currentSecs === 'number') ? currentSecs : (this.getCurrentPlaybackTime() || 0);
     const userOffset = this.getCurrentTrackOffset();
     syncTime = Math.max(0, syncTime + DEFAULT_ACOUSTIC_LEAD_SEC + userOffset);
 
-    // Primary: Drive Better Lyrics Native Custom Element (<braccato-lyrics>)
-    if (!this.braccatoLyricsEl) {
-      this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
-    }
-    if (this.braccatoLyricsEl && this.braccatoLyricsEl.style.display !== 'none' && this.braccatoLyricsEl.lyrics && this.braccatoLyricsEl.lyrics.length > 0) {
-      if (this.braccatoLyricsEl.source !== null) {
-        this.braccatoLyricsEl.source = null;
-      }
-      if (this.braccatoLyricsEl.playing !== this.isPlaying) {
-        this.braccatoLyricsEl.playing = this.isPlaying;
-      }
-      this.braccatoLyricsEl.currentTime = syncTime;
-      return;
-    }
-
     if (!this.currentLyricsData || this.currentLyricsData.length === 0) {
       if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
+      const streamLeadIn = document.getElementById('cinema-stream-leadin');
+      if (streamLeadIn) streamLeadIn.style.display = 'none';
       return;
     }
 
@@ -3132,29 +3079,60 @@ class App {
       }
     }
 
-    // Better Lyrics Lead-in Countdown Dots (• • •) during intro and vocal breaks
-    if (this.cinemaLeadInDots) {
-      let showLeadIn = false;
-      const firstLine = this.currentLyricsData[0];
-      if (syncTime < firstLine.time) {
-        // Intro countdown: 4.5s down to 0.2s before first lyric line
-        const diff = firstLine.time - syncTime;
-        if (diff <= 4.5 && diff >= 0.2) {
+    // Apple Music Style Lead-in Countdown Dots (• • •) during intro and musical breaks
+    const streamLeadIn = document.getElementById('cinema-stream-leadin');
+    const leadInText = document.getElementById('stream-leadin-text');
+    let showLeadIn = false;
+    let targetVocalTime = 0;
+    const firstLine = this.currentLyricsData[0];
+
+    if (firstLine && syncTime < firstLine.time) {
+      // Intro countdown: 4.5s down to 0.05s before first lyric line
+      targetVocalTime = firstLine.time;
+      const diff = targetVocalTime - syncTime;
+      if (diff <= 4.5 && diff >= 0.05) {
+        showLeadIn = true;
+      }
+    } else if (activeIdx >= 0 && activeIdx < this.currentLyricsData.length - 1) {
+      // Interlude break: when gap between current line end and next line is >= 3.5s
+      const currentLine = this.currentLyricsData[activeIdx];
+      const nextLine = this.currentLyricsData[activeIdx + 1];
+      const curEnd = currentLine.endTime || (currentLine.time + 3.0);
+      if (nextLine.time - curEnd >= 3.5) {
+        const diff = nextLine.time - syncTime;
+        if (diff <= 4.0 && diff >= 0.05) {
+          targetVocalTime = nextLine.time;
           showLeadIn = true;
         }
-      } else if (activeIdx >= 0 && activeIdx < this.currentLyricsData.length - 1) {
-        // Interlude break: when gap between current line and next line is >= 4.0s
-        const currentLine = this.currentLyricsData[activeIdx];
-        const nextLine = this.currentLyricsData[activeIdx + 1];
-        const gap = nextLine.time - currentLine.time;
-        if (gap >= 4.0) {
-          const diff = nextLine.time - syncTime;
-          if (diff <= 3.8 && diff >= 0.2) {
-            showLeadIn = true;
-          }
-        }
       }
+    }
+
+    if (this.cinemaLeadInDots) {
       this.cinemaLeadInDots.style.display = showLeadIn ? 'inline-flex' : 'none';
+    }
+
+    if (streamLeadIn) {
+      if (showLeadIn) {
+        streamLeadIn.style.display = 'inline-flex';
+        const diff = targetVocalTime - syncTime;
+        const d1 = streamLeadIn.querySelector('.d1');
+        const d2 = streamLeadIn.querySelector('.d2');
+        const d3 = streamLeadIn.querySelector('.d3');
+        if (d1 && d2 && d3) {
+          // 3-2-1 countdown rhythm
+          d1.classList.toggle('active', diff <= 3.0);
+          d2.classList.toggle('active', diff <= 2.0);
+          d3.classList.toggle('active', diff <= 1.0);
+        }
+        if (leadInText) {
+          if (diff <= 1.0) leadInText.textContent = '1 • SIAP...';
+          else if (diff <= 2.0) leadInText.textContent = '2 • SIAP...';
+          else if (diff <= 3.0) leadInText.textContent = '3 • INTRO';
+          else leadInText.textContent = 'VOKAL MASUK';
+        }
+      } else {
+        streamLeadIn.style.display = 'none';
+      }
     }
 
     // Smooth scroll anticipation: subtle 120ms glide into the golden-ratio upper third (36%)

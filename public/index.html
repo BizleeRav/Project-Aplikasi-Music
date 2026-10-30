@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.46.0">
+  <link rel="stylesheet" href="/css/style.css?v=4.47.0">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
   <script type="module" src="/js/better-lyrics-core.js?v=1.16.14"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -1499,7 +1499,15 @@
             </div>
             <div id="lyrics-loading-note" class="lyrics-loading-note">Pilih lagu untuk memuat lirik...</div>
             <div id="cinema-lyrics-empty" class="cinema-lyrics-empty" style="display: none;"></div>
-            <braccato-lyrics id="braccato-lyrics-view" layout="scroll" style="display: none;"></braccato-lyrics>
+            <!-- Apple Music In-Stream Lead-in Countdown -->
+            <div id="cinema-stream-leadin" class="cinema-stream-leadin" style="display: none;">
+              <div class="stream-leadin-badge">
+                <span class="stream-leadin-dot d1"></span>
+                <span class="stream-leadin-dot d2"></span>
+                <span class="stream-leadin-dot d3"></span>
+              </div>
+              <span class="stream-leadin-label" id="stream-leadin-text">Vokal Masuk</span>
+            </div>
             <div id="cinema-lyrics-fallback" class="cinema-lyrics-fallback" style="display: none; width: 100%;"></div>
           </div>
           <div class="cinema-lyrics-hint-bar">
@@ -1681,6 +1689,6 @@
   <script src="/js/yt-player.js?v=4.45.0"></script>
   <script src="/js/taste-engine.js?v=4.45.0"></script>
   <script src="/js/suno-studio.js?v=4.45.0"></script>
-  <script src="/js/app.js?v=4.46.0"></script>
+  <script src="/js/app.js?v=4.47.0"></script>
 </body>
 </html>
