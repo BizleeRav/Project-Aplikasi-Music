@@ -339,7 +339,13 @@ async function resolveStudioTrack(videoId, title, artist) {
     const yt = await getInnertube();
     if (!yt || !yt.music) return null;
 
-    let cleanTitle = (title || '').replace(/\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film))\b|【mv】|\[mv\]/gi, '').trim();
+    let cleanTitle = (title || '')
+      .replace(/^\s*\[[^\]]+\]\s*/g, '')
+      .replace(/^\s*\([^\)]+\)\s*/g, '')
+      .replace(/\s*[-_–—]\s*(?:official\s*(?:video|mv|film|audio)?|video\s*musik\s*resmi|m\/v|mv).*$/gi, '')
+      .replace(/\s*[(（\[【《](?:official\s*(?:video|mv|film|audio)?|video\s*musik\s*resmi|m\/v|mv|hd|4k)[)）\]】》].*$/gi, '')
+      .replace(/\b(?:official\s*(?:video|mv|film|audio)?|video\s*musik\s*resmi|m\/v|mv)\b/gi, '')
+      .trim();
     let cleanArtist = (artist || '').replace(/- topic\b/gi, '').trim();
 
     // Solo member alias
@@ -354,9 +360,9 @@ async function resolveStudioTrack(videoId, title, artist) {
     const shelf = res.contents?.find(c => c.contents && c.contents.some(item => item && item.id)) || res.contents?.[0];
     const items = shelf?.contents?.filter(item => item && item.id) || [];
     if (items.length > 0) {
-      const normQ = cleanTitle.toLowerCase();
+      const normQ = normalizeForCompare(cleanTitle);
       const match = items.find(item => {
-        const t = (item.title || '').toLowerCase();
+        const t = normalizeForCompare(item.title || '');
         return t.includes(normQ) || normQ.includes(t);
       }) || items[0];
 
@@ -1040,17 +1046,14 @@ app.get('/api/stream-audio', async (req, res) => {
   const title = req.query.title || '';
   const artist = req.query.artist || '';
   const preferStudio = req.query.preferStudio !== 'false';
-  if (preferStudio && (title || KNOWN_MV_OFFSETS[videoId] !== undefined)) {
-    const isMv = KNOWN_MV_OFFSETS[videoId] !== undefined || /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film))\b|【mv】|\[mv\]/i.test(title);
-    if (isMv) {
-      try {
-        const studioTrack = await resolveStudioTrack(videoId, title, artist);
-        if (studioTrack && studioTrack.id && studioTrack.id !== videoId) {
-          videoId = studioTrack.id;
-          res.setHeader('X-Resolved-Studio-Id', videoId);
-        }
-      } catch (e) {}
-    }
+  if (preferStudio && (title || videoId)) {
+    try {
+      const studioTrack = await resolveStudioTrack(videoId, title, artist);
+      if (studioTrack && studioTrack.id && studioTrack.id !== videoId) {
+        videoId = studioTrack.id;
+        res.setHeader('X-Resolved-Studio-Id', videoId);
+      }
+    } catch (e) {}
   }
 
   try {
@@ -3852,7 +3855,11 @@ const KNOWN_MV_OFFSETS = {
   'Vk5-c_v4gMU': 28,  // Magnetic (bedroom house intro)
   '9fZxM2lJ3gA': 0,   // Cherish (My Love)
 
+  // SUNMI
+  'ur0hCdne2-s': 45.557, // SUNMI - Gashina Official MV (45.557s intro monologue scene)
+
   // (G)I-DLE
+  'p4RIhcY7V3c': 10.602, // LATATA Official MV (10.602s visual intro scene)
   'rTKqSmX9XhQ': 11,  // Klaxon (desert convertible car stalled)
   'oxZzG_vyMRU': 14,  // Queencard (mirror / plastic surgery intro)
   'fCO7f0SmrDc': 12,  // Nxde (black & white film reel intro)
@@ -4061,7 +4068,7 @@ app.get('/api/lyrics', async (req, res) => {
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v76___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v77___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
