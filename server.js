@@ -1055,11 +1055,12 @@ app.get('/api/stream-audio', async (req, res) => {
 
   try {
     let cached = streamUrlCache.get(videoId);
-    if (!cached || Date.now() > cached.expiresAt) {
-      const { ytdl, chooseFormat } = await getYtdl();
-      if (!ytdl) {
-        return res.status(503).json({ success: false, error: 'Audio extractor not available on this server' });
-      }
+    const { ytdl, chooseFormat } = await getYtdl();
+    if (!ytdl) {
+      return res.status(503).json({ success: false, error: 'Audio extractor not available on this server' });
+    }
+
+    if (!cached || Date.now() > cached.expiresAt || !cached.format) {
       const info = await ytdl.getInfo(videoId);
       let format;
       try {
@@ -1072,50 +1073,56 @@ app.get('/api/stream-audio', async (req, res) => {
         }
       }
 
-      if (!format || !format.url) {
+      if (!format) {
         return res.status(404).json({ success: false, error: 'Audio stream format not available' });
       }
 
       cached = {
-        url: format.url,
+        format,
         mimeType: format.mimeType || 'audio/webm',
-        contentLength: format.contentLength,
+        contentLength: Number(format.contentLength) || 0,
         expiresAt: Date.now() + 3 * 3600 * 1000 // 3 hours cache
       };
       streamUrlCache.set(videoId, cached);
     }
 
-    const reqHeaders = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-      'Accept': '*/*'
-    };
-    if (req.headers.range) {
-      reqHeaders['Range'] = req.headers.range;
+    const rangeHeader = req.headers.range;
+    const contentLength = cached.contentLength;
+    const downloadOpts = { format: cached.format };
+
+    if (rangeHeader && contentLength > 0) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : contentLength - 1;
+      const chunksize = (end - start) + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${contentLength}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': cached.mimeType || 'audio/webm',
+        'Access-Control-Allow-Origin': '*'
+      });
+
+      downloadOpts.range = { start, end };
+    } else {
+      const headers = {
+        'Content-Type': cached.mimeType || 'audio/webm',
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*'
+      };
+      if (contentLength > 0) {
+        headers['Content-Length'] = contentLength;
+      }
+      res.writeHead(200, headers);
     }
 
-    const audioRes = await axios.get(cached.url, {
-      headers: reqHeaders,
-      responseType: 'stream',
-      timeout: 25000,
-      validateStatus: (status) => (status >= 200 && status < 300) || status === 206
-    });
-
-    res.status(audioRes.status);
-    res.setHeader('Content-Type', cached.mimeType || 'audio/webm');
-    res.setHeader('Accept-Ranges', 'bytes');
-    if (audioRes.headers['content-range']) {
-      res.setHeader('Content-Range', audioRes.headers['content-range']);
-    }
-    if (audioRes.headers['content-length']) {
-      res.setHeader('Content-Length', audioRes.headers['content-length']);
-    }
-    res.setHeader('Access-Control-Allow-Origin', '*');
-
-    audioRes.data.pipe(res);
+    const audioStream = await ytdl.download(videoId, downloadOpts);
+    audioStream.pipe(res);
 
     req.on('close', () => {
-      if (audioRes.data && typeof audioRes.data.destroy === 'function') {
-        audioRes.data.destroy();
+      if (audioStream && typeof audioStream.destroy === 'function') {
+        audioStream.destroy();
       }
     });
   } catch (err) {
@@ -2021,6 +2028,15 @@ function normalizeForCompare(str) {
     .trim();
 }
 
+function isArtistFuzzyMatch(normA, normB) {
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+  if (normA.length <= 3 || normB.length <= 3) {
+    return normA === normB;
+  }
+  return normA.includes(normB) || normB.includes(normA);
+}
+
 function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   let title = (rawTitle || '').trim();
   let artist = (rawArtist || '').trim();
@@ -2277,11 +2293,14 @@ function pickBestLyrics(items, targetDuration, targetArtist, targetTitle = '', i
     const itemArtist = normalizeForCompare(item.artistName);
     const itemTrack = normalizeForCompare(item.trackName);
 
-    if (cleanTargetArtist && itemArtist) {
-      if (itemArtist.includes(cleanTargetArtist) || cleanTargetArtist.includes(itemArtist)) {
+    if (cleanTargetArtist) {
+      if (!itemArtist) {
+        return { item, score: -9999 };
+      }
+      if (isArtistFuzzyMatch(itemArtist, cleanTargetArtist)) {
         score += 80;
       } else {
-        score -= 300; // Strong penalty: completely different artist!
+        return { item, score: -9999 }; // Completely different artist -> reject!
       }
     }
 
@@ -2289,7 +2308,7 @@ function pickBestLyrics(items, targetDuration, targetArtist, targetTitle = '', i
       if (itemTrack.includes(cleanTargetTitle) || cleanTargetTitle.includes(itemTrack)) {
         score += 100;
       } else {
-        score -= 120;
+        return { item, score: -9999 }; // Title doesn't match -> reject!
       }
     }
 
@@ -2298,16 +2317,15 @@ function pickBestLyrics(items, targetDuration, targetArtist, targetTitle = '', i
 
     if (targetDuration && targetDuration > 0 && item.duration) {
       const diff = Math.abs(item.duration - targetDuration);
+      if (diff > 5) {
+        return { item, score: -9999 }; // Different version/cut -> reject!
+      }
       if (diff <= 2) {
         score += 100;
       } else if (diff <= 4) {
         score += 60;
-      } else if (diff <= 8) {
+      } else {
         score += 20;
-      } else if (isMv && item.duration < targetDuration && (targetDuration - item.duration) <= 90) {
-        score += 45;
-      } else if (!isMv && diff > 8) {
-        score -= 250;
       }
     }
 
@@ -2321,7 +2339,7 @@ function pickBestLyrics(items, targetDuration, targetArtist, targetTitle = '', i
   if (!best || best.score < 30) {
     return null;
   }
-  if (!isMv && targetDuration > 0 && best.item?.duration && Math.abs(best.item.duration - targetDuration) > 12) {
+  if (!isMv && targetDuration > 0 && best.item?.duration && Math.abs(best.item.duration - targetDuration) > 5) {
     return null;
   }
   return best.item;
@@ -2373,16 +2391,15 @@ async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, a
         const normLatin = normalizeForCompare(artistLatin);
         const normHangul = normalizeForCompare(artistHangul);
         const isArtistMatch = Boolean(
-          (normSinger && normTarget && (normSinger.includes(normTarget) || normTarget.includes(normSinger))) ||
-          (normSinger && normLatin && (normSinger.includes(normLatin) || normLatin.includes(normSinger))) ||
-          (normSinger && normHangul && (normSinger.includes(normHangul) || normHangul.includes(normSinger))) ||
-          (normSinger && normLatin && normLatin.replace(/^g/, '') && normSinger.includes(normLatin.replace(/^g/, '')))
+          (normSinger && normTarget && isArtistFuzzyMatch(normSinger, normTarget)) ||
+          (normSinger && normLatin && isArtistFuzzyMatch(normSinger, normLatin)) ||
+          (normSinger && normHangul && isArtistFuzzyMatch(normSinger, normHangul))
         );
 
         if (isArtistMatch) {
           score += 70;
         } else if (cleanTargetArtist && !isArtistMatch) {
-          score -= 150;
+          return { song, durSec, score: -9999, isTitleMatch: false };
         }
 
         const normSongName = normalizeForCompare(name);
@@ -2399,16 +2416,17 @@ async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, a
         if (isTitleMatch) {
           score += 100;
         } else {
-          score -= 150;
+          return { song, durSec, score: -9999, isTitleMatch: false };
         }
 
         if (targetDuration > 0 && durSec > 0) {
           const diff = Math.abs(durSec - targetDuration);
+          if (diff > 5) {
+            return { song, durSec, score: -9999, isTitleMatch: false };
+          }
           if (diff <= 2) score += 100;
           else if (diff <= 4) score += 60;
-          else if (diff <= 8) score += 20;
-          else if (isMv && durSec < targetDuration && (targetDuration - durSec) <= 90) score += 45;
-          else if (!isMv && diff > 8) score -= 250;
+          else score -= diff * 15;
 
           // Anti TV-Size Guard: If target is full song (>130s), reject short TV-size versions (<110s)
           if (targetDuration > 130 && durSec < 110) {
@@ -2563,16 +2581,15 @@ async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, art
         const normLatin = normalizeForCompare(artistLatin);
         const normHangul = normalizeForCompare(artistHangul);
         const isArtistMatch = Boolean(
-          (normSinger && normTarget && (normSinger.includes(normTarget) || normTarget.includes(normSinger))) ||
-          (normSinger && normLatin && (normSinger.includes(normLatin) || normLatin.includes(normSinger))) ||
-          (normSinger && normHangul && (normSinger.includes(normHangul) || normHangul.includes(normSinger))) ||
-          (normSinger && normLatin && normLatin.replace(/^g/, '') && normSinger.includes(normLatin.replace(/^g/, '')))
+          (normSinger && normTarget && isArtistFuzzyMatch(normSinger, normTarget)) ||
+          (normSinger && normLatin && isArtistFuzzyMatch(normSinger, normLatin)) ||
+          (normSinger && normHangul && isArtistFuzzyMatch(normSinger, normHangul))
         );
 
         if (isArtistMatch) {
           score += 70;
         } else if (cleanArtist && !isArtistMatch) {
-          score -= 150; // Heavy penalty: never accept a song by a different artist!
+          return { song: s, score: -9999, isTitleMatch: false };
         }
 
         const normSongName = normalizeForCompare(sName);
@@ -2589,16 +2606,17 @@ async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, art
         if (isTitleMatch) {
           score += 100;
         } else {
-          score -= 150;
+          return { song: s, score: -9999, isTitleMatch: false };
         }
 
         if (targetDuration > 0 && dur > 0) {
           const diff = Math.abs(dur - targetDuration);
+          if (diff > 5) {
+            return { song: s, score: -9999, isTitleMatch: false };
+          }
           if (diff <= 2) score += 100;
           else if (diff <= 4) score += 60;
-          else if (diff <= 8) score += 20;
-          else if (isMv && dur < targetDuration && (targetDuration - dur) <= 90) score += 45;
-          else if (!isMv && diff > 8) score -= 250;
+          else score -= diff * 15;
 
           // Anti TV-Size Guard: If target is full song (>130s), reject short TV-size versions (<110s)
           if (targetDuration > 130 && dur < 110) {
@@ -2702,16 +2720,15 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
         const normLatin = normalizeForCompare(artistLatin);
         const normHangul = normalizeForCompare(artistHangul);
         const isArtistMatch = Boolean(
-          (normSinger && normTarget && (normSinger.includes(normTarget) || normTarget.includes(normSinger))) ||
-          (normSinger && normLatin && (normSinger.includes(normLatin) || normLatin.includes(normSinger))) ||
-          (normSinger && normHangul && (normSinger.includes(normHangul) || normHangul.includes(normSinger))) ||
-          (normSinger && normLatin && normLatin.replace(/^g/, '') && normSinger.includes(normLatin.replace(/^g/, '')))
+          (normSinger && normTarget && isArtistFuzzyMatch(normSinger, normTarget)) ||
+          (normSinger && normLatin && isArtistFuzzyMatch(normSinger, normLatin)) ||
+          (normSinger && normHangul && isArtistFuzzyMatch(normSinger, normHangul))
         );
 
         if (isArtistMatch) {
           score += 70;
         } else if (cleanArtist && !isArtistMatch) {
-          score -= 150; // Heavy penalty: never accept a song by a different artist!
+          return { song: s, score: -9999, isTitleMatch: false };
         }
 
         const normSongName = normalizeForCompare(sName);
@@ -2728,16 +2745,17 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
         if (isTitleMatch) {
           score += 100;
         } else {
-          score -= 150;
+          return { song: s, score: -9999, isTitleMatch: false };
         }
 
         if (targetDuration > 0 && dur > 0) {
           const diff = Math.abs(dur - targetDuration);
+          if (diff > 5) {
+            return { song: s, score: -9999, isTitleMatch: false };
+          }
           if (diff <= 2) score += 100;
           else if (diff <= 4) score += 60;
-          else if (diff <= 8) score += 20;
-          else if (isMv && dur < targetDuration && (targetDuration - dur) <= 90) score += 45;
-          else if (!isMv && diff > 8) score -= 250;
+          else score -= diff * 15;
 
           // Anti TV-Size Guard: If target is full song (>130s), reject short TV-size versions (<110s)
           if (targetDuration > 130 && dur < 110) {
@@ -3550,20 +3568,18 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
           const normHitTrack = normalizeForCompare(h.track_name || '');
           const normCleanTitle = normalizeForCompare(cleanTitle);
 
-          // Artist match: check against all artistVariants
-          const hasArtistMatch = Array.from(artistVariants).some(a => {
+          // Strict Artist match: reject completely if artist does not match!
+          const hasArtistMatch = !cleanArtist || Array.from(artistVariants).some(a => {
             if (!a) return false;
             const normA = normalizeForCompare(a);
-            return normHitArtist.includes(normA) || normA.includes(normHitArtist);
+            return isArtistFuzzyMatch(normHitArtist, normA);
           });
-
-          if (hasArtistMatch) {
-            score += 250;
-          } else if (cleanArtist) {
-            score -= 500;
+          if (!hasArtistMatch && cleanArtist) {
+            return { hit: h, score: -9999, hDurSec: 0 };
           }
+          score += 250;
 
-          // Title match: direct includes or Bigram similarity >= 0.75
+          // Strict Title match: reject completely if title does not match!
           const hitLatin = (h.track_name || '').match(/[A-Za-z0-9]+/g)?.join('')?.toLowerCase() || '';
           const isTitleMatch = normHitTrack.includes(normCleanTitle) || normCleanTitle.includes(normHitTrack) ||
             (hitLatin && computeTitleSimilarity(hitLatin, normCleanTitle) >= 0.75) ||
@@ -3575,16 +3591,15 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
               if (hitLatin && computeTitleSimilarity(hitLatin, nt) >= 0.75) return true;
               return computeTitleSimilarity(normHitTrack, nt) >= 0.75;
             });
-          if (isTitleMatch) {
-            score += 200;
-          } else {
-            score -= 300;
+          if (!isTitleMatch) {
+            return { hit: h, score: -9999, hDurSec: 0 };
           }
+          score += 200;
 
           // Anti-Live / Concert filter: Never pick live concert tracks over studio originals!
           const isHitLive = /\b(?:live|tour|dome|concert|in seoul|in osaka|special final|the show|budokan|stadium|arena tour)\b/i.test(`${h.album_name || ''} ${h.track_name || ''}`);
           if (isHitLive && !isLiveExplicit) {
-            score -= 800;
+            return { hit: h, score: -9999, hDurSec: 0 };
           } else if (!isHitLive) {
             score += 300;
           }
@@ -3596,14 +3611,17 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             score += 100;
           }
 
-          // Duration proximity
+          // Strict Duration Proximity: Reject if difference > 5 seconds (different cut/remix)!
           const rawDur = Number(h.duration) || 0;
           const hDurSec = rawDur > 1000 ? Math.round(rawDur / 1000) : rawDur;
           if (targetDuration > 0 && hDurSec > 0) {
             const diff = Math.abs(hDurSec - targetDuration);
-            if (diff <= 3) score += 200;
-            else if (diff <= 6) score += 100;
-            else score -= diff * 15;
+            if (diff > 5) {
+              return { hit: h, score: -9999, hDurSec };
+            }
+            if (diff <= 2) score += 200;
+            else if (diff <= 4) score += 100;
+            else score -= diff * 20;
           }
 
           return { hit: h, score, hDurSec };
@@ -3673,7 +3691,18 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             const normHitTitle = normalizeForCompare(h.title || '');
             const normCleanTitle = normalizeForCompare(cleanTitle);
 
-            // Title match: direct includes or Bigram similarity >= 0.75
+            // Strict Artist Match: Disqualify hit if artist does not match!
+            const normHitArtist = normalizeForCompare(h.artist || h.artist_name || '');
+            const hasArtistMatch = !cleanArtist || Array.from(artistVariants).some(a => {
+              if (!a) return false;
+              const normA = normalizeForCompare(a);
+              return isArtistFuzzyMatch(normHitArtist, normA);
+            });
+            if (!hasArtistMatch && cleanArtist) {
+              return { hit: h, score: -9999 };
+            }
+
+            // Strict Title match: direct includes or Bigram similarity >= 0.75
             const hitLatin = (h.title || '').match(/[A-Za-z0-9]+/g)?.join('')?.toLowerCase() || '';
             const isTitleMatch = normHitTitle.includes(normCleanTitle) || normCleanTitle.includes(normHitTitle) ||
               (hitLatin && computeTitleSimilarity(hitLatin, normCleanTitle) >= 0.75) ||
@@ -3686,18 +3715,20 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
                 return computeTitleSimilarity(normHitTitle, nt) >= 0.75;
               });
 
-            if (!isTitleMatch) return { hit: h, score: -1000 };
+            if (!isTitleMatch) return { hit: h, score: -9999 };
             score += 500;
 
             const isHitLive = /\b(?:live|tour|dome|concert|the show|budokan|special final)\b/i.test(`${h.album || ''} ${h.title || ''}`);
-            if (isHitLive && !isLiveExplicit) score -= 800;
+            if (isHitLive && !isLiveExplicit) return { hit: h, score: -9999 };
             else if (!isHitLive) score += 200;
 
+            // Strict Duration: Reject if diff > 5s
             if (targetDuration > 0 && h.duration > 0) {
               const diff = Math.abs(h.duration - targetDuration);
-              if (diff <= 4) score += 200;
-              else if (diff <= 8) score += 100;
-              else score -= diff * 15;
+              if (diff > 5) return { hit: h, score: -9999 };
+              if (diff <= 2) score += 200;
+              else if (diff <= 4) score += 100;
+              else score -= diff * 20;
             }
             return { hit: h, score };
           }).filter(s => s.score > 0);
@@ -4030,7 +4061,7 @@ app.get('/api/lyrics', async (req, res) => {
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v75___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v76___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -4129,7 +4160,7 @@ app.get('/api/lyrics', async (req, res) => {
             });
             if (getRes.data) {
               if (getRes.data.syncedLyrics) {
-                if (!effectiveSongDuration || !getRes.data.duration || Math.abs(getRes.data.duration - effectiveSongDuration) <= 12) {
+                if (!effectiveSongDuration || !getRes.data.duration || Math.abs(getRes.data.duration - effectiveSongDuration) <= 5) {
                   syncedResult = { ...getRes.data, sourceName: 'LRCLib' };
                   break;
                 }
@@ -4199,8 +4230,9 @@ app.get('/api/lyrics', async (req, res) => {
       );
 
       // LRC internal offset if present
-      if (!isBetterLyricsOrTtml && lrcOffsetSec !== 0) {
-        netShiftSec = -lrcOffsetSec;
+      if (!isBetterLyricsOrTtml) {
+        // Community line-level LRC human reaction compensation (~250ms advance so it doesn't feel 'lambat')
+        netShiftSec = -lrcOffsetSec - 0.25;
       }
     }
 
