@@ -1781,12 +1781,46 @@ const sponsorBlockCache = new Map(); // videoId -> { introOffsetSec, totalNonMus
 const ytMetadataCache = new Map();    // videoId -> { title, artist, duration }
 
 /**
+ * Maps a timestamp from the studio master track (Apple Music / LRCLib ground truth)
+ * to the exact playback timestamp in the playing YouTube video, accounting for both
+ * non-music intros and any internal dialogue / scene interludes.
+ */
+function mapStudioTimeToVideoTime(studioTime, nonMusicSegments = []) {
+  if (typeof studioTime !== 'number' || isNaN(studioTime)) return studioTime;
+  if (!Array.isArray(nonMusicSegments) || nonMusicSegments.length === 0) return studioTime;
+
+  const valid = nonMusicSegments
+    .map(s => {
+      const seg = Array.isArray(s) ? s : s.segment;
+      return [Number(seg[0]) || 0, Number(seg[1]) || 0];
+    })
+    .filter(([start, end]) => end > start && end - start >= 0.5)
+    .sort((a, b) => a[0] - b[0]);
+
+  if (valid.length === 0) return studioTime;
+
+  let currentStudio = 0;
+  let currentVideo = 0;
+
+  for (const [segStart, segEnd] of valid) {
+    const musicBlockDur = Math.max(0, segStart - currentVideo);
+    if (studioTime <= currentStudio + musicBlockDur) {
+      return parseFloat((currentVideo + (studioTime - currentStudio)).toFixed(3));
+    }
+    currentStudio += musicBlockDur;
+    currentVideo = segEnd;
+  }
+
+  return parseFloat((currentVideo + (studioTime - currentStudio)).toFixed(3));
+}
+
+/**
  * Resolves non-music segments dynamically using the free public SponsorBlock API (sponsor.ajay.app).
  * Automatically calculates precise intro offsets and effective pure music duration for ANY video.
  */
 async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
   if (!videoId) {
-    return { introOffsetSec: 0, totalNonMusicDuration: 0, effectiveSongDuration: videoDuration };
+    return { introOffsetSec: 0, totalNonMusicDuration: 0, effectiveSongDuration: videoDuration, nonMusicSegments: [] };
   }
   const cached = sponsorBlockCache.get(videoId);
   if (cached) {
@@ -1796,6 +1830,7 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
   let introOffsetSec = 0;
   let totalNonMusicDuration = 0;
   let detectedVideoDuration = videoDuration || 0;
+  const nonMusicSegments = [];
 
   try {
     const url = `https://sponsor.ajay.app/api/skipSegments?videoID=${encodeURIComponent(videoId)}&category=music_offtopic`;
@@ -1823,12 +1858,14 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
         const segEnd = Number(seg[1]) || 0;
         const dur = Math.max(0, segEnd - segStart);
 
-        // Intro offset: segment starting at beginning of video (<= 1.5s) and lasting between 2.0s and 120s
-        if (segStart <= 1.5 && segEnd < 120) {
-          const isVerified = (item.locked === 1) || (Number(item.votes) >= 1) || (segEnd >= 4.0);
-          if (segEnd >= 2.0 && isVerified) {
-            introOffsetSec = Math.max(introOffsetSec, segEnd);
+        if (dur >= 0.5) {
+          const isVerified = (item.locked === 1) || (Number(item.votes) >= 1) || (dur >= 2.0);
+          if (isVerified) {
+            nonMusicSegments.push([segStart, segEnd]);
             totalNonMusicDuration += dur;
+            if (segStart <= 2.5 && segEnd < 120) {
+              introOffsetSec = Math.max(introOffsetSec, segEnd);
+            }
           }
         }
       }
@@ -1837,10 +1874,8 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
     // 404 or timeout means no non-music segments found (normal for pure studio tracks)
   }
 
+  nonMusicSegments.sort((a, b) => a[0] - b[0]);
   const baseDur = videoDuration > 0 ? videoDuration : detectedVideoDuration;
-  // Intro offset is the primary non-music segment that changes song alignment with audio stream.
-  // We do NOT subtract arbitrary middle/outro cuts from effectiveSongDuration because studio albums on Apple Music
-  // match the full song length, not cut versions.
   const effectiveSongDuration = baseDur > 0
     ? Math.max(0, baseDur - introOffsetSec)
     : 0;
@@ -1849,7 +1884,8 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
     introOffsetSec: parseFloat(introOffsetSec.toFixed(3)),
     totalNonMusicDuration: parseFloat(totalNonMusicDuration.toFixed(3)),
     detectedVideoDuration: parseFloat(baseDur.toFixed(3)),
-    effectiveSongDuration: parseFloat(effectiveSongDuration.toFixed(3))
+    effectiveSongDuration: parseFloat(effectiveSongDuration.toFixed(3)),
+    nonMusicSegments
   };
 
   sponsorBlockCache.set(videoId, result);
@@ -3943,42 +3979,53 @@ app.get('/api/lyrics', async (req, res) => {
   const isMvExplicit = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
   const isMv = isMvExplicit || hasKnownMvOffset;
 
-  // 2. Resolve intro offset: Check KNOWN_MV_OFFSETS first, then SponsorBlock, then studio track
+  // 2. Resolve intro offset & non-music segments: Check KNOWN_MV_OFFSETS first, then SponsorBlock, then studio track
   let introOffsetSec = 0;
   let effectiveSongDuration = duration;
+  let nonMusicSegments = [];
+
+  if (hasKnownMvOffset) {
+    introOffsetSec = KNOWN_MV_OFFSETS[videoId];
+    if (introOffsetSec > 0) {
+      nonMusicSegments.push([0, introOffsetSec]);
+    }
+  } else if (videoId) {
+    try {
+      const segs = await resolveDynamicAudioSegments(videoId, duration);
+      if (segs) {
+        if (segs.introOffsetSec > 0) {
+          introOffsetSec = segs.introOffsetSec;
+        }
+        if (Array.isArray(segs.nonMusicSegments) && segs.nonMusicSegments.length > 0) {
+          nonMusicSegments = segs.nonMusicSegments;
+        }
+        if (segs.effectiveSongDuration > 0) {
+          effectiveSongDuration = segs.effectiveSongDuration;
+        }
+      }
+    } catch (e) {}
+  }
 
   // Resolve studio track metadata (gives us the true studio duration for TTML lookup)
   const preferStudio = req.query.preferStudio !== 'false';
   let matchedStudioTrack = videoId ? studioTrackCache.get(videoId) : null;
-  if (!matchedStudioTrack && preferStudio && isMv) {
+  if (!matchedStudioTrack && preferStudio && videoId) {
     matchedStudioTrack = await resolveStudioTrack(videoId, rawTitle, rawArtist);
   }
 
   if (matchedStudioTrack && matchedStudioTrack.seconds > 0) {
     effectiveSongDuration = matchedStudioTrack.seconds;
+    if (matchedStudioTrack.id === videoId) {
+      // Client is playing the pure audio studio track directly -> 0s intro offset
+      introOffsetSec = 0;
+      nonMusicSegments = [];
+    }
   }
 
-  // Determine the exact video intro delay based on what the client is actually playing:
-  // If the videoId is in KNOWN_MV_OFFSETS or has a SponsorBlock intro, THAT intro offset MUST be applied
-  // to shift the studio TTML so it matches the video and audio being played!
-  if (hasKnownMvOffset) {
-    introOffsetSec = KNOWN_MV_OFFSETS[videoId];
-  } else if (videoId && (isMv || (matchedStudioTrack && videoId !== matchedStudioTrack.id))) {
-    try {
-      const segs = await resolveDynamicAudioSegments(videoId, duration);
-      if (segs && segs.introOffsetSec > 0) {
-        introOffsetSec = segs.introOffsetSec;
-      }
-    } catch (e) {}
-  } else if (matchedStudioTrack && videoId === matchedStudioTrack.id) {
-    // Client is playing the pure audio studio track directly -> 0s intro offset
-    introOffsetSec = 0;
-  }
-
-  console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset });
+  console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v73___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}`;
+  const cacheKey = `v74___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -4139,25 +4186,14 @@ app.get('/api/lyrics', async (req, res) => {
         lrcOffsetSec += (result.adjustOffsetMs / 1000);
       }
 
-      // 2. High-Precision MV Cinematic Intro from KNOWN_MV_OFFSETS / SponsorBlock
-      let mvIntroDelaySec = (hasKnownMvOffset || introOffsetSec > 0) ? introOffsetSec : 0;
-      if (!mvIntroDelaySec && (isMv || hasKnownMvOffset) && videoId) {
-        mvIntroDelaySec = await getMvIntroOffset(videoId, duration, result.duration, isMv);
-      }
-
-      // 3. Apple Music TTML Leading Silence
-      let leadingSilenceSec = Number(result.leadingSilence) || 0;
-
       const isBetterLyricsOrTtml = Boolean(
         (result.sourceName && /better\s*lyrics|apple\s*music/i.test(result.sourceName)) ||
         (result.id && String(result.id).startsWith('bl_'))
       );
 
-      // Apply MV intro offset when confirmed present in video
-      if (mvIntroDelaySec > 0) {
-        netShiftSec = mvIntroDelaySec - (isBetterLyricsOrTtml ? 0 : lrcOffsetSec);
-      } else {
-        netShiftSec = isBetterLyricsOrTtml ? 0 : -lrcOffsetSec;
+      // LRC internal offset if present
+      if (!isBetterLyricsOrTtml && lrcOffsetSec !== 0) {
+        netShiftSec = -lrcOffsetSec;
       }
     }
 
@@ -4169,19 +4205,49 @@ app.get('/api/lyrics', async (req, res) => {
       detectedLang = parsedBraccato?.lang || (result.detectedLang ? result.detectedLang.split('-')[0].toLowerCase() : null);
 
       if (unifiedLyrics && Array.isArray(unifiedLyrics) && unifiedLyrics.length > 0) {
-        // Apply netShiftSec (MV intro offset / sync timing)
-        if (netShiftSec !== 0) {
-          const shiftMs = Math.round(netShiftSec * 1000);
+        // Apply netShiftSec and nonMusicSegments (mapping studio time to video time)
+        if (nonMusicSegments.length > 0 || netShiftSec !== 0) {
           for (const l of unifiedLyrics) {
-            l.startTimeMs = Math.max(0, l.startTimeMs + shiftMs);
+            const origStartSec = Math.max(0, (l.startTimeMs / 1000) + netShiftSec);
+            const origEndSec = Math.max(origStartSec + 0.1, ((l.startTimeMs + (l.durationMs || 0)) / 1000) + netShiftSec);
+
+            const mappedStartSec = nonMusicSegments.length > 0
+              ? mapStudioTimeToVideoTime(origStartSec, nonMusicSegments)
+              : origStartSec;
+            const mappedEndSec = nonMusicSegments.length > 0
+              ? mapStudioTimeToVideoTime(origEndSec, nonMusicSegments)
+              : origEndSec;
+
+            l.startTimeMs = Math.max(0, Math.round(mappedStartSec * 1000));
+            l.durationMs = Math.max(100, Math.round((mappedEndSec - mappedStartSec) * 1000));
+
             if (Array.isArray(l.parts)) {
               for (const p of l.parts) {
-                p.startTimeMs = Math.max(0, p.startTimeMs + shiftMs);
+                const pStartSec = Math.max(0, (p.startTimeMs / 1000) + netShiftSec);
+                const pEndSec = Math.max(pStartSec + 0.05, ((p.startTimeMs + (p.durationMs || 0)) / 1000) + netShiftSec);
+                const mappedPStart = nonMusicSegments.length > 0
+                  ? mapStudioTimeToVideoTime(pStartSec, nonMusicSegments)
+                  : pStartSec;
+                const mappedPEnd = nonMusicSegments.length > 0
+                  ? mapStudioTimeToVideoTime(pEndSec, nonMusicSegments)
+                  : pEndSec;
+                p.startTimeMs = Math.max(0, Math.round(mappedPStart * 1000));
+                p.durationMs = Math.max(50, Math.round((mappedPEnd - mappedPStart) * 1000));
               }
             }
+
             if (Array.isArray(l.timedRomanization)) {
               for (const p of l.timedRomanization) {
-                p.startTimeMs = Math.max(0, p.startTimeMs + shiftMs);
+                const pStartSec = Math.max(0, (p.startTimeMs / 1000) + netShiftSec);
+                const pEndSec = Math.max(pStartSec + 0.05, ((p.startTimeMs + (p.durationMs || 0)) / 1000) + netShiftSec);
+                const mappedPStart = nonMusicSegments.length > 0
+                  ? mapStudioTimeToVideoTime(pStartSec, nonMusicSegments)
+                  : pStartSec;
+                const mappedPEnd = nonMusicSegments.length > 0
+                  ? mapStudioTimeToVideoTime(pEndSec, nonMusicSegments)
+                  : pEndSec;
+                p.startTimeMs = Math.max(0, Math.round(mappedPStart * 1000));
+                p.durationMs = Math.max(50, Math.round((mappedPEnd - mappedPStart) * 1000));
               }
             }
           }

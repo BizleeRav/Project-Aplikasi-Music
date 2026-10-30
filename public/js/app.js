@@ -234,6 +234,11 @@ class App {
     this.currentLyricsTrackId = null;
     this.currentLeadingSilence = 0;
     this.hasWordSync = false;
+    this.manualLyricsOffsetSec = 0;
+    this.btnLyricsOffsetMinus = document.getElementById('btn-lyrics-offset-minus');
+    this.btnLyricsOffsetVal = document.getElementById('btn-lyrics-offset-val');
+    this.btnLyricsOffsetPlus = document.getElementById('btn-lyrics-offset-plus');
+    this.btnLyricsRefresh = document.getElementById('btn-lyrics-refresh');
   }
 
   checkCleanReset() {
@@ -1607,6 +1612,26 @@ class App {
     // Romaji / Pinyin Visibility Toggle (Cinema Lyrics)
     if (this.btnToggleRomaji) {
       this.btnToggleRomaji.addEventListener('click', () => this.toggleRomaji());
+    }
+
+    // Manual Lyrics Sync Offset Controls (+/- 0.1s & Refresh)
+    if (this.btnLyricsOffsetMinus) {
+      this.btnLyricsOffsetMinus.addEventListener('click', () => this.adjustLyricsOffset(-0.1));
+    }
+    if (this.btnLyricsOffsetPlus) {
+      this.btnLyricsOffsetPlus.addEventListener('click', () => this.adjustLyricsOffset(0.1));
+    }
+    if (this.btnLyricsOffsetVal) {
+      this.btnLyricsOffsetVal.addEventListener('click', () => this.resetLyricsOffset());
+    }
+    if (this.btnLyricsRefresh) {
+      this.btnLyricsRefresh.addEventListener('click', () => {
+        if (this.currentTrack) {
+          delete this.currentTrack._parsedLyrics;
+          delete this.currentTrack._cachedForTrackId;
+          this.renderCinemaLyrics(this.currentTrack, null, true);
+        }
+      });
     }
 
     // Visualizer Mode Switchers (Cinema)

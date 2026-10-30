@@ -3481,6 +3481,70 @@ body::after {
     white-space: nowrap !important;
   }
 
+  /* Manual Sync Calibration Bar */
+  .cinema-sync-controls {
+    display: inline-flex !important;
+    align-items: center !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 8px !important;
+    padding: 2px 3px !important;
+    gap: 2px !important;
+  }
+
+  .cinema-sync-btn {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255, 255, 255, 0.6) !important;
+    font-size: 0.62rem !important;
+    font-weight: 700 !important;
+    padding: 2px 5px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    font-family: inherit !important;
+  }
+
+  .cinema-sync-btn:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    color: #ffffff !important;
+  }
+
+  .cinema-sync-btn:active {
+    transform: scale(0.92) !important;
+  }
+
+  .cinema-sync-btn.offset-val {
+    color: #a7f3d0 !important;
+    min-width: 32px !important;
+    text-align: center !important;
+  }
+
+  .cinema-refresh-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 6px !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: rgba(255, 255, 255, 0.65) !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+  }
+
+  .cinema-refresh-btn:hover {
+    background: rgba(16, 185, 129, 0.2) !important;
+    border-color: rgba(16, 185, 129, 0.4) !important;
+    color: #34d399 !important;
+    transform: rotate(45deg) !important;
+  }
+
+  .cinema-refresh-btn:active {
+    transform: rotate(180deg) scale(0.9) !important;
+  }
+
   .cinema-lyrics-stream {
     display: flex !important;
     flex-direction: column !important;
