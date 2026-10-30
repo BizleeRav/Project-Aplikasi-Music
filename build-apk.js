@@ -181,7 +181,21 @@ public class AndroidMediaBridge {
     @JavascriptInterface
     public void updatePlaybackState(String title, String artist, String coverUrl, boolean isPlaying) {
         if (activity != null) {
-            activity.updateMediaNotification(title, artist, coverUrl, isPlaying);
+            activity.updateMediaNotification(title, artist, coverUrl, isPlaying, 0, 0);
+        }
+    }
+
+    @JavascriptInterface
+    public void updatePlaybackStateWithProgress(String title, String artist, String coverUrl, boolean isPlaying, long positionMs, long durationMs) {
+        if (activity != null) {
+            activity.updateMediaNotification(title, artist, coverUrl, isPlaying, positionMs, durationMs);
+        }
+    }
+
+    @JavascriptInterface
+    public void updatePlaybackProgress(long positionMs, long durationMs, boolean isPlaying) {
+        if (activity != null) {
+            activity.updateMediaProgress(positionMs, durationMs, isPlaying);
         }
     }
 
@@ -230,6 +244,7 @@ public class MediaPlaybackService extends Service {
     public static final int NOTIFICATION_ID = 1001;
 
     public static final String ACTION_UPDATE = "ACTION_UPDATE";
+    public static final String ACTION_PROGRESS = "ACTION_PROGRESS";
     public static final String ACTION_PLAY_PAUSE = "ACTION_PLAY_PAUSE";
     public static final String ACTION_PLAY = "ACTION_PLAY";
     public static final String ACTION_PAUSE = "ACTION_PAUSE";
@@ -246,6 +261,8 @@ public class MediaPlaybackService extends Service {
     private String currentCoverUrl = "";
     private Bitmap currentCoverBitmap = null;
     private boolean isPlaying = false;
+    private long currentPositionMs = 0;
+    private long currentDurationMs = 0;
 
     @Override
     public void onCreate() {
@@ -301,6 +318,14 @@ public class MediaPlaybackService extends Service {
                 }
 
                 @Override
+                public void onSeekTo(long pos) {
+                    super.onSeekTo(pos);
+                    currentPositionMs = pos;
+                    updateMediaSessionState();
+                    MainActivity.sendSeekAction(pos);
+                }
+
+                @Override
                 public void onStop() {
                     super.onStop();
                     MainActivity.sendMediaAction("pause");
@@ -339,7 +364,14 @@ public class MediaPlaybackService extends Service {
                 String artist = intent.getStringExtra("artist");
                 String coverUrl = intent.getStringExtra("coverUrl");
                 boolean playing = intent.getBooleanExtra("isPlaying", false);
-                updatePlayback(title, artist, coverUrl, playing);
+                long pos = intent.getLongExtra("positionMs", 0);
+                long dur = intent.getLongExtra("durationMs", 0);
+                updatePlayback(title, artist, coverUrl, playing, pos, dur);
+            } else if (ACTION_PROGRESS.equals(action)) {
+                long pos = intent.getLongExtra("positionMs", 0);
+                long dur = intent.getLongExtra("durationMs", 0);
+                boolean playing = intent.getBooleanExtra("isPlaying", false);
+                updateProgressOnly(pos, dur, playing);
             } else if (ACTION_PLAY_PAUSE.equals(action)) {
                 MainActivity.sendMediaAction("play_pause");
             } else if (ACTION_PLAY.equals(action)) {
@@ -360,10 +392,19 @@ public class MediaPlaybackService extends Service {
         return START_NOT_STICKY;
     }
 
-    private void updatePlayback(String title, String artist, String coverUrl, boolean playing) {
+    private void updateProgressOnly(long pos, long dur, boolean playing) {
+        if (pos > 0) this.currentPositionMs = pos;
+        if (dur > 0) this.currentDurationMs = dur;
+        this.isPlaying = playing;
+        updateMediaSessionState();
+    }
+
+    private void updatePlayback(String title, String artist, String coverUrl, boolean playing, long pos, long dur) {
         this.currentTitle = (title != null && !title.isEmpty()) ? title : "AuraSound Music";
         this.currentArtist = (artist != null && !artist.isEmpty()) ? artist : "AuraSound";
         this.isPlaying = playing;
+        if (pos > 0) this.currentPositionMs = pos;
+        if (dur > 0) this.currentDurationMs = dur;
 
         if (playing) {
             acquireWakeLock();
@@ -392,18 +433,25 @@ public class MediaPlaybackService extends Service {
                     | PlaybackState.ACTION_PLAY_PAUSE
                     | PlaybackState.ACTION_SKIP_TO_NEXT
                     | PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                    | PlaybackState.ACTION_SEEK_TO
                     | PlaybackState.ACTION_STOP;
 
             int state = isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
+            float speed = isPlaying ? 1.0f : 0.0f;
+
             PlaybackState.Builder stateBuilder = new PlaybackState.Builder()
                     .setActions(actions)
-                    .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f);
+                    .setState(state, currentPositionMs, speed);
             mediaSession.setPlaybackState(stateBuilder.build());
 
             MediaMetadata.Builder metaBuilder = new MediaMetadata.Builder()
                     .putString(MediaMetadata.METADATA_KEY_TITLE, currentTitle)
                     .putString(MediaMetadata.METADATA_KEY_ARTIST, currentArtist)
                     .putString(MediaMetadata.METADATA_KEY_ALBUM, "AuraSound Music Hub");
+
+            if (currentDurationMs > 0) {
+                metaBuilder.putLong(MediaMetadata.METADATA_KEY_DURATION, currentDurationMs);
+            }
 
             if (currentCoverBitmap != null) {
                 metaBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, currentCoverBitmap);
@@ -495,6 +543,10 @@ public class MediaPlaybackService extends Service {
 
         if (cover != null) {
             builder.setLargeIcon(cover);
+        }
+
+        if (currentDurationMs > 0) {
+            builder.setProgress((int) (currentDurationMs / 1000), (int) (currentPositionMs / 1000), false);
         }
 
         if (mediaSession != null) {
@@ -716,10 +768,10 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 injectUniversalBridge();
-                bridgeHandler.postDelayed(this, 2500);
+                bridgeHandler.postDelayed(this, 2000);
             }
         };
-        bridgeHandler.postDelayed(bridgeRunnable, 2000);
+        bridgeHandler.postDelayed(bridgeRunnable, 1500);
     }
 
     private void injectUniversalBridge() {
@@ -735,36 +787,83 @@ public class MainActivity extends Activity {
             + "} catch(e) {}"
             + "if (!window.__aurasound_watchdog_active) {"
             + "  window.__aurasound_watchdog_active = true;"
+            + "  function getPlaybackInfo() {"
+            + "    var isPlaying = false;"
+            + "    var title = '';"
+            + "    var artist = '';"
+            + "    var cover = '';"
+            + "    var curSec = 0;"
+            + "    var durSec = 0;"
+            + "    if (window.app && window.app.currentTrack) {"
+            + "      title = window.app.currentTrack.title || '';"
+            + "      artist = window.app.currentTrack.artist || '';"
+            + "      cover = window.app.currentTrack.thumbnail || '';"
+            + "      if (window.app.isPlaying) isPlaying = true;"
+            + "    } else if (window.ytPlayer && window.ytPlayer.currentTrack) {"
+            + "      title = window.ytPlayer.currentTrack.title || '';"
+            + "      artist = window.ytPlayer.currentTrack.artist || '';"
+            + "      cover = window.ytPlayer.currentTrack.thumbnail || '';"
+            + "      if (window.ytPlayer.isPlaying) isPlaying = true;"
+            + "    }"
+            + "    if (window.ytPlayer) {"
+            + "      if (typeof window.ytPlayer.getCurrentTime === 'function') {"
+            + "        curSec = window.ytPlayer.getCurrentTime() || 0;"
+            + "      }"
+            + "      if (window.ytPlayer.player && typeof window.ytPlayer.player.getDuration === 'function') {"
+            + "        durSec = window.ytPlayer.player.getDuration() || 0;"
+            + "      }"
+            + "      if (window.ytPlayer.player && typeof window.ytPlayer.player.getPlayerState === 'function') {"
+            + "        var ytState = window.ytPlayer.player.getPlayerState();"
+            + "        if (ytState === 1) isPlaying = true;"
+            + "      }"
+            + "    }"
+            + "    if ((!durSec || window.app?.currentAudioMode === 'native') && window.app && window.app.nativeAudio) {"
+            + "      if (window.app.nativeAudio.duration) {"
+            + "        durSec = window.app.nativeAudio.duration;"
+            + "        curSec = window.app.nativeAudio.currentTime || 0;"
+            + "      }"
+            + "    }"
+            + "    if (!durSec && window.app && window.app.currentTrack && window.app.currentTrack.duration) {"
+            + "      var d = window.app.currentTrack.duration;"
+            + "      if (typeof d === 'number') durSec = d;"
+            + "      else if (typeof d === 'string' && d.includes(':')) {"
+            + "        var p = d.split(':').map(Number);"
+            + "        if (p.length === 2) durSec = p[0] * 60 + p[1];"
+            + "        else if (p.length === 3) durSec = p[0] * 3600 + p[1] * 60 + p[2];"
+            + "      }"
+            + "    }"
+            + "    return {"
+            + "      title: title,"
+            + "      artist: artist,"
+            + "      cover: cover,"
+            + "      isPlaying: isPlaying,"
+            + "      posMs: Math.round(curSec * 1000),"
+            + "      durMs: Math.round(durSec * 1000)"
+            + "    };"
+            + "  }"
             + "  setInterval(function() {"
             + "    try {"
-            + "      var isPlaying = false;"
-            + "      var trackTitle = '';"
-            + "      var trackArtist = '';"
-            + "      var trackCover = '';"
-            + "      if (window.app && window.app.currentTrack) {"
-            + "        trackTitle = window.app.currentTrack.title || '';"
-            + "        trackArtist = window.app.currentTrack.artist || '';"
-            + "        trackCover = window.app.currentTrack.thumbnail || '';"
-            + "        if (window.app.isPlaying) isPlaying = true;"
-            + "      } else if (window.ytPlayer && window.ytPlayer.currentTrack) {"
-            + "        trackTitle = window.ytPlayer.currentTrack.title || '';"
-            + "        trackArtist = window.ytPlayer.currentTrack.artist || '';"
-            + "        trackCover = window.ytPlayer.currentTrack.thumbnail || '';"
-            + "        if (window.ytPlayer.isPlaying) isPlaying = true;"
-            + "      }"
+            + "      var info = getPlaybackInfo();"
             + "      if (window.ytPlayer && window.ytPlayer.player && typeof window.ytPlayer.player.getPlayerState === 'function') {"
-            + "        var ytState = window.ytPlayer.player.getPlayerState();"
-            + "        if (ytState === 1) {"
-            + "          isPlaying = true;"
-            + "        } else if (ytState === 2 && isPlaying && !window.__userRequestedPause) {"
+            + "        var state = window.ytPlayer.player.getPlayerState();"
+            + "        if (state === 2 && info.isPlaying && !window.__userRequestedPause) {"
             + "          window.ytPlayer.player.playVideo();"
             + "        }"
             + "      }"
-            + "      if (window.AuraSoundAndroid && trackTitle) {"
-            + "        if (window.__lastSyncedTitle !== trackTitle || window.__lastSyncedState !== isPlaying) {"
-            + "          window.__lastSyncedTitle = trackTitle;"
-            + "          window.__lastSyncedState = isPlaying;"
-            + "          window.AuraSoundAndroid.updatePlaybackState(trackTitle, trackArtist, trackCover, isPlaying);"
+            + "      if (window.AuraSoundAndroid && info.title) {"
+            + "        var titleChanged = (window.__lastSyncedTitle !== info.title);"
+            + "        var stateChanged = (window.__lastSyncedState !== info.isPlaying);"
+            + "        var durChanged = (window.__lastSyncedDuration !== info.durMs && info.durMs > 0);"
+            + "        if (titleChanged || stateChanged || durChanged) {"
+            + "          window.__lastSyncedTitle = info.title;"
+            + "          window.__lastSyncedState = info.isPlaying;"
+            + "          window.__lastSyncedDuration = info.durMs;"
+            + "          window.AuraSoundAndroid.updatePlaybackStateWithProgress(info.title, info.artist, info.cover, info.isPlaying, info.posMs, info.durMs);"
+            + "        } else if (info.isPlaying) {"
+            + "          if (!window.__lastPosTick || Date.now() - window.__lastPosTick > 3000) {"
+            + "            window.__lastPosTick = Date.now();"
+            + "            window.AuraSoundAndroid.updatePlaybackProgress(info.posMs, info.durMs, true);"
+            + "          }"
             + "        }"
             + "      }"
             + "    } catch(err) {}"
@@ -774,7 +873,7 @@ public class MainActivity extends Activity {
         webView.evaluateJavascript(js, null);
     }
 
-    public void updateMediaNotification(String title, String artist, String coverUrl, boolean isPlaying) {
+    public void updateMediaNotification(String title, String artist, String coverUrl, boolean isPlaying, long positionMs, long durationMs) {
         runOnUiThread(() -> {
             try {
                 Intent intent = new Intent(this, MediaPlaybackService.class);
@@ -783,12 +882,29 @@ public class MainActivity extends Activity {
                 intent.putExtra("artist", artist);
                 intent.putExtra("coverUrl", coverUrl);
                 intent.putExtra("isPlaying", isPlaying);
+                intent.putExtra("positionMs", positionMs);
+                intent.putExtra("durationMs", durationMs);
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(intent);
                 } else {
                     startService(intent);
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public void updateMediaProgress(long positionMs, long durationMs, boolean isPlaying) {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(this, MediaPlaybackService.class);
+                intent.setAction(MediaPlaybackService.ACTION_PROGRESS);
+                intent.putExtra("positionMs", positionMs);
+                intent.putExtra("durationMs", durationMs);
+                intent.putExtra("isPlaying", isPlaying);
+                startService(intent);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -810,6 +926,23 @@ public class MainActivity extends Activity {
         if (instance != null) {
             instance.runOnUiThread(() -> instance.handleMediaAction(action));
         }
+    }
+
+    public static void sendSeekAction(long positionMs) {
+        if (instance != null) {
+            instance.runOnUiThread(() -> instance.handleSeekAction(positionMs));
+        }
+    }
+
+    public void handleSeekAction(long positionMs) {
+        if (webView == null) return;
+        double sec = positionMs / 1000.0;
+        String js = "(function() {"
+            + "var s = " + sec + ";"
+            + "if (window.ytPlayer && window.ytPlayer.seekTo) { window.ytPlayer.seekTo(s); }"
+            + "if (window.app && window.app.nativeAudio) { window.app.nativeAudio.currentTime = s; }"
+            + "})();";
+        webView.evaluateJavascript(js, null);
     }
 
     public void handleMediaAction(String action) {

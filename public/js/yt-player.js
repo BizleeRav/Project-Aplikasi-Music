@@ -330,6 +330,12 @@ class YTPlayerManager {
             if (this.onProgressCallback) {
               this.onProgressCallback(current, duration);
             }
+            if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackProgress === 'function') {
+              if (!this._lastAndroidSyncTime || Date.now() - this._lastAndroidSyncTime > 2500) {
+                this._lastAndroidSyncTime = Date.now();
+                window.AuraSoundAndroid.updatePlaybackProgress(Math.round(current * 1000), Math.round(duration * 1000), true);
+              }
+            }
           }
         } catch (e) {}
       }
@@ -357,13 +363,26 @@ class YTPlayerManager {
       });
     }
 
-    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
-      window.AuraSoundAndroid.updatePlaybackState(
-        track.title || 'AuraSound Music',
-        track.artist || 'AuraSound',
-        track.thumbnail || '',
-        Boolean(this.isPlaying)
-      );
+    if (window.AuraSoundAndroid) {
+      const dur = (this.player && this.player.getDuration) ? (this.player.getDuration() || 0) : 0;
+      const cur = this.getCurrentTime() || 0;
+      if (typeof window.AuraSoundAndroid.updatePlaybackStateWithProgress === 'function') {
+        window.AuraSoundAndroid.updatePlaybackStateWithProgress(
+          track.title || 'AuraSound Music',
+          track.artist || 'AuraSound',
+          track.thumbnail || '',
+          Boolean(this.isPlaying),
+          Math.round(cur * 1000),
+          Math.round(dur * 1000)
+        );
+      } else if (typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
+        window.AuraSoundAndroid.updatePlaybackState(
+          track.title || 'AuraSound Music',
+          track.artist || 'AuraSound',
+          track.thumbnail || '',
+          Boolean(this.isPlaying)
+        );
+      }
     }
   }
 }

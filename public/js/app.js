@@ -1297,6 +1297,12 @@ class App {
         const cur = this.nativeAudio.currentTime;
         const dur = this.nativeAudio.duration || 1;
         this.updateProgress(cur, dur);
+        if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackProgress === 'function') {
+          if (!this._lastAndroidAudioSync || Date.now() - this._lastAndroidAudioSync > 2500) {
+            this._lastAndroidAudioSync = Date.now();
+            window.AuraSoundAndroid.updatePlaybackProgress(Math.round(cur * 1000), Math.round(dur * 1000), !this.nativeAudio.paused);
+          }
+        }
         if (!this._lastStateSaveTime || Date.now() - this._lastStateSaveTime > 3000) {
           this._lastStateSaveTime = Date.now();
           this.persistPlaybackState();
@@ -7910,13 +7916,26 @@ class App {
       navigator.mediaSession.setActionHandler('nexttrack', () => this.playNext());
     }
 
-    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
-      window.AuraSoundAndroid.updatePlaybackState(
-        track.title || 'AuraSound Music',
-        track.artist || 'AuraSound',
-        track.thumbnail || '',
-        Boolean(this.isPlaying)
-      );
+    if (window.AuraSoundAndroid) {
+      const cur = (this.currentAudioMode === 'native' && this.nativeAudio) ? this.nativeAudio.currentTime : (window.ytPlayer ? window.ytPlayer.getCurrentTime() : 0);
+      const dur = (this.currentAudioMode === 'native' && this.nativeAudio) ? this.nativeAudio.duration : (window.ytPlayer && window.ytPlayer.player && window.ytPlayer.player.getDuration ? window.ytPlayer.player.getDuration() : 0);
+      if (typeof window.AuraSoundAndroid.updatePlaybackStateWithProgress === 'function') {
+        window.AuraSoundAndroid.updatePlaybackStateWithProgress(
+          track.title || 'AuraSound Music',
+          track.artist || 'AuraSound',
+          track.thumbnail || '',
+          Boolean(this.isPlaying),
+          Math.round((cur || 0) * 1000),
+          Math.round((dur || 0) * 1000)
+        );
+      } else if (typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
+        window.AuraSoundAndroid.updatePlaybackState(
+          track.title || 'AuraSound Music',
+          track.artist || 'AuraSound',
+          track.thumbnail || '',
+          Boolean(this.isPlaying)
+        );
+      }
     }
   }
 
