@@ -2481,8 +2481,8 @@ class App {
     const trackId = track.id || track.videoId || track.title;
     this.currentLyricsTrackId = trackId;
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v69)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v69' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v73)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v73' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2584,7 +2584,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v69';
+        track._lyricsEngineVersion = 'v73';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
@@ -2997,8 +2997,8 @@ class App {
   updateActiveLyricsLine(currentSecs) {
     if (!this.cinemaLyricsStream) return;
 
-    // Exact on-beat audio synchronization (+0.05s acoustic driver compensation)
-    const DEFAULT_ACOUSTIC_LEAD_SEC = 0.05;
+    // Exact on-beat audio synchronization (0.00s zero-latency driver matching Better Lyrics standard)
+    const DEFAULT_ACOUSTIC_LEAD_SEC = 0.00;
     let syncTime = (typeof currentSecs === 'number') ? currentSecs : (this.getCurrentPlaybackTime() || 0);
     syncTime = Math.max(0, syncTime + DEFAULT_ACOUSTIC_LEAD_SEC);
 

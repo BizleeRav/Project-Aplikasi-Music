@@ -3943,38 +3943,42 @@ app.get('/api/lyrics', async (req, res) => {
   const isMvExplicit = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
   const isMv = isMvExplicit || hasKnownMvOffset;
 
-  // 2. Resolve intro offset: Check if resolved to clean studio track first, then KNOWN_MV_OFFSETS, then SponsorBlock
+  // 2. Resolve intro offset: Check KNOWN_MV_OFFSETS first, then SponsorBlock, then studio track
   let introOffsetSec = 0;
   let effectiveSongDuration = duration;
 
-  // If track was resolved or can be resolved to a clean studio track, audio has 0s intro!
+  // Resolve studio track metadata (gives us the true studio duration for TTML lookup)
   const preferStudio = req.query.preferStudio !== 'false';
   let matchedStudioTrack = videoId ? studioTrackCache.get(videoId) : null;
   if (!matchedStudioTrack && preferStudio && isMv) {
     matchedStudioTrack = await resolveStudioTrack(videoId, rawTitle, rawArtist);
   }
 
-  if (matchedStudioTrack) {
-    introOffsetSec = 0; // Pure studio track always has 0ms video intro
-    if (matchedStudioTrack.seconds > 0) {
-      effectiveSongDuration = matchedStudioTrack.seconds;
-    }
-  } else if (hasKnownMvOffset) {
+  if (matchedStudioTrack && matchedStudioTrack.seconds > 0) {
+    effectiveSongDuration = matchedStudioTrack.seconds;
+  }
+
+  // Determine the exact video intro delay based on what the client is actually playing:
+  // If the videoId is in KNOWN_MV_OFFSETS or has a SponsorBlock intro, THAT intro offset MUST be applied
+  // to shift the studio TTML so it matches the video and audio being played!
+  if (hasKnownMvOffset) {
     introOffsetSec = KNOWN_MV_OFFSETS[videoId];
-  } else if (videoId && duration > 20) {
+  } else if (videoId && (isMv || (matchedStudioTrack && videoId !== matchedStudioTrack.id))) {
     try {
       const segs = await resolveDynamicAudioSegments(videoId, duration);
       if (segs && segs.introOffsetSec > 0) {
         introOffsetSec = segs.introOffsetSec;
       }
-      if (segs && segs.effectiveSongDuration > 0) {
-        effectiveSongDuration = segs.effectiveSongDuration;
-      }
     } catch (e) {}
+  } else if (matchedStudioTrack && videoId === matchedStudioTrack.id) {
+    // Client is playing the pure audio studio track directly -> 0s intro offset
+    introOffsetSec = 0;
   }
+
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset });
 
-  const cacheKey = `v69___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
+  const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
+  const cacheKey = `v73___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
