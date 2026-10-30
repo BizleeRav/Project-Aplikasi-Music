@@ -1480,18 +1480,6 @@
               <span>Sing-Along & Dynamic Lyrics</span>
             </div>
             <div class="cinema-lyrics-header-right">
-              <!-- Sync Calibration Nudge Controls -->
-              <div class="cinema-sync-controls" id="cinema-sync-controls" title="Kalibrasi Offset Lirik (jika audio video sedikit mendahului/tertinggal)">
-                <button type="button" id="btn-sync-offset-minus" class="cinema-sync-btn" title="Mundurkan lirik 0.1 detik">-0.1s</button>
-                <button type="button" id="btn-sync-offset-reset" class="cinema-sync-btn offset-val" title="Klik untuk reset offset ke 0.0s">0.0s</button>
-                <button type="button" id="btn-sync-offset-plus" class="cinema-sync-btn" title="Majukan lirik 0.1 detik">+0.1s</button>
-              </div>
-
-              <!-- Force Refresh Button -->
-              <button type="button" id="btn-lyrics-force-refresh" class="cinema-refresh-btn" title="Muat ulang lirik (abaikan cache server)">
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-              </button>
-
               <!-- Single Romaji Toggle Chip (Better Lyrics Style) -->
               <button id="btn-toggle-romaji" class="cinema-romaji-chip active" style="display: none;" title="Tampilkan / Sembunyikan Fonetik Romaji/Pinyin">
                 <span class="romaji-chip-icon">文A</span>
@@ -1528,6 +1516,15 @@
               <span class="dot d1"></span>
               <span class="dot d2"></span>
               <span class="dot d3"></span>
+            </div>
+            <!-- Live Timing Calibration Controller -->
+            <div class="cinema-lyrics-offset-dock" title="Kalibrasi Timing 1:1 (Shortcut keyboard: [ dan ])">
+              <span class="offset-label">⏱ SYNC:</span>
+              <button id="btn-lyrics-offset-minus" class="cinema-offset-btn" title="Mundurkan lirik 0.05s (Shortcut: [ )">−0.05s</button>
+              <button id="btn-lyrics-offset-val" class="cinema-offset-btn offset-pill" title="Klik untuk reset ke 0.00s (Shortcut: \ )">
+                <span id="cinema-lyrics-offset-val">0.00s (1:1 Master)</span>
+              </button>
+              <button id="btn-lyrics-offset-plus" class="cinema-offset-btn" title="Majukan lirik 0.05s (Shortcut: ] )">+0.05s</button>
             </div>
             <span class="lyrics-hint-text">💡 Klik baris untuk lompat</span>
           </div>

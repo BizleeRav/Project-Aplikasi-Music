@@ -4015,17 +4015,22 @@ app.get('/api/lyrics', async (req, res) => {
 
   if (matchedStudioTrack && matchedStudioTrack.seconds > 0) {
     effectiveSongDuration = matchedStudioTrack.seconds;
-    if (matchedStudioTrack.id === videoId) {
+    if (preferStudio) {
+      // When preferStudio is enabled, /api/stream-audio plays the clean master studio track directly (starts at 00:00).
+      // Therefore, the playing audio has 0s intro offset and non-music video segments must NOT be applied to lyrics!
+      introOffsetSec = 0;
+      nonMusicSegments = [];
+    } else if (matchedStudioTrack.id === videoId) {
       // Client is playing the pure audio studio track directly -> 0s intro offset
       introOffsetSec = 0;
       nonMusicSegments = [];
     }
   }
 
-  console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length });
+  console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v74___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v75___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -4048,8 +4053,10 @@ app.get('/api/lyrics', async (req, res) => {
     const isKorean = hasHangul || (!hasKana && /newjeans|bts|blackpink|aespa|twice|le\s*sserafim|stray\s*kids|ive|seventeen|itzy|nmixx|gidle|\(g\)i-dle|red\s*velvet|exo|iu\b|taeyeon|jungkook|illit|babymonster|riize|tws|boynextdoor|zerobaseone/i.test(`${title} ${artist}`));
     const isChinese = !isJapanese && hasHanzi;
 
-    // Step 0: Better Lyrics Engine (Apple Music Syllable-Level TTML Master Catalog) - using effectiveSongDuration!
-    syncedResult = await searchBetterLyrics(title, artist, effectiveSongDuration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv, nativeArtist);
+    // Step 0: Better Lyrics Engine (Apple Music Syllable-Level TTML Master Catalog) - using effectiveSongDuration & studio metadata!
+    const queryTitle = (preferStudio && matchedStudioTrack?.title) ? matchedStudioTrack.title : title;
+    const queryArtist = (preferStudio && matchedStudioTrack?.artist) ? matchedStudioTrack.artist : artist;
+    syncedResult = await searchBetterLyrics(queryTitle, queryArtist, effectiveSongDuration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv, nativeArtist);
 
     // Step 1: For Korean songs, try LRCLib exact match using effectiveSongDuration
     if (!syncedResult && isKorean) {

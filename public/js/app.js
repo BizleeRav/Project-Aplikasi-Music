@@ -1614,15 +1614,15 @@ class App {
       this.btnToggleRomaji.addEventListener('click', () => this.toggleRomaji());
     }
 
-    // Manual Lyrics Sync Offset Controls (+/- 0.1s & Refresh)
+    // Manual Lyrics Sync Offset Controls (+/- 0.05s & Reset)
     if (this.btnLyricsOffsetMinus) {
-      this.btnLyricsOffsetMinus.addEventListener('click', () => this.adjustLyricsOffset(-0.1));
+      this.btnLyricsOffsetMinus.addEventListener('click', () => this.adjustCurrentTrackOffset(-0.05));
     }
     if (this.btnLyricsOffsetPlus) {
-      this.btnLyricsOffsetPlus.addEventListener('click', () => this.adjustLyricsOffset(0.1));
+      this.btnLyricsOffsetPlus.addEventListener('click', () => this.adjustCurrentTrackOffset(0.05));
     }
     if (this.btnLyricsOffsetVal) {
-      this.btnLyricsOffsetVal.addEventListener('click', () => this.resetLyricsOffset());
+      this.btnLyricsOffsetVal.addEventListener('click', () => this.resetCurrentTrackOffset());
     }
     if (this.btnLyricsRefresh) {
       this.btnLyricsRefresh.addEventListener('click', () => {
@@ -1733,8 +1733,18 @@ class App {
       const activeEl = document.activeElement;
       if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) return;
 
-      if (e.key === 'Escape' && this.cinemaModal && this.cinemaModal.classList.contains('active')) {
-        this.closeStudioCinema();
+      if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
+        if (e.key === 'Escape') {
+          this.closeStudioCinema();
+        } else if (e.key === '[' || e.key === '{') {
+          const delta = e.shiftKey ? -0.20 : -0.05;
+          this.adjustCurrentTrackOffset(delta);
+        } else if (e.key === ']' || e.key === '}') {
+          const delta = e.shiftKey ? 0.20 : 0.05;
+          this.adjustCurrentTrackOffset(delta);
+        } else if (e.key === '\\' || e.key === '|') {
+          this.resetCurrentTrackOffset();
+        }
       }
     });
 
@@ -2582,7 +2592,8 @@ class App {
         artist: track.artist || '',
         duration: actualDuration > 0 ? String(actualDuration) : '',
         videoId: videoId,
-        source: track.source || (isTopicTrack ? 'ytmusic' : '')
+        source: track.source || (isTopicTrack ? 'ytmusic' : ''),
+        preferStudio: (this.currentAudioMode !== 'yt') ? 'true' : 'false'
       });
       if (forceRefresh) {
         queryParams.set('nocache', '1');
@@ -2836,6 +2847,7 @@ class App {
     if (panel) {
       panel.classList.toggle('hide-romaji', !this.isRomajiEnabled);
     }
+    this.updateLyricsOffsetUI();
 
     const loadingBox = document.getElementById('cinema-lyrics-loading');
     const emptyBox = document.getElementById('cinema-lyrics-empty');
@@ -3022,10 +3034,11 @@ class App {
   updateActiveLyricsLine(currentSecs) {
     if (!this.cinemaLyricsStream) return;
 
-    // Exact on-beat audio synchronization (0.00s zero-latency driver matching Better Lyrics standard)
-    const DEFAULT_ACOUSTIC_LEAD_SEC = 0.00;
+    // High-Precision 1:1 Audio Synchronization with Stored Track Offset & Acoustic Driver Compensation
+    const trackOffset = this.getCurrentTrackOffset() || 0;
+    const ACOUSTIC_LEAD_SEC = 0.04; // 40ms acoustic buffer compensation for Web Audio DSP
     let syncTime = (typeof currentSecs === 'number') ? currentSecs : (this.getCurrentPlaybackTime() || 0);
-    syncTime = Math.max(0, syncTime + DEFAULT_ACOUSTIC_LEAD_SEC);
+    syncTime = Math.max(0, syncTime + trackOffset + ACOUSTIC_LEAD_SEC);
 
     if (!this.currentLyricsData || this.currentLyricsData.length === 0) {
       if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
@@ -3214,12 +3227,14 @@ class App {
               }
             }
 
-            // Active Word: hitung persentase warna secara langsung tanpa pembulatan kasar
+            // Active Word: hitung persentase warna secara halus dengan lead anticipation Better Lyrics
             const activeEl = words[activeWordIdx];
             const aBegin = Number(activeEl.dataset.begin || activeEl.getAttribute('data-begin')) || 0;
             const aEnd = Number(activeEl.dataset.end || activeEl.getAttribute('data-end')) || (aBegin + 0.05);
             const aDur = Math.max(0.001, aEnd - aBegin);
-            const rawPct = ((syncTime - aBegin) / aDur) * 100;
+            // Better Lyrics Anticipatory Lead: ~10% lead (max 80ms) so color sweep leads into vowel articulation
+            const leadSec = Math.min(0.08, aDur * 0.10);
+            const rawPct = ((syncTime + leadSec - aBegin) / aDur) * 100;
             const pct = Math.min(100, Math.max(0, rawPct));
 
             activeEl.style.setProperty('--fill-pct', `${pct}%`);
