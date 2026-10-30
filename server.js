@@ -1720,11 +1720,7 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
   }
   const cached = sponsorBlockCache.get(videoId);
   if (cached) {
-    const vDur = cached.detectedVideoDuration || videoDuration || 0;
-    const effectiveSongDuration = vDur > 0
-      ? Math.max(0, vDur - cached.totalNonMusicDuration)
-      : cached.effectiveSongDuration;
-    return { ...cached, effectiveSongDuration };
+    return cached;
   }
 
   let introOffsetSec = 0;
@@ -1734,26 +1730,35 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
   try {
     const url = `https://sponsor.ajay.app/api/skipSegments?videoID=${encodeURIComponent(videoId)}&category=music_offtopic`;
     const res = await axios.get(url, {
-      timeout: 2000,
+      timeout: 1800,
       headers: { 'User-Agent': 'AuraSound/4.13 (sponsorblock-client)' }
     });
     const segments = Array.isArray(res.data) ? res.data : [];
     for (const item of segments) {
-      if (item.videoDuration && Number(item.videoDuration) > 0) {
-        detectedVideoDuration = Number(item.videoDuration);
+      const itemVDur = Number(item.videoDuration) || 0;
+      // Guard: If caller provided actual YouTube video duration, reject segments from a completely different cut/reupload
+      if (videoDuration > 0 && itemVDur > 0 && Math.abs(itemVDur - videoDuration) > 10) {
+        continue;
       }
+      if (detectedVideoDuration <= 0 && itemVDur > 0) {
+        detectedVideoDuration = itemVDur;
+      }
+
+      // Ignore downvoted segments
+      if (item.votes !== undefined && Number(item.votes) < 0) continue;
+
       const seg = item.segment;
       if (Array.isArray(seg) && seg.length >= 2) {
         const segStart = Number(seg[0]) || 0;
         const segEnd = Number(seg[1]) || 0;
         const dur = Math.max(0, segEnd - segStart);
-        totalNonMusicDuration += dur;
 
         // Intro offset: segment starting at beginning of video (<= 1.5s) and lasting between 2.0s and 120s
         if (segStart <= 1.5 && segEnd < 120) {
           const isVerified = (item.locked === 1) || (Number(item.votes) >= 1) || (segEnd >= 4.0);
           if (segEnd >= 2.0 && isVerified) {
             introOffsetSec = Math.max(introOffsetSec, segEnd);
+            totalNonMusicDuration += dur;
           }
         }
       }
@@ -1762,15 +1767,18 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
     // 404 or timeout means no non-music segments found (normal for pure studio tracks)
   }
 
-  const baseDur = detectedVideoDuration > 0 ? detectedVideoDuration : videoDuration;
+  const baseDur = videoDuration > 0 ? videoDuration : detectedVideoDuration;
+  // Intro offset is the primary non-music segment that changes song alignment with audio stream.
+  // We do NOT subtract arbitrary middle/outro cuts from effectiveSongDuration because studio albums on Apple Music
+  // match the full song length, not cut versions.
   const effectiveSongDuration = baseDur > 0
-    ? Math.max(0, baseDur - totalNonMusicDuration)
+    ? Math.max(0, baseDur - introOffsetSec)
     : 0;
 
   const result = {
     introOffsetSec: parseFloat(introOffsetSec.toFixed(3)),
     totalNonMusicDuration: parseFloat(totalNonMusicDuration.toFixed(3)),
-    detectedVideoDuration: parseFloat(detectedVideoDuration.toFixed(3)),
+    detectedVideoDuration: parseFloat(baseDur.toFixed(3)),
     effectiveSongDuration: parseFloat(effectiveSongDuration.toFixed(3))
   };
 
@@ -2232,12 +2240,13 @@ async function searchNetEaseLyrics(title, artist, targetDuration, nativeTitle, a
     title
   ].filter(Boolean);
 
-  for (const q of queries) {
+  const uniqueQueries = Array.from(new Set(queries)).slice(0, 3);
+  for (const q of uniqueQueries) {
     try {
       const neSearchUrl = `https://music.163.com/api/search/get?s=${encodeURIComponent(q)}&type=1&limit=8`;
       const neRes = await axios.get(neSearchUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-        timeout: 3500
+        timeout: 2000
       });
       const songs = neRes.data?.result?.songs || [];
       if (!songs.length) continue;
@@ -2424,10 +2433,11 @@ async function searchKugouLyrics(title, artist, targetDuration, nativeTitle, art
     title
   ].filter(Boolean);
 
-  for (const q of queries) {
+  const uniqueQueries = Array.from(new Set(queries)).slice(0, 3);
+  for (const q of uniqueQueries) {
     try {
       const kgSearchUrl = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${encodeURIComponent(q)}&page=1&pagesize=8`;
-      const kgRes = await axios.get(kgSearchUrl, { timeout: 3500 });
+      const kgRes = await axios.get(kgSearchUrl, { timeout: 2000 });
       const songs = kgRes.data?.data?.info || [];
       if (!songs.length) continue;
 
@@ -2559,12 +2569,13 @@ async function searchQQMusicLyrics(title, artist, targetDuration, nativeTitle, a
     title
   ].filter(Boolean);
 
-  for (const q of queries) {
+  const uniqueQueries = Array.from(new Set(queries)).slice(0, 3);
+  for (const q of uniqueQueries) {
     try {
       const qqSearchUrl = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=8&w=${encodeURIComponent(q)}&format=json`;
       const qqRes = await axios.get(qqSearchUrl, {
         headers: { 'Referer': 'https://y.qq.com', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-        timeout: 3500
+        timeout: 2000
       });
       const songList = qqRes.data?.data?.song?.list || [];
       if (!songList.length) continue;
@@ -3165,6 +3176,23 @@ function parseAppleMusicTTML(ttmlString) {
   return items.length > 0 ? { leadingSilence, items, lang: detectedTranslitLang } : null;
 }
 
+function computeTitleSimilarity(s1, s2) {
+  if (!s1 || !s2) return 0;
+  if (s1 === s2) return 1.0;
+  if (s1.includes(s2) || s2.includes(s1)) return 1.0;
+  if (s1.length < 3 || s2.length < 3) return 0;
+  const getBigrams = (str) => {
+    const bg = new Set();
+    for (let i = 0; i < str.length - 1; i++) bg.add(str.substring(i, i + 2));
+    return bg;
+  };
+  const b1 = getBigrams(s1);
+  const b2 = getBigrams(s2);
+  let inter = 0;
+  for (const b of b1) if (b2.has(b)) inter++;
+  return (2.0 * inter) / (b1.size + b2.size);
+}
+
 async function searchBetterLyrics(title, artist, targetDuration, videoId, artistLatin, artistHangul, titleLatin, nativeTitle, isMv, nativeArtist) {
   const cleanTitle = (title || '').replace(/['"‘’“”]/g, '').trim();
   const cleanArtist = (artist || '').replace(/['"‘’“”]/g, '').replace(/\([0-9]+\)/g, '').trim();
@@ -3217,6 +3245,12 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   // Strip apostrophes and punctuation for English/Latin tracks (e.g. "I CAN'T STOP ME" -> "I CANT STOP ME")
   const noApos = cleanTitle.replace(/['"‘’“”]/g, '').trim();
   if (noApos) titleVariants.add(noApos);
+
+  if (/hyur[ui]rapappa/i.test(cleanTitle)) {
+    titleVariants.add('HYURURIRAPAPPA');
+    titleVariants.add('ひゅるりらぱっぱ');
+    titleVariants.add('ひゅるりらぱっぱ - HYURURIRAPAPPA');
+  }
 
   // 2. Build Smart Artist Variants
   const artistVariants = new Set([cleanArtist]);
@@ -3438,11 +3472,17 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             score -= 500;
           }
 
-          // Title match
+          // Title match: direct includes or Bigram similarity >= 0.75
+          const hitLatin = (h.track_name || '').match(/[A-Za-z0-9]+/g)?.join('')?.toLowerCase() || '';
           const isTitleMatch = normHitTrack.includes(normCleanTitle) || normCleanTitle.includes(normHitTrack) ||
+            (hitLatin && computeTitleSimilarity(hitLatin, normCleanTitle) >= 0.75) ||
+            computeTitleSimilarity(normHitTrack, normCleanTitle) >= 0.75 ||
             Array.from(titleVariants).some(t => {
               const nt = normalizeForCompare(t);
-              return nt && (normHitTrack.includes(nt) || nt.includes(normHitTrack));
+              if (!nt) return false;
+              if (normHitTrack.includes(nt) || nt.includes(normHitTrack)) return true;
+              if (hitLatin && computeTitleSimilarity(hitLatin, nt) >= 0.75) return true;
+              return computeTitleSimilarity(normHitTrack, nt) >= 0.75;
             });
           if (isTitleMatch) {
             score += 200;
@@ -3542,10 +3582,17 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             const normHitTitle = normalizeForCompare(h.title || '');
             const normCleanTitle = normalizeForCompare(cleanTitle);
 
+            // Title match: direct includes or Bigram similarity >= 0.75
+            const hitLatin = (h.title || '').match(/[A-Za-z0-9]+/g)?.join('')?.toLowerCase() || '';
             const isTitleMatch = normHitTitle.includes(normCleanTitle) || normCleanTitle.includes(normHitTitle) ||
+              (hitLatin && computeTitleSimilarity(hitLatin, normCleanTitle) >= 0.75) ||
+              computeTitleSimilarity(normHitTitle, normCleanTitle) >= 0.75 ||
               Array.from(titleVariants).some(t => {
                 const nt = normalizeForCompare(t);
-                return nt && (normHitTitle.includes(nt) || nt.includes(normHitTitle));
+                if (!nt) return false;
+                if (normHitTitle.includes(nt) || nt.includes(normHitTitle)) return true;
+                if (hitLatin && computeTitleSimilarity(hitLatin, nt) >= 0.75) return true;
+                return computeTitleSimilarity(normHitTitle, nt) >= 0.75;
               });
 
             if (!isTitleMatch) return { hit: h, score: -1000 };
@@ -3855,7 +3902,7 @@ app.get('/api/lyrics', async (req, res) => {
   }
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset });
 
-  const cacheKey = `v63___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
+  const cacheKey = `v64___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
