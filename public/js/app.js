@@ -2469,8 +2469,8 @@ class App {
     this.currentLyricsTrackId = trackId;
     this.updateLyricsOffsetUI();
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v58)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v58' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v59)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v59' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2572,7 +2572,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v58';
+        track._lyricsEngineVersion = 'v59';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
@@ -2829,12 +2829,27 @@ class App {
 
       // Feed official Lyric[] format directly to Better Lyrics core
       this.braccatoLyricsEl.lyrics = finalBraccato;
-      if (this.braccatoLyricsEl.playing !== this.isPlaying) {
-        this.braccatoLyricsEl.playing = this.isPlaying;
+
+      const userOffset = this.getCurrentTrackOffset();
+      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', `${userOffset.toFixed(3)}s`);
+      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', `${userOffset.toFixed(3)}s`);
+
+      const isNative = (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local');
+      if (isNative && this.nativeAudio) {
+        // Direct native media binding: Better Lyrics automatically tracks native audio in 100% realtime
+        if (this.braccatoLyricsEl.source !== this.nativeAudio) {
+          this.braccatoLyricsEl.source = this.nativeAudio;
+        }
+      } else {
+        if (this.braccatoLyricsEl.source !== null) {
+          this.braccatoLyricsEl.source = null;
+        }
+        if (this.braccatoLyricsEl.playing !== this.isPlaying) {
+          this.braccatoLyricsEl.playing = this.isPlaying;
+        }
+        const curTime = this.getCurrentPlaybackTime();
+        this.braccatoLyricsEl.currentTime = Math.max(0, curTime + userOffset);
       }
-      const curTime = this.getCurrentPlaybackTime();
-      const AUDIO_LATENCY_COMPENSATION_SEC = 0.00;
-      this.braccatoLyricsEl.currentTime = Math.max(0, curTime + this.getCurrentTrackOffset() + AUDIO_LATENCY_COMPENSATION_SEC);
       return;
     }
 
@@ -3015,10 +3030,20 @@ class App {
       this.braccatoLyricsEl = document.getElementById('braccato-lyrics-view');
     }
     if (this.braccatoLyricsEl && this.braccatoLyricsEl.style.display !== 'none' && this.braccatoLyricsEl.lyrics && this.braccatoLyricsEl.lyrics.length > 0) {
-      if (this.braccatoLyricsEl.playing !== this.isPlaying) {
-        this.braccatoLyricsEl.playing = this.isPlaying;
+      const isNative = (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local');
+      if (isNative && this.nativeAudio) {
+        if (this.braccatoLyricsEl.source !== this.nativeAudio) {
+          this.braccatoLyricsEl.source = this.nativeAudio;
+        }
+      } else {
+        if (this.braccatoLyricsEl.source !== null) {
+          this.braccatoLyricsEl.source = null;
+        }
+        if (this.braccatoLyricsEl.playing !== this.isPlaying) {
+          this.braccatoLyricsEl.playing = this.isPlaying;
+        }
+        this.braccatoLyricsEl.currentTime = syncTime;
       }
-      this.braccatoLyricsEl.currentTime = syncTime;
       return;
     }
 
@@ -3296,12 +3321,16 @@ class App {
   }
 
   updateLyricsOffsetUI() {
+    const cur = this.getCurrentTrackOffset();
+    if (this.braccatoLyricsEl) {
+      this.braccatoLyricsEl.style.setProperty('--blyrics-richsync-timing-offset', `${cur.toFixed(3)}s`);
+      this.braccatoLyricsEl.style.setProperty('--blyrics-timing-offset', `${cur.toFixed(3)}s`);
+    }
     const el = document.getElementById('cinema-lyrics-offset-val');
     if (!el) return;
-    const cur = this.getCurrentTrackOffset();
     if (cur === 0) {
-      el.textContent = '0.00s (Default)';
-      el.style.color = '#94a3b8';
+      el.textContent = '0.00s (Auto Realtime)';
+      el.style.color = '#10b981';
     } else {
       const sign = cur > 0 ? '+' : '';
       el.textContent = `${sign}${cur.toFixed(2)}s`;
