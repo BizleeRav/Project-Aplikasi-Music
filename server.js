@@ -348,6 +348,15 @@ async function resolveStudioTrack(videoId, title, artist) {
       .trim();
     let cleanArtist = (artist || '').replace(/- topic\b/gi, '').trim();
 
+    // Strip record label publisher channel prefix (e.g. "STARSHIP and IVE" -> "IVE")
+    cleanArtist = cleanArtist.replace(/^(?:starship(?:tv)?|smtown|jyp(?:\s*ent(?:ertainment)?)?|yg(?:\s*ent(?:ertainment)?)?|hybe(?:\s*labels?)?|cube|stone\s*music|fnc|rbw|wakeone|1thek)\s*(?:and|&|\+|x)\s*/i, '').trim();
+
+    // If title has quoted track name like "IVE 아이브 'LOVE DIVE'", extract the inner track title
+    const quoteTitle = cleanTitle.match(/['"“‘「『【《]([^'"”’」』】》]+)['"”’」』】》]/);
+    if (quoteTitle && quoteTitle[1].length >= 2 && !/^(?:official|mv|audio|video|hd|4k)$/i.test(quoteTitle[1])) {
+      cleanTitle = quoteTitle[1].trim();
+    }
+
     // Solo member alias
     if (/^solo$/i.test(cleanTitle) && /blackpink/i.test(cleanArtist)) {
       cleanArtist = 'JENNIE';
@@ -362,8 +371,11 @@ async function resolveStudioTrack(videoId, title, artist) {
     if (items.length > 0) {
       const normQ = normalizeForCompare(cleanTitle);
       const match = items.find(item => {
-        const t = normalizeForCompare(item.title || '');
-        return t.includes(normQ) || normQ.includes(t);
+        const itemTitle = item.title || '';
+        // Disqualify version mismatches (e.g. Japanese ver / English ver when original was requested)
+        if (applyVersionMismatchPenalty(100, itemTitle, cleanTitle) <= 0) return false;
+        const t = normalizeForCompare(itemTitle);
+        return t === normQ || t.includes(normQ) || normQ.includes(t);
       }) || items[0];
 
       if (match && match.id) {
@@ -1727,11 +1739,29 @@ const MAX_LYRICS_CACHE = 500;
 function applyVersionMismatchPenalty(score, candidateTitle, targetTitle) {
   const cTitle = (candidateTitle || '').toLowerCase();
   const tTitle = (targetTitle || '').toLowerCase();
+
+  // Strict foreign language version disqualification (e.g. Japanese ver vs Korean original)
+  const langVersionRegexes = [
+    /\b(?:japanese|jp)\s*(?:ver|version)?\b/i,
+    /-japanese\s*ver/i,
+    /\b(?:english|en|eng)\s*(?:ver|version)?\b/i,
+    /-english\s*ver/i,
+    /\b(?:korean|kr|kor)\s*(?:ver|version)?\b/i,
+    /-korean\s*ver/i,
+    /\b(?:chinese|zh|cn)\s*(?:ver|version)?\b/i,
+    /-chinese\s*ver/i,
+    /日本語(?:ver|version)?/i,
+    /\bspanish\s*(?:ver|version)?\b/i,
+    /\bthai\s*(?:ver|version)?\b/i
+  ];
+
+  for (const regex of langVersionRegexes) {
+    if (regex.test(cTitle) && !regex.test(tTitle)) {
+      return -9999;
+    }
+  }
+
   const mismatchKeywords = [
-    /\b(?:japanese|jp)\s*ver/i,
-    /\b(?:english|en|eng)\s*ver/i,
-    /\b(?:korean|kr|kor)\s*ver/i,
-    /\b(?:chinese|zh|cn)\s*ver/i,
     /\bday\s*ver/i,
     /\bnight\s*ver/i,
     /\bacoustic\b/i,
@@ -1745,7 +1775,7 @@ function applyVersionMismatchPenalty(score, candidateTitle, targetTitle) {
 
   for (const regex of mismatchKeywords) {
     if (regex.test(cTitle) && !regex.test(tTitle)) {
-      score -= 500;
+      score -= 1000;
     }
   }
   return score;
@@ -2043,6 +2073,12 @@ function isArtistFuzzyMatch(normA, normB) {
 function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   let title = (rawTitle || '').trim();
   let artist = (rawArtist || '').trim();
+
+  // Strip label + artist composite channel names e.g. "STARSHIP and IVE", "SMTOWN and aespa", "HYBE LABELS and BTS"
+  const labelPrefixMatch = artist.match(/^(?:starship(?:tv)?|smtown|jyp(?:\s*ent(?:ertainment)?)?|yg(?:\s*ent(?:ertainment)?)?|hybe(?:\s*labels?)?|cube|stone\s*music|fnc|rbw|wakeone|1thek)\s*(?:and|&|\+|x)\s*(.+)$/i);
+  if (labelPrefixMatch && labelPrefixMatch[1].trim().length >= 2) {
+    artist = labelPrefixMatch[1].trim();
+  }
 
   const isChannelPublisher = !artist || LABEL_CHANNEL_REGEX.test(artist) || /labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(artist);
 
@@ -3377,6 +3413,10 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   if (nativeArtist) artistVariants.add(nativeArtist);
 
   // Specific Group Aliases (Essential for Apple Music TTML / Better Lyrics Master Catalog)
+  if (/\bive\b/i.test(cleanArtist) || /아이브/.test(cleanArtist)) {
+    artistVariants.add('IVE');
+    artistVariants.add('아이브');
+  }
   if (/g\s*i-?dle|\(g\)i-?dle/i.test(cleanArtist)) {
     artistVariants.add('i-dle');
     artistVariants.add('(G)I-DLE');
@@ -3452,8 +3492,8 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   }
 
   // Split multiple artists (e.g. "ROSÉ & Bruno Mars" -> "ROSÉ", "Bruno Mars")
-  if (cleanArtist.includes('&') || cleanArtist.includes(',')) {
-    const parts = cleanArtist.split(/[&,]/).map(p => p.trim()).filter(p => p.length >= 2);
+  if (cleanArtist.includes('&') || cleanArtist.includes(',') || /\s+(?:and|feat\.?|ft\.?)\s+/i.test(cleanArtist)) {
+    const parts = cleanArtist.split(/[&,]|\s+(?:and|feat\.?|ft\.?)\s+/i).map(p => p.trim()).filter(p => p.length >= 2);
     for (const p of parts) artistVariants.add(p);
   }
 
@@ -3469,19 +3509,21 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         params: {
           term: itunesTerm,
           entity: 'song',
-          country: isJapanese ? 'JP' : (isKorean ? 'KR' : 'US'),
+          country: isJapanese ? 'JP' : 'US',
           limit: 3
         },
         timeout: 1500
       });
       const itHit = (itunesRes.data?.results || []).find(h => {
         if (!h || !h.trackName) return false;
+        // Strictly avoid bridging to foreign language re-recorded versions
+        if (applyVersionMismatchPenalty(100, h.trackName, cleanTitle) <= 0) return false;
         const hArtist = (h.artistName || '').toLowerCase();
         const qArtist = cleanArtist.toLowerCase();
-        const artistMatch = hArtist.includes(qArtist) || qArtist.includes(hArtist) || !cleanArtist;
+        const artistMatch = isArtistFuzzyMatch(normalizeForCompare(hArtist), normalizeForCompare(qArtist)) || !cleanArtist;
         const durMatch = !targetDuration || !h.trackTimeMillis || Math.abs(Math.round(h.trackTimeMillis / 1000) - targetDuration) <= 6;
         return artistMatch || durMatch;
-      }) || itunesRes.data?.results?.[0];
+      });
 
       if (itHit && itHit.trackName) {
         appleTrack = itHit.trackName;
@@ -3521,10 +3563,7 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
     return true;
   }).slice(0, 4);
 
-  let ttmlUrl = null;
-  let pickedDuration = targetDuration || 180;
-  let pickedTrackName = cleanTitle;
-  let pickedArtistName = cleanArtist;
+  let candidateTtmls = [];
   const isLiveExplicit = /\b(?:live|tour|dome|concert|in seoul|in osaka|the show|budokan|stadium|arena tour)\b/i.test(cleanTitle);
 
   // Run binimum queries concurrently with artist-validated scoring
@@ -3599,6 +3638,17 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
           }
           score += 200;
 
+          // Exact Title match bonus (e.g. "LOVE DIVE" vs "LOVE DIVE -Japanese ver.-")
+          if (normHitTrack === normCleanTitle) {
+            score += 350;
+          }
+
+          // Strict Version & Language Mismatch Check (Disqualifies Japanese/English dubs when original is requested)
+          score = applyVersionMismatchPenalty(score, `${h.track_name || ''} ${h.album_name || ''}`, cleanTitle);
+          if (score <= 0) {
+            return { hit: h, score: -9999, hDurSec: 0 };
+          }
+
           // Anti-Live / Concert filter: Never pick live concert tracks over studio originals!
           const isHitLive = /\b(?:live|tour|dome|concert|in seoul|in osaka|special final|the show|budokan|stadium|arena tour)\b/i.test(`${h.album_name || ''} ${h.track_name || ''}`);
           if (isHitLive && !isLiveExplicit) {
@@ -3631,19 +3681,21 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
         });
 
         scoredHits.sort((a, b) => b.score - a.score);
-        const best = scoredHits[0];
-        if (best && best.score > 0 && best.hit.lyricsUrl) {
-          ttmlUrl = best.hit.lyricsUrl;
-          pickedDuration = best.hDurSec || targetDuration || 180;
-          pickedTrackName = best.hit.track_name || cleanTitle;
-          pickedArtistName = best.hit.artist_name || cleanArtist;
+        const validHits = scoredHits.filter(s => s.score > 0 && s.hit.lyricsUrl).slice(0, 3);
+        for (const v of validHits) {
+          candidateTtmls.push({
+            url: v.hit.lyricsUrl,
+            duration: v.hDurSec || targetDuration || 180,
+            trackName: v.hit.track_name || cleanTitle,
+            artistName: v.hit.artist_name || cleanArtist
+          });
         }
       }
     } catch (e) {}
   }
 
   // 4. STAGE 2: Direct lrc.red Search Fallback (Zero Intermediate .json Hop)
-  if (!ttmlUrl) {
+  if (candidateTtmls.length === 0) {
     const lrcRedQueries = [];
     if (cleanArtist) lrcRedQueries.push(cleanArtist);
     for (const a of artistVariants) {
@@ -3721,6 +3773,15 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
             if (!isTitleMatch) return { hit: h, score: -9999 };
             score += 500;
 
+            // Exact Title Match bonus
+            if (normHitTitle === normCleanTitle) {
+              score += 350;
+            }
+
+            // Strict Version Mismatch Check
+            score = applyVersionMismatchPenalty(score, `${h.title || ''} ${h.album || ''}`, cleanTitle);
+            if (score <= 0) return { hit: h, score: -9999 };
+
             const isHitLive = /\b(?:live|tour|dome|concert|the show|budokan|special final)\b/i.test(`${h.album || ''} ${h.title || ''}`);
             if (isHitLive && !isLiveExplicit) return { hit: h, score: -9999 };
             else if (!isHitLive) score += 200;
@@ -3737,12 +3798,16 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
           }).filter(s => s.score > 0);
 
           scoredLrc.sort((a, b) => b.score - a.score);
-          const bestLrc = scoredLrc[0]?.hit;
-          if (bestLrc) {
-            ttmlUrl = `https://lrc.red/s/${bestLrc.isrc}.ttml`;
-            pickedDuration = bestLrc.duration || targetDuration;
-            pickedTrackName = bestLrc.title || cleanTitle;
-            pickedArtistName = bestLrc.artist || cleanArtist;
+          const validLrc = scoredLrc.slice(0, 3);
+          for (const v of validLrc) {
+            if (v.hit && v.hit.isrc) {
+              candidateTtmls.push({
+                url: `https://lrc.red/s/${v.hit.isrc}.ttml`,
+                duration: v.hit.duration || targetDuration,
+                trackName: v.hit.title || cleanTitle,
+                artistName: v.hit.artist || cleanArtist
+              });
+            }
           }
         }
       } catch (e) {}
@@ -3750,42 +3815,48 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   }
 
   // 5. Fetch & Parse Apple Music TTML with Millisecond Syllable Precision
-  if (ttmlUrl) {
+  for (const cand of candidateTtmls) {
     try {
-      const ttmlRes = await axios.get(ttmlUrl, {
+      const ttmlRes = await axios.get(cand.url, {
         headers: { 'User-Agent': 'AuraSound/4.14 (support@aurasound.app)' },
         timeout: 3200
       });
 
-      // Anti-English-Dub TTML Validation:
-      // If song is Asian, but TTML declares xml:lang="en" and contains zero Asian characters, reject!
+      // Anti-Language-Dub TTML Validation:
+      // If song is Korean, but TTML declares xml:lang="ja" or text contains Japanese Kana, reject!
+      const isJaDub = (isKorean && !isJapanese && !/\bjapanese|jp\b/i.test(cleanTitle)) &&
+                      (/xml:lang="ja"/i.test(ttmlRes.data) || /[\u3040-\u30ff]/.test(ttmlRes.data));
+      const isKoDub = (isJapanese && !isKorean && !/\bkorean|kor\b/i.test(cleanTitle)) &&
+                      (/xml:lang="ko"/i.test(ttmlRes.data) || /[\uac00-\ud7af]/.test(ttmlRes.data));
       const isEn = /xml:lang="en"/i.test(ttmlRes.data);
       const hasAsianChars = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(ttmlRes.data);
-      if (isAsian && isEn && !hasAsianChars) {
-        // Dub rejected
-      } else {
-        const parsed = await parseAppleMusicTTMLAsync(ttmlRes.data, pickedDuration || targetDuration);
-        if (parsed && parsed.items && parsed.items.length > 0) {
-          const syncedLrc = parsed.items.map(it => {
-            const m = Math.floor(it.time / 60);
-            const s = (it.time % 60).toFixed(2);
-            return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${it.text}`;
-          }).join('\n');
+      const isEnDub = isAsian && isEn && !hasAsianChars;
 
-          return {
-            id: `bl_${ttmlUrl.split('/').pop().replace(/\.ttml$/i, '')}`,
-            sourceName: 'Better Lyrics (Apple Music TTML)',
-            trackName: pickedTrackName,
-            artistName: pickedArtistName,
-            duration: Math.round(pickedDuration || targetDuration),
-            leadingSilence: parsed.leadingSilence || 0,
-            parsedLyrics: parsed.items,
-            braccatoLyrics: parsed.braccatoLyrics || null,
-            syncedLyrics: syncedLrc,
-            hasWordSync: parsed.items.some(it => it.words && it.words.length > 0),
-            detectedLang: parsed.lang
-          };
-        }
+      if (isJaDub || isKoDub || isEnDub) {
+        continue; // Dub rejected! Try next candidate!
+      }
+
+      const parsed = await parseAppleMusicTTMLAsync(ttmlRes.data, cand.duration || targetDuration);
+      if (parsed && parsed.items && parsed.items.length > 0) {
+        const syncedLrc = parsed.items.map(it => {
+          const m = Math.floor(it.time / 60);
+          const s = (it.time % 60).toFixed(2);
+          return `[${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}] ${it.text}`;
+        }).join('\n');
+
+        return {
+          id: `bl_${cand.url.split('/').pop().replace(/\.ttml$/i, '')}`,
+          sourceName: 'Better Lyrics (Apple Music TTML)',
+          trackName: cand.trackName,
+          artistName: cand.artistName,
+          duration: Math.round(cand.duration || targetDuration),
+          leadingSilence: parsed.leadingSilence || 0,
+          parsedLyrics: parsed.items,
+          braccatoLyrics: parsed.braccatoLyrics || null,
+          syncedLyrics: syncedLrc,
+          hasWordSync: parsed.items.some(it => it.words && it.words.length > 0),
+          detectedLang: parsed.lang
+        };
       }
     } catch (e) {
       console.warn('Better Lyrics TTML fetch/parse error:', e.message);
@@ -4068,7 +4139,7 @@ app.get('/api/lyrics', async (req, res) => {
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v77___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v78___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
