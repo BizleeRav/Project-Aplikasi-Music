@@ -2469,8 +2469,8 @@ class App {
     this.currentLyricsTrackId = trackId;
     this.updateLyricsOffsetUI();
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v56)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v56' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v57)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v57' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2572,7 +2572,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v56';
+        track._lyricsEngineVersion = 'v57';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
@@ -2889,7 +2889,8 @@ class App {
 
     if (isNative && this.nativeAudio) {
       rawTime = this.nativeAudio.currentTime || 0;
-      if (this.nativeAudio.seeking || this.nativeAudio.readyState < 2 || this.nativeAudio.paused) {
+      // Instruction 4: Jika audio.readyState < 3 atau audio.paused, freeze (sama dengan audio.currentTime)
+      if (this.nativeAudio.seeking || this.nativeAudio.readyState < 3 || this.nativeAudio.paused) {
         this._lastMediaTime = rawTime;
         this._clockAnchorPerf = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         this._lastEmittedPlaybackTime = rawTime;
@@ -3004,10 +3005,12 @@ class App {
   updateActiveLyricsLine(currentSecs) {
     if (!this.cinemaLyricsStream) return;
 
-    // Hardware buffer output latency lead (+120ms) ensures word highlighting triggers exactly on audio onset
-    const AUDIO_LATENCY_COMPENSATION_SEC = 0.00;
+    // Instruction 3: Kompensasi 120ms encoder delay YouTube agar vokal tidak tertinggal oleh lirik TTML
+    let syncTime = (typeof currentSecs === 'number') ? currentSecs : (this.getCurrentPlaybackTime() || 0);
+    syncTime -= 0.120; // Kompensasi 120ms encoder delay YouTube agar vokal tidak tertinggal oleh lirik TTML
+
     const userOffset = this.getCurrentTrackOffset();
-    const syncTime = Math.max(0, currentSecs + userOffset + AUDIO_LATENCY_COMPENSATION_SEC);
+    syncTime = Math.max(0, syncTime + userOffset);
 
     // Primary: Drive Better Lyrics Native Custom Element (<braccato-lyrics>)
     if (!this.braccatoLyricsEl) {
@@ -3132,63 +3135,109 @@ class App {
       });
     }
 
-    // Syllable-Level Continuous Gradient Sweep Animation (Apple Music & Better Lyrics standard)
+    // Syllable-Level Continuous Gradient Sweep Animation via Pure Binary Search
     if (activeIdx >= 0) {
       const activeLineEl = this.cinemaLyricsStream.querySelector(`.cinema-lyric-line[data-idx="${activeIdx}"]`);
       if (activeLineEl && activeLineEl.classList.contains('has-word-sync')) {
         const words = activeLineEl.querySelectorAll('.cinema-lyric-word, .lyric-word');
         const romajiWords = activeLineEl.querySelectorAll('.cinema-lyric-word-romaji, .romaji-word');
+        const count = words.length;
 
-        words.forEach((wordEl, wIdx) => {
-          const wBegin = parseFloat(wordEl.dataset.begin !== undefined ? wordEl.dataset.begin : wordEl.getAttribute('data-begin'));
-          const wEnd = parseFloat(wordEl.dataset.end !== undefined ? wordEl.dataset.end : wordEl.getAttribute('data-end'));
-          const dur = Math.max(0.04, wEnd - wBegin);
-          const pct = syncTime <= wBegin ? 0 : (syncTime >= wEnd ? 100 : ((syncTime - wBegin) / dur) * 100);
+        if (count > 0) {
+          // Binary Search murni untuk mencari activeWord berdasarkan syncTime
+          let low = 0;
+          let high = count - 1;
+          let activeWordIdx = -1;
 
-          wordEl.style.setProperty('--fill-pct', `${pct.toFixed(1)}%`);
-          if (pct > 0 && pct < 100) {
-            wordEl.classList.add('active');
-            wordEl.classList.remove('passed');
-          } else if (pct >= 100) {
-            wordEl.classList.remove('active');
-            wordEl.classList.add('passed');
-          } else {
-            wordEl.classList.remove('active', 'passed');
-          }
+          while (low <= high) {
+            const mid = (low + high) >> 1;
+            const wEl = words[mid];
+            const wBegin = Number(wEl.dataset.begin || wEl.getAttribute('data-begin')) || 0;
+            const wEnd = Number(wEl.dataset.end || wEl.getAttribute('data-end')) || (wBegin + 0.05);
 
-          // 1:1 Direct Link: highlight corresponding romaji word synchronously
-          if (romajiWords[wIdx]) {
-            const rw = romajiWords[wIdx];
-            rw.style.setProperty('--fill-pct', `${pct.toFixed(1)}%`);
-            if (pct > 0 && pct < 100) {
-              rw.classList.add('active');
-              rw.classList.remove('passed');
-            } else if (pct >= 100) {
-              rw.classList.remove('active');
-              rw.classList.add('passed');
+            if (syncTime >= wBegin && syncTime < wEnd) {
+              activeWordIdx = mid;
+              break;
+            } else if (syncTime < wBegin) {
+              high = mid - 1;
             } else {
-              rw.classList.remove('active', 'passed');
+              low = mid + 1;
             }
           }
-        });
 
-        // If romaji words count differs (fallback)
-        if (romajiWords.length > words.length) {
-          for (let rIdx = words.length; rIdx < romajiWords.length; rIdx++) {
-            const rw = romajiWords[rIdx];
-            const rBegin = parseFloat(rw.dataset.begin !== undefined ? rw.dataset.begin : rw.getAttribute('data-begin'));
-            const rEnd = parseFloat(rw.dataset.end !== undefined ? rw.dataset.end : rw.getAttribute('data-end'));
-            const dur = Math.max(0.04, rEnd - rBegin);
-            const pct = syncTime <= rBegin ? 0 : (syncTime >= rEnd ? 100 : ((syncTime - rBegin) / dur) * 100);
-            rw.style.setProperty('--fill-pct', `${pct.toFixed(1)}%`);
-            if (pct > 0 && pct < 100) {
-              rw.classList.add('active');
-              rw.classList.remove('passed');
-            } else if (pct >= 100) {
-              rw.classList.remove('active');
-              rw.classList.add('passed');
+          if (activeWordIdx !== -1) {
+            // Words before activeWord: fully passed (100%)
+            for (let i = 0; i < activeWordIdx; i++) {
+              words[i].style.setProperty('--fill-pct', '100%');
+              words[i].classList.add('passed');
+              words[i].classList.remove('active');
+              if (romajiWords[i]) {
+                romajiWords[i].style.setProperty('--fill-pct', '100%');
+                romajiWords[i].classList.add('passed');
+                romajiWords[i].classList.remove('active');
+              }
+            }
+
+            // Active Word: hitung persentase warna secara langsung tanpa pembulatan kasar
+            const activeEl = words[activeWordIdx];
+            const aBegin = Number(activeEl.dataset.begin || activeEl.getAttribute('data-begin')) || 0;
+            const aEnd = Number(activeEl.dataset.end || activeEl.getAttribute('data-end')) || (aBegin + 0.05);
+            const aDur = Math.max(0.001, aEnd - aBegin);
+            const rawPct = ((syncTime - aBegin) / aDur) * 100;
+            const pct = Math.min(100, Math.max(0, rawPct));
+
+            activeEl.style.setProperty('--fill-pct', `${pct}%`);
+            activeEl.classList.add('active');
+            activeEl.classList.remove('passed');
+
+            if (romajiWords[activeWordIdx]) {
+              romajiWords[activeWordIdx].style.setProperty('--fill-pct', `${pct}%`);
+              romajiWords[activeWordIdx].classList.add('active');
+              romajiWords[activeWordIdx].classList.remove('passed');
+            }
+
+            // Words after activeWord: unstarted (0%)
+            for (let i = activeWordIdx + 1; i < count; i++) {
+              words[i].style.setProperty('--fill-pct', '0%');
+              words[i].classList.remove('active', 'passed');
+              if (romajiWords[i]) {
+                romajiWords[i].style.setProperty('--fill-pct', '0%');
+                romajiWords[i].classList.remove('active', 'passed');
+              }
+            }
+          } else {
+            // Between words, before first word, or after last word
+            const firstBegin = Number(words[0].dataset.begin || words[0].getAttribute('data-begin')) || 0;
+            if (syncTime < firstBegin) {
+              for (let i = 0; i < count; i++) {
+                words[i].style.setProperty('--fill-pct', '0%');
+                words[i].classList.remove('active', 'passed');
+                if (romajiWords[i]) {
+                  romajiWords[i].style.setProperty('--fill-pct', '0%');
+                  romajiWords[i].classList.remove('active', 'passed');
+                }
+              }
             } else {
-              rw.classList.remove('active', 'passed');
+              for (let i = 0; i < count; i++) {
+                const wEnd = Number(words[i].dataset.end || words[i].getAttribute('data-end')) || 0;
+                if (syncTime >= wEnd) {
+                  words[i].style.setProperty('--fill-pct', '100%');
+                  words[i].classList.add('passed');
+                  words[i].classList.remove('active');
+                  if (romajiWords[i]) {
+                    romajiWords[i].style.setProperty('--fill-pct', '100%');
+                    romajiWords[i].classList.add('passed');
+                    romajiWords[i].classList.remove('active');
+                  }
+                } else {
+                  words[i].style.setProperty('--fill-pct', '0%');
+                  words[i].classList.remove('active', 'passed');
+                  if (romajiWords[i]) {
+                    romajiWords[i].style.setProperty('--fill-pct', '0%');
+                    romajiWords[i].classList.remove('active', 'passed');
+                  }
+                }
+              }
             }
           }
         }

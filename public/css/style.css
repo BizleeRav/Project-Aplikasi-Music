@@ -8173,10 +8173,27 @@ body.music-playing .cinema-turntable-arm {
   transition: none !important;
 }
 
+/* Latency-Free Syllable Animation: Strict Zero CSS Transition for JavaScript per-frame painting */
+.cinema-lyric-word,
+.cinema-lyric-word-romaji,
 .lyric-word,
-.romaji-word {
+.romaji-word,
+.cinema-lyric-line.active .cinema-lyric-word,
+.cinema-lyric-line.active .cinema-lyric-word.active,
+.cinema-lyric-line.active .cinema-lyric-word.passed,
+.cinema-lyric-line.active .cinema-lyric-word-romaji,
+.cinema-lyric-line.active .cinema-lyric-word-romaji.active,
+.cinema-lyric-line.active .cinema-lyric-word-romaji.passed,
+[style*="--fill-pct"] {
   transition: none !important;
+  -webkit-transition: none !important;
   will-change: background, --fill-pct;
+}
+
+.cinema-lyric-line.has-word-sync .lyric-main-text,
+.cinema-lyric-line.has-word-sync .lyric-romaji-text {
+  transition: none !important;
+  -webkit-transition: none !important;
 }
 
 /* Cinema Floating Controller Dock */
