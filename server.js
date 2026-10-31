@@ -356,11 +356,32 @@ async function resolveStudioTrack(videoId, title, artist) {
       .replace(/\s*[-_–—]\s*(?:official\s*(?:video|mv|film|audio)?|video\s*musik\s*resmi|m\/v|mv).*$/gi, '')
       .replace(/\s*[(（\[【《](?:official\s*(?:video|mv|film|audio)?|video\s*musik\s*resmi|m\/v|mv|hd|4k)[)）\]】》].*$/gi, '')
       .replace(/\b(?:official\s*(?:video|mv|film|audio)?|video\s*musik\s*resmi|m\/v|mv)\b/gi, '')
+      .replace(/\s*:\s*.*(?:remake|project|vol\b).*$/gi, '')
       .trim();
     let cleanArtist = (artist || '').replace(/- topic\b/gi, '').trim();
 
-    // Strip record label publisher channel prefix (e.g. "STARSHIP and IVE" -> "IVE")
-    cleanArtist = cleanArtist.replace(/^(?:starship(?:tv)?|smtown|jyp(?:\s*ent(?:ertainment)?)?|yg(?:\s*ent(?:ertainment)?)?|hybe(?:\s*labels?)?|cube|stone\s*music|fnc|rbw|wakeone|1thek)\s*(?:and|&|\+|x)\s*/i, '').trim();
+    // Strip record label publisher channel prefix (e.g. "STARSHIP and IVE" -> "IVE", "1theK (원더케이) and ..." -> "")
+    cleanArtist = cleanArtist.replace(/^(?:starship(?:tv)?|smtown|jyp(?:\s*ent(?:ertainment)?)?|yg(?:\s*ent(?:ertainment)?)?|hybe(?:\s*labels?)?|cube|stone\s*music|fnc|rbw|wakeone|1thek)(?:\s*\([^)]*\))?\s*(?:and|&|\+|x)\s*/i, '').trim();
+
+    // If title has artist prefix with underscore like "태연 (TAEYEON)_ 만찬가" or "TAEYEON_ BANSANKA"
+    if (/\s*_\s*/.test(cleanTitle)) {
+      const uParts = cleanTitle.split(/\s*_\s*/);
+      if (uParts[0].length > 1 && uParts[1].length > 1) {
+        if (!cleanArtist || /1thek|starship|smtown|jyp|hybe|labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(cleanArtist)) {
+          cleanArtist = uParts[0].replace(/[()]/g, ' ').trim();
+        }
+        cleanTitle = uParts[1].trim();
+      }
+    }
+
+    // Handle slash bilingual inside parens e.g. "만찬가 (晩餐歌 / BANSANKA)" -> "Bansanka"
+    const parenSlash = cleanTitle.match(/^([^(（\[【《]+?)\s*[(（\[【《]([^)）\]】》]+)[)）\]】》]$/);
+    if (parenSlash && parenSlash[2].includes('/')) {
+      const sub = parenSlash[2].split('/').map(s => s.trim());
+      const lat = sub.find(s => /^[A-Za-z0-9\s'.,!?-]+$/.test(s));
+      if (lat) cleanTitle = lat;
+      else cleanTitle = parenSlash[1].trim();
+    }
 
     // If title has quoted track name like "IVE 아이브 'LOVE DIVE'", extract the inner track title
     const quoteTitle = cleanTitle.match(/['"“‘「『【《]([^'"”’」』】》]+)['"”’」』】》]/);
@@ -2085,13 +2106,13 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   let title = (rawTitle || '').trim();
   let artist = (rawArtist || '').trim();
 
-  // Strip label + artist composite channel names e.g. "STARSHIP and IVE", "SMTOWN and aespa", "HYBE LABELS and BTS"
-  const labelPrefixMatch = artist.match(/^(?:starship(?:tv)?|smtown|jyp(?:\s*ent(?:ertainment)?)?|yg(?:\s*ent(?:ertainment)?)?|hybe(?:\s*labels?)?|cube|stone\s*music|fnc|rbw|wakeone|1thek)\s*(?:and|&|\+|x)\s*(.+)$/i);
+  // Strip label + artist composite channel names e.g. "STARSHIP and IVE", "1theK (원더케이) and ...", "SMTOWN and aespa", "HYBE LABELS and BTS"
+  const labelPrefixMatch = artist.match(/^(?:starship(?:tv)?|smtown|jyp(?:\s*ent(?:ertainment)?)?|yg(?:\s*ent(?:ertainment)?)?|hybe(?:\s*labels?)?|cube|stone\s*music|fnc|rbw|wakeone|1thek)(?:\s*\([^)]*\))?\s*(?:and|&|\+|x)\s*(.+)$/i);
   if (labelPrefixMatch && labelPrefixMatch[1].trim().length >= 2) {
     artist = labelPrefixMatch[1].trim();
   }
 
-  const isChannelPublisher = !artist || LABEL_CHANNEL_REGEX.test(artist) || /labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(artist);
+  const isChannelPublisher = !artist || LABEL_CHANNEL_REGEX.test(artist) || /1thek|starship|smtown|jyp|hybe|labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(artist);
 
   // 0. Handle parenthetical OST / Drama / Game theme song annotations
   // e.g. 有点甜 (《萌三国》网游主题曲|《微微一笑很倾城》电视剧插曲)
@@ -2141,11 +2162,13 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
             }
           }
         }
-      } else if (title.includes(' _ ')) {
-        const parts = title.split(' _ ');
-        if (isChannelPublisher && parts[0].trim().length > 1) {
-          artist = parts[0].trim();
-          title = parts.slice(1).join(' _ ').trim();
+      } else if (/\s*_\s*/.test(title)) {
+        const parts = title.split(/\s*_\s*/);
+        if (parts[0].trim().length > 1 && parts[1].trim().length > 1) {
+          if (isChannelPublisher || !artist || parts[0].length >= 2) {
+            artist = parts[0].trim();
+            title = parts.slice(1).join(' _ ').trim();
+          }
         }
       } else if (title.includes(' - ')) {
         const dashParts = title.split(' - ');
@@ -2187,27 +2210,37 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
 
   // Remove pipes and trailing info
   title = title.replace(/\|.*$/g, '').replace(/丨.*$/g, '').trim();
+  title = title.replace(/\s*:\s*.*(?:remake|project|vol\b|season).*$/gi, '').trim();
 
-  // Detect and cleanly separate Asian + Latin bilingual titles like "클락션 (Klaxon)" or "晴天 (Sunny Day)"
+  // Detect and cleanly separate Asian + Latin bilingual titles like "클락션 (Klaxon)" or "만찬가 (晩餐歌 / BANSANKA)"
   let extractedNativeTitle = '';
   let extractedLatinTitle = '';
   const bilingualParenMatch = title.match(/^([^(（\[【《]+?)\s*[(（\[【《]([^)）\]】》]+)[)）\]】》]$/);
   if (bilingualParenMatch) {
     const pA = bilingualParenMatch[1].trim();
     const pB = bilingualParenMatch[2].trim();
-    const hasCjkA = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(pA);
-    const hasCjkB = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(pB);
-    const isLatinA = /^[A-Za-z0-9\s'.,!?-]+$/.test(pA);
-    const isLatinB = /^[A-Za-z0-9\s'.,!?-]+$/.test(pB);
+    if (pB.includes('/')) {
+      const subParts = pB.split('/').map(s => s.trim());
+      const latinPart = subParts.find(s => /^[A-Za-z0-9\s'.,!?-]+$/.test(s));
+      const cjkPart = subParts.find(s => /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(s));
+      if (latinPart) extractedLatinTitle = latinPart;
+      if (cjkPart) extractedNativeTitle = pA || cjkPart;
+      title = pA || latinPart;
+    } else {
+      const hasCjkA = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(pA);
+      const hasCjkB = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(pB);
+      const isLatinA = /^[A-Za-z0-9\s'.,!?-]+$/.test(pA);
+      const isLatinB = /^[A-Za-z0-9\s'.,!?-]+$/.test(pB);
 
-    if (hasCjkA && isLatinB && !/official|video|mv|audio|remix|live/i.test(pB)) {
-      extractedNativeTitle = pA;
-      extractedLatinTitle = pB;
-      title = pA; // Keep native title clean!
-    } else if (isLatinA && hasCjkB && !/official|video|mv|audio|remix|live/i.test(pB)) {
-      extractedLatinTitle = pA;
-      extractedNativeTitle = pB;
-      title = pA; // Keep Latin title clean!
+      if (hasCjkA && isLatinB && !/official|video|mv|audio|remix|live/i.test(pB)) {
+        extractedNativeTitle = pA;
+        extractedLatinTitle = pB;
+        title = pA; // Keep native title clean!
+      } else if (isLatinA && hasCjkB && !/official|video|mv|audio|remix|live/i.test(pB)) {
+        extractedLatinTitle = pA;
+        extractedNativeTitle = pB;
+        title = pA; // Keep Latin title clean!
+      }
     }
   }
 
@@ -3424,6 +3457,15 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   if (nativeArtist) artistVariants.add(nativeArtist);
 
   // Specific Group Aliases (Essential for Apple Music TTML / Better Lyrics Master Catalog)
+  if (/\btaeyeon\b/i.test(cleanArtist) || /태연/.test(cleanArtist)) {
+    artistVariants.add('TAEYEON');
+    artistVariants.add('태연');
+    if (/bansanka|만찬가|晩餐歌/i.test(cleanTitle)) {
+      titleVariants.add('Bansanka');
+      titleVariants.add('만찬가');
+      titleVariants.add('晩餐歌');
+    }
+  }
   if (/\bive\b/i.test(cleanArtist) || /아이브/.test(cleanArtist)) {
     artistVariants.add('IVE');
     artistVariants.add('아이브');
@@ -4150,7 +4192,7 @@ app.get('/api/lyrics', async (req, res) => {
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v78___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v79___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
