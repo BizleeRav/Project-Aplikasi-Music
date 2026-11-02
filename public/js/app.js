@@ -2891,11 +2891,12 @@ class App {
     const trackId = track.id || track.videoId || track.title;
     this.currentLyricsTrackId = trackId;
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh, and matches engine v79)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v79' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh unless it's neural word-sync which is already exact)
+    if ((!forceRefresh || track._hasWordSync) && track._lyricsEngineVersion === 'v79' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
+      this.hasWordSync = Boolean(track._hasWordSync);
       this.lyricsAlignPending = Boolean(track._lyricsAlignPending);
       this.displayLyricsList(this.currentLyricsData, track._lyricsType || 'synced', track._lyricsLang, this.currentHasRomaji, this.hasWordSync, track._braccatoLyrics);
       const curTime = this.getCurrentPlaybackTime();
@@ -2903,8 +2904,40 @@ class App {
       return;
     }
 
-    // 2. If it's a Suno AI track, handle structured syncing and pre-aligned LRC
+    // 2. If it's a Suno AI track, prioritize official neural word-level aligned lyrics from Suno
     if (track.type === 'suno') {
+      if (this.cinemaLyricsBadge) {
+        this.cinemaLyricsBadge.style.display = 'inline-flex';
+        this.cinemaLyricsBadge.className = 'cinema-lyrics-badge loading';
+        this.cinemaLyricsBadge.textContent = 'MENSINKRONKAN LIRIK REALTIME...';
+      }
+
+      try {
+        const alignRes = await fetch(`/api/suno/aligned-lyrics/${encodeURIComponent(track.id)}`);
+        if (alignRes.ok) {
+          const alignData = await alignRes.json();
+          if (alignData.found && Array.isArray(alignData.parsedLyrics) && alignData.parsedLyrics.length > 0) {
+            if (this.currentLyricsTrackId !== trackId) return;
+
+            this.currentLyricsData = alignData.parsedLyrics;
+            this.hasWordSync = Boolean(alignData.hasWordSync);
+            track._parsedLyrics = alignData.parsedLyrics;
+            track._lyricsType = 'synced';
+            track._hasWordSync = this.hasWordSync;
+            track._lyricsEngineVersion = 'v79';
+            track._cachedForTrackId = trackId;
+
+            this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
+            const curTime = this.getCurrentPlaybackTime();
+            this.updateActiveLyricsLine(curTime);
+            return;
+          }
+        }
+      } catch (alignErr) {
+        console.warn('[Suno] Aligned lyrics fetch error, using structural fallback:', alignErr);
+      }
+
+      // Fallback: If neural word-sync is unavailable, use structural aligner
       const candidateSynced = (track.syncedLyrics && track.syncedLyrics.trim().length > 0)
         ? track.syncedLyrics
         : (track.lyrics_synced && track.lyrics_synced.trim().length > 0 ? track.lyrics_synced : '');
@@ -3195,7 +3228,9 @@ class App {
       if (type === 'synced') {
         if (this.currentTrack && this.currentTrack.type === 'suno') {
           this.cinemaLyricsBadge.className = 'cinema-lyrics-badge suno';
-          this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> ⚡ SUNO MASTER SYNC`;
+          this.cinemaLyricsBadge.innerHTML = this.hasWordSync
+            ? `<span class="badge-dot pulse"></span> ⚡ SUNO REALTIME WORD SYNC`
+            : `<span class="badge-dot pulse"></span> ⚡ SUNO MASTER SYNC`;
         } else if (this.hasWordSync) {
           if (this.currentLyricsLang === 'ja') {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';
@@ -3308,8 +3343,8 @@ class App {
 
     if (isNative && this.nativeAudio) {
       rawTime = this.nativeAudio.currentTime || 0;
-      // Instruction 4: Jika audio.readyState < 3 atau audio.paused, freeze (sama dengan audio.currentTime)
-      if (this.nativeAudio.seeking || this.nativeAudio.readyState < 3 || this.nativeAudio.paused) {
+      // Hanya freeze jika sedang seeking, paused, atau audio belum memuat data sama sekali (readyState < 2 dan rawTime === 0)
+      if (this.nativeAudio.seeking || this.nativeAudio.paused || (this.nativeAudio.readyState < 2 && rawTime === 0)) {
         this._lastMediaTime = rawTime;
         this._clockAnchorPerf = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         this._lastEmittedPlaybackTime = rawTime;
@@ -7795,6 +7830,7 @@ class App {
       }
 
       this.updateMediaSession(track);
+      this.renderCinemaLyrics(track, null, true);
     } else {
       // YouTube Music track -> Route through /api/stream-audio for 100% Web Audio DSP processing
       if (window.ytPlayer) window.ytPlayer.pause();

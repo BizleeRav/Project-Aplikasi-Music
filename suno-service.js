@@ -1522,6 +1522,73 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
   }
 }
 
+/**
+ * Fetch Neural Word-by-Word Aligned Lyrics from Official Suno Feed
+ */
+async function getAlignedLyrics(clipId, userToken = null) {
+  if (!clipId) return null;
+
+  let cleanJwt = (userToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+
+  // Try extracting from browser profile if token is missing
+  if (!cleanJwt || cleanJwt.length < 20) {
+    try {
+      const helper = require('./suno-login-helper');
+      const os = require('os');
+      const profileDir = path.join(os.homedir(), 'AppData', 'Roaming', 'AuraSound', 'suno_browser_profile');
+      const sess = await helper.extractSunoSessionFromProfile(profileDir);
+      if (sess && sess.token) cleanJwt = sess.token;
+    } catch(e) {}
+  }
+
+  // Also check saved config
+  if (!cleanJwt || cleanJwt.length < 20) {
+    const cfg = getConfig();
+    if (cfg.suno_api_key) cleanJwt = cfg.suno_api_key;
+  }
+
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+  };
+  if (cleanJwt && cleanJwt.length > 20) {
+    headers['Authorization'] = `Bearer ${cleanJwt}`;
+    headers['Cookie'] = `__session=${cleanJwt}`;
+  }
+
+  const url = `https://studio-api.prod.suno.com/api/gen/${clipId}/aligned_lyrics/v2/`;
+
+  try {
+    const res = await axios.get(url, { headers, timeout: 10000 });
+    const rawLines = res.data?.aligned_lyrics || [];
+
+    if (Array.isArray(rawLines) && rawLines.length > 0) {
+      const parsedLyrics = rawLines.map(l => ({
+        time: Math.round(l.start_s * 100) / 100,
+        endTime: Math.round(l.end_s * 100) / 100,
+        text: (l.text || '').trim(),
+        section: l.section || '',
+        words: (l.words || []).map((w, wIdx, arr) => ({
+          text: (w.text || '').trim(),
+          begin: Math.round(w.start_s * 1000) / 1000,
+          end: Math.round(w.end_s * 1000) / 1000,
+          trailingSpace: wIdx < arr.length - 1
+        }))
+      })).filter(l => l.text.length > 0);
+
+      return {
+        found: true,
+        hasWordSync: true,
+        parsedLyrics,
+        totalWords: res.data?.aligned_words?.length || 0
+      };
+    }
+  } catch (err) {
+    console.warn(`[Suno Aligned Lyrics] Failed for clip ${clipId}:`, err.response?.status, err.message);
+  }
+
+  return null;
+}
+
 module.exports = {
   getCreations,
   addCreation,
@@ -1536,5 +1603,6 @@ module.exports = {
   generateStructuredLyrics,
   prepareLyricsAndPrompt,
   pickSoundForTheme,
-  syncOfficialFeed
+  syncOfficialFeed,
+  getAlignedLyrics
 };

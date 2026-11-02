@@ -1068,6 +1068,20 @@ app.post('/api/suno/sync', async (req, res) => {
   }
 });
 
+app.get('/api/suno/aligned-lyrics/:id', async (req, res) => {
+  try {
+    const clipId = req.params.id;
+    const creds = getEffectiveSunoCredentials(req);
+    const result = await sunoService.getAlignedLyrics(clipId, creds.key);
+    if (result && result.found) {
+      return res.json(result);
+    }
+    res.json({ found: false });
+  } catch (err) {
+    res.status(500).json({ found: false, error: err.message });
+  }
+});
+
 app.post('/api/suno/creations', (req, res) => {
   try {
     const { track } = req.body;
