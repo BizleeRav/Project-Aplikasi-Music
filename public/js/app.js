@@ -1022,6 +1022,7 @@ class App {
 
     // 1. Navigation Text (Sidebar & Mobile Nav)
     setNodeText('.nav-link[data-tab="home"], .mobile-nav-item[data-tab="home"]', 'Beranda', 'Home');
+    setNodeText('.nav-link[data-tab="suno"], .mobile-nav-item[data-tab="suno"]', 'Suno AI', 'Suno AI');
     setNodeText('.nav-link[data-tab="playlists"]', 'Playlist Saya', 'My Playlists');
     setNodeText('.mobile-nav-item[data-tab="playlists"]', 'Playlist', 'Playlists');
     setNodeText('.nav-link[data-tab="favorites"]', 'Lagu Favorit', 'Liked Songs');
