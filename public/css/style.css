@@ -3004,6 +3004,16 @@ input::-ms-reveal {
     line-height: 1.2 !important;
   }
 
+  /* Hindari kepencet nama penyanyi saat tap player bar di mobile */
+  .player-track-info #player-artist a,
+  .player-track-info #player-artist .aura-artist-clickable,
+  .player-artist a.aura-artist-clickable {
+    pointer-events: none !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+
   .player-badge-row {
     display: none !important;
   }
@@ -3376,32 +3386,110 @@ input::-ms-reveal {
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
-    gap: 2px !important;
-    margin: 0 0 2px 0 !important;
-    padding: 2px 0 4px 0 !important;
+    gap: 4px !important;
+    margin: 0 0 4px 0 !important;
+    padding: 2px 0 2px 0 !important;
     box-sizing: border-box !important;
     isolation: isolate !important;
     contain: layout style !important;
   }
 
-  /* Compact Vinyl Disc so lyrics get the maximum screen height */
+  /* Compact Vinyl Disc so lyrics get the maximum screen height & maintains perfect circle */
   .cinema-vinyl-wrap {
-    width: 74px !important;
-    height: 74px !important;
-    min-width: 74px !important;
-    min-height: 74px !important;
-    margin: 0 auto 2px !important;
+    width: 82px !important;
+    height: 82px !important;
+    min-width: 82px !important;
+    min-height: 82px !important;
+    max-width: 82px !important;
+    max-height: 82px !important;
+    aspect-ratio: 1 / 1 !important;
+    margin: 0 auto 4px !important;
     flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
     isolation: isolate !important;
   }
 
   .cinema-vinyl-disc {
-    width: 70px !important;
-    height: 70px !important;
+    width: 80px !important;
+    height: 80px !important;
+    min-width: 80px !important;
+    min-height: 80px !important;
+    max-width: 80px !important;
+    max-height: 80px !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.75), 0 0 16px rgba(6, 182, 212, 0.25) !important;
     will-change: transform !important;
     backface-visibility: hidden !important;
     -webkit-backface-visibility: hidden !important;
     transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+
+  .cinema-vinyl-disc .vinyl-groove-rings {
+    position: absolute !important;
+    inset: 3px !important;
+    border-radius: 50% !important;
+    border: 1px dashed rgba(255, 255, 255, 0.1) !important;
+    pointer-events: none !important;
+  }
+
+  .cinema-vinyl-disc .vinyl-groove-rings.r-2 {
+    inset: 10px !important;
+  }
+
+  .cinema-vinyl-disc .vinyl-center-label {
+    width: 48px !important;
+    height: 48px !important;
+    min-width: 48px !important;
+    min-height: 48px !important;
+    max-width: 48px !important;
+    max-height: 48px !important;
+    aspect-ratio: 1 / 1 !important;
+    flex-shrink: 0 !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    border: 2px solid #06b6d4 !important;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.45), inset 0 0 6px rgba(0, 0, 0, 0.6) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
+  }
+
+  .cinema-vinyl-disc .vinyl-center-label img {
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 100% !important;
+    min-height: 100% !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    display: block !important;
+  }
+
+  /* Rapi & presisi: baut spindle metallic chrome pin */
+  .cinema-vinyl-disc .vinyl-spindle-hole {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 7.5px !important;
+    height: 7.5px !important;
+    min-width: 7.5px !important;
+    min-height: 7.5px !important;
+    border-radius: 50% !important;
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #cbd5e1 35%, #64748b 70%, #0f172a 100%) !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.9) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), inset 0 1px 1px #ffffff !important;
+    z-index: 5 !important;
   }
 
   .cinema-turntable-arm {
@@ -3412,32 +3500,46 @@ input::-ms-reveal {
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
-    gap: 1px !important;
-    max-width: 90vw !important;
+    gap: 2px !important;
+    max-width: 92vw !important;
+    width: 100% !important;
+    margin-top: 2px !important;
   }
 
   .cinema-badge-row {
-    font-size: 0.62rem !important;
-    gap: 4px !important;
+    font-size: 0.65rem !important;
+    gap: 6px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    margin-bottom: 1px !important;
+    margin-bottom: 2px !important;
+    flex-wrap: nowrap !important;
+    line-height: 1.3 !important;
   }
 
   .cinema-live-badge {
     font-size: 0.58rem !important;
-    padding: 1px 6px !important;
+    padding: 2px 7px !important;
+    flex-shrink: 0 !important;
   }
 
   #cinema-track-artist {
-    font-size: 0.72rem !important;
+    font-size: 0.74rem !important;
     color: #94a3b8 !important;
     font-weight: 600 !important;
-    max-width: 160px !important;
+    max-width: 190px !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent !important;
+    padding: 2px 4px !important;
+  }
+
+  #cinema-track-artist:active {
+    color: #06b6d4 !important;
   }
 
   .cinema-title {
@@ -7703,12 +7805,16 @@ body.music-paused .cinema-vinyl-disc {
 
 .vinyl-spindle-hole {
   position: absolute;
-  width: 14px;
-  height: 14px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: #000000;
-  border: 2px solid rgba(255, 255, 255, 0.5);
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.9);
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #cbd5e1 35%, #64748b 70%, #0f172a 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.75), inset 0 1px 1.5px #ffffff;
+  z-index: 5;
 }
 
 /* Turntable Tonearm */
@@ -11032,6 +11138,15 @@ body.music-playing .cinema-turntable-arm {
     line-height: 1.2 !important;
   }
 
+  /* Hindari kepencet nama penyanyi saat tap player bar di mobile */
+  #master-player-bar .player-track-info #player-artist a,
+  #master-player-bar .player-track-info #player-artist .aura-artist-clickable {
+    pointer-events: none !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+
   #master-player-bar .player-center {
     flex: 0 0 auto !important;
     width: auto !important;
@@ -11359,31 +11474,110 @@ body.music-playing .cinema-turntable-arm {
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
-    gap: 2px !important;
-    margin: 0 0 2px 0 !important;
-    padding: 2px 0 4px 0 !important;
+    gap: 4px !important;
+    margin: 0 0 4px 0 !important;
+    padding: 2px 0 2px 0 !important;
     box-sizing: border-box !important;
     isolation: isolate !important;
     contain: layout style !important;
   }
 
+  /* Compact Vinyl Disc so lyrics get the maximum screen height & maintains perfect circle */
   .cinema-vinyl-wrap {
-    width: 74px !important;
-    height: 74px !important;
-    min-width: 74px !important;
-    min-height: 74px !important;
-    margin: 0 auto 2px !important;
+    width: 82px !important;
+    height: 82px !important;
+    min-width: 82px !important;
+    min-height: 82px !important;
+    max-width: 82px !important;
+    max-height: 82px !important;
+    aspect-ratio: 1 / 1 !important;
+    margin: 0 auto 4px !important;
     flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
     isolation: isolate !important;
   }
 
   .cinema-vinyl-disc {
-    width: 70px !important;
-    height: 70px !important;
+    width: 80px !important;
+    height: 80px !important;
+    min-width: 80px !important;
+    min-height: 80px !important;
+    max-width: 80px !important;
+    max-height: 80px !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.75), 0 0 16px rgba(6, 182, 212, 0.25) !important;
     will-change: transform !important;
     backface-visibility: hidden !important;
     -webkit-backface-visibility: hidden !important;
     transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+
+  .cinema-vinyl-disc .vinyl-groove-rings {
+    position: absolute !important;
+    inset: 3px !important;
+    border-radius: 50% !important;
+    border: 1px dashed rgba(255, 255, 255, 0.1) !important;
+    pointer-events: none !important;
+  }
+
+  .cinema-vinyl-disc .vinyl-groove-rings.r-2 {
+    inset: 10px !important;
+  }
+
+  .cinema-vinyl-disc .vinyl-center-label {
+    width: 48px !important;
+    height: 48px !important;
+    min-width: 48px !important;
+    min-height: 48px !important;
+    max-width: 48px !important;
+    max-height: 48px !important;
+    aspect-ratio: 1 / 1 !important;
+    flex-shrink: 0 !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    border: 2px solid #06b6d4 !important;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.45), inset 0 0 6px rgba(0, 0, 0, 0.6) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
+  }
+
+  .cinema-vinyl-disc .vinyl-center-label img {
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 100% !important;
+    min-height: 100% !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    display: block !important;
+  }
+
+  /* Rapi & presisi: baut spindle metallic chrome pin */
+  .cinema-vinyl-disc .vinyl-spindle-hole {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 7.5px !important;
+    height: 7.5px !important;
+    min-width: 7.5px !important;
+    min-height: 7.5px !important;
+    border-radius: 50% !important;
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #cbd5e1 35%, #64748b 70%, #0f172a 100%) !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.9) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), inset 0 1px 1px #ffffff !important;
+    z-index: 5 !important;
   }
 
   .cinema-turntable-arm {
