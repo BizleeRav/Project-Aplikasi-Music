@@ -2660,6 +2660,22 @@ class App {
     return false;
   }
 
+  isPromptInstructionText(text) {
+    if (!text || typeof text !== 'string') return false;
+    const t = text.toLowerCase();
+    const signals = [
+      'vocal arrangement', 'instruments:', 'instrument:', 'begin with', 'gradually introduce',
+      'orchestral choir', 'french horns', 'female lead vocalist', 'grand mixed',
+      'timpani', 'no rock', 'no rap', 'no electronic', 'soundtrack', 'delicate piano',
+      'magical bells', 'bpm', 'tempo', 'acoustic guitar, warm', 'cinematic fantasy'
+    ];
+    let matches = 0;
+    for (const s of signals) {
+      if (t.includes(s)) matches++;
+    }
+    return matches >= 2 || t.includes('vocal arrangement:') || t.includes('instruments:');
+  }
+
   cleanArtistName(artist) {
     if (!artist) return 'AuraSound';
     return artist
@@ -2719,24 +2735,48 @@ class App {
       return;
     }
 
-    // 2. If it's a Suno AI track with prompt lyrics
-    if (track.type === 'suno' && track.prompt && typeof track.prompt === 'string' && track.prompt.includes('\n')) {
-      const lines = track.prompt.split('\n')
-        .map(l => l.trim())
-        .filter(l => l.length > 0 && !l.startsWith('[') && !l.startsWith('('));
-      
-      const duration = this.parseDuration(track.duration) || 180;
-      const interval = duration / (lines.length + 1);
-      this.currentLyricsData = lines.map((text, idx) => ({
-        time: Math.floor(interval * (idx + 0.6)),
-        text
-      }));
-      track._parsedLyrics = this.currentLyricsData;
-      track._lyricsType = 'suno_ai';
-      this.displayLyricsList(this.currentLyricsData, 'suno_ai');
-      const curTime = this.getCurrentPlaybackTime();
-      this.updateActiveLyricsLine(curTime);
-      return;
+    // 2. If it's a Suno AI track, prioritize genuine singable lyrics over prompt instructions
+    if (track.type === 'suno') {
+      const candidateText = (track.lyrics && track.lyrics.trim().length > 0)
+        ? track.lyrics
+        : ((track.prompt && !this.isPromptInstructionText(track.prompt)) ? track.prompt : '');
+
+      if (candidateText && typeof candidateText === 'string') {
+        const rawLines = candidateText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const parsedLines = [];
+        let currentSection = '';
+
+        for (const line of rawLines) {
+          if (line.startsWith('[') && line.endsWith(']')) {
+            currentSection = line.replace(/[\[\]]/g, '').trim();
+            continue;
+          }
+          parsedLines.push({
+            text: line,
+            section: currentSection
+          });
+        }
+
+        if (parsedLines.length > 0) {
+          const duration = this.parseDuration(track.duration) || Number(track.seconds) || 180;
+          const introLeadTime = Math.min(10, Math.max(4, duration * 0.05));
+          const availableTime = Math.max(10, duration - introLeadTime - 6);
+          const interval = availableTime / Math.max(1, parsedLines.length);
+
+          this.currentLyricsData = parsedLines.map((item, idx) => ({
+            time: Math.floor(introLeadTime + interval * idx),
+            text: item.text,
+            section: item.section
+          }));
+
+          track._parsedLyrics = this.currentLyricsData;
+          track._lyricsType = 'suno_ai';
+          this.displayLyricsList(this.currentLyricsData, 'suno_ai');
+          const curTime = this.getCurrentPlaybackTime();
+          this.updateActiveLyricsLine(curTime);
+          return;
+        }
+      }
     }
 
     // 3. Show sleek animated loading state
@@ -3086,7 +3126,13 @@ class App {
           }
         }
 
+        let sectionBadge = '';
+        if (item.section && (!lines[idx - 1] || lines[idx - 1].section !== item.section)) {
+          sectionBadge = `<div class="cinema-lyric-section-pill">${this.escapeHtml(item.section)}</div>`;
+        }
+
         return `
+          ${sectionBadge}
           <div class="cinema-lyric-line ${item.romaji ? 'has-romaji' : ''} ${hasWordSync ? 'has-word-sync' : ''}" data-idx="${idx}" data-time="${item.time}" title="Klik untuk lompat ke ${this.formatTime(item.time)}">
             <div class="lyric-main-text">${mainContent}</div>
             ${romajiContent}
@@ -7548,19 +7594,45 @@ class App {
       // Pause YouTube player
       if (window.ytPlayer) window.ytPlayer.pause();
 
+      if (window.audioEngine) {
+        window.audioEngine.resume();
+      }
+
       let targetUrl = track.audio_url;
       if (!targetUrl || targetUrl.includes('/api/forbidden')) {
         targetUrl = `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${track.id}.m4a`;
       }
 
+      // Update queue so Cinema next/prev works
+      if (!this.queue || this.queue.length === 0) {
+        this.queue = [track];
+        this.queueIndex = 0;
+      } else {
+        const existingIdx = this.queue.findIndex(t => t.id === track.id);
+        if (existingIdx !== -1) {
+          this.queueIndex = existingIdx;
+        } else {
+          this.queue.unshift(track);
+          this.queueIndex = 0;
+        }
+      }
+
       // Play via HTML5 Native Audio -> through Web Audio API EQ
       const streamUrl = `/api/proxy-audio?id=${encodeURIComponent(track.id || '')}&url=${encodeURIComponent(targetUrl)}`;
       this.nativeAudio.src = streamUrl;
-      this.nativeAudio.play().catch(e => {
-        console.warn('Native audio proxy play error, trying direct stream:', e);
-        this.nativeAudio.src = targetUrl;
-        this.nativeAudio.play().catch(err => console.error('Audio direct play error:', err));
-      });
+      const playPromise = this.nativeAudio.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          this.updatePlayState(true);
+        }).catch(e => {
+          console.warn('Native audio proxy play error, trying direct stream:', e);
+          this.nativeAudio.src = targetUrl;
+          this.nativeAudio.play().then(() => this.updatePlayState(true)).catch(err => {
+            console.error('Audio direct play error:', err);
+            this.updatePlayState(false);
+          });
+        });
+      }
 
       this.updateMediaSession(track);
     } else {

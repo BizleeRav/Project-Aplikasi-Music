@@ -1234,7 +1234,20 @@ app.post('/api/suno/pair-claim', (req, res) => {
 });
 
 // 5. High-Fidelity Audio Streaming Proxy (Supports Range 206 & Progressive Streams)
+app.options('/api/proxy-audio', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Accept, Origin, Content-Type');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type');
+  res.sendStatus(204);
+});
+
 app.get('/api/proxy-audio', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Accept, Origin, Content-Type');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type');
+
   const { url, id } = req.query;
   let targetUrl = url;
 
@@ -1252,12 +1265,14 @@ app.get('/api/proxy-audio', async (req, res) => {
   }
 
   try {
-    const rangeHeader = req.headers.range || 'bytes=0-';
+    const hasRange = Boolean(req.headers.range);
     const reqHeaders = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Range': rangeHeader
+      'Accept': '*/*'
     };
+    if (hasRange) {
+      reqHeaders['Range'] = req.headers.range;
+    }
     if (targetUrl.includes('pixabay.com')) {
       reqHeaders['Referer'] = 'https://pixabay.com/';
     } else if (targetUrl.includes('suno.com') || targetUrl.includes('cloudfront.net')) {

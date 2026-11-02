@@ -854,8 +854,10 @@ class SunoStudio {
   }
 
   formatTrackObject(clipId) {
-    const clip = this.creations.find(c => c.id === clipId);
-    if (!clip) return null;
+    let clip = this.creations.find(c => c.id === clipId);
+    if (!clip) {
+      clip = { id: clipId };
+    }
 
     let targetAudio = clip.audio_url;
     if (!targetAudio || targetAudio.includes('/api/forbidden')) {
@@ -886,6 +888,11 @@ class SunoStudio {
     }
     if (track && window.app && window.app.playTrack) {
       window.app.playTrack(track);
+      setTimeout(() => {
+        if (typeof window.app.openStudioCinema === 'function') {
+          window.app.openStudioCinema();
+        }
+      }, 150);
     }
   }
 

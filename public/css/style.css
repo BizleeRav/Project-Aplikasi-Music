@@ -8077,6 +8077,22 @@ body.music-playing .cinema-turntable-arm {
   box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
 }
 
+.cinema-lyric-section-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  margin: 22px 0 10px 0;
+  border-radius: 9999px;
+  background: rgba(168, 85, 247, 0.16);
+  color: #d8b4fe;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.2);
+}
+
 .cinema-lyrics-badge.plain {
   background: rgba(148, 163, 184, 0.12);
   color: #cbd5e1;
