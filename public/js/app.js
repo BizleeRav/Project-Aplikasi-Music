@@ -683,8 +683,8 @@ class App {
     }
 
     this.showToast(this.userProfile?.lang === 'en'
-      ? `Logged in as ${this.userProfile.name} (${googleUser.email})! ✨`
-      : `Akun Google aktif: ${this.userProfile.name} (${googleUser.email})! ✨`, 'success');
+      ? `Logged in as ${this.userProfile.name} (${googleUser.email})! ✅`
+      : `Akun Google aktif: ${this.userProfile.name} (${googleUser.email})! ✅`, 'success');
 
     // Step 3: Seamless transition to Pilih Selera Musik ONLY if not already completed
     const isTasteDone = localStorage.getItem('aurasound_taste_completed');
@@ -1063,7 +1063,7 @@ class App {
 
     // 3. Mood Chips
     const allChip = document.querySelector('.ytm-chip[data-mood="all"]');
-    if (allChip) allChip.textContent = isEn ? '✨ All' : '✨ Semua';
+    if (allChip) allChip.textContent = isEn ? 'All' : 'Semua';
     const relaxChip = document.querySelector('.ytm-chip[data-mood="relax"]');
     if (relaxChip) relaxChip.textContent = isEn ? '☕ Relax & Chill' : '☕ Santai & Relax';
 
@@ -2125,7 +2125,7 @@ class App {
       }
 
       if (modalProfile) modalProfile.classList.remove('active');
-      this.showToast(newLang === 'en' ? `Profile saved: ${newName}! ✨` : `Profil tersimpan: ${newName}! ✨`, 'success');
+      this.showToast(newLang === 'en' ? `Profile saved: ${newName}! ✅` : `Profil tersimpan: ${newName}! ✅`, 'success');
     };
 
     if (closeProfileBtn && modalProfile) {
@@ -2350,7 +2350,7 @@ class App {
 
   spawnHeartBurst(clientX, clientY) {
     const count = 10;
-    const icons = ['❤️', '💖', '✨', '🎶', '💫'];
+    const icons = ['❤️', '💖', '🎵', '🎶', '💫'];
     for (let i = 0; i < count; i++) {
       const particle = document.createElement('span');
       particle.className = 'heart-burst-particle';
@@ -2859,7 +2859,7 @@ class App {
             this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 BETTER LYRICS • PINYIN`;
           } else {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge synced';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> ✨ BETTER LYRICS (TTML)`;
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> BETTER LYRICS (TTML)`;
           }
         } else {
           if (this.currentLyricsLang === 'ja') {
@@ -2873,7 +2873,7 @@ class App {
             this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 PINYIN SYNC`;
           } else {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge synced';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> ✨ BETTER LYRICS`;
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> BETTER LYRICS`;
           }
         }
       } else if (type === 'suno_ai') {
@@ -3961,7 +3961,7 @@ class App {
     try {
       setTimeout(() => {
         if (progressBar) progressBar.style.width = '65%';
-        if (loadingTitle) loadingTitle.textContent = '✨ Meracik Beranda & Playlist Personal...';
+        if (loadingTitle) loadingTitle.textContent = 'Meracik Beranda & Playlist Personal...';
         if (loadingDesc) loadingDesc.textContent = 'Mencari lagu-lagu terbaik dan terpopuler tanpa henti...';
       }, 500);
 
@@ -4164,7 +4164,7 @@ class App {
     const isEn = (this.userProfile?.lang === 'en');
     const hour = new Date().getHours();
     let greeting = 'Selamat Datang';
-    let greetingIcon = '✨';
+    let greetingIcon = '🎵';
     if (hour >= 4 && hour < 11) { greeting = 'Selamat Pagi'; greetingIcon = '🌅'; }
     else if (hour >= 11 && hour < 15) { greeting = 'Selamat Siang'; greetingIcon = '☀️'; }
     else if (hour >= 15 && hour < 18) { greeting = 'Selamat Sore'; greetingIcon = '🌇'; }
@@ -4179,7 +4179,7 @@ class App {
           <div class="aura-hero-left">
             <div class="aura-greeting-capsule">
               <span class="aura-greeting-icon">${greetingIcon}</span>
-              <span class="aura-greeting-tag">AURASOUND AI 2026</span>
+              <span class="aura-greeting-tag">AURASOUND HI-FI</span>
               <span class="aura-greeting-dot"></span>
               <span class="aura-dsp-hi-res-tag">BERANDA BERSIH</span>
             </div>
@@ -4189,13 +4189,13 @@ class App {
             </h1>
 
             <p class="aura-hero-desc">
-              Beranda Anda saat ini bersih tanpa lagu bawaan pengembang. Putar lagu apa saja lewat pencarian, atau atur selera musikmu agar AI dapat meracikkan playlist personal.
+              Beranda Anda saat ini bersih tanpa lagu bawaan pengembang. Putar lagu apa saja lewat pencarian, atau atur selera musikmu agar sistem dapat meracikkan playlist personal.
             </p>
 
             <div class="aura-hero-actions">
               <button class="aura-btn-hero-primary" onclick="window.app.openTasteModal()">
                 <span style="font-size: 1.1rem;">🎨</span>
-                <span>Atur Selera Musik AI</span>
+                <span>Atur Selera Musik</span>
               </button>
 
               <button class="aura-btn-hero-glass" onclick="window.app.switchTab('search')">
@@ -4327,7 +4327,7 @@ class App {
 
     const hour = new Date().getHours();
     let greeting = 'Selamat Datang';
-    let greetingIcon = '✨';
+    let greetingIcon = '🎵';
     if (hour >= 4 && hour < 11) { greeting = 'Selamat Pagi'; greetingIcon = '🌅'; }
     else if (hour >= 11 && hour < 15) { greeting = 'Selamat Siang'; greetingIcon = '☀️'; }
     else if (hour >= 15 && hour < 18) { greeting = 'Selamat Sore'; greetingIcon = '🌇'; }
@@ -4406,8 +4406,8 @@ class App {
         <div class="aura-hero-inner">
           <div class="aura-hero-left">
             <div class="aura-greeting-capsule">
-              <span class="aura-greeting-icon">✨</span>
-              <span class="aura-greeting-tag">${bentoSupermixBadge} • AI SOUNDSTAGE</span>
+              <span class="aura-greeting-icon">${greetingIcon}</span>
+              <span class="aura-greeting-tag">${bentoSupermixBadge} • HI-FI SOUNDSTAGE</span>
               <span class="aura-greeting-dot"></span>
               <span class="aura-dsp-hi-res-tag">24-BIT / 96kHz HI-FI</span>
             </div>
@@ -4563,7 +4563,7 @@ class App {
         <div class="aura-section-header-wrap">
           <div class="aura-section-title-box">
             <span class="aura-kicker-tag">REKOMENDASI PERSONAL</span>
-            <h2 class="aura-modern-section-title">✨ Lagu yang Berkaitan dengan Musikmu</h2>
+            <h2 class="aura-modern-section-title">Lagu yang Berkaitan dengan Musikmu</h2>
           </div>
           <div class="ytm-section-actions">
             <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('related-picks', 0)">
@@ -4658,7 +4658,7 @@ class App {
         <section class="aura-section-wrap">
           <div class="aura-section-header-wrap">
             <div class="aura-section-title-box">
-              <span class="aura-kicker-tag">ALGORITMA & VINYL AI</span>
+              <span class="aura-kicker-tag">KOLEKSI VINYL KHUSUS</span>
               <h2 class="aura-modern-section-title">${isEn ? 'Personalized Vinyl & Album Shelf' : 'Koleksi Vinyl & Album Personal'}</h2>
             </div>
             <div class="aura-section-meta-badge">
@@ -4721,7 +4721,7 @@ class App {
         <section class="aura-section-wrap">
           <div class="aura-section-header-wrap">
             <div class="aura-section-title-box">
-              <span class="aura-kicker-tag">CAMPURAN AI PERSONAL</span>
+              <span class="aura-kicker-tag">CAMPURAN SPESIAL</span>
               <h2 class="aura-modern-section-title">${isEn ? 'Special Mixed Harmonies' : 'Harmoni Campuran Spesial'}</h2>
             </div>
             <div class="aura-section-meta-badge">
@@ -4789,7 +4789,7 @@ class App {
     // Time-based greeting
     const hour = new Date().getHours();
     let greeting = isEn ? 'Welcome' : 'Selamat Datang';
-    let greetingIcon = '✨';
+    let greetingIcon = '🎵';
     if (hour >= 4 && hour < 11) {
       greeting = isEn ? 'Good Morning' : 'Selamat Pagi';
       greetingIcon = '🌅';
@@ -4819,7 +4819,7 @@ class App {
           <div class="aura-hero-left">
             <div class="aura-greeting-capsule">
               <span class="aura-greeting-icon">${greetingIcon}</span>
-              <span class="aura-greeting-tag">AURASOUND AI ENGINE 2026</span>
+              <span class="aura-greeting-tag">AURASOUND AUDIO ENGINE</span>
               <span class="aura-greeting-dot"></span>
               <span class="aura-dsp-hi-res-tag">24-BIT / 96kHz HI-FI</span>
             </div>
@@ -4853,7 +4853,7 @@ class App {
 
               <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" title="Ubah Selera Musik">
                 <span style="font-size: 1rem;">🎨</span>
-                <span>${isEn ? 'Tune Taste AI' : 'Atur Selera Musik'}</span>
+                <span>${isEn ? 'Tune Taste' : 'Atur Selera Musik'}</span>
               </button>
 
               <button class="aura-btn-hero-outline" onclick="document.getElementById('eq-drawer').classList.toggle('active')" title="Buka Equalizer & DSP Drawer">
@@ -5034,7 +5034,7 @@ class App {
             <div class="aura-bento-top">
               <span class="aura-pill-badge aura-pill-emerald">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
-                AI MIX PERDANA 2026
+                MIX PERDANA 2026
               </span>
               <div class="aura-mini-equalizer">
                 <span></span><span></span><span></span><span></span><span></span>
@@ -5102,7 +5102,7 @@ class App {
       </section>
     `;
 
-    // 4b. REKOMENDASI PERSONAL: ✨ Lagu yang Berkaitan dengan Musikmu
+    // 4b. REKOMENDASI PERSONAL: Lagu yang Berkaitan dengan Musikmu
     if (feed.relatedTracks && feed.relatedTracks.length > 0) {
       this.registerTrackList('related-picks', feed.relatedTracks);
       const history = this.getPlayHistory();
@@ -5114,7 +5114,7 @@ class App {
           <div class="aura-section-header-wrap">
             <div class="aura-section-title-box">
               <span class="aura-kicker-tag">REKOMENDASI PERSONAL</span>
-              <h2 class="aura-modern-section-title">✨ Lagu yang Berkaitan dengan Musikmu</h2>
+              <h2 class="aura-modern-section-title">${isEn ? 'Related Tracks For You' : 'Lagu yang Berkaitan dengan Musikmu'}</h2>
             </div>
             <div class="ytm-section-actions">
               <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('related-picks', 0)">
@@ -5339,7 +5339,7 @@ class App {
     // Compute dynamic greeting based on time of day
     const hour = new Date().getHours();
     let greeting = isEn ? 'Welcome' : 'Selamat Datang';
-    let greetingIcon = '✨';
+    let greetingIcon = '🎵';
     if (hour >= 4 && hour < 11) {
       greeting = isEn ? 'Good Morning' : 'Selamat Pagi';
       greetingIcon = '🌅';

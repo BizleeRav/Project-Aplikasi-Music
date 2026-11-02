@@ -810,13 +810,13 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
 
   const artistLabel = sortedArtists.length > 0 ? sortedArtists.join(', ') : 'lagu yang kamu dengar';
 
-  let mixTitle = '✨ Lagu yang Berkaitan';
+  let mixTitle = 'Lagu yang Berkaitan';
   let mixDesc = `Diramu otomatis berdasarkan musik yang kamu dengarkan (${artistLabel}).`;
   if (validImported.length === 1) {
-    mixTitle = `✨ Terinspirasi dari ${validImported[0].title}`;
+    mixTitle = `Terinspirasi dari ${validImported[0].title}`;
     mixDesc = `Paduan lagu dari album "${validImported[0].title}" dan rekomendasi algoritma AuraSound.`;
   } else if (validImported.length >= 2) {
-    mixTitle = `✨ Crossover Mix: ${validImported[0].title} & ${validImported[1].title}`;
+    mixTitle = `Crossover Mix: ${validImported[0].title} & ${validImported[1].title}`;
     mixDesc = `Perpaduan hybrid dari 2 album yang Anda impor dan riwayat musik Anda.`;
   }
 

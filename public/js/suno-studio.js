@@ -629,7 +629,7 @@ class SunoStudio {
     if (this.creations.length === 0) {
       container.innerHTML = `
         <div class="suno-recent-empty">
-          <div class="suno-recent-empty-icon">✨</div>
+          <div class="suno-recent-empty-icon">🎹</div>
           <h4>Belum Ada Lagu Dibuat</h4>
           <p>Ketik tema, lirik, atau genre di formulir sebelah kiri lalu klik <strong>Generate Lagu</strong> untuk mulai berkreasi!</p>
         </div>
