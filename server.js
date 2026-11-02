@@ -1037,12 +1037,32 @@ app.post('/api/suno/config', async (req, res) => {
   }
 });
 
-app.get('/api/suno/creations', (req, res) => {
+app.get('/api/suno/creations', async (req, res) => {
   try {
-    const { page = 1, pageSize = 12, q = '' } = req.query;
+    const { page = 1, pageSize = 12, q = '', sync = '' } = req.query;
     const deviceId = (req.headers['x-device-id'] || req.query.device_id || '').trim();
-    const result = sunoService.getCreationsPaginated({ page, pageSize, query: q, deviceId });
+    const creds = getEffectiveSunoCredentials(req);
+
+    // Live sync from Suno official account
+    if (sync === '1' || sync === 'true') {
+      await sunoService.syncOfficialFeed(creds.key, deviceId);
+    } else {
+      sunoService.syncOfficialFeed(creds.key, deviceId).catch(() => {});
+    }
+
+    const result = sunoService.getCreationsPaginated({ page, pageSize, query: q, deviceId, apiKey: creds.key });
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/suno/sync', async (req, res) => {
+  try {
+    const deviceId = (req.headers['x-device-id'] || req.body?.device_id || '').trim();
+    const creds = getEffectiveSunoCredentials(req);
+    const synced = await sunoService.syncOfficialFeed(creds.key, deviceId);
+    res.json({ success: true, count: synced ? synced.length : 0 });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

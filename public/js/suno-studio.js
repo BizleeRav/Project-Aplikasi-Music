@@ -633,7 +633,7 @@ class SunoStudio {
   /**
    * Fetch user creations from server with pagination & search
    */
-  async fetchCreations(page = 1, showToast = false) {
+  async fetchCreations(page = 1, showToast = false, forceSync = false) {
     if (this.isLoadingLibrary) return;
     this.isLoadingLibrary = true;
     this.currentPage = page;
@@ -643,13 +643,17 @@ class SunoStudio {
     const prevBtn = document.getElementById('btn-suno-prev-page');
     const nextBtn = document.getElementById('btn-suno-next-page');
     const countBadge = document.getElementById('suno-library-count-badge');
+    const syncBtn = document.getElementById('btn-suno-sync-feed');
+    const syncIcon = syncBtn?.querySelector('.sync-spin-icon');
+    if (syncIcon) syncIcon.style.animation = 'spin 1s linear infinite';
 
     if (pageIndicator) pageIndicator.textContent = page;
     if (prevBtn) prevBtn.disabled = page <= 1;
 
     try {
       const q = encodeURIComponent(this.librarySearchQuery || '');
-      const res = await fetch(`/api/suno/creations?page=${page}&pageSize=12&q=${q}`, {
+      const syncParam = forceSync ? '&sync=1' : '';
+      const res = await fetch(`/api/suno/creations?page=${page}&pageSize=12&q=${q}${syncParam}`, {
         headers: this.getAuthHeaders()
       });
       const data = await res.json();
@@ -667,7 +671,8 @@ class SunoStudio {
         this.renderRecentPreview();
 
         if (showToast && window.app && window.app.showToast) {
-          window.app.showToast(`Koleksi dimuat (${this.totalCreations} lagu buatan Anda)`, 'info');
+          const isEn = (window.app?.userProfile?.lang === 'en');
+          window.app.showToast(isEn ? `Live Suno library synchronized (${this.totalCreations} songs)` : `Koleksi Suno tersinkronisasi (${this.totalCreations} lagu asli akun Anda)`, 'success');
         }
       } else {
         this.renderEmptyCreations('Belum ada lagu yang dibuat.');
@@ -677,7 +682,16 @@ class SunoStudio {
       this.renderEmptyCreations('Gagal memuat lagu buatan Anda.');
     } finally {
       this.isLoadingLibrary = false;
+      if (syncIcon) syncIcon.style.animation = '';
     }
+  }
+
+  async syncFromSunoAccount() {
+    const isEn = (window.app?.userProfile?.lang === 'en');
+    if (window.app && window.app.showToast) {
+      window.app.showToast(isEn ? '🔄 Syncing songs directly from your official Suno account...' : '🔄 Menyinkronkan lagu langsung dari akun Suno asli Anda...', 'info');
+    }
+    await this.fetchCreations(1, true, true);
   }
 
   changePage(delta) {

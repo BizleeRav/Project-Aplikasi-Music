@@ -131,18 +131,16 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
     }
 
     if (Array.isArray(clips) && clips.length > 0) {
-      const currentList = getCreations();
-      const existingIds = new Set(currentList.map(t => t.id));
-      const newItems = [];
+      const validClips = clips.filter(c => c && c.id && c.status === 'complete');
+      const officialMap = new Map();
 
-      for (const c of clips) {
-        if (!c.id || c.status !== 'complete' || existingIds.has(c.id)) continue;
+      for (const c of validClips) {
         const dur = Math.round(Number(c.metadata?.duration || c.duration) || 180);
         const durStr = `${Math.floor(dur / 60)}:${Math.floor(dur % 60).toString().padStart(2, '0')}`;
         const audioUrl = (c.media_urls && c.media_urls[0]?.url) ||
           (c.audio_url && !c.audio_url.includes('forbidden') ? c.audio_url : `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${c.id}.m4a`);
 
-        newItems.push({
+        officialMap.set(c.id, {
           id: c.id,
           title: c.title || 'Lagu Suno AI',
           artist: `Suno AI Official (${c.major_model_version || 'v6-mini'})`,
@@ -159,14 +157,17 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
           created_at: c.created_at ? new Date(c.created_at).toLocaleDateString('id-ID') : 'Hari ini',
           deviceId: deviceId || undefined
         });
-        existingIds.add(c.id);
       }
 
-      if (newItems.length > 0) {
-        const merged = [...newItems, ...currentList];
-        saveCreations(merged);
-        console.log(`[Suno Sync] Synced ${newItems.length} brand-new official Suno clips to top of library!`);
-      }
+      // Preserve any local user creations that aren't on Suno official feed (filter out hardcoded dummy placeholders)
+      const currentList = getCreations();
+      const nonOfficial = currentList.filter(t => t.id && !officialMap.has(t.id) && !t.is_auto && !t.id.startsWith('suno-mvzc'));
+
+      // Clean list: official clips on top, followed by any custom local additions
+      const merged = [...Array.from(officialMap.values()), ...nonOfficial];
+      saveCreations(merged);
+      console.log(`[Suno Sync] Synchronized ${officialMap.size} live songs directly from official Suno account!`);
+      return merged;
     }
   } catch (err) {
     // Non-fatal background sync
