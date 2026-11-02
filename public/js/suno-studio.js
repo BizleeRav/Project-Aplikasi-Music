@@ -228,18 +228,18 @@ class SunoStudio {
   }
 
   copyClerkScript() {
-    const code = 'await window.Clerk.session.getToken()';
+    const code = 'copy(await window.Clerk.session.getToken())';
     navigator.clipboard.writeText(code).then(() => {
       if (window.app && window.app.showToast) {
-        window.app.showToast('Skrip berhasil disalin! Buka F12 -> Console di jendela Suno, lalu tempel.', 'success');
+        window.app.showToast('Perintah disalin! Buka F12 -> Console di Suno.com, tempel & Enter. Token langsung otomatis tersalin ke clipboard!', 'success');
       }
     }).catch(() => {
-      prompt('Salin skrip ini dan tempel di Console (F12) jendela Suno:', code);
+      prompt('Salin perintah ini dan jalankan di Console (F12) Suno.com:', code);
     });
   }
 
   async startAutoLoginFlow() {
-    // If running inside Electron desktop app: use native auto-token capture!
+    // If running inside Electron desktop app: use native auto-token capture with Google bypass
     if (window.electronAPI && window.electronAPI.openSunoLogin) {
       const btn = document.getElementById('btn-start-auto-login');
       const loadingBox = document.getElementById('auto-login-loading');
@@ -257,13 +257,19 @@ class SunoStudio {
       return;
     }
 
-    const btn = document.getElementById('btn-start-auto-login');
+    return this.startExternalBrowserLogin();
+  }
+
+  async startExternalBrowserLogin() {
+    const btn = document.getElementById('btn-start-external-login');
+    const btnAuto = document.getElementById('btn-start-auto-login');
     const loadingBox = document.getElementById('auto-login-loading');
     const statusText = document.getElementById('auto-login-status-text');
 
     if (btn) btn.disabled = true;
+    if (btnAuto) btnAuto.disabled = true;
     if (loadingBox) loadingBox.style.display = 'block';
-    if (statusText) statusText.textContent = 'Membuka jendela resmi Suno.com...';
+    if (statusText) statusText.textContent = 'Membuka Microsoft Edge / Chrome di laptop Anda...';
 
     try {
       const res = await fetch('/api/suno/login-auto', { method: 'POST' });
@@ -272,10 +278,11 @@ class SunoStudio {
         throw new Error(data.error || 'Gagal membuka browser');
       }
 
-      if (statusText) statusText.textContent = 'Jendela Suno terbuka! Silakan login di jendela tersebut...';
+      if (statusText) statusText.textContent = 'Microsoft Edge / Chrome terbuka! Silakan login di browser tersebut...';
       this.pollAutoLogin();
     } catch (err) {
       if (btn) btn.disabled = false;
+      if (btnAuto) btnAuto.disabled = false;
       if (loadingBox) loadingBox.style.display = 'none';
       if (window.app && window.app.showToast) {
         window.app.showToast(`Gagal: ${err.message}`, 'error');

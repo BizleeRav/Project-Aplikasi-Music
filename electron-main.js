@@ -155,6 +155,11 @@ async function createMainWindow() {
   }
 }
 
+const CHROME_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+try {
+  app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+} catch (e) {}
+
 // IPC: Automatic Suno Login Window & Token Extraction (Zero Copy-Pasting!)
 ipcMain.handle('open-suno-login', async () => {
   if (sunoLoginWin && !sunoLoginWin.isDestroyed()) {
@@ -162,28 +167,63 @@ ipcMain.handle('open-suno-login', async () => {
     return { status: 'already_open' };
   }
 
+  const sunoSession = session.fromPartition('persist:suno_auth_session');
+  sunoSession.setUserAgent(CHROME_DESKTOP_UA);
+
+  // Clean all outgoing headers so Google and Suno see standard desktop Chrome without Electron traces
+  sunoSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    details.requestHeaders['User-Agent'] = CHROME_DESKTOP_UA;
+    details.requestHeaders['Sec-CH-UA'] = '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"';
+    details.requestHeaders['Sec-CH-UA-Mobile'] = '?0';
+    details.requestHeaders['Sec-CH-UA-Platform'] = '"Windows"';
+    callback({ cancel: false, requestHeaders: details.requestHeaders });
+  });
+
   sunoLoginWin = new BrowserWindow({
-    width: 900,
-    height: 720,
+    width: 960,
+    height: 740,
     title: 'Login ke Akun Resmi Suno.com',
     parent: mainWindow,
     modal: true,
     backgroundColor: '#0a0d14',
     webPreferences: {
+      session: sunoSession,
       nodeIntegration: false,
       contextIsolation: true
     }
   });
+
+  sunoLoginWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
 
   sunoLoginWin.setMenuBarVisibility(false);
   if (typeof sunoLoginWin.removeMenu === 'function') {
     sunoLoginWin.removeMenu();
   }
 
+  // Allow Google OAuth popup windows to function naturally without breaking window.opener
   sunoLoginWin.webContents.setWindowOpenHandler(({ url }) => {
-    // Navigate within sunoLoginWin instead of opening a blank child window
-    sunoLoginWin.loadURL(url);
-    return { action: 'deny' };
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        parent: sunoLoginWin,
+        modal: false,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+          session: sunoSession,
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      }
+    };
+  });
+
+  // Inject navigator overrides on any navigation/frame
+  sunoLoginWin.webContents.on('dom-ready', () => {
+    sunoLoginWin.webContents.executeJavaScript(`
+      try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      } catch (e) {}
+    `).catch(() => {});
   });
 
   sunoLoginWin.loadURL('https://suno.com/me');

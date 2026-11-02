@@ -88,6 +88,7 @@ async function launchAutomaticSunoLogin() {
     `--remote-debugging-port=${debugPort}`,
     `--remote-debugging-address=127.0.0.1`,
     `--user-data-dir=${tempProfileDir}`,
+    '--disable-blink-features=AutomationControlled',
     '--no-first-run',
     '--no-default-browser-check',
     '--window-size=960,780',
