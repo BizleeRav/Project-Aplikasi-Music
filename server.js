@@ -1179,15 +1179,22 @@ app.post('/api/suno/connect-token', (req, res) => {
     return res.status(400).json({ success: false, error: 'Token tidak valid' });
   }
   const cleanToken = token.trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '');
-  sunoService.saveConfig({
-    suno_api_key: cleanToken,
-    suno_provider: 'suno_official'
-  });
-  if (typeof sunoLoginHelper.notifyTokenCaptured === 'function') {
-    sunoLoginHelper.notifyTokenCaptured(cleanToken);
+  const ip = req.ip || req.connection?.remoteAddress || '';
+  const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
+  if (isLocalhost) {
+    sunoService.saveConfig({
+      suno_api_key: cleanToken,
+      suno_provider: 'suno_official'
+    });
+    if (typeof sunoLoginHelper.notifyTokenCaptured === 'function') {
+      sunoLoginHelper.notifyTokenCaptured(cleanToken);
+    }
   }
   try {
-    userDb.updateUserProfile('bizlee3012@gmail.com', { suno_token: cleanToken });
+    const userEmail = (req.headers['x-user-email'] || req.body?.email || '').trim();
+    if (userEmail) {
+      userDb.updateUserProfile(userEmail, { suno_token: cleanToken });
+    }
   } catch (e) {}
   res.json({ success: true, message: '🎉 Akun Suno Resmi Anda berhasil terhubung ke AuraSound!' });
 });

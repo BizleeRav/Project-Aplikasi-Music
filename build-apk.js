@@ -245,6 +245,13 @@ public class AndroidMediaBridge {
         }
         return "";
     }
+
+    @JavascriptInterface
+    public void clearSunoCookies() {
+        if (activity != null) {
+            activity.clearSunoCookies();
+        }
+    }
 }
 `);
 
@@ -1044,6 +1051,16 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    public void clearSunoCookies() {
+        runOnUiThread(() -> {
+            try {
+                CookieManager cm = CookieManager.getInstance();
+                cm.removeAllCookies(null);
+                cm.flush();
+            } catch (Exception e) {}
+        });
     }
 
     public void openExternalBrowser(String url) {

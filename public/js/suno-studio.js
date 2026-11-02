@@ -952,6 +952,12 @@ class SunoStudio {
     localStorage.removeItem('aurasound_suno_key');
     localStorage.removeItem('aurasound_suno_provider');
     localStorage.removeItem('aurasound_suno_token');
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.saveSunoToken === 'function') {
+      window.AuraSoundAndroid.saveSunoToken('');
+    }
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.clearSunoCookies === 'function') {
+      window.AuraSoundAndroid.clearSunoCookies();
+    }
 
     const apiKeyInput = document.getElementById('input-suno-api-key');
     if (apiKeyInput) apiKeyInput.value = '';
