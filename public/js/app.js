@@ -6162,9 +6162,33 @@ class App {
         </div>
 
         <div class="home-album-tracklist-section">
-          <div class="home-album-section-heading">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--primary)" stroke-width="2.2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            <span id="home-album-tracks-count">${isEn ? 'Tracklist' : 'Daftar Lagu'} (${tracks.length})</span>
+          <div class="home-album-tracklist-header">
+            <div class="home-album-section-heading">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--primary)" stroke-width="2.2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              <span id="home-album-tracks-count">${isEn ? 'Tracklist' : 'Daftar Lagu'} (${tracks.length})</span>
+            </div>
+            <div class="detail-search-bar-wrap">
+              <svg class="detail-search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input 
+                type="text" 
+                id="album-search-input" 
+                class="detail-search-input" 
+                placeholder="${isEn ? 'Search songs or artists in this album...' : 'Cari judul lagu atau artis di album ini...'}" 
+                value=""
+                oninput="window.app.handleAlbumSearch(this.value)"
+                onkeydown="if(event.key==='Escape') window.app.clearAlbumSearch()"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button 
+                id="album-search-clear" 
+                class="detail-search-clear" 
+                onclick="window.app.clearAlbumSearch()" 
+                title="${isEn ? 'Clear search' : 'Hapus pencarian'}"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
           </div>
           <div id="home-album-tracks-container" class="track-list"></div>
           <div id="home-album-pagination-box"></div>
@@ -6181,6 +6205,7 @@ class App {
       </div>
     `;
 
+    this.albumSearchQuery = '';
     this.albumCurrentPage = 1;
     this.renderPaginatedAlbumTracks(1);
   }
@@ -6189,13 +6214,36 @@ class App {
     if (!this.currentAlbumDetail) return;
     const isEn = (this.userProfile?.lang === 'en');
     const album = this.currentAlbumDetail;
-    const tracks = album.tracks || [];
+    const allTracks = album.tracks || [];
+    const query = (this.albumSearchQuery || '').trim().toLowerCase();
+
+    let tracks = allTracks;
+    if (query) {
+      const terms = query.split(/\s+/).filter(Boolean);
+      tracks = allTracks.filter(t => {
+        const text = `${t.title || ''} ${t.artist || ''}`.toLowerCase();
+        return terms.every(term => text.includes(term));
+      });
+    }
+
     const container = document.getElementById('home-album-tracks-container');
     const paginationContainer = document.getElementById('home-album-pagination-box');
+    const countEl = document.getElementById('home-album-tracks-count');
+
+    if (countEl) {
+      const prefix = album.id === 'liked-music'
+        ? (isEn ? 'Liked Songs' : 'Daftar Lagu Disukai')
+        : (isEn ? 'Tracklist' : 'Daftar Lagu');
+      if (query) {
+        countEl.textContent = `${prefix} (${tracks.length} ${isEn ? 'of' : 'dari'} ${allTracks.length})`;
+      } else {
+        countEl.textContent = `${prefix} (${allTracks.length})`;
+      }
+    }
 
     if (!container) return;
 
-    if (tracks.length === 0) {
+    if (allTracks.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">${album.id === 'liked-music' ? '❤️' : '💿'}</div>
@@ -6205,6 +6253,23 @@ class App {
           <p>${album.id === 'liked-music'
             ? (isEn ? 'Click the heart button (❤️) on any song you listen to collect it here.' : 'Klik tombol hati (❤️) pada lagu yang Anda dengar untuk mengumpulkannya di sini.')
             : (isEn ? 'This album or playlist is currently empty.' : 'Daftar lagu dalam album ini belum tersedia.')}</p>
+        </div>
+      `;
+      if (paginationContainer) paginationContainer.innerHTML = '';
+      return;
+    }
+
+    if (tracks.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state" style="padding: 40px 16px;">
+          <div class="empty-icon" style="font-size: 2.2rem;">🔍</div>
+          <h3 style="font-size: 1.1rem; margin-top: 8px;">${isEn ? 'No matching songs found' : 'Tidak ada lagu yang cocok'}</h3>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 16px;">
+            ${isEn ? `No songs in this album match "${this.escapeHtml(this.albumSearchQuery)}"` : `Tidak ditemukan lagu dengan kata kunci "${this.escapeHtml(this.albumSearchQuery)}" di album ini`}
+          </p>
+          <button class="btn-sidebar-action" onclick="window.app.clearAlbumSearch()" style="width: auto; margin: 0 auto; padding: 8px 20px; font-size: 0.82rem;">
+            ${isEn ? 'Reset Search' : 'Reset Pencarian'}
+          </button>
         </div>
       `;
       if (paginationContainer) paginationContainer.innerHTML = '';
@@ -6392,6 +6457,8 @@ class App {
   }
 
   closeHomeAlbumDetail() {
+    this.currentAlbumDetail = null;
+    this.albumSearchQuery = '';
     const sections = document.getElementById('ytm-home-sections');
     const chips = (document.getElementById('home-mood-chips-container') || document.getElementById('ytm-mood-chips'));
     const detailView = document.getElementById('home-album-detail-view');
@@ -6560,9 +6627,33 @@ class App {
         </div>
 
         <div class="home-album-tracklist-section">
-          <div class="home-album-section-heading">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="#ef4444" stroke="#ef4444" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            <span id="home-album-tracks-count">${isEn ? 'Liked Songs List' : 'Daftar Lagu Disukai'} (${tracks.length})</span>
+          <div class="home-album-tracklist-header">
+            <div class="home-album-section-heading">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="#ef4444" stroke="#ef4444" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              <span id="home-album-tracks-count">${isEn ? 'Liked Songs List' : 'Daftar Lagu Disukai'} (${tracks.length})</span>
+            </div>
+            <div class="detail-search-bar-wrap">
+              <svg class="detail-search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input 
+                type="text" 
+                id="album-search-input" 
+                class="detail-search-input" 
+                placeholder="${isEn ? 'Search liked songs or artists...' : 'Cari di lagu yang disukai...'}" 
+                value=""
+                oninput="window.app.handleAlbumSearch(this.value)"
+                onkeydown="if(event.key==='Escape') window.app.clearAlbumSearch()"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button 
+                id="album-search-clear" 
+                class="detail-search-clear" 
+                onclick="window.app.clearAlbumSearch()" 
+                title="${isEn ? 'Clear search' : 'Hapus pencarian'}"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
           </div>
           <div id="home-album-tracks-container" class="track-list"></div>
           <div id="home-album-pagination-box"></div>
@@ -6570,6 +6661,7 @@ class App {
       </div>
     `;
 
+    this.albumSearchQuery = '';
     this.albumCurrentPage = 1;
     this.renderPaginatedAlbumTracks(1);
   }
@@ -7788,7 +7880,35 @@ class App {
             </div>
           </div>
         </div>
-        <div id="playlist-tracks-list" class="track-list" style="margin-top: 24px;">
+        <div class="detail-tracklist-toolbar">
+          <div class="detail-tracklist-heading">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--primary)" stroke-width="2.2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span id="playlist-tracks-count">${isEn ? 'Tracklist' : 'Daftar Lagu'} (${pl.trackCount || pl.tracks?.length || 0})</span>
+          </div>
+          <div class="detail-search-bar-wrap">
+            <svg class="detail-search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input 
+              type="text" 
+              id="playlist-search-input" 
+              class="detail-search-input" 
+              placeholder="${isEn ? 'Search playlist songs or artists...' : 'Cari judul lagu atau artis...'}" 
+              value=""
+              oninput="window.app.handlePlaylistSearch(this.value)"
+              onkeydown="if(event.key==='Escape') window.app.clearPlaylistSearch()"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button 
+              id="playlist-search-clear" 
+              class="detail-search-clear" 
+              onclick="window.app.clearPlaylistSearch()" 
+              title="${isEn ? 'Clear search' : 'Hapus pencarian'}"
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="playlist-tracks-list" class="track-list">
           ${this.renderLoadingState(isEn ? 'Loading tracklist...' : 'Memuat daftar lagu...', true, 4)}
         </div>
         <div id="playlist-pagination-box"></div>
@@ -7811,6 +7931,7 @@ class App {
     }
 
     this.currentPlaylistDetail = pl;
+    this.playlistSearchQuery = '';
     this.playlistCurrentPage = 1;
     this.renderPaginatedPlaylistTracks(1);
   }
@@ -7819,18 +7940,59 @@ class App {
     if (!this.currentPlaylistDetail) return;
     const isEn = this.userProfile?.lang === 'en';
     const pl = this.currentPlaylistDetail;
-    const tracks = pl.tracks || [];
+    const allTracks = pl.tracks || [];
+    const query = (this.playlistSearchQuery || '').trim().toLowerCase();
+
+    let tracks = allTracks;
+    if (query) {
+      const terms = query.split(/\s+/).filter(Boolean);
+      tracks = allTracks.filter(t => {
+        const text = `${t.title || ''} ${t.artist || ''}`.toLowerCase();
+        return terms.every(term => text.includes(term));
+      });
+    }
+
     const listContainer = document.getElementById('playlist-tracks-list');
     const paginationContainer = document.getElementById('playlist-pagination-box');
+    const countEl = document.getElementById('playlist-tracks-count');
+
+    if (countEl) {
+      if (query) {
+        countEl.textContent = isEn
+          ? `Tracks (${tracks.length} of ${allTracks.length})`
+          : `Daftar Lagu (${tracks.length} dari ${allTracks.length})`;
+      } else {
+        countEl.textContent = isEn
+          ? `Tracks (${allTracks.length})`
+          : `Daftar Lagu (${allTracks.length})`;
+      }
+    }
 
     if (!listContainer) return;
 
-    if (tracks.length === 0) {
+    if (allTracks.length === 0) {
       listContainer.innerHTML = `
         <div class="empty-state">
           <div class="empty-icon">🎵</div>
           <h3>${isEn ? 'This playlist is empty' : 'Playlist ini masih kosong'}</h3>
           <p>${isEn ? 'Search songs on Home or Search tab, then click "+" to add songs here.' : 'Cari lagu di tab Beranda atau Pencarian, lalu klik tombol "+" untuk memasukkan lagu ke sini.'}</p>
+        </div>
+      `;
+      if (paginationContainer) paginationContainer.innerHTML = '';
+      return;
+    }
+
+    if (tracks.length === 0) {
+      listContainer.innerHTML = `
+        <div class="empty-state" style="padding: 40px 16px;">
+          <div class="empty-icon" style="font-size: 2.2rem;">🔍</div>
+          <h3 style="font-size: 1.1rem; margin-top: 8px;">${isEn ? 'No songs match your search' : 'Tidak ada lagu yang cocok'}</h3>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 16px;">
+            ${isEn ? `No songs in this playlist match "${this.escapeHtml(this.playlistSearchQuery)}"` : `Tidak ditemukan lagu dengan kata kunci "${this.escapeHtml(this.playlistSearchQuery)}" di playlist ini`}
+          </p>
+          <button class="btn-sidebar-action" onclick="window.app.clearPlaylistSearch()" style="width: auto; margin: 0 auto; padding: 8px 20px; font-size: 0.82rem;">
+            ${isEn ? 'Reset Search' : 'Reset Pencarian'}
+          </button>
         </div>
       `;
       if (paginationContainer) paginationContainer.innerHTML = '';
@@ -7953,8 +8115,63 @@ class App {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  handlePlaylistSearch(value) {
+    this.playlistSearchQuery = value || '';
+    const clearBtn = document.getElementById('playlist-search-clear');
+    if (clearBtn) {
+      if (this.playlistSearchQuery.trim()) {
+        clearBtn.classList.add('active');
+      } else {
+        clearBtn.classList.remove('active');
+      }
+    }
+    this.playlistCurrentPage = 1;
+    this.renderPaginatedPlaylistTracks(1);
+  }
+
+  clearPlaylistSearch() {
+    this.playlistSearchQuery = '';
+    const input = document.getElementById('playlist-search-input');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    const clearBtn = document.getElementById('playlist-search-clear');
+    if (clearBtn) clearBtn.classList.remove('active');
+    this.playlistCurrentPage = 1;
+    this.renderPaginatedPlaylistTracks(1);
+  }
+
+  handleAlbumSearch(value) {
+    this.albumSearchQuery = value || '';
+    const clearBtn = document.getElementById('album-search-clear');
+    if (clearBtn) {
+      if (this.albumSearchQuery.trim()) {
+        clearBtn.classList.add('active');
+      } else {
+        clearBtn.classList.remove('active');
+      }
+    }
+    this.albumCurrentPage = 1;
+    this.renderPaginatedAlbumTracks(1);
+  }
+
+  clearAlbumSearch() {
+    this.albumSearchQuery = '';
+    const input = document.getElementById('album-search-input');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    const clearBtn = document.getElementById('album-search-clear');
+    if (clearBtn) clearBtn.classList.remove('active');
+    this.albumCurrentPage = 1;
+    this.renderPaginatedAlbumTracks(1);
+  }
+
   closePlaylistDetail() {
     this.currentPlaylistDetail = null;
+    this.playlistSearchQuery = '';
     const gridContainer = document.getElementById('custom-playlists-container');
     const detailContainer = document.getElementById('playlist-detail-view');
     if (detailContainer) detailContainer.style.display = 'none';

@@ -5035,14 +5035,129 @@ input::-ms-reveal {
   backdrop-filter: blur(14px);
 }
 
+/* In-Playlist & In-Album Sleek Search Toolbar */
+.detail-tracklist-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 24px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.home-album-tracklist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.detail-tracklist-heading,
 .home-album-section-heading {
   font-size: 1.15rem;
   font-weight: 800;
   color: #fff;
-  margin-bottom: 16px;
   display: flex;
   align-items: center;
   gap: 10px;
+  margin: 0;
+}
+
+.detail-search-bar-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  padding: 0 10px 0 14px;
+  height: 38px;
+  min-width: 230px;
+  max-width: 340px;
+  flex: 1 1 230px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.detail-search-bar-wrap:focus-within {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.detail-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-right: 8px;
+  transition: color 0.2s ease;
+}
+
+.detail-search-bar-wrap:focus-within .detail-search-icon {
+  color: var(--primary);
+}
+
+.detail-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-family: inherit;
+  padding: 0;
+  min-width: 0;
+}
+
+.detail-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.detail-search-clear {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-left: 6px;
+  flex-shrink: 0;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.detail-search-clear.active {
+  display: flex;
+}
+
+.detail-search-clear:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .detail-tracklist-toolbar,
+  .home-album-tracklist-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .detail-search-bar-wrap {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 @media (max-width: 768px) {
