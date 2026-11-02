@@ -8962,10 +8962,14 @@ function checkAuraSoundAppVersion() {
         <div style="font-size:13px; color:#cbd5e1; line-height:1.45;">
           Perbarui aplikasi untuk mengaktifkan <b>Login Google Resmi Suno AI</b> dan sistem <b>Update Otomatis</b> di HP Anda.
         </div>
-        <div style="display:flex; gap:10px; margin-top:2px;">
-          <button id="btn-do-update-apk" style="flex:1; background:linear-gradient(135deg,#10b981,#059669); color:#fff; font-weight:700; font-size:13px; padding:11px 16px; border-radius:8px; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
-            ⬇️ Download & Pasang Sekarang (1 MB)
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px;">
+          <button id="btn-do-update-apk" style="width:100%; background:linear-gradient(135deg,#10b981,#059669); color:#fff; font-weight:700; font-size:14px; padding:12px 16px; border-radius:10px; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 14px rgba(16,185,129,0.35);">
+            ⬇️ Download File APK Sekarang (1 MB)
           </button>
+          <div style="font-size:11.5px; color:#94a3b8; text-align:center; line-height:1.4;">
+            Jika tombol tidak merespon di HP Anda, buka browser <b>Chrome</b> di HP dan buka link ini:<br>
+            <a href="https://project-aplikasi-music.vercel.app/download/AuraSound.apk" target="_blank" style="color:#38bdf8; font-weight:bold; text-decoration:underline; word-break:break-all;">https://project-aplikasi-music.vercel.app/download/AuraSound.apk</a>
+          </div>
         </div>
       `;
       document.body.appendChild(banner);
@@ -8975,23 +8979,33 @@ function checkAuraSoundAppVersion() {
 
       const updateBtn = banner.querySelector('#btn-do-update-apk');
       if (updateBtn) {
-        updateBtn.onclick = () => {
+        const triggerUpdate = () => {
+          updateBtn.style.opacity = '0.7';
+          updateBtn.textContent = '⏳ Mengalihkan ke Browser HP...';
           const apkUrl = 'https://project-aplikasi-music.vercel.app/download/AuraSound.apk';
-          if (typeof window.AuraSoundAndroid.downloadAndInstallUpdate === 'function') {
+          const intentUrl = 'intent://project-aplikasi-music.vercel.app/download/AuraSound.apk#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end;';
+
+          if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.downloadAndInstallUpdate === 'function') {
             window.AuraSoundAndroid.downloadAndInstallUpdate(apkUrl);
-          } else if (typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
+          } else if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
             window.AuraSoundAndroid.openExternalBrowser(apkUrl);
           } else {
-            const a = document.createElement('a');
-            a.href = apkUrl;
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
+            // Android intent URI to escape WebView and open device's native browser
+            try {
+              window.location.href = intentUrl;
+            } catch (e) {
+              window.location.href = apkUrl;
+            }
           }
         };
+
+        updateBtn.addEventListener('click', triggerUpdate);
+        updateBtn.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          triggerUpdate();
+        });
       }
-    }, 1200);
+    }, 1000);
   }
 }
 
