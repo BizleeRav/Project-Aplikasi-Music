@@ -76,6 +76,10 @@ function saveCreations(list) {
     const dir = path.dirname(CREATIONS_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(CREATIONS_FILE, JSON.stringify(list, null, 2), 'utf8');
+    const repoFile = path.join(__dirname, 'data', 'suno-creations.json');
+    if (CREATIONS_FILE !== repoFile) {
+      try { fs.writeFileSync(repoFile, JSON.stringify(list, null, 2), 'utf8'); } catch (e) {}
+    }
   } catch (e) {
     console.error('Error saving creations:', e);
   }
@@ -83,38 +87,72 @@ function saveCreations(list) {
 
 let isSyncingFeed = false;
 async function syncOfficialFeed(rawToken, deviceId = null) {
-  if (!rawToken || rawToken.length < 20 || isSyncingFeed) return;
+  if (isSyncingFeed) return;
   isSyncingFeed = true;
   try {
-    const cleanJwt = (rawToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
-    const res = await axios.get('https://studio-api.prod.suno.com/api/feed/v2', {
-      headers: {
-        'Authorization': `Bearer ${cleanJwt}`,
-        'Cookie': `__session=${cleanJwt}`,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      timeout: 12000
-    });
-    const clips = res.data?.clips || res.data || [];
+    let cleanJwt = (rawToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+
+    let clips = [];
+    const fetchWithToken = async (token) => {
+      const res = await axios.get('https://studio-api.prod.suno.com/api/feed/v2', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Cookie': `__session=${token}`,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        timeout: 12000
+      });
+      return res.data?.clips || res.data || [];
+    };
+
+    if (cleanJwt && cleanJwt.length > 20) {
+      try {
+        clips = await fetchWithToken(cleanJwt);
+      } catch (err) {
+        if (err.response?.status === 401) {
+          cleanJwt = null; // Token expired, refresh below
+        }
+      }
+    }
+
+    // If token was expired or missing, try refreshing from local browser profile
+    if (!cleanJwt || clips.length === 0) {
+      try {
+        const helper = require('./suno-login-helper');
+        const os = require('os');
+        const profileDir = path.join(os.homedir(), 'AppData', 'Roaming', 'AuraSound', 'suno_browser_profile');
+        const sess = await helper.extractSunoSessionFromProfile(profileDir);
+        if (sess && sess.token) {
+          cleanJwt = sess.token;
+          saveConfig({ suno_api_key: cleanJwt, suno_provider: 'suno_official' });
+          clips = await fetchWithToken(cleanJwt);
+        }
+      } catch (e) {}
+    }
+
     if (Array.isArray(clips) && clips.length > 0) {
-      let changed = false;
       const currentList = getCreations();
       const existingIds = new Set(currentList.map(t => t.id));
+      const newItems = [];
 
       for (const c of clips) {
         if (!c.id || c.status !== 'complete' || existingIds.has(c.id)) continue;
-        const dur = c.metadata?.duration || c.duration || 180;
+        const dur = Math.round(Number(c.metadata?.duration || c.duration) || 180);
         const durStr = `${Math.floor(dur / 60)}:${Math.floor(dur % 60).toString().padStart(2, '0')}`;
-        currentList.push({
+        const audioUrl = (c.media_urls && c.media_urls[0]?.url) ||
+          (c.audio_url && !c.audio_url.includes('forbidden') ? c.audio_url : `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${c.id}.m4a`);
+
+        newItems.push({
           id: c.id,
           title: c.title || 'Lagu Suno AI',
-          artist: 'Suno AI Official',
+          artist: `Suno AI Official (${c.major_model_version || 'v6-mini'})`,
           tags: c.metadata?.tags || c.tags || '',
-          prompt: c.metadata?.prompt || c.prompt || '',
+          prompt: c.metadata?.gpt_description_prompt || c.metadata?.prompt || c.prompt || '',
           lyrics: c.metadata?.prompt || c.prompt || '',
           status: 'complete',
-          thumbnail: c.image_url || `https://cdn2.suno.ai/image_${c.id}.jpeg`,
-          audio_url: `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${c.id}.m4a`,
+          model: c.major_model_version || 'v6-mini',
+          thumbnail: c.image_large_url || c.image_url || `https://cdn2.suno.ai/image_${c.id}.jpeg`,
+          audio_url: audioUrl,
           duration: durStr,
           seconds: dur,
           type: 'suno',
@@ -122,11 +160,12 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
           deviceId: deviceId || undefined
         });
         existingIds.add(c.id);
-        changed = true;
       }
-      if (changed) {
-        saveCreations(currentList);
-        console.log(`[Suno Sync] Synced ${clips.length} official Suno clips to library!`);
+
+      if (newItems.length > 0) {
+        const merged = [...newItems, ...currentList];
+        saveCreations(merged);
+        console.log(`[Suno Sync] Synced ${newItems.length} brand-new official Suno clips to top of library!`);
       }
     }
   } catch (err) {
@@ -1019,9 +1058,38 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
           if (status === 402) {
             throw new Error('Kuota kredit akun Suno Anda untuk hari ini telah habis (50 kredit). Kuota akan otomatis di-reset besok oleh Suno!');
           }
-          // If Suno challenges request with bot/token verification or session expired:
-          console.warn('[Suno Generate] Suno official API challenged (' + (data?.detail || sunoErr.message) + '). Continuing seamlessly with Studio Engine...');
-          // Fall through to Studio Engine below so user is NEVER blocked by captcha/network!
+          // If Suno challenges direct API request with Turnstile/Bot verification (422),
+          // use the genuine offscreen browser session directly:
+          try {
+            console.log('[Suno Generate] Direct API challenged. Launching genuine browser generator session...');
+            const browserGen = require('./suno-browser-generator');
+            const res = await browserGen.triggerSunoBrowserGenerate({
+              prompt: finalPrompt || prompt,
+              tags: finalTags,
+              title: finalTitle,
+              make_instrumental
+            });
+            if (res.success && res.clips && res.clips.length > 0) {
+              return {
+                success: true,
+                is_auto: false,
+                data: res.clips.map(c => ({
+                  id: c.id,
+                  title: c.title || finalTitle,
+                  artist: `Suno Official (${c.model || officialMv})`,
+                  tags: finalTags,
+                  prompt: finalPrompt,
+                  lyrics: finalLyrics,
+                  model: c.model || officialMv,
+                  status: 'submitted',
+                  created_at: 'Sedang Diproses...'
+                }))
+              };
+            }
+          } catch (browserErr) {
+            console.warn('[Suno Generate] Browser generation error:', browserErr.message);
+          }
+          // Fall through to Studio Engine below if browser generation not available (e.g. mobile/serverless)
         }
       }
       if (provider === 'goapi') {
@@ -1242,10 +1310,37 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
   try {
     if (provider === 'suno_official') {
       try {
-        const res = await axios.get(`https://studio-api.prod.suno.com/api/feed/v2?ids=${idsQuery}`, {
-          headers: buildSunoOfficialHeaders(apiKey),
-          timeout: 15000
-        });
+        let currentToken = apiKey;
+        let res;
+        try {
+          res = await axios.get(`https://studio-api.prod.suno.com/api/feed/v2?ids=${idsQuery}`, {
+            headers: buildSunoOfficialHeaders(currentToken),
+            timeout: 15000
+          });
+        } catch (fetchErr) {
+          if (fetchErr.response?.status === 401) {
+            try {
+              const helper = require('./suno-login-helper');
+              const os = require('os');
+              const profileDir = path.join(os.homedir(), 'AppData', 'Roaming', 'AuraSound', 'suno_browser_profile');
+              const sess = await helper.extractSunoSessionFromProfile(profileDir);
+              if (sess && sess.token) {
+                currentToken = sess.token;
+                saveConfig({ suno_api_key: currentToken, suno_provider: 'suno_official' });
+                res = await axios.get(`https://studio-api.prod.suno.com/api/feed/v2?ids=${idsQuery}`, {
+                  headers: buildSunoOfficialHeaders(currentToken),
+                  timeout: 15000
+                });
+              } else {
+                throw fetchErr;
+              }
+            } catch (e) {
+              throw fetchErr;
+            }
+          } else {
+            throw fetchErr;
+          }
+        }
         const rawClips = Array.isArray(res.data) ? res.data : (res.data?.clips || res.data?.data?.clips || []);
         const formatted = rawClips.map(c => {
           const audioUrl = extractAudioUrl(c);
@@ -1439,5 +1534,6 @@ module.exports = {
   saveConfig,
   generateStructuredLyrics,
   prepareLyricsAndPrompt,
-  pickSoundForTheme
+  pickSoundForTheme,
+  syncOfficialFeed
 };
