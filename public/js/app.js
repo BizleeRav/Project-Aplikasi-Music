@@ -8940,6 +8940,69 @@ class App {
   }
 }
 
+function initAppUpdateCheck() {
+  if (!window.AuraSoundAndroid) return;
+  const currentVer = (typeof window.AuraSoundAndroid.getAppVersionCode === 'function')
+    ? window.AuraSoundAndroid.getAppVersionCode()
+    : 1;
+
+  if (currentVer < 3) {
+    const modal = document.getElementById('modal-app-update');
+    if (!modal) return;
+
+    // Tampilkan modal pembaruan otomatis setelah 1 detik di HP
+    setTimeout(() => {
+      modal.classList.add('active');
+    }, 1000);
+
+    const btnInstall = document.getElementById('btn-modal-install-update');
+    const btnChrome = document.getElementById('btn-open-chrome-update');
+    const btnCopy = document.getElementById('btn-copy-update-link');
+    const apkUrl = 'https://raw.githubusercontent.com/BizleeRav/Project-Aplikasi-Music/main/public/download/AuraSound.apk';
+
+    if (btnInstall) {
+      btnInstall.addEventListener('click', (e) => {
+        if (typeof window.AuraSoundAndroid.downloadAndInstallUpdate === 'function') {
+          e.preventDefault();
+          window.AuraSoundAndroid.downloadAndInstallUpdate(apkUrl);
+        } else if (typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
+          e.preventDefault();
+          window.AuraSoundAndroid.openExternalBrowser(apkUrl);
+        }
+      });
+    }
+
+    if (btnChrome) {
+      btnChrome.addEventListener('click', () => {
+        const intentUrl = 'intent://raw.githubusercontent.com/BizleeRav/Project-Aplikasi-Music/main/public/download/AuraSound.apk#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end;';
+        try {
+          window.location.href = intentUrl;
+        } catch (e) {
+          window.location.href = apkUrl;
+        }
+      });
+    }
+
+    if (btnCopy) {
+      btnCopy.addEventListener('click', () => {
+        navigator.clipboard.writeText(apkUrl).then(() => {
+          if (window.app && window.app.showToast) {
+            window.app.showToast('Link unduhan berhasil disalin! Silakan buka Chrome & tempel.', 'success');
+          }
+        }).catch(() => {
+          prompt('Salin link unduhan:', apkUrl);
+        });
+      });
+    }
+  }
+}
+
+window.openAppUpdateModal = function() {
+  const modal = document.getElementById('modal-app-update');
+  if (modal) modal.classList.add('active');
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new App();
+  initAppUpdateCheck();
 });

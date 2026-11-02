@@ -249,13 +249,20 @@ class SunoStudio {
   }
 
   async startAutoLoginFlow() {
-    // If running on Android APK with native Suno sheet
-    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openSunoLogin === 'function') {
-      if (window.app && window.app.showToast) {
-        window.app.showToast('Membuka login resmi Suno.com...', 'info');
+    // If running on Android APK
+    if (window.AuraSoundAndroid) {
+      if (typeof window.AuraSoundAndroid.openSunoLogin === 'function') {
+        if (window.app && window.app.showToast) {
+          window.app.showToast('Membuka login resmi Suno.com...', 'info');
+        }
+        window.AuraSoundAndroid.openSunoLogin();
+        return;
+      } else {
+        if (typeof window.openAppUpdateModal === 'function') {
+          window.openAppUpdateModal();
+          return;
+        }
       }
-      window.AuraSoundAndroid.openSunoLogin();
-      return;
     }
 
     this.openSettingsModal();
