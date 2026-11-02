@@ -969,19 +969,18 @@ app.get('/api/trending', async (req, res) => {
 // Helper to extract client-provided key & protect server's private key from remote devices
 function getEffectiveSunoCredentials(req) {
   const clientKey = (req.headers['x-suno-api-key'] || req.query.api_key || req.body?.api_key || '').trim();
-  const clientProvider = (req.headers['x-suno-provider'] || req.query.provider || req.body?.provider || 'kie').trim();
+  const clientProvider = (req.headers['x-suno-provider'] || req.query.provider || req.body?.provider || '').trim();
 
   // If client explicitly provided their own key, prioritize it
   if (clientKey.length > 5) {
-    return { key: clientKey, provider: clientProvider, isClientKey: true };
+    return { key: clientKey, provider: clientProvider || 'suno_official', isClientKey: true };
   }
 
-  // System-wide Default: Use server's built-in Suno AI Neural engine
-  // End users can generate songs directly without needing to know what an API key is!
+  // System-wide Default
   const cfg = sunoService.getConfig();
   return {
-    key: cfg.suno_api_key || '368b953dba13bca4791b6ee34b3c1c7a',
-    provider: cfg.suno_provider || 'kie',
+    key: (cfg.suno_api_key || '').trim(),
+    provider: cfg.suno_provider || 'suno_official',
     isClientKey: false
   };
 }
@@ -1106,6 +1105,13 @@ app.post('/api/suno/generate', async (req, res) => {
     const deviceId = (req.headers['x-device-id'] || req.body?.device_id || '').trim() || 'guest_default';
     const ip = req.ip || req.connection?.remoteAddress || '';
     const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
+
+    if (!creds.key || creds.key.length < 20) {
+      return res.status(400).json({
+        success: false,
+        error: 'Akun Suno Anda belum terhubung. Silakan klik tombol "🔗 Hubungkan Akun Suno" di pojok kanan atas untuk login ke akun Suno Anda!'
+      });
+    }
 
     // Check device-isolated credits if using built-in system engine
     if (!creds.isClientKey) {

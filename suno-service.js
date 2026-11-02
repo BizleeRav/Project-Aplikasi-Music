@@ -513,6 +513,19 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
   };
 }
 
+function buildSunoOfficialHeaders(rawToken) {
+  const cleanJwt = (rawToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+  return {
+    'Authorization': `Bearer ${cleanJwt}`,
+    'Cookie': `__session=${cleanJwt}`,
+    'Content-Type': 'application/json',
+    'Accept': '*/*',
+    'Referer': 'https://suno.com/',
+    'Origin': 'https://suno.com',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+  };
+}
+
 /**
  * Generate audio with Suno AI (Kie.ai, Auto-Engine, or Custom Provider)
  */
@@ -533,6 +546,10 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
         const finalTags = (tags || '').trim() || 'Indonesian Pop, Emotional Vocal, 432Hz Studio Mix';
         const finalPrompt = (lyrics || prompt || '').trim() || generateStructuredLyrics(finalTitle, prompt, finalTags, make_instrumental);
 
+        if (!apiKey || apiKey.length < 20) {
+          throw new Error('Akun Suno belum terhubung. Silakan klik tombol "🔗 Hubungkan Akun Suno" di pojok kanan atas untuk login ke akun Suno Anda!');
+        }
+
         try {
           const sunoRes = await axios.post(
             'https://studio-api.suno.ai/api/generate/v2/',
@@ -544,14 +561,8 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
               mv: modelVersion
             },
             {
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'Referer': 'https://suno.com/',
-                'Origin': 'https://suno.com',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-              },
-              timeout: 15000
+              headers: buildSunoOfficialHeaders(apiKey),
+              timeout: 25000
             }
           );
 
@@ -822,12 +833,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
     if (provider === 'suno_official') {
       try {
         const res = await axios.get(`https://studio-api.suno.ai/api/feed/v2?ids=${idsQuery}`, {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Referer': 'https://suno.com/',
-            'Origin': 'https://suno.com',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          },
+          headers: buildSunoOfficialHeaders(apiKey),
           timeout: 15000
         });
         const rawClips = Array.isArray(res.data) ? res.data : (res.data?.clips || res.data?.data?.clips || []);
