@@ -1523,6 +1523,129 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
 }
 
 /**
+ * Parse official Suno aligned_words into whole-word lyric lines with accurate section headers
+ */
+function parseAlignedWords(rawWords) {
+  if (!Array.isArray(rawWords) || rawWords.length === 0) return [];
+
+  const lines = [];
+  let currentWords = [];
+  let currentSection = '';
+
+  for (let i = 0; i < rawWords.length; i++) {
+    const item = rawWords[i];
+    let rawStr = item.word || '';
+
+    // Extract section header if present (e.g. "[Verse 1]\n" or "[Chorus]\n")
+    const sectionMatch = rawStr.match(/\[(.*?)\]/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1].trim();
+      rawStr = rawStr.replace(/\[.*?\]\s*/, '');
+    }
+
+    const endsWithNewline = /\n/.test(rawStr);
+    const hasTrailingSpace = /\s$/.test(rawStr);
+    const cleanedText = rawStr.replace(/\r?\n+/g, '').trim();
+
+    if (cleanedText.length > 0) {
+      const prevWord = currentWords[currentWords.length - 1];
+      // Check if this is a contraction or continuation (e.g. "dawn’" + "s", or isolated punctuation)
+      const isContraction = prevWord && (
+        prevWord.text.endsWith("'") ||
+        prevWord.text.endsWith("’") ||
+        /^[’'](s|t|re|ve|ll|d|m)$/i.test(cleanedText) ||
+        (prevWord.text.match(/[’']$/) && /^[a-zA-Z]$/.test(cleanedText)) ||
+        /^[.,!?;:]+$/.test(cleanedText)
+      );
+
+      if (isContraction) {
+        prevWord.text += cleanedText;
+        prevWord.end = Math.max(prevWord.end, Math.round(item.end_s * 1000) / 1000);
+        prevWord.trailingSpace = hasTrailingSpace;
+      } else {
+        currentWords.push({
+          text: cleanedText,
+          begin: Math.round(item.start_s * 1000) / 1000,
+          end: Math.round(item.end_s * 1000) / 1000,
+          trailingSpace: hasTrailingSpace
+        });
+      }
+    }
+
+    if (endsWithNewline && currentWords.length > 0) {
+      currentWords[currentWords.length - 1].trailingSpace = false;
+      const lineText = currentWords.map(w => w.text).join(' ');
+      const startTime = currentWords[0].begin;
+      const endTime = currentWords[currentWords.length - 1].end;
+
+      lines.push({
+        time: Math.round(startTime * 100) / 100,
+        endTime: Math.round(endTime * 100) / 100,
+        text: lineText,
+        section: currentSection,
+        words: currentWords
+      });
+      currentWords = [];
+    }
+  }
+
+  if (currentWords.length > 0) {
+    currentWords[currentWords.length - 1].trailingSpace = false;
+    lines.push({
+      time: Math.round(currentWords[0].begin * 100) / 100,
+      endTime: Math.round(currentWords[currentWords.length - 1].end * 100) / 100,
+      text: currentWords.map(w => w.text).join(' '),
+      section: currentSection,
+      words: currentWords
+    });
+  }
+
+  return lines;
+}
+
+/**
+ * Fallback: Reconstruct whole words from BPE tokens if aligned_words is unavailable
+ */
+function parseAlignedLyricsFallback(rawLines) {
+  if (!Array.isArray(rawLines) || rawLines.length === 0) return [];
+
+  return rawLines.map(l => {
+    const cleanWords = [];
+    (l.words || []).forEach(w => {
+      const rawText = w.text || '';
+      const isNewWord = rawText.startsWith(' ') || cleanWords.length === 0;
+      const trimmed = rawText.trim();
+      if (!trimmed) return;
+
+      if (isNewWord || cleanWords.length === 0) {
+        cleanWords.push({
+          text: trimmed,
+          begin: Math.round(w.start_s * 1000) / 1000,
+          end: Math.round(w.end_s * 1000) / 1000,
+          trailingSpace: true
+        });
+      } else {
+        const last = cleanWords[cleanWords.length - 1];
+        last.text += trimmed;
+        last.end = Math.max(last.end, Math.round(w.end_s * 1000) / 1000);
+      }
+    });
+
+    if (cleanWords.length > 0) {
+      cleanWords[cleanWords.length - 1].trailingSpace = false;
+    }
+
+    return {
+      time: Math.round(l.start_s * 100) / 100,
+      endTime: Math.round(l.end_s * 100) / 100,
+      text: (l.text || '').trim(),
+      section: l.section || '',
+      words: cleanWords
+    };
+  }).filter(l => l.text.length > 0);
+}
+
+/**
  * Fetch Neural Word-by-Word Aligned Lyrics from Official Suno Feed
  */
 async function getAlignedLyrics(clipId, userToken = null) {
@@ -1559,22 +1682,15 @@ async function getAlignedLyrics(clipId, userToken = null) {
 
   try {
     const res = await axios.get(url, { headers, timeout: 10000 });
-    const rawLines = res.data?.aligned_lyrics || [];
+    let parsedLyrics = [];
+    if (Array.isArray(res.data?.aligned_words) && res.data.aligned_words.length > 0) {
+      parsedLyrics = parseAlignedWords(res.data.aligned_words);
+    }
+    if ((!parsedLyrics || parsedLyrics.length === 0) && Array.isArray(res.data?.aligned_lyrics) && res.data.aligned_lyrics.length > 0) {
+      parsedLyrics = parseAlignedLyricsFallback(res.data.aligned_lyrics);
+    }
 
-    if (Array.isArray(rawLines) && rawLines.length > 0) {
-      const parsedLyrics = rawLines.map(l => ({
-        time: Math.round(l.start_s * 100) / 100,
-        endTime: Math.round(l.end_s * 100) / 100,
-        text: (l.text || '').trim(),
-        section: l.section || '',
-        words: (l.words || []).map((w, wIdx, arr) => ({
-          text: (w.text || '').trim(),
-          begin: Math.round(w.start_s * 1000) / 1000,
-          end: Math.round(w.end_s * 1000) / 1000,
-          trailingSpace: wIdx < arr.length - 1
-        }))
-      })).filter(l => l.text.length > 0);
-
+    if (Array.isArray(parsedLyrics) && parsedLyrics.length > 0) {
       return {
         found: true,
         hasWordSync: true,
