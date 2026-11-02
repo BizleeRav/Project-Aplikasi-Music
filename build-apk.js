@@ -137,6 +137,7 @@ fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:label="@string/app_name"
@@ -251,6 +252,18 @@ public class AndroidMediaBridge {
         if (activity != null) {
             activity.clearSunoCookies();
         }
+    }
+
+    @JavascriptInterface
+    public void downloadAndInstallUpdate(String apkUrl) {
+        if (activity != null) {
+            activity.downloadAndInstallUpdate(apkUrl);
+        }
+    }
+
+    @JavascriptInterface
+    public int getAppVersionCode() {
+        return 3;
     }
 }
 `);
@@ -681,8 +694,11 @@ fs.writeFileSync(path.join(BUILD_DIR, 'src', 'com', 'aurasound', 'musichub', 'Ma
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -691,6 +707,7 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -1088,6 +1105,52 @@ public class MainActivity extends Activity {
             e.printStackTrace();
             Toast.makeText(this, "Gagal membuka browser: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
+    }
+
+    public void downloadAndInstallUpdate(String apkUrl) {
+        runOnUiThread(() -> {
+            try {
+                Toast.makeText(this, "Mengunduh update AuraSound...", Toast.LENGTH_SHORT).show();
+                DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                if (dm == null) {
+                    openExternalBrowser(apkUrl);
+                    return;
+                }
+                Uri uri = Uri.parse(apkUrl);
+                DownloadManager.Request request = new DownloadManager.Request(uri);
+                request.setTitle("AuraSound Update");
+                request.setDescription("Mengunduh versi terbaru AuraSound...");
+                request.setMimeType("application/vnd.android.package-archive");
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, "AuraSound.apk");
+
+                final long downloadId = dm.enqueue(request);
+
+                BroadcastReceiver onComplete = new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        try {
+                            unregisterReceiver(this);
+                            Uri fileUri = dm.getUriForDownloadedFile(downloadId);
+                            if (fileUri != null) {
+                                Intent installIntent = new Intent(Intent.ACTION_VIEW);
+                                installIntent.setDataAndType(fileUri, "application/vnd.android.package-archive");
+                                installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                startActivity(installIntent);
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                };
+
+                registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+            } catch (Exception e) {
+                e.printStackTrace();
+                openExternalBrowser(apkUrl);
+            }
+        });
     }
 
     @Override
