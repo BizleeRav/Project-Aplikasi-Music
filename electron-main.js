@@ -155,7 +155,7 @@ async function createMainWindow() {
   }
 }
 
-const CHROME_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+const FIREFOX_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
 try {
   app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 } catch (e) {}
@@ -168,14 +168,17 @@ ipcMain.handle('open-suno-login', async () => {
   }
 
   const sunoSession = session.fromPartition('persist:suno_auth_session');
-  sunoSession.setUserAgent(CHROME_DESKTOP_UA);
+  sunoSession.setUserAgent(FIREFOX_DESKTOP_UA);
 
-  // Clean all outgoing headers so Google and Suno see standard desktop Chrome without Electron traces
+  // Clean all outgoing headers: disguise as Firefox so Google skips embedded Chromium blocks
   sunoSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    details.requestHeaders['User-Agent'] = CHROME_DESKTOP_UA;
-    details.requestHeaders['Sec-CH-UA'] = '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"';
-    details.requestHeaders['Sec-CH-UA-Mobile'] = '?0';
-    details.requestHeaders['Sec-CH-UA-Platform'] = '"Windows"';
+    details.requestHeaders['User-Agent'] = FIREFOX_DESKTOP_UA;
+    delete details.requestHeaders['Sec-CH-UA'];
+    delete details.requestHeaders['Sec-CH-UA-Mobile'];
+    delete details.requestHeaders['Sec-CH-UA-Platform'];
+    delete details.requestHeaders['sec-ch-ua'];
+    delete details.requestHeaders['sec-ch-ua-mobile'];
+    delete details.requestHeaders['sec-ch-ua-platform'];
     callback({ cancel: false, requestHeaders: details.requestHeaders });
   });
 
@@ -193,7 +196,7 @@ ipcMain.handle('open-suno-login', async () => {
     }
   });
 
-  sunoLoginWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
+  sunoLoginWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
 
   sunoLoginWin.setMenuBarVisibility(false);
   if (typeof sunoLoginWin.removeMenu === 'function') {
@@ -215,6 +218,10 @@ ipcMain.handle('open-suno-login', async () => {
         }
       }
     };
+  });
+
+  sunoLoginWin.webContents.on('did-create-window', (childWin) => {
+    childWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
   });
 
   // Inject navigator overrides on any navigation/frame
