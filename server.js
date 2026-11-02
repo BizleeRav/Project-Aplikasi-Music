@@ -852,7 +852,7 @@ app.get('/api/suno/account', async (req, res) => {
       daily_limit: quota.daily_limit,
       songs_remaining: quota.songs_remaining,
       cost_per_song: quota.cost_per_song,
-      statusText: `🟢 Suno AI Aktif • Sisa Kuota Perangkat: ${quota.credits} Kredit (${quota.songs_remaining} Lagu Hari Ini)`,
+      statusText: 'Engine Siap • Buat lagu lengkap dengan vokal & instrumen AI',
       totalCreations
     });
   } catch (error) {

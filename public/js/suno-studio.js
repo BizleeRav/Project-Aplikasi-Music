@@ -125,6 +125,9 @@ class SunoStudio {
     const statusTextEl = document.getElementById('suno-connection-status-text');
     const disconnectBtn = document.getElementById('btn-suno-disconnect');
     const settingsBtn = document.getElementById('btn-suno-settings');
+    if (settingsBtn) {
+      try { settingsBtn.remove(); } catch (e) {}
+    }
 
     if (!card) return;
 
@@ -133,13 +136,12 @@ class SunoStudio {
 
     if (info && !info.is_auto && info.configured) {
       const isOfficial = info.providerCode === 'suno_official';
-      const badgeText = isOfficial ? 'SUNO.COM OFFICIAL' : (info.is_device_quota ? 'KUOTA PERANGKAT AKTIF' : 'SUNO NEURAL AKTIF');
       if (userNameEl) {
-        userNameEl.innerHTML = `Suno AI Music Studio <span class="badge-ai" style="font-size:0.65rem; padding: 2px 6px; background: rgba(56, 189, 248, 0.25); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);">${badgeText}</span>`;
+        userNameEl.textContent = 'Suno AI Music Studio';
       }
       if (creditsPill) {
-        creditsPill.textContent = `⚡ ${info.credits || '50 Kredit Harian'}`;
-        creditsPill.style.display = 'inline-block';
+        creditsPill.textContent = `⚡ ${info.credits || '50 Kredit (5 Lagu Hari Ini)'}`;
+        creditsPill.style.display = 'inline-flex';
         if (info.remaining_credits !== undefined && info.remaining_credits < 10) {
           creditsPill.style.background = 'rgba(239, 68, 68, 0.2)';
           creditsPill.style.color = '#f87171';
@@ -149,31 +151,27 @@ class SunoStudio {
         }
       }
       if (statusTextEl) {
-        statusTextEl.textContent = info.statusText || '🟢 Suno AI Terhubung • Siap Membuat Lagu Neural Asli';
+        statusTextEl.textContent = isOfficial
+          ? 'Akun Suno.com Resmi Terhubung • Siap membuat lagu'
+          : 'Engine Siap • Buat lagu lengkap dengan vokal & instrumen AI';
       }
       if (disconnectBtn) {
         disconnectBtn.style.display = isOfficial ? 'inline-flex' : 'none';
       }
-      if (settingsBtn) {
-        settingsBtn.textContent = '⚙️ Pengaturan Engine (Opsional)';
-      }
     } else {
       // Auto-Engine Mode
       if (userNameEl) {
-        userNameEl.innerHTML = `Suno AI Music Studio <span class="badge-ai" style="font-size:0.65rem; padding: 2px 6px; background: rgba(16, 185, 129, 0.25); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);">AUTO ENGINE</span>`;
+        userNameEl.textContent = 'Suno AI Music Studio';
       }
       if (creditsPill) {
-        creditsPill.textContent = '⚡ Auto-Engine Bebas Kuota';
-        creditsPill.style.display = 'inline-block';
+        creditsPill.textContent = '⚡ Bebas Kuota';
+        creditsPill.style.display = 'inline-flex';
       }
       if (statusTextEl) {
-        statusTextEl.textContent = info?.statusText || '🟢 Suno AI Auto-Engine Aktif • Siap Membuat Lagu (Tanpa Daftar & Bebas Kuota)';
+        statusTextEl.textContent = 'Engine Siap • Buat lagu lengkap dengan vokal & instrumen AI';
       }
       if (disconnectBtn) {
         disconnectBtn.style.display = 'none';
-      }
-      if (settingsBtn) {
-        settingsBtn.textContent = '🔗 Hubungkan Akun Suno';
       }
     }
 

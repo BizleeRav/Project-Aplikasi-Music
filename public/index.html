@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.52.0">
+  <link rel="stylesheet" href="/css/style.css?v=4.53.0">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
   <style>
     /* 100% Standalone Cross-Engine Clear Button Elimination (NEVER comma-separated to prevent syntax dropping) */
@@ -414,25 +414,22 @@
           <div id="suno-account-card" class="suno-account-card">
             <div class="suno-card-left">
               <div class="suno-avatar-glow">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
               </div>
               <div class="suno-account-info-wrap">
                 <div class="suno-account-row-1">
                   <span id="suno-user-name" class="suno-user-name">Suno AI Music Studio</span>
-                  <span id="suno-credits-pill" class="suno-credits-pill">⚡ Auto-Engine Bebas Kuota</span>
                 </div>
                 <div class="suno-account-row-2">
                   <span class="status-dot active"></span>
-                  <span id="suno-connection-status-text">🟢 Suno AI Auto-Engine Aktif • Siap Membuat Lagu (Tanpa Daftar & Bebas Kuota)</span>
+                  <span id="suno-connection-status-text">Siap membuat lagu lengkap dengan vokal & instrumen AI</span>
                 </div>
               </div>
             </div>
-            <div class="suno-card-right" style="display: flex; gap: 8px; align-items: center;">
+            <div class="suno-card-right">
+              <span id="suno-credits-pill" class="suno-credits-pill">⚡ 50 Kredit (5 Lagu Hari Ini)</span>
               <button class="suno-act-btn btn-danger-soft" id="btn-suno-disconnect" onclick="window.sunoStudio.disconnectAccount()" title="Putuskan koneksi saat ini dan kembali ke Auto-Engine" style="display: none; background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35);">
                 🔌 Putuskan Koneksi
-              </button>
-              <button class="suno-act-btn" id="btn-suno-settings" onclick="document.getElementById('modal-token').classList.add('active')" title="Pengaturan Engine Lanjutan (Opsional)" style="background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.78rem;">
-                ⚙️ Pengaturan Engine (Opsional)
               </button>
             </div>
           </div>
@@ -1776,7 +1773,7 @@
   <script src="/js/audio-engine.js?v=4.45.0"></script>
   <script src="/js/yt-player.js?v=4.45.0"></script>
   <script src="/js/taste-engine.js?v=4.45.0"></script>
-  <script src="/js/suno-studio.js?v=4.45.0"></script>
-  <script src="/js/app.js?v=4.52.0"></script>
+  <script src="/js/suno-studio.js?v=4.53.0"></script>
+  <script src="/js/app.js?v=4.53.0"></script>
 </body>
 </html>
