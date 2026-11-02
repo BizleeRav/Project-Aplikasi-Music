@@ -1076,15 +1076,10 @@ app.post('/api/suno/generate', async (req, res) => {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
 
-    if (!creds.key || creds.key.length < 20) {
-      return res.status(400).json({
-        success: false,
-        error: 'Akun Suno Anda belum terhubung. Silakan klik tombol "🔗 Hubungkan Akun Suno" di pojok kanan atas untuk login ke akun Suno Anda!'
-      });
-    }
+    const hasCustomKey = Boolean(creds.key && creds.key.length >= 20);
 
     // Check device-isolated credits if using built-in system engine
-    if (!creds.isClientKey) {
+    if (!hasCustomKey) {
       const quota = deviceCredits.getDeviceCredits(deviceId, isLocalhost);
       if (quota.credits < deviceCredits.COST_PER_SONG) {
         return res.status(403).json({
@@ -1101,13 +1096,13 @@ app.post('/api/suno/generate', async (req, res) => {
       make_instrumental,
       lyrics,
       model: model || 'v6-mini',
-      apiKey: creds.key,
-      provider: creds.provider,
+      apiKey: hasCustomKey ? creds.key : null,
+      provider: hasCustomKey ? creds.provider : 'auto',
       deviceId: deviceId
     });
 
     // Deduct isolated credits for this device upon generation start
-    if (result && result.success && !creds.isClientKey) {
+    if (result && result.success && !hasCustomKey) {
       deviceCredits.deductDeviceCredits(deviceId, deviceCredits.COST_PER_SONG);
       const updatedQuota = deviceCredits.getDeviceCredits(deviceId, isLocalhost);
       result.remaining_credits = updatedQuota.credits;

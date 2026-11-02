@@ -143,6 +143,7 @@ class SunoStudio {
     if (!card) return;
 
     const isConnected = Boolean(info && info.configured && !info.is_auto);
+    const isAuto = Boolean(info && info.is_auto);
     const isOfficial = info && info.providerCode === 'suno_official';
     const isLowCredit = info && info.remaining_credits !== undefined && info.remaining_credits < 10;
 
@@ -176,6 +177,30 @@ class SunoStudio {
       }
       if (disconnectBtn) {
         disconnectBtn.style.display = 'inline-flex';
+      }
+    } else if (isAuto) {
+      card.classList.add('connected');
+      card.classList.remove('disconnected');
+      if (dot) dot.className = 'status-dot active';
+
+      if (userNameEl) {
+        userNameEl.textContent = 'Mesin Otomatis: Suno v6-mini';
+      }
+      if (creditsPill) {
+        creditsPill.textContent = info.credits || '5 Lagu / Hari';
+        creditsPill.style.display = 'inline-flex';
+        creditsPill.style.background = 'rgba(16, 185, 129, 0.15)';
+        creditsPill.style.color = '#34d399';
+      }
+      if (statusTextEl) {
+        statusTextEl.textContent = info.statusText || 'Mesin Otomatis Suno Aktif • Siap membuat lagu';
+      }
+      if (connectBtn) {
+        connectBtn.style.display = 'inline-flex';
+        if (connectBtnText) connectBtnText.textContent = 'Hubungkan Akun Suno (50 Kredit)';
+      }
+      if (disconnectBtn) {
+        disconnectBtn.style.display = 'none';
       }
     } else {
       card.classList.remove('connected');
