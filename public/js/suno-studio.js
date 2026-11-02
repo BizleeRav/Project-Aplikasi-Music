@@ -538,6 +538,7 @@ class SunoStudio {
       } else if (cleanTags.length > 36) {
         cleanTags = cleanTags.substring(0, 34) + '...';
       }
+      const isEn = (window.app?.userProfile?.lang === 'en');
       const safeTags = this.escapeHtml(cleanTags);
       const duration = track.duration || '2:00';
       const isV35 = track.model === 'chirp-v3-5' || track.model === 'v3.5';
@@ -548,7 +549,7 @@ class SunoStudio {
           <div class="suno-card-media" onclick="window.sunoStudio.playClip('${track.id}')">
             <img src="${thumb}" alt="${safeTitle}" class="suno-card-img" loading="lazy" onerror="this.src='/icons/icon.svg'">
             <div class="suno-card-overlay">
-              <div class="suno-card-play-btn" title="Putar Lagu">
+              <div class="suno-card-play-btn" title="${isEn ? 'Play Song' : 'Putar Lagu'}">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><polygon points="8 5 19 12 8 19 8 5"/></svg>
               </div>
             </div>
@@ -567,23 +568,23 @@ class SunoStudio {
             </div>
             <div class="suno-card-date">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              <span>${track.created_at || 'Hari ini'}</span>
+              <span>${track.created_at || (isEn ? 'Today' : 'Hari ini')}</span>
             </div>
           </div>
 
           <div class="suno-card-footer">
-            <button class="suno-action-play" onclick="window.sunoStudio.playClip('${track.id}')" title="Putar Sekarang">
+            <button class="suno-action-play" onclick="window.sunoStudio.playClip('${track.id}')" title="${isEn ? 'Play Now' : 'Putar Sekarang'}">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="7 5 19 12 7 19 7 5"/></svg>
-              <span>Putar</span>
+              <span>${isEn ? 'Play' : 'Putar'}</span>
             </button>
             <div class="suno-action-group">
-              <button class="suno-btn-icon" onclick="window.app.addToQueue(window.sunoStudio.formatTrackObject('${track.id}'))" title="Tambah ke Antrean">
+              <button class="suno-btn-icon" onclick="window.app.addToQueue(window.sunoStudio.formatTrackObject('${track.id}'))" title="${isEn ? 'Add to Queue' : 'Tambah ke Antrean'}">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
-              <a href="${audioUrl}" download="${safeTitle}.m4a" class="suno-btn-icon" title="Unduh File Audio" target="_blank" rel="noopener">
+              <a href="${audioUrl}" download="${safeTitle}.m4a" class="suno-btn-icon" title="${isEn ? 'Download Audio File' : 'Unduh File Audio'}" target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               </a>
-              <button class="suno-btn-icon btn-delete" onclick="window.sunoStudio.deleteSong('${track.id}', '${safeTitle}')" title="Hapus dari Koleksi">
+              <button class="suno-btn-icon btn-delete" onclick="window.sunoStudio.deleteSong('${track.id}', '${safeTitle}')" title="${isEn ? 'Delete from Library' : 'Hapus dari Koleksi'}">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
             </div>
@@ -596,12 +597,13 @@ class SunoStudio {
   renderEmptyCreations(msg = null) {
     const container = document.getElementById('suno-library-list');
     if (!container) return;
+    const isEn = (window.app?.userProfile?.lang === 'en');
 
     if (this.librarySearchQuery) {
       container.innerHTML = `
         <div style="grid-column: 1 / -1; padding: 48px 20px; text-align: center; color: #94a3b8;">
-          <h3 style="color: #ffffff; margin-bottom: 6px;">Tidak ada lagu yang cocok</h3>
-          <p style="font-size: 0.85rem; color: #64748b;">Tidak ditemukan lagu buatan Anda untuk kata kunci "${this.escapeHtml(this.librarySearchQuery)}".</p>
+          <h3 style="color: #ffffff; margin-bottom: 6px;">${isEn ? 'No matching songs' : 'Tidak ada lagu yang cocok'}</h3>
+          <p style="font-size: 0.85rem; color: #64748b;">${isEn ? `No created songs found for keyword "${this.escapeHtml(this.librarySearchQuery)}".` : `Tidak ditemukan lagu buatan Anda untuk kata kunci "${this.escapeHtml(this.librarySearchQuery)}".`}</p>
         </div>
       `;
       return;
@@ -609,12 +611,12 @@ class SunoStudio {
 
     container.innerHTML = `
       <div style="grid-column: 1 / -1; padding: 48px 24px; text-align: center; background: rgba(15, 23, 42, 0.4); border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 14px;">
-        <h3 style="color: #ffffff; font-size: 1.15rem; margin-bottom: 8px;">Belum Ada Lagu Buatan Anda</h3>
+        <h3 style="color: #ffffff; font-size: 1.15rem; margin-bottom: 8px;">${isEn ? 'No Songs Created Yet' : 'Belum Ada Lagu Buatan Anda'}</h3>
         <p style="color: #94a3b8; font-size: 0.84rem; max-width: 440px; margin: 0 auto 18px; line-height: 1.6;">
-          ${msg || 'Semua lagu yang Anda hasilkan melalui Suno AI Studio akan tersimpan murni di sini dan bisa diputar kapan saja.'}
+          ${msg || (isEn ? 'All songs generated via Suno AI Studio will be saved here and can be played anytime.' : 'Semua lagu yang Anda hasilkan melalui Suno AI Studio akan tersimpan murni di sini dan bisa diputar kapan saja.')}
         </p>
         <button class="btn-generate-ai" onclick="window.sunoStudio.switchSubTab('create')" style="display: inline-flex; width: auto; padding: 10px 24px;">
-          Buka Studio & Buat Lagu Pertama
+          ${isEn ? 'Open Studio & Create First Song' : 'Buka Studio & Buat Lagu Pertama'}
         </button>
       </div>
     `;
@@ -623,12 +625,13 @@ class SunoStudio {
   renderRecentPreview() {
     const container = document.getElementById('suno-recent-preview-container');
     if (!container) return;
+    const isEn = (window.app?.userProfile?.lang === 'en');
 
     if (this.creations.length === 0) {
       container.innerHTML = `
         <div class="suno-recent-empty">
-          <h4>Belum Ada Lagu Dibuat</h4>
-          <p>Ketik tema, lirik, atau genre di formulir sebelah kiri lalu klik <strong>Generate Lagu</strong> untuk mulai berkreasi!</p>
+          <h4>${isEn ? 'No Songs Created Yet' : 'Belum Ada Lagu Dibuat'}</h4>
+          <p>${isEn ? 'Type a theme, lyrics, or genre in the form on the left then click <strong>Generate Song</strong> to start creating!' : 'Ketik tema, lirik, atau genre di formulir sebelah kiri lalu klik <strong>Generate Lagu</strong> untuk mulai berkreasi!'}</p>
         </div>
       `;
       return;
@@ -636,7 +639,7 @@ class SunoStudio {
 
     const latest = this.creations[0];
     const thumb = latest.thumbnail || (latest.id ? `https://cdn2.suno.ai/image_${latest.id}.jpeg` : '/icons/icon.svg');
-    const safeTitle = this.escapeHtml(latest.title || 'Lagu Baru');
+    const safeTitle = this.escapeHtml(latest.title || (isEn ? 'New Song' : 'Lagu Baru'));
     const safeTags = this.escapeHtml(latest.tags || 'AI Music');
     const duration = latest.duration || '2:00';
 
@@ -644,28 +647,28 @@ class SunoStudio {
       <div class="suno-recent-preview-card">
         <div class="suno-recent-thumb-wrapper">
           <img src="${thumb}" alt="${safeTitle}" class="suno-recent-thumb" onerror="this.src='/icons/icon.svg'">
-          <button class="suno-recent-play-btn" onclick="window.sunoStudio.playClip('${latest.id}')" title="Putar Lagu Sekarang">
+          <button class="suno-recent-play-btn" onclick="window.sunoStudio.playClip('${latest.id}')" title="${isEn ? 'Play Song Now' : 'Putar Lagu Sekarang'}">
             <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><polygon points="8 5 19 12 8 19 8 5"/></svg>
           </button>
         </div>
         <div class="suno-recent-info">
           <div class="suno-recent-title" title="${safeTitle}">${safeTitle}</div>
           <div class="suno-recent-tags">
-            <span class="badge-ai" style="font-size: 0.65rem; padding: 2px 6px; margin-right: 4px; background: rgba(16, 185, 129, 0.25); color: #34d399;">Suno v6-mini (Terbaru)</span>
+            <span class="badge-ai" style="font-size: 0.65rem; padding: 2px 6px; margin-right: 4px; background: rgba(16, 185, 129, 0.25); color: #34d399;">${isEn ? 'Suno v6-mini (Latest)' : 'Suno v6-mini (Terbaru)'}</span>
             ${safeTags}
           </div>
           <div class="suno-recent-meta">
-            <span>Durasi: ${duration}</span>
-            <span>${latest.created_at || 'Hari ini'}</span>
+            <span>${isEn ? 'Duration: ' : 'Durasi: '}${duration}</span>
+            <span>${latest.created_at || (isEn ? 'Today' : 'Hari ini')}</span>
           </div>
         </div>
         <div class="suno-recent-actions">
           <button class="btn-recent-play" onclick="window.sunoStudio.playClip('${latest.id}')">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="6 4 18 12 6 20 6 4"/></svg>
-            Putar Sekarang
+            ${isEn ? 'Play Now' : 'Putar Sekarang'}
           </button>
           <button class="btn-recent-sec" onclick="window.sunoStudio.switchSubTab('library')">
-            Buka Koleksi (${this.totalCreations})
+            ${isEn ? 'Open Library' : 'Buka Koleksi'} (${this.totalCreations})
           </button>
         </div>
       </div>

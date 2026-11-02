@@ -994,7 +994,7 @@ class App {
         });
       };
 
-      // Helper to set text node inside an element with icons
+      // Helper to set text node inside an element with icons and optional inner span
       const setNodeText = (target, idText, enText) => {
         if (!target) return;
         let elements = [];
@@ -1010,293 +1010,371 @@ class App {
           elements = Array.from(target);
         }
         elements.forEach(el => {
-          if (!el || !el.childNodes) return;
-          el.childNodes.forEach(child => {
-            const isText = child && (child.nodeType === 3 || (typeof Node !== 'undefined' && child.nodeType === Node.TEXT_NODE));
-            if (isText && child.textContent && child.textContent.trim()) {
-              child.textContent = isEn ? enText : idText;
-            }
-          });
+          if (!el) return;
+          const span = el.querySelector('span:not(.badge):not(.pill):not(.dot):not(.subtab-count-badge)');
+          if (span) {
+            span.textContent = isEn ? enText : idText;
+            return;
+          }
+          if (el.childNodes) {
+            el.childNodes.forEach(child => {
+              const isText = child && (child.nodeType === 3 || (typeof Node !== 'undefined' && child.nodeType === Node.TEXT_NODE));
+              if (isText && child.textContent && child.textContent.trim()) {
+                child.textContent = isEn ? enText : idText;
+              }
+            });
+          }
         });
       };
 
-    // 1. Navigation Text (Sidebar & Mobile Nav)
-    setNodeText('.nav-link[data-tab="home"], .mobile-nav-item[data-tab="home"]', 'Beranda', 'Home');
-    setNodeText('.nav-link[data-tab="suno"], .mobile-nav-item[data-tab="suno"]', 'Suno AI', 'Suno AI');
-    setNodeText('.nav-link[data-tab="playlists"]', 'Playlist Saya', 'My Playlists');
-    setNodeText('.mobile-nav-item[data-tab="playlists"]', 'Playlist', 'Playlists');
-    setNodeText('.nav-link[data-tab="favorites"]', 'Lagu Favorit', 'Liked Songs');
-    setNodeText('.mobile-nav-item[data-tab="favorites"]', 'Favorit', 'Favorites');
-    setNodeText('.mobile-nav-item[data-tab="search"]', 'Cari', 'Search');
-    setNodeText('.mobile-nav-item[onclick*="modal-connect"]', 'HP Sync', 'Phone Sync');
-    setNodeText('.nav-section-title', 'Menu Utama', 'Main Menu');
-    setNodeText('#btn-open-connect', 'Buka di Handphone', 'Connect Phone');
-    setNodeText('#btn-pwa-install', 'Pasang Aplikasi', 'Install App');
+      // 1. Navigation Text (Sidebar & Mobile Nav)
+      setNodeText('.nav-link[data-tab="home"], .mobile-nav-item[data-tab="home"]', 'Beranda', 'Home');
+      setNodeText('.nav-link[data-tab="suno"], .mobile-nav-item[data-tab="suno"]', 'Suno AI', 'Suno AI');
+      setNodeText('.nav-link[data-tab="playlists"]', 'Playlist Saya', 'My Playlists');
+      setNodeText('.mobile-nav-item[data-tab="playlists"]', 'Playlist', 'Playlists');
+      setNodeText('.nav-link[data-tab="favorites"]', 'Lagu Favorit', 'Liked Songs');
+      setNodeText('.mobile-nav-item[data-tab="favorites"]', 'Favorit', 'Favorites');
+      setNodeText('.mobile-nav-item[data-tab="search"]', 'Cari', 'Search');
+      setNodeText('.mobile-nav-item[onclick*="modal-connect"]', 'HP Sync', 'Phone Sync');
+      setNodeText('.nav-section-title', 'Menu Utama', 'Main Menu');
+      setNodeText('#btn-open-connect', 'Buka di Handphone', 'Connect Phone');
+      setNodeText('#btn-pwa-install', 'Pasang Aplikasi', 'Install App');
 
-    const audioPill = document.querySelector('.audio-enhancer-pill');
-    if (audioPill) {
-      audioPill.title = isEn ? 'Audio tuned for Dolby Access and Nahimic processing' : 'Audio diselaraskan untuk diproses oleh Dolby Access dan Nahimic';
-      const pillSub = audioPill.querySelector('div div:last-child');
-      if (pillSub) pillSub.textContent = isEn ? 'Audio Enhancer Ready' : 'Audio Enhancer Siap';
-    }
+      const audioPill = document.querySelector('.audio-enhancer-pill');
+      if (audioPill) {
+        audioPill.title = isEn ? 'Audio tuned for Dolby Access and Nahimic processing' : 'Audio diselaraskan untuk diproses oleh Dolby Access dan Nahimic';
+        const pillSub = audioPill.querySelector('div div:last-child');
+        if (pillSub) pillSub.textContent = isEn ? 'Audio Enhancer Ready' : 'Audio Enhancer Siap';
+      }
 
-    // 2. Search Bar & Top Bar
-    const searchInput = document.getElementById('search-input');
-    if (searchInput) {
-      searchInput.placeholder = isEn ? 'Search songs, albums, artists, podcasts...' : 'Cari lagu, album, artis, podcast...';
-    }
-    const searchBtn = document.getElementById('search-btn');
-    if (searchBtn) {
-      searchBtn.title = isEn ? 'Search' : 'Cari';
-    }
-    const btnTopConnect = document.getElementById('btn-top-connect');
-    if (btnTopConnect) {
-      btnTopConnect.title = isEn ? 'Connect to Phone (Wi-Fi)' : 'Hubungkan ke HP (Wi-Fi)';
-    }
-    const testBtn = document.getElementById('btn-test-dsp-label');
-    if (testBtn && !this.isDspTesting) {
-      testBtn.textContent = isEn ? 'Test DSP Audio' : 'Tes Audio DSP';
-    }
-    const badge = document.getElementById('btn-profile-badge');
-    if (badge) {
-      badge.title = `${isEn ? 'User Profile' : 'Profil Akun'}: ${this.userProfile.name}`;
-    }
+      // 2. Search Bar & Top Bar
+      const searchInput = document.getElementById('search-input');
+      if (searchInput) {
+        searchInput.placeholder = isEn ? 'Search songs, albums, artists, podcasts...' : 'Cari lagu, album, artis, podcast...';
+      }
+      const searchPageInput = document.getElementById('search-page-input');
+      if (searchPageInput) {
+        searchPageInput.placeholder = isEn ? 'Search songs, albums, artists, podcasts...' : 'Cari lagu, album, artis, podcast...';
+      }
+      const searchBtn = document.getElementById('search-btn');
+      if (searchBtn) {
+        searchBtn.title = isEn ? 'Search' : 'Cari';
+      }
+      const btnSearchClear = document.getElementById('btn-search-clear');
+      if (btnSearchClear) {
+        btnSearchClear.title = isEn ? 'Clear text' : 'Hapus teks';
+      }
+      const btnTopConnect = document.getElementById('btn-top-connect');
+      if (btnTopConnect) {
+        btnTopConnect.title = isEn ? 'Connect to Phone (Wi-Fi)' : 'Hubungkan ke HP (Wi-Fi)';
+      }
+      const btnTopTaste = document.getElementById('btn-top-taste');
+      if (btnTopTaste) {
+        btnTopTaste.title = isEn ? 'Personalize Music Taste' : 'Personalisasi Selera Musik';
+      }
+      setText('.top-taste-label', 'Selera Musik', 'Music Taste');
+      const btnGoogleLogin = document.getElementById('btn-google-login');
+      if (btnGoogleLogin) {
+        btnGoogleLogin.title = isEn ? 'Sign in with Google Account' : 'Masuk dengan Akun Google Anda';
+      }
+      setText('#google-login-btn-text', 'Masuk Google', 'Sign In');
+      const btnTopMobileSearch = document.getElementById('btn-top-mobile-search');
+      if (btnTopMobileSearch) {
+        btnTopMobileSearch.title = isEn ? 'Search Music & Artists' : 'Cari Lagu & Artis';
+      }
+      const testBtn = document.getElementById('btn-test-dsp-label');
+      if (testBtn && !this.isDspTesting) {
+        testBtn.textContent = isEn ? 'Test DSP Audio' : 'Tes Audio DSP';
+      }
+      const badge = document.getElementById('btn-profile-badge');
+      if (badge) {
+        badge.title = `${isEn ? 'User Profile' : 'Profil Akun'}: ${this.userProfile?.name || 'User'}`;
+      }
 
-    // 3. Mood Chips
-    const allChip = document.querySelector('.ytm-chip[data-mood="all"]');
-    if (allChip) allChip.textContent = isEn ? 'All' : 'Semua';
-    const relaxChip = document.querySelector('.ytm-chip[data-mood="relax"]');
-    if (relaxChip) relaxChip.textContent = isEn ? '☕ Relax & Chill' : '☕ Santai & Relax';
+      // 3. Mood Chips
+      const allChip = document.querySelector('.ytm-chip[data-mood="all"]');
+      if (allChip) allChip.textContent = isEn ? 'All' : 'Semua';
+      const relaxChip = document.querySelector('.ytm-chip[data-mood="relax"]');
+      if (relaxChip) relaxChip.textContent = isEn ? '☕ Relax & Chill' : '☕ Santai & Relax';
 
-    // 4. Profile Modal Elements
-    setText('#profile-modal-title', 'Profil Akun', 'User Profile');
-    setText('#profile-modal-desc', 'Kelola profil pribadi dan preferensi bahasa Anda.', 'Manage your personal profile and language preferences.');
-    setText('#label-profile-name', 'Nama Pengguna', 'Display Name');
-    const profileNameInput = document.getElementById('profile-input-name');
-    if (profileNameInput) {
-      profileNameInput.placeholder = isEn ? 'Enter your name' : 'Masukkan nama Anda';
-    }
-    setText('#label-profile-lang', 'Pilih Bahasa', 'App Language');
-    setText('#label-change-photo', 'Pilih Foto Baru', 'Choose New Photo');
-    setText('#btn-save-profile', 'Simpan Perubahan', 'Save Changes');
-    const avatarTriggerWrap = document.getElementById('profile-avatar-trigger');
-    if (avatarTriggerWrap) {
-      avatarTriggerWrap.title = isEn ? 'Click to change profile picture' : 'Klik untuk ganti foto profil';
-    }
+      // 4. Profile Modal Elements
+      setText('#profile-modal-title', 'Profil Akun', 'User Profile');
+      setText('#profile-modal-desc', 'Kelola profil pribadi dan preferensi bahasa Anda.', 'Manage your personal profile and language preferences.');
+      setText('#label-profile-name', 'Nama Pengguna', 'Display Name');
+      const profileNameInput = document.getElementById('profile-input-name');
+      if (profileNameInput) {
+        profileNameInput.placeholder = isEn ? 'Enter your name' : 'Masukkan nama Anda';
+      }
+      setText('#label-profile-lang', 'Pilih Bahasa', 'App Language');
+      setText('#label-change-photo', 'Pilih Foto Baru', 'Choose New Photo');
+      setText('#btn-save-profile', 'Simpan Perubahan', 'Save Changes');
+      const avatarTriggerWrap = document.getElementById('profile-avatar-trigger');
+      if (avatarTriggerWrap) {
+        avatarTriggerWrap.title = isEn ? 'Click to change profile picture' : 'Klik untuk ganti foto profil';
+      }
+      const pillId = document.getElementById('lang-pill-id');
+      const pillEn = document.getElementById('lang-pill-en');
+      const radioId = document.querySelector('input[name="app-language"][value="id"]');
+      const radioEn = document.querySelector('input[name="app-language"][value="en"]');
+      if (pillId) pillId.classList.toggle('active', !isEn);
+      if (pillEn) pillEn.classList.toggle('active', isEn);
+      if (radioId) radioId.checked = !isEn;
+      if (radioEn) radioEn.checked = isEn;
 
-    // 5. Search View State
-    const searchDisplay = document.getElementById('search-query-display');
-    if (searchDisplay) {
-      const cur = searchDisplay.textContent || '';
-      if (!cur || cur.startsWith('Hasil') || cur.startsWith('Results') || cur.startsWith('Search')) {
-        if (searchInput && searchInput.value.trim()) {
-          searchDisplay.textContent = isEn ? `Results for: "${searchInput.value.trim()}"` : `Hasil untuk: "${searchInput.value.trim()}"`;
-        } else {
-          searchDisplay.textContent = isEn ? 'Search Results' : 'Hasil Pencarian';
+      // 5. Search View State
+      const searchDisplay = document.getElementById('search-query-display');
+      if (searchDisplay) {
+        const cur = searchDisplay.textContent || '';
+        if (!cur || cur.startsWith('Hasil') || cur.startsWith('Results') || cur.startsWith('Search')) {
+          if (searchInput && searchInput.value.trim()) {
+            searchDisplay.textContent = isEn ? `Results for: "${searchInput.value.trim()}"` : `Hasil untuk: "${searchInput.value.trim()}"`;
+          } else {
+            searchDisplay.textContent = isEn ? 'Search Results' : 'Hasil Pencarian';
+          }
         }
       }
-    }
-    const searchEmptyTitle = document.querySelector('#search-results .empty-state h3');
-    const searchEmptyP = document.querySelector('#search-results .empty-state p');
-    if (searchEmptyTitle) {
-      searchEmptyTitle.textContent = isEn ? 'Start Searching Music' : 'Mulai Cari Musik';
-    }
-    if (searchEmptyP) {
-      searchEmptyP.textContent = isEn ? 'Type a song title or artist name in the search bar above.' : 'Ketik judul lagu atau nama penyanyi di kolom pencarian di atas.';
-    }
-
-    // Search Filter Pills
-    setText('.search-filter-pill[data-filter="all"] .filter-pill-label', 'Semua Versi', 'All Versions');
-    setText('.search-filter-pill[data-filter="official"] .filter-pill-label', 'Official Saja', 'Official Only');
-    setText('.search-filter-pill[data-filter="nonofficial"] .filter-pill-label', 'Bukan Official (Cover, Remix, Lyrics, Live, Dance)', 'Non-Official (Covers, Remixes, Lyrics, Live, Dance)');
-
-    // 6. Favorites View
-    const favTitle = document.querySelector('#view-favorites .section-title');
-    if (favTitle) favTitle.textContent = isEn ? 'Liked Songs Collection' : 'Koleksi Lagu Favorit';
-    const favEmptyTitle = document.querySelector('#favorites-list .empty-state h3');
-    const favEmptyP = document.querySelector('#favorites-list .empty-state p');
-    if (favEmptyTitle) favEmptyTitle.textContent = isEn ? 'No liked songs yet' : 'Belum ada lagu favorit';
-    if (favEmptyP) favEmptyP.textContent = isEn ? 'Click the heart button on songs you like to collect them here.' : 'Klik tombol hati pada lagu yang Anda sukai untuk mengumpulkannya di sini.';
-
-    // 7. Playlists View
-    const plTitle = document.querySelector('#view-playlists .section-title');
-    if (plTitle) plTitle.textContent = isEn ? 'My Playlists' : 'Playlist Akun Saya';
-    const plDesc = document.querySelector('#view-playlists .section-header p');
-    if (plDesc) plDesc.textContent = isEn ? 'Manage your Spotify & YouTube Music playlists and build personal collections.' : 'Kelola playlist Spotify & YouTube Music akun Anda dan buat koleksi lagu pribadi.';
-    setNodeText('#btn-open-import-playlist', '+ Impor Playlist & Album', '+ Import Playlist & Album');
-    setNodeText('button[onclick*="modal-create-playlist"]', '+ Buat Playlist Baru', '+ Create New Playlist');
-
-    // 8. Suno AI Studio View
-    setNodeText('#btn-suno-settings', '🔗 Hubungkan Akun Suno', '🔗 Connect Suno Account');
-    const sunoPanels = document.querySelectorAll('.suno-panel');
-    if (sunoPanels[0]) {
-      setNodeText(sunoPanels[0].querySelector('.suno-panel-title'), 'Buat Lagu Baru dengan AI', 'Create New Song with AI');
-      const sub = sunoPanels[0].querySelector('.suno-panel-subtitle');
-      if (sub) sub.textContent = isEn ? 'Generate complete songs with instruments and vocals for free.' : 'Hasilkan lagu lengkap dengan instrumen dan vokal secara gratis.';
-    }
-    setText('label[for="suno-title"]', 'Judul Lagu (Opsional)', 'Song Title (Optional)');
-    const sunoTitleInput = document.getElementById('suno-title');
-    if (sunoTitleInput) sunoTitleInput.placeholder = isEn ? 'e.g.: Midnight Neon Highway' : 'Contoh: Senja di Pelabuhan';
-    setText('label[for="suno-tags"]', 'Genre & Style Musik', 'Music Genre & Style');
-    const sunoTagsInput = document.getElementById('suno-tags');
-    if (sunoTagsInput) sunoTagsInput.placeholder = isEn ? 'e.g.: Dream pop, nostalgic acoustic, emotional vocal' : 'Contoh: Indonesian pop, nostalgic acoustic, emotional vocal';
-    setText('label[for="suno-prompt"]', 'Deskripsi Tema / Lirik Custom', 'Custom Lyrics / Theme Description');
-    const sunoPrompt = document.getElementById('suno-prompt');
-    if (sunoPrompt) {
-      sunoPrompt.placeholder = isEn
-        ? "Write your own lyrics or prompt the AI: 'A mellow song about late night memories in the rain...'"
-        : "Tulis lirik Anda sendiri atau beri tahu AI: 'Lagu tenang tentang kenangan masa kecil di tengah hujan rintik-rintik...'";
-    }
-    const instrumentalSpan = document.querySelector('.form-checkbox-wrapper span');
-    if (instrumentalSpan) instrumentalSpan.textContent = isEn ? 'Instrumental Only (No Vocals)' : 'Musik Instrumental Saja (Tanpa Vokal)';
-    setNodeText('#suno-generate-btn', 'Generate Lagu dengan Suno AI', 'Generate Song with Suno AI');
-    if (sunoPanels[1]) {
-      setNodeText(sunoPanels[1].querySelector('.suno-panel-title'), 'Daftar Lagu Hasil Suno AI', 'Generated AI Songs Library');
-      const sub = sunoPanels[1].querySelector('.suno-panel-subtitle');
-      if (sub) sub.textContent = isEn ? 'Created songs are saved automatically and ready to play.' : 'Lagu yang telah dibuat otomatis tersimpan dan siap diputar kapan saja.';
-    }
-    try {
-      if (window.sunoStudio && typeof window.sunoStudio.renderHistory === 'function') {
-        window.sunoStudio.renderHistory();
+      const searchEmptyTitle = document.querySelector('#search-results .empty-state h3');
+      const searchEmptyP = document.querySelector('#search-results .empty-state p');
+      if (searchEmptyTitle) {
+        searchEmptyTitle.textContent = isEn ? 'Start Searching Music' : 'Mulai Cari Musik';
       }
-    } catch (e) {
-      console.warn('Suno render history warning:', e);
-    }
-
-    // 9. Persistent Bottom Player Bar Tooltips
-    const playerTitleEl = document.getElementById('player-title');
-    if (playerTitleEl && (playerTitleEl.textContent === 'Pilih Lagu untuk Diputar' || playerTitleEl.textContent === 'Select a Song to Play')) {
-      playerTitleEl.textContent = isEn ? 'Select a Song to Play' : 'Pilih Lagu untuk Diputar';
-    }
-    const playerFavBtn = document.getElementById('player-fav-btn');
-    if (playerFavBtn) playerFavBtn.title = isEn ? 'Like (Favorite Song)' : 'Favorit (Suka Lagu)';
-    const btnShuffle = document.getElementById('btn-shuffle');
-    if (btnShuffle) btnShuffle.title = isEn ? 'Shuffle' : 'Acak Lagu (Shuffle)';
-    const prevBtn = document.getElementById('prev-btn');
-    if (prevBtn) prevBtn.title = isEn ? 'Previous' : 'Sebelumnya';
-    const playPauseBtn = document.getElementById('play-pause-btn');
-    if (playPauseBtn) playPauseBtn.title = isEn ? 'Play / Pause' : 'Putar / Jeda';
-    const nextBtn = document.getElementById('next-btn');
-    if (nextBtn) nextBtn.title = isEn ? 'Next' : 'Berikutnya';
-    const btnRepeat = document.getElementById('btn-repeat');
-    if (btnRepeat) btnRepeat.title = isEn ? 'Repeat' : 'Ulangi Lagu (Repeat)';
-    const specBezel = document.querySelector('.player-spectrum-bezel');
-    if (specBezel) specBezel.title = isEn ? 'Real-Time Frequency Spectrum Visualizer' : 'Visualizer Spektrum Frekuensi Real-Time';
-    const cinemaOpenBtn = document.getElementById('btn-open-cinema');
-    if (cinemaOpenBtn) cinemaOpenBtn.title = isEn ? 'Studio Cinema & Fullscreen Visualizer' : 'Mode Panggung Studio & Visualizer Layar Penuh';
-    const toggleEqBtn = document.getElementById('btn-toggle-eq');
-    if (toggleEqBtn) toggleEqBtn.title = isEn ? 'Audio DSP Equalizer (Dolby & Nahimic)' : 'Audio DSP Equalizer (Dolby & Nahimic)';
-    const volIconBtn = document.getElementById('volume-icon-btn');
-    if (volIconBtn) volIconBtn.title = isEn ? 'Mute / Unmute Volume' : 'Bisukan / Nyalakan Suara';
-
-    // 10. Studio Cinema Modal Tooltips & Text
-    const cinemaTrackTitle = document.getElementById('cinema-track-title');
-    if (cinemaTrackTitle && (cinemaTrackTitle.textContent === 'Pilih Lagu untuk Diputar' || cinemaTrackTitle.textContent === 'Select a Song to Play')) {
-      cinemaTrackTitle.textContent = isEn ? 'Select a Song to Play' : 'Pilih Lagu untuk Diputar';
-    }
-    const cinemaHint = document.querySelector('.cinema-canvas-hint');
-    if (cinemaHint) cinemaHint.textContent = isEn ? '💡 Click canvas to switch real-time visualizer styles' : '💡 Klik canvas untuk mengganti gaya visualizer real-time';
-    const cinemaClose = document.getElementById('btn-close-cinema');
-    if (cinemaClose) cinemaClose.title = isEn ? 'Close Studio Cinema (ESC)' : 'Tutup Studio Cinema (ESC)';
-    const cinemaShuffle = document.getElementById('cinema-btn-shuffle');
-    if (cinemaShuffle) cinemaShuffle.title = isEn ? 'Shuffle' : 'Acak (Shuffle)';
-    const cinemaPrev = document.getElementById('cinema-btn-prev');
-    if (cinemaPrev) cinemaPrev.title = isEn ? 'Previous' : 'Sebelumnya';
-    const cinemaPlay = document.getElementById('cinema-btn-play');
-    if (cinemaPlay) cinemaPlay.title = isEn ? 'Play / Pause' : 'Putar / Jeda';
-    const cinemaNext = document.getElementById('cinema-btn-next');
-    if (cinemaNext) cinemaNext.title = isEn ? 'Next' : 'Berikutnya';
-    const cinemaFav = document.getElementById('cinema-btn-fav');
-    if (cinemaFav) cinemaFav.title = isEn ? 'Like This Song' : 'Suka Lagu Ini';
-    const lyricsNote = document.querySelector('.lyrics-loading-note');
-    if (lyricsNote) lyricsNote.textContent = isEn ? 'Loading lyrics & rhythm...' : 'Memuat lirik & ritme lagu...';
-
-    // 11. Equalizer Drawer Texts
-    const eqCurveTitle = document.querySelector('.eq-curve-title');
-    if (eqCurveTitle) eqCurveTitle.textContent = isEn ? 'Real-Time Frequency Response' : 'Respon Frekuensi Real-Time';
-    const limiterBadge = document.querySelector('.limiter-badge');
-    if (limiterBadge) {
-      limiterBadge.title = isEn ? 'Master Brickwall Limiter prevents digital audio distortion' : 'Master Brickwall Limiter mencegah distorsi audio digital';
-      setNodeText('.limiter-badge', 'Studio Limiter: Aktif', 'Studio Limiter: Active');
-    }
-    try {
-      if (typeof this.updateEqStatusBanner === 'function') {
-        this.updateEqStatusBanner();
+      if (searchEmptyP) {
+        searchEmptyP.textContent = isEn ? 'Type a song title or artist name in the search bar above.' : 'Ketik judul lagu atau nama penyanyi di kolom pencarian di atas.';
       }
-    } catch (e) {
-      console.warn('updateEqStatusBanner warning:', e);
-    }
 
-    // 12. Modals (Connect, Token, Import, Create, Add)
-    const connectModalTitle = document.querySelector('#modal-connect .modal-title');
-    if (connectModalTitle) connectModalTitle.textContent = isEn ? 'Open on Your Mobile Phone 📱' : 'Buka di Handphone Anda 📱';
-    const connectModalDesc = document.querySelector('#modal-connect .modal-desc');
-    if (connectModalDesc) connectModalDesc.textContent = isEn ? 'Point your phone camera at the QR code below (make sure phone and laptop are on the same Wi-Fi).' : 'Arahkan kamera HP Anda ke QR Code di bawah (pastikan HP dan laptop terhubung ke Wi-Fi yang sama).';
-    const connectTip = document.querySelector('#modal-connect p[style*="font-size: 0.78rem"]');
-    if (connectTip) {
-      connectTip.textContent = isEn
-        ? '💡 On your mobile phone, you can tap "Add to Home Screen" to use it as a native app.'
-        : '💡 Di HP, Anda bisa klik tombol "Tambahkan ke Layar Utama" (Add to Home Screen) agar bisa dipakai seperti aplikasi asli.';
-    }
+      // Search Filter Pills
+      setText('.search-filter-pill[data-filter="all"] .filter-pill-label', 'Semua Versi', 'All Versions');
+      setText('.search-filter-pill[data-filter="official"] .filter-pill-label', 'Official Saja', 'Official Only');
+      setText('.search-filter-pill[data-filter="nonofficial"] .filter-pill-label', 'Bukan Official (Cover, Remix, Lyrics, Live, Dance)', 'Non-Official (Covers, Remixes, Lyrics, Live, Dance)');
 
-    const tokenModalTitle = document.querySelector('#modal-token .modal-title');
-    if (tokenModalTitle) tokenModalTitle.textContent = isEn ? 'Connect Suno AI 🎵' : 'Hubungkan Suno AI 🎵';
-    const tokenModalDesc = document.querySelector('#modal-token .modal-desc');
-    if (tokenModalDesc) tokenModalDesc.textContent = isEn ? 'Select your connection method to Suno AI to generate studio-quality neural music:' : 'Pilih metode koneksi ke Suno AI untuk membuat musik neural berkualitas studio:';
-    const autoLoginBtn = document.getElementById('btn-start-auto-login');
-    if (autoLoginBtn) autoLoginBtn.innerHTML = isEn ? '🚀 Open Window & Sign In to Suno' : '🚀 Buka Jendela & Login ke Suno';
+      // 6. Favorites View
+      const favTitle = document.querySelector('#view-favorites .section-title');
+      if (favTitle) favTitle.textContent = isEn ? 'Liked Songs Collection' : 'Koleksi Lagu Favorit';
+      const favEmptyTitle = document.querySelector('#favorites-list .empty-state h3');
+      const favEmptyP = document.querySelector('#favorites-list .empty-state p');
+      if (favEmptyTitle) favEmptyTitle.textContent = isEn ? 'No liked songs yet' : 'Belum ada lagu favorit';
+      if (favEmptyP) favEmptyP.textContent = isEn ? 'Click the heart button on songs you like to collect them here.' : 'Klik tombol hati pada lagu yang Anda sukai untuk mengumpulkannya di sini.';
 
-    const importModalTitle = document.querySelector('#modal-import-playlist .modal-title');
-    if (importModalTitle) importModalTitle.textContent = isEn ? 'Import Playlist & Album 📥' : 'Impor Playlist & Album 📥';
-    const importModalDesc = document.querySelector('#modal-import-playlist .modal-desc');
-    if (importModalDesc) importModalDesc.innerHTML = isEn ? 'Paste playlist or album link from <strong>Spotify</strong> or <strong>YouTube Music</strong>.' : 'Tempel tautan / URL playlist maupun album dari <strong>Spotify</strong> atau <strong>YouTube Music</strong>.';
-    const importGuide = document.querySelector('#modal-import-playlist div[style*="background"]');
-    if (importGuide) {
-      importGuide.innerHTML = isEn
-        ? `<strong>💡 How to copy playlist link:</strong><br>
-           • <strong>Spotify:</strong> Open Spotify -> Playlist/Album -> Tap <strong>Share</strong> -> choose <strong>Copy Link</strong>.<br>
-           • <strong>YouTube Music:</strong> Open Playlist -> Tap <strong>Share</strong> -> choose <strong>Copy Link</strong>.<br>
-           • <em>Note:</em> Playlist will be saved automatically to your Playlists tab with high-res cover art!`
-        : `<strong>💡 Cara salin link:</strong><br>
-           • <strong>Spotify:</strong> Buka Spotify -> Buka Playlist/Album -> Klik <strong>Bagikan (Share)</strong> -> <strong>Salin Tautan</strong>.<br>
-           • <strong>YouTube Music:</strong> Buka Playlist -> Klik <strong>Bagikan (Share)</strong> -> <strong>Salin Link</strong>.<br>
-           • <em>Tips:</em> Playlist akan otomatis tersimpan di tab Playlist kamu dengan cover art resolusi tinggi!`;
-    }
-    setText('label[for="input-playlist-url"]', 'URL / Link Playlist atau Album', 'Playlist or Album URL / Link');
-    setText('#btn-submit-import', 'Mulai Impor Lagu', 'Start Importing Songs');
+      // 7. Playlists View
+      const plTitle = document.querySelector('#view-playlists .section-title');
+      if (plTitle) plTitle.textContent = isEn ? 'My Playlists' : 'Playlist Akun Saya';
+      const plDesc = document.querySelector('#view-playlists .section-header p');
+      if (plDesc) plDesc.textContent = isEn ? 'Manage your Spotify & YouTube Music playlists and build personal collections.' : 'Kelola playlist Spotify & YouTube Music akun Anda dan buat koleksi lagu pribadi.';
+      setNodeText('#btn-open-import-playlist', '+ Impor Playlist & Album', '+ Import Playlist & Album');
+      setNodeText('button[onclick*="modal-create-playlist"]', '+ Buat Playlist Baru', '+ Create New Playlist');
 
-    const createModalTitle = document.querySelector('#modal-create-playlist .modal-title');
-    if (createModalTitle) createModalTitle.textContent = isEn ? 'Create New Playlist 📁' : 'Buat Playlist Baru 📁';
-    const createModalDesc = document.querySelector('#modal-create-playlist .modal-desc');
-    if (createModalDesc) createModalDesc.textContent = isEn ? 'Give a name to your new custom playlist.' : 'Beri nama untuk daftar putar kustom Anda.';
-    setText('label[for="input-playlist-name"]', 'Nama Playlist', 'Playlist Name');
-    const createPlInput = document.getElementById('input-playlist-name');
-    if (createPlInput) createPlInput.placeholder = isEn ? 'e.g.: Chill Focus, Midnight Lo-Fi, etc.' : 'Contoh: Lagu Kerja Santai, Lofi Malam, dll';
-    const createPlBtn = document.querySelector('#modal-create-playlist button[type="submit"]');
-    if (createPlBtn) createPlBtn.textContent = isEn ? 'Create Playlist' : 'Buat Playlist';
+      // 8. Suno AI Studio View
+      setNodeText('#btn-subtab-create', 'Studio Buat Lagu', 'Create Song Studio');
+      const librarySubtab = document.getElementById('btn-subtab-library');
+      if (librarySubtab) {
+        const countBadge = document.getElementById('suno-library-count-badge');
+        const count = countBadge ? countBadge.textContent : '0';
+        librarySubtab.innerHTML = `<span>${isEn ? 'My Created Songs Library' : 'Koleksi Lagu Buatan Saya'}</span><span id="suno-library-count-badge" class="subtab-count-badge">${count}</span>`;
+      }
+      const sunoConnStatus = document.getElementById('suno-connection-status-text');
+      if (sunoConnStatus) {
+        sunoConnStatus.textContent = isEn ? 'Ready to generate full songs with vocals & instruments' : 'Siap membuat lagu lengkap dengan vokal & instrumen';
+      }
+      const btnSunoDisconnect = document.getElementById('btn-suno-disconnect');
+      if (btnSunoDisconnect) {
+        btnSunoDisconnect.textContent = isEn ? 'Disconnect' : 'Putuskan Koneksi';
+        btnSunoDisconnect.title = isEn ? 'Disconnect current session' : 'Putuskan koneksi saat ini dan kembali ke Auto-Engine';
+      }
+      const sunoCreditsPill = document.getElementById('suno-credits-pill');
+      if (sunoCreditsPill && sunoCreditsPill.textContent.includes('Kredit')) {
+        sunoCreditsPill.textContent = isEn ? '50 Credits (5 Daily Songs)' : '50 Kredit (5 Lagu Hari Ini)';
+      }
+      setNodeText('#btn-suno-settings', '🔗 Hubungkan Akun Suno', '🔗 Connect Suno Account');
+      const sunoPanels = document.querySelectorAll('.suno-panel');
+      if (sunoPanels[0]) {
+        setNodeText(sunoPanels[0].querySelector('.suno-panel-title'), 'Buat Lagu Baru dengan AI', 'Create New Song with AI');
+        const sub = sunoPanels[0].querySelector('.suno-panel-subtitle');
+        if (sub) sub.textContent = isEn ? 'Generate complete songs with instruments and vocals for free.' : 'Hasilkan lagu lengkap dengan instrumen dan vokal secara gratis.';
+      }
+      setText('label[for="suno-title"]', 'Judul Lagu (Opsional)', 'Song Title (Optional)');
+      const sunoTitleInput = document.getElementById('suno-title');
+      if (sunoTitleInput) sunoTitleInput.placeholder = isEn ? 'e.g.: Midnight Neon Highway' : 'Contoh: Senja di Pelabuhan';
+      setText('label[for="suno-tags"]', 'Genre & Style Musik', 'Music Genre & Style');
+      const sunoTagsInput = document.getElementById('suno-tags');
+      if (sunoTagsInput) sunoTagsInput.placeholder = isEn ? 'e.g.: Dream pop, nostalgic acoustic, emotional vocal' : 'Contoh: Indonesian pop, nostalgic acoustic, emotional vocal';
+      setText('label[for="suno-prompt"]', 'Deskripsi Tema / Lirik Custom', 'Custom Lyrics / Theme Description');
+      const sunoPrompt = document.getElementById('suno-prompt');
+      if (sunoPrompt) {
+        sunoPrompt.placeholder = isEn
+          ? "Write your own lyrics or prompt the AI: 'A mellow song about late night memories in the rain...'"
+          : "Tulis lirik Anda sendiri atau beri tahu AI: 'Lagu tenang tentang kenangan masa kecil di tengah hujan rintik-rintik...'";
+      }
+      const instrumentalSpan = document.querySelector('.form-checkbox-wrapper span');
+      if (instrumentalSpan) instrumentalSpan.textContent = isEn ? 'Instrumental Only (No Vocals)' : 'Musik Instrumental Saja (Tanpa Vokal)';
+      setNodeText('#suno-generate-btn', 'Generate Lagu dengan Suno AI', 'Generate Song with Suno AI');
+      if (sunoPanels[1]) {
+        setNodeText(sunoPanels[1].querySelector('.suno-panel-title'), 'Daftar Lagu Hasil Suno AI', 'Generated AI Songs Library');
+        const sub = sunoPanels[1].querySelector('.suno-panel-subtitle');
+        if (sub) sub.textContent = isEn ? 'Created songs are saved automatically and ready to play.' : 'Lagu yang telah dibuat otomatis tersimpan dan siap diputar kapan saja.';
+      }
 
-    const addPlTitle = document.querySelector('#modal-add-to-playlist .modal-title');
-    if (addPlTitle) addPlTitle.textContent = isEn ? 'Add to Playlist ➕' : 'Tambah ke Playlist ➕';
-    const addPlDesc = document.querySelector('#modal-add-to-playlist .modal-desc');
-    if (addPlDesc) addPlDesc.textContent = isEn ? 'Select the playlist where you want to save this song:' : 'Pilih playlist tempat Anda ingin menyimpan lagu ini:';
+      // Taste Modal (Selera Musik) Texts
+      setText('.taste-skip-label', 'Lewati', 'Skip');
+      setText('.taste-modal-title', 'Pilih Selera Musik Kamu 🎧', 'Choose Your Music Taste 🎧');
+      setText('.taste-modal-desc', 'Pilih genre dan suasana favoritmu agar sistem kami dapat meracik beranda lagu, stasiun radio, dan playlist personal khusus untukmu!', 'Select your favorite genres and vibe so our system can craft personal home shelves, radio stations, and curated playlists just for you!');
+      setText('.taste-field-group:nth-child(1) .taste-field-label span:last-child', 'Nama Panggilan Kamu', 'Your Nickname');
+      const tasteInputName = document.getElementById('taste-input-name');
+      if (tasteInputName) {
+        tasteInputName.placeholder = isEn ? 'e.g.: Alex, Sarah, David...' : 'Contoh: Devod, Rian, Maya...';
+      }
+      setText('.taste-field-group:nth-child(2) .taste-field-label span:last-child', 'Pilih Genre Favoritmu', 'Choose Your Favorite Genres');
+      setText('.taste-field-group:nth-child(3) .taste-field-label span:last-child', 'Vibe / Suasana Hati Utama', 'Main Vibe / Mood');
+      setText('#btn-submit-taste-text', 'Personalisasi Musik Saya Sekarang', 'Personalize My Music Now');
+      setText('#btn-skip-taste', '✕ Lewati Setup (Biarkan Beranda Bersih)', '✕ Skip Setup (Keep Home Clean)');
 
-    // 13. Dynamic Re-renders for Active Views
-    if (triggerRerender) {
-      if (this.currentAlbumDetail) {
-        if (this.currentAlbumDetail.id === 'liked-music') {
-          this.openLikedMusicDetail();
-        } else {
-          this.openHomeAlbumDetail(this.currentAlbumDetail.id);
+      // 9. Persistent Bottom Player Bar Tooltips
+      const playerTitleEl = document.getElementById('player-title');
+      if (playerTitleEl && (playerTitleEl.textContent === 'Pilih Lagu untuk Diputar' || playerTitleEl.textContent === 'Select a Song to Play')) {
+        playerTitleEl.textContent = isEn ? 'Select a Song to Play' : 'Pilih Lagu untuk Diputar';
+      }
+      const playerFavBtn = document.getElementById('player-fav-btn');
+      if (playerFavBtn) playerFavBtn.title = isEn ? 'Like (Favorite Song)' : 'Favorit (Suka Lagu)';
+      const btnShuffle = document.getElementById('btn-shuffle');
+      if (btnShuffle) btnShuffle.title = isEn ? 'Shuffle' : 'Acak Lagu (Shuffle)';
+      const prevBtn = document.getElementById('prev-btn');
+      if (prevBtn) prevBtn.title = isEn ? 'Previous' : 'Sebelumnya';
+      const playPauseBtn = document.getElementById('play-pause-btn');
+      if (playPauseBtn) playPauseBtn.title = isEn ? 'Play / Pause' : 'Putar / Jeda';
+      const nextBtn = document.getElementById('next-btn');
+      if (nextBtn) nextBtn.title = isEn ? 'Next' : 'Berikutnya';
+      const btnRepeat = document.getElementById('btn-repeat');
+      if (btnRepeat) btnRepeat.title = isEn ? 'Repeat' : 'Ulangi Lagu (Repeat)';
+      const specBezel = document.querySelector('.player-spectrum-bezel');
+      if (specBezel) specBezel.title = isEn ? 'Real-Time Frequency Spectrum Visualizer' : 'Visualizer Spektrum Frekuensi Real-Time';
+      const cinemaOpenBtn = document.getElementById('btn-open-cinema');
+      if (cinemaOpenBtn) cinemaOpenBtn.title = isEn ? 'Studio Cinema & Fullscreen Visualizer' : 'Mode Panggung Studio & Visualizer Layar Penuh';
+      const toggleEqBtn = document.getElementById('btn-toggle-eq');
+      if (toggleEqBtn) toggleEqBtn.title = isEn ? 'Audio DSP Equalizer (Dolby & Nahimic)' : 'Audio DSP Equalizer (Dolby & Nahimic)';
+      const volIconBtn = document.getElementById('volume-icon-btn');
+      if (volIconBtn) volIconBtn.title = isEn ? 'Mute / Unmute Volume' : 'Bisukan / Nyalakan Suara';
+
+      // 10. Studio Cinema Modal Tooltips & Text
+      const cinemaTrackTitle = document.getElementById('cinema-track-title');
+      if (cinemaTrackTitle && (cinemaTrackTitle.textContent === 'Pilih Lagu untuk Diputar' || cinemaTrackTitle.textContent === 'Select a Song to Play')) {
+        cinemaTrackTitle.textContent = isEn ? 'Select a Song to Play' : 'Pilih Lagu untuk Diputar';
+      }
+      const cinemaHint = document.querySelector('.cinema-canvas-hint');
+      if (cinemaHint) cinemaHint.textContent = isEn ? '💡 Click canvas to switch real-time visualizer styles' : '💡 Klik canvas untuk mengganti gaya visualizer real-time';
+      const cinemaClose = document.getElementById('btn-close-cinema');
+      if (cinemaClose) cinemaClose.title = isEn ? 'Close Studio Cinema (ESC)' : 'Tutup Studio Cinema (ESC)';
+      const cinemaShuffle = document.getElementById('cinema-btn-shuffle');
+      if (cinemaShuffle) cinemaShuffle.title = isEn ? 'Shuffle' : 'Acak (Shuffle)';
+      const cinemaPrev = document.getElementById('cinema-btn-prev');
+      if (cinemaPrev) cinemaPrev.title = isEn ? 'Previous' : 'Sebelumnya';
+      const cinemaPlay = document.getElementById('cinema-btn-play');
+      if (cinemaPlay) cinemaPlay.title = isEn ? 'Play / Pause' : 'Putar / Jeda';
+      const cinemaNext = document.getElementById('cinema-btn-next');
+      if (cinemaNext) cinemaNext.title = isEn ? 'Next' : 'Berikutnya';
+      const cinemaFav = document.getElementById('cinema-btn-fav');
+      if (cinemaFav) cinemaFav.title = isEn ? 'Like This Song' : 'Suka Lagu Ini';
+      const lyricsNote = document.querySelector('.lyrics-loading-note');
+      if (lyricsNote) lyricsNote.textContent = isEn ? 'Loading lyrics & rhythm...' : 'Memuat lirik & ritme lagu...';
+
+      // 11. Equalizer Drawer Texts
+      const eqCurveTitle = document.querySelector('.eq-curve-title');
+      if (eqCurveTitle) eqCurveTitle.textContent = isEn ? 'Real-Time Frequency Response' : 'Respon Frekuensi Real-Time';
+      const limiterBadge = document.querySelector('.limiter-badge');
+      if (limiterBadge) {
+        limiterBadge.title = isEn ? 'Master Brickwall Limiter prevents digital audio distortion' : 'Master Brickwall Limiter mencegah distorsi audio digital';
+        setNodeText('.limiter-badge', 'Studio Limiter: Aktif', 'Studio Limiter: Active');
+      }
+      try {
+        if (typeof this.updateEqStatusBanner === 'function') {
+          this.updateEqStatusBanner();
         }
-      } else if (this.cachedSections) {
-        this.renderYTMFullHome(this.cachedSections, this.cachedUser);
+      } catch (e) {
+        console.warn('updateEqStatusBanner warning:', e);
       }
-      if (this.activeTab === 'playlists') {
-        this.renderPlaylists();
-      } else if (this.activeTab === 'favorites') {
-        this.renderFavorites();
+
+      // 12. Modals (Connect, Token, Import, Create, Add)
+      const connectModalTitle = document.querySelector('#modal-connect .modal-title');
+      if (connectModalTitle) connectModalTitle.textContent = isEn ? 'Open on Your Mobile Phone 📱' : 'Buka di Handphone Anda 📱';
+      const connectModalDesc = document.querySelector('#modal-connect .modal-desc');
+      if (connectModalDesc) connectModalDesc.textContent = isEn ? 'Point your phone camera at the QR code below (make sure phone and laptop are on the same Wi-Fi).' : 'Arahkan kamera HP Anda ke QR Code di bawah (pastikan HP dan laptop terhubung ke Wi-Fi yang sama).';
+      const connectTip = document.querySelector('#modal-connect p[style*="font-size: 0.78rem"]');
+      if (connectTip) {
+        connectTip.textContent = isEn
+          ? '💡 On your mobile phone, you can tap "Add to Home Screen" to use it as a native app.'
+          : '💡 Di HP, Anda bisa klik tombol "Tambahkan ke Layar Utama" (Add to Home Screen) agar bisa dipakai seperti aplikasi asli.';
       }
-    }
+
+      const tokenModalTitle = document.querySelector('#modal-token .modal-title');
+      if (tokenModalTitle) tokenModalTitle.textContent = isEn ? 'Connect Suno AI 🎵' : 'Hubungkan Suno AI 🎵';
+      const tokenModalDesc = document.querySelector('#modal-token .modal-desc');
+      if (tokenModalDesc) tokenModalDesc.textContent = isEn ? 'Select your connection method to Suno AI to generate studio-quality neural music:' : 'Pilih metode koneksi ke Suno AI untuk membuat musik neural berkualitas studio:';
+      const autoLoginBtn = document.getElementById('btn-start-auto-login');
+      if (autoLoginBtn) autoLoginBtn.innerHTML = isEn ? '🚀 Open Window & Sign In to Suno' : '🚀 Buka Jendela & Login ke Suno';
+
+      const importModalTitle = document.querySelector('#modal-import-playlist .modal-title');
+      if (importModalTitle) importModalTitle.textContent = isEn ? 'Import Playlist & Album 📥' : 'Impor Playlist & Album 📥';
+      const importModalDesc = document.querySelector('#modal-import-playlist .modal-desc');
+      if (importModalDesc) importModalDesc.innerHTML = isEn ? 'Paste playlist or album link from <strong>Spotify</strong> or <strong>YouTube Music</strong>.' : 'Tempel tautan / URL playlist maupun album dari <strong>Spotify</strong> atau <strong>YouTube Music</strong>.';
+      const importGuide = document.querySelector('#modal-import-playlist div[style*="background"]');
+      if (importGuide) {
+        importGuide.innerHTML = isEn
+          ? `<strong>💡 How to copy playlist link:</strong><br>
+             • <strong>Spotify:</strong> Open Spotify -> Playlist/Album -> Tap <strong>Share</strong> -> choose <strong>Copy Link</strong>.<br>
+             • <strong>YouTube Music:</strong> Open Playlist -> Tap <strong>Share</strong> -> choose <strong>Copy Link</strong>.<br>
+             • <em>Note:</em> Playlist will be saved automatically to your Playlists tab with high-res cover art!`
+          : `<strong>💡 Cara salin link:</strong><br>
+             • <strong>Spotify:</strong> Buka Spotify -> Buka Playlist/Album -> Klik <strong>Bagikan (Share)</strong> -> <strong>Salin Tautan</strong>.<br>
+             • <strong>YouTube Music:</strong> Buka Playlist -> Klik <strong>Bagikan (Share)</strong> -> <strong>Salin Link</strong>.<br>
+             • <em>Tips:</em> Playlist akan otomatis tersimpan di tab Playlist kamu dengan cover art resolusi tinggi!`;
+      }
+      setText('label[for="input-playlist-url"]', 'URL / Link Playlist atau Album', 'Playlist or Album URL / Link');
+      setText('#btn-submit-import', 'Mulai Impor Lagu', 'Start Importing Songs');
+
+      const createModalTitle = document.querySelector('#modal-create-playlist .modal-title');
+      if (createModalTitle) createModalTitle.textContent = isEn ? 'Create New Playlist 📁' : 'Buat Playlist Baru 📁';
+      const createModalDesc = document.querySelector('#modal-create-playlist .modal-desc');
+      if (createModalDesc) createModalDesc.textContent = isEn ? 'Give a name to your new custom playlist.' : 'Beri nama untuk daftar putar kustom Anda.';
+      setText('label[for="input-playlist-name"]', 'Nama Playlist', 'Playlist Name');
+      const createPlInput = document.getElementById('input-playlist-name');
+      if (createPlInput) createPlInput.placeholder = isEn ? 'e.g.: Chill Focus, Midnight Lo-Fi, etc.' : 'Contoh: Lagu Kerja Santai, Lofi Malam, dll';
+      const createPlBtn = document.querySelector('#modal-create-playlist button[type="submit"]');
+      if (createPlBtn) createPlBtn.textContent = isEn ? 'Create Playlist' : 'Buat Playlist';
+
+      const addPlTitle = document.querySelector('#modal-add-to-playlist .modal-title');
+      if (addPlTitle) addPlTitle.textContent = isEn ? 'Add to Playlist ➕' : 'Tambah ke Playlist ➕';
+      const addPlDesc = document.querySelector('#modal-add-to-playlist .modal-desc');
+      if (addPlDesc) addPlDesc.textContent = isEn ? 'Select the playlist where you want to save this song:' : 'Pilih playlist tempat Anda ingin menyimpan lagu ini:';
+
+      // 13. Dynamic Re-renders for Active Views
+      if (triggerRerender) {
+        if (this.currentAlbumDetail) {
+          if (this.currentAlbumDetail.id === 'liked-music') {
+            this.openLikedMusicDetail();
+          } else {
+            this.openHomeAlbumDetail(this.currentAlbumDetail.id);
+          }
+        } else if (this.activeTab === 'home' || !this.activeTab) {
+          if (typeof this.renderHomeForSkippedUser === 'function') {
+            this.renderHomeForSkippedUser();
+          } else if (this.cachedSections) {
+            this.renderYTMFullHome(this.cachedSections, this.cachedUser);
+          }
+        }
+
+        if (this.activeTab === 'playlists') {
+          this.renderPlaylists();
+        } else if (this.activeTab === 'favorites') {
+          this.renderFavorites();
+        } else if (this.activeTab === 'suno') {
+          if (window.sunoStudio) {
+            if (typeof window.sunoStudio.renderCreations === 'function') {
+              window.sunoStudio.renderCreations();
+            }
+            if (typeof window.sunoStudio.renderRecentPreview === 'function') {
+              window.sunoStudio.renderRecentPreview();
+            }
+          }
+        }
+      }
     } catch (err) {
       console.warn('Error in applyLanguage:', err);
     }
@@ -2121,8 +2199,12 @@ class App {
       if (heroTitleGlow) {
         heroTitleGlow.textContent = newName;
       }
-      if (this.cachedSections) {
-        this.renderYTMFullHome(this.cachedSections, this.cachedUser);
+      if (this.activeTab === 'home' || !this.activeTab) {
+        if (typeof this.renderHomeForSkippedUser === 'function') {
+          this.renderHomeForSkippedUser();
+        } else if (this.cachedSections) {
+          this.renderYTMFullHome(this.cachedSections, this.cachedUser);
+        }
       }
 
       if (modalProfile) modalProfile.classList.remove('active');
@@ -2177,19 +2259,69 @@ class App {
       });
     }
 
-    if (pillId && radioId) {
-      pillId.addEventListener('click', () => {
-        radioId.checked = true;
-        pillId.classList.add('active');
-        if (pillEn) pillEn.classList.remove('active');
+    const setLanguageLive = (targetLang) => {
+      if (!this.userProfile) {
+        this.userProfile = { name: 'User', avatar: '/images/avatar.jpg', lang: 'id' };
+      }
+      this.userProfile.lang = targetLang;
+      if (radioId) radioId.checked = (targetLang === 'id');
+      if (radioEn) radioEn.checked = (targetLang === 'en');
+      if (pillId) pillId.classList.toggle('active', targetLang === 'id');
+      if (pillEn) pillEn.classList.toggle('active', targetLang === 'en');
+
+      try {
+        localStorage.setItem('aurasound_user_profile', JSON.stringify(this.userProfile));
+      } catch (e) {}
+
+      // Persist to server database
+      try {
+        const userKey = this.getUserKey();
+        fetch('/api/user/profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-email': this.currentUser?.email || '',
+            'x-user-id': userKey,
+            'x-device-id': userKey
+          },
+          body: JSON.stringify({
+            name: this.userProfile.name,
+            avatar: this.userProfile.avatar,
+            lang: targetLang,
+            userKey
+          })
+        }).catch(() => {});
+      } catch (e) {}
+
+      this.applyLanguage(targetLang, true);
+      this.showToast(targetLang === 'en' ? 'Language switched to English 🇬🇧' : 'Bahasa dialihkan ke Indonesia 🇮🇩', 'info');
+    };
+
+    this.setLanguageLive = setLanguageLive;
+
+    if (pillId) {
+      pillId.addEventListener('click', (e) => {
+        e.preventDefault();
+        setLanguageLive('id');
       });
     }
 
-    if (pillEn && radioEn) {
-      pillEn.addEventListener('click', () => {
-        radioEn.checked = true;
-        pillEn.classList.add('active');
-        if (pillId) pillId.classList.remove('active');
+    if (pillEn) {
+      pillEn.addEventListener('click', (e) => {
+        e.preventDefault();
+        setLanguageLive('en');
+      });
+    }
+
+    if (radioId) {
+      radioId.addEventListener('change', () => {
+        if (radioId.checked) setLanguageLive('id');
+      });
+    }
+
+    if (radioEn) {
+      radioEn.addEventListener('change', () => {
+        if (radioEn.checked) setLanguageLive('en');
       });
     }
 
@@ -4164,14 +4296,14 @@ class App {
 
     const isEn = (this.userProfile?.lang === 'en');
     const hour = new Date().getHours();
-    let greeting = 'Selamat Datang';
-    let greetingIcon = '🎵';
-    if (hour >= 4 && hour < 11) { greeting = 'Selamat Pagi'; greetingIcon = '🌅'; }
-    else if (hour >= 11 && hour < 15) { greeting = 'Selamat Siang'; greetingIcon = '☀️'; }
-    else if (hour >= 15 && hour < 18) { greeting = 'Selamat Sore'; greetingIcon = '🌇'; }
-    else { greeting = 'Selamat Malam'; greetingIcon = '🌌'; }
+    let greeting = isEn ? 'Welcome' : 'Selamat Datang';
+    if (hour >= 4 && hour < 11) { greeting = isEn ? 'Good Morning' : 'Selamat Pagi'; }
+    else if (hour >= 11 && hour < 15) { greeting = isEn ? 'Good Afternoon' : 'Selamat Siang'; }
+    else if (hour >= 15 && hour < 18) { greeting = isEn ? 'Good Evening' : 'Selamat Sore'; }
+    else { greeting = isEn ? 'Good Night' : 'Selamat Malam'; }
 
-    const userName = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : 'Sobat Musik';
+    const defaultUserName = isEn ? 'Music Lover' : 'Sobat Musik';
+    const userName = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : defaultUserName;
 
     let html = `
       <section class="aura-hero-soundstage">
@@ -4181,7 +4313,7 @@ class App {
             <div class="aura-greeting-capsule">
               <span class="aura-greeting-tag">AURASOUND HI-FI</span>
               <span class="aura-greeting-dot"></span>
-              <span class="aura-dsp-hi-res-tag">BERANDA BERSIH</span>
+              <span class="aura-dsp-hi-res-tag">${isEn ? 'CLEAN HOME' : 'BERANDA BERSIH'}</span>
             </div>
 
             <h1 class="aura-hero-title">
@@ -4189,18 +4321,20 @@ class App {
             </h1>
 
             <p class="aura-hero-desc">
-              Beranda Anda saat ini bersih tanpa lagu bawaan pengembang. Putar lagu apa saja lewat pencarian, atau atur selera musikmu agar sistem dapat meracikkan playlist personal.
+              ${isEn
+                ? 'Your home feed is currently clean without default developer preloads. Search and play any song, or configure your music taste to craft personal playlists.'
+                : 'Beranda Anda saat ini bersih tanpa lagu bawaan pengembang. Putar lagu apa saja lewat pencarian, atau atur selera musikmu agar sistem dapat meracikkan playlist personal.'}
             </p>
 
             <div class="aura-hero-actions">
               <button class="aura-btn-hero-primary" onclick="window.app.openTasteModal()">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z"/></svg>
-                <span>Atur Selera Musik</span>
+                <span>${isEn ? 'Music Taste' : 'Atur Selera Musik'}</span>
               </button>
 
               <button class="aura-btn-hero-glass" onclick="window.app.switchTab('search')">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <span>Cari Lagu Sendiri</span>
+                <span>${isEn ? 'Search Music' : 'Cari Lagu Sendiri'}</span>
               </button>
 
               <button class="aura-btn-hero-outline" onclick="document.getElementById('eq-drawer').classList.toggle('active')">
@@ -4211,7 +4345,7 @@ class App {
           </div>
 
           <div class="aura-hero-right">
-            <div class="aura-turntable-card" onclick="window.app.openTasteModal()" style="cursor: pointer;" title="Klik untuk mengatur selera musik">
+            <div class="aura-turntable-card" onclick="window.app.openTasteModal()" style="cursor: pointer;" title="${isEn ? 'Click to configure music taste' : 'Klik untuk mengatur selera musik'}">
               <div class="aura-turntable-chassis">
                 <div class="aura-vinyl-record">
                   <div class="aura-vinyl-grooves"></div>
@@ -4222,7 +4356,7 @@ class App {
                 </div>
               </div>
               <div class="aura-turntable-footer">
-                <span class="aura-turntable-text">SIAP DIPERSONALISASI • KLIK DI SINI</span>
+                <span class="aura-turntable-text">${isEn ? 'READY TO PERSONALIZE • CLICK HERE' : 'SIAP DIPERSONALISASI • KLIK DI SINI'}</span>
               </div>
             </div>
           </div>
@@ -4235,16 +4369,18 @@ class App {
           <div style="width: 68px; height: 68px; border-radius: 50%; background: rgba(16, 185, 129, 0.12); color: #34d399; display: flex; align-items: center; justify-content: center; font-size: 2rem; box-shadow: 0 0 24px rgba(16, 185, 129, 0.2);">
             🎧
           </div>
-          <h3 style="font-size: 1.35rem; font-weight: 800; color: #fff; margin: 0;">Beranda Kamu Masih Bersih</h3>
+          <h3 style="font-size: 1.35rem; font-weight: 800; color: #fff; margin: 0;">${isEn ? 'Your Home Feed is Pure & Clean' : 'Beranda Kamu Masih Bersih'}</h3>
           <p style="font-size: 0.92rem; color: #94a3b8; max-width: 520px; line-height: 1.6; margin: 0;">
-            Kamu memilih untuk melewati setup selera musik. Beranda sengaja dikosongkan dari lagu-lagu pengembang. Mulai putar lagu apa saja lewat pencarian, dan rekomendasi lagu yang berkaitan akan langsung muncul otomatis di sini!
+            ${isEn
+              ? 'You skipped the music taste setup. Your feed is intentionally free of developer preloads. Search and play any track to immediately see related recommendations appear here!'
+              : 'Kamu memilih untuk melewati setup selera musik. Beranda sengaja dikosongkan dari lagu-lagu pengembang. Mulai putar lagu apa saja lewat pencarian, dan rekomendasi lagu yang berkaitan akan langsung muncul otomatis di sini!'}
           </p>
           <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 10px;">
             <button class="aura-btn-hero-primary" onclick="window.app.switchTab('search')" style="padding: 12px 24px; font-size: 0.9rem;">
-              <span>🔍 Jelajahi & Cari Musik</span>
+              <span>🔍 ${isEn ? 'Explore & Search Music' : 'Jelajahi & Cari Musik'}</span>
             </button>
             <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" style="padding: 12px 24px; font-size: 0.9rem;">
-              <span>🎨 Atur Selera Musik (Genre & Vibe)</span>
+              <span>🎨 ${isEn ? 'Set Music Taste (Genre & Vibe)' : 'Atur Selera Musik (Genre & Vibe)'}</span>
             </button>
           </div>
         </div>
@@ -4260,7 +4396,8 @@ class App {
     if (!container) return;
 
     const isEn = (this.userProfile?.lang === 'en');
-    const userName = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : 'Sobat Musik';
+    const defaultUserName = isEn ? 'Music Lover' : 'Sobat Musik';
+    const userName = (this.userProfile?.name && this.userProfile.name !== 'User') ? this.userProfile.name : defaultUserName;
 
     // Fetch dynamic recommendations directly derived from user's listened songs & imported albums
     let hypermixData = null;
@@ -4326,12 +4463,11 @@ class App {
       : (importedPlaylists[0]?.title || history.slice(0, 3).map(h => h.artist).join(' • ') || 'AuraSound AI');
 
     const hour = new Date().getHours();
-    let greeting = 'Selamat Datang';
-    let greetingIcon = '🎵';
-    if (hour >= 4 && hour < 11) { greeting = 'Selamat Pagi'; greetingIcon = '🌅'; }
-    else if (hour >= 11 && hour < 15) { greeting = 'Selamat Siang'; greetingIcon = '☀️'; }
-    else if (hour >= 15 && hour < 18) { greeting = 'Selamat Sore'; greetingIcon = '🌇'; }
-    else { greeting = 'Selamat Malam'; greetingIcon = '🌌'; }
+    let greeting = isEn ? 'Welcome' : 'Selamat Datang';
+    if (hour >= 4 && hour < 11) { greeting = isEn ? 'Good Morning' : 'Selamat Pagi'; }
+    else if (hour >= 11 && hour < 15) { greeting = isEn ? 'Good Afternoon' : 'Selamat Siang'; }
+    else if (hour >= 15 && hour < 18) { greeting = isEn ? 'Good Evening' : 'Selamat Sore'; }
+    else { greeting = isEn ? 'Good Night' : 'Selamat Malam'; }
 
     // Supermix Availability Logic:
     // Supermix appears if user has playlists OR substantial history (>= 5 songs) OR setup their taste.
@@ -4344,20 +4480,18 @@ class App {
     let heroAction = "window.app.playHomeAlbum('deck-supermix')";
     let turntableClick = "window.app.openHomeAlbumDetail('deck-supermix')";
     let turntableTag = 'SUPERMIX • TACTILE VINYL • HI-FI';
-    let bentoSupermixBadge = 'SUPERMIX PRIBADI';
+    let bentoSupermixBadge = isEn ? 'PERSONAL SUPERMIX' : 'SUPERMIX PRIBADI';
     let bentoSupermixTitle = 'My Supermix';
     let bentoSupermixSubtitle = isEn ? 'Auto-Curated for Your Taste' : 'Racikan Otomatis Selera Anda';
-    let bentoSupermixDesc = `Diramu otomatis dari lagu dan artis yang sering Anda dengar.`;
+    let bentoSupermixDesc = isEn ? 'Crafted automatically from the songs and artists you listen to most.' : 'Diramu otomatis dari lagu dan artis yang sering Anda dengar.';
     let bentoPodClick = "window.app.openHomeAlbumDetail('deck-supermix')";
     let bentoPodPlay = "window.app.playHomeAlbum('deck-supermix')";
-    let bentoPodActionLabel = isEn ? 'Open Full Tracklist →' : 'Buka Tracklist Supermix →';
+    let bentoPodActionLabel = isEn ? 'Open Supermix Tracklist →' : 'Buka Tracklist Supermix →';
 
     if (shouldShowSupermix) {
       if (importedPlaylists.length >= 2) {
-        const titles = importedPlaylists.map(p => `"${p.title.trim()}"`).join(', ');
-        const sources = [...new Set(importedPlaylists.map(p => p.source === 'spotify' ? 'Spotify' : 'YouTube Music'))].join(' & ');
         heroButtonLabel = isEn ? 'Play Supermix' : 'Putar Supermix';
-        bentoSupermixBadge = 'SUPERMIX PRIBADI';
+        bentoSupermixBadge = isEn ? 'PERSONAL SUPERMIX' : 'SUPERMIX PRIBADI';
         bentoSupermixTitle = 'My Supermix';
         bentoSupermixSubtitle = isEn ? 'Made for You' : 'Dibuat untuk Anda';
         bentoSupermixDesc = isEn
@@ -4365,9 +4499,8 @@ class App {
           : 'Kombinasi lagu dari seluruh playlist dan riwayat musik Anda.';
       } else if (importedPlaylists.length === 1) {
         const imp = importedPlaylists[0];
-        const sourceName = imp.source === 'spotify' ? 'Spotify' : (imp.source === 'youtube' ? 'YouTube Music' : 'Playlist');
         heroButtonLabel = isEn ? 'Play Supermix' : 'Putar Supermix';
-        bentoSupermixBadge = 'SUPERMIX PRIBADI';
+        bentoSupermixBadge = isEn ? 'PERSONAL SUPERMIX' : 'SUPERMIX PRIBADI';
         bentoSupermixTitle = 'My Supermix';
         bentoSupermixSubtitle = isEn ? 'Made for You' : 'Dibuat untuk Anda';
         bentoSupermixDesc = isEn
@@ -4375,7 +4508,7 @@ class App {
           : `Kombinasi lagu dari playlist "${imp.title}" dan riwayat musik Anda.`;
       } else {
         heroButtonLabel = isEn ? 'Play My Supermix' : 'Putar Supermix';
-        bentoSupermixBadge = 'SUPERMIX PRIBADI';
+        bentoSupermixBadge = isEn ? 'PERSONAL SUPERMIX' : 'SUPERMIX PRIBADI';
         bentoSupermixTitle = 'My Supermix';
         bentoSupermixSubtitle = isEn ? 'Made for You' : 'Dibuat untuk Anda';
         bentoSupermixDesc = isEn
@@ -4387,9 +4520,9 @@ class App {
       heroButtonLabel = isEn ? 'Play Related Music' : 'Putar Lagu Terkait';
       heroAction = "window.app.playTrackList(window.app.getRegisteredTrackList('related-picks'), 0)";
       turntableClick = "window.app.playTrackList(window.app.getRegisteredTrackList('related-picks'), 0)";
-      turntableTag = 'LAGU TERKAIT • HI-FI';
-      bentoSupermixBadge = 'LAGU TERKAIT';
-      bentoSupermixTitle = 'Mix Lagu Terkait';
+      turntableTag = isEn ? 'RELATED MUSIC • HI-FI' : 'LAGU TERKAIT • HI-FI';
+      bentoSupermixBadge = isEn ? 'RELATED TRACKS' : 'LAGU TERKAIT';
+      bentoSupermixTitle = isEn ? 'Related Tracks Mix' : 'Mix Lagu Terkait';
       bentoSupermixSubtitle = isEn ? `Based on "${history[0]?.title || 'Recent Play'}"` : `Berdasarkan "${history[0]?.title || 'Lagu Baru Diputar'}"`;
       bentoSupermixDesc = isEn
         ? `Recommendations derived from "${history[0]?.title || 'recent tracks'}" and ${topArtistNames}.`
@@ -4416,17 +4549,17 @@ class App {
             </h1>
 
             <p class="aura-hero-desc">
-              ${bentoSupermixDesc} Suara disempurnakan dengan <strong>Dolby Atmos & Nahimic DSP</strong>.
+              ${bentoSupermixDesc} ${isEn ? 'Enhanced with' : 'Suara disempurnakan dengan'} <strong>Dolby Atmos & Nahimic DSP</strong>.
             </p>
 
             <div class="aura-dna-bar">
-              <div class="aura-dna-tag" title="Artis dan genre yang baru saja Anda nikmati">
+              <div class="aura-dna-tag" title="${isEn ? 'Artists and genres related to your listening' : 'Artis dan genre yang baru saja Anda nikmati'}">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
-                <span>Terkait: <strong>${topArtistNames}</strong></span>
+                <span>${isEn ? 'Related:' : 'Terkait:'} <strong>${topArtistNames}</strong></span>
               </div>
               <div class="aura-dna-match-tag">
                 <span class="aura-dna-pulse-dot"></span>
-                <span>Rekomendasi Aktif</span>
+                <span>${isEn ? 'Active Recommendations' : 'Rekomendasi Aktif'}</span>
               </div>
             </div>
 
@@ -4436,9 +4569,9 @@ class App {
                 <span>${heroButtonLabel}</span>
               </button>
 
-              <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" title="Atur Selera Musik">
+              <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" title="${isEn ? 'Configure Music Taste' : 'Atur Selera Musik'}">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z"/></svg>
-                <span>Atur Selera Musik</span>
+                <span>${isEn ? 'Music Taste' : 'Atur Selera Musik'}</span>
               </button>
 
               <button class="aura-btn-hero-outline" onclick="document.getElementById('eq-drawer').classList.toggle('active')">
@@ -4478,10 +4611,10 @@ class App {
       <section class="aura-bento-section">
         <div class="aura-section-header-wrap">
           <div class="aura-section-title-box">
-            <span class="aura-kicker-tag">ALGORITMA & SOUNDSTAGE</span>
-            <h2 class="aura-modern-section-title">Sonic Pods Pintar</h2>
+            <span class="aura-kicker-tag">${isEn ? 'ALGORITHM & SOUNDSTAGE' : 'ALGORITMA & SOUNDSTAGE'}</span>
+            <h2 class="aura-modern-section-title">${isEn ? 'Smart Sonic Pods' : 'Sonic Pods Pintar'}</h2>
           </div>
-          <span class="aura-section-subtext">Kurasi Otomatis & Tuning Akustik Nahimic</span>
+          <span class="aura-section-subtext">${isEn ? 'Auto Curation & Nahimic Acoustic Tuning' : 'Kurasi Otomatis & Tuning Akustik Nahimic'}</span>
         </div>
 
         <div class="aura-bento-grid">
@@ -4503,7 +4636,7 @@ class App {
                 ${bentoSupermixDesc}
               </p>
               <div class="aura-bento-actions">
-                <button class="aura-btn-circle-play" onclick="event.stopPropagation(); ${bentoPodPlay}" title="Putar Sekarang">
+                <button class="aura-btn-circle-play" onclick="event.stopPropagation(); ${bentoPodPlay}" title="${isEn ? 'Play Now' : 'Putar Sekarang'}">
                   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 </button>
                 <span class="aura-bento-action-label">${bentoPodActionLabel}</span>
@@ -4517,18 +4650,18 @@ class App {
             <div class="aura-bento-top">
               <span class="aura-pill-badge aura-pill-ruby">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-                KAPSUL HATI
+                ${isEn ? 'HEART CAPSULE' : 'KAPSUL HATI'}
               </span>
               <span class="aura-bento-stat-num" id="bento-liked-count">${this.favorites ? this.favorites.length : 0}</span>
             </div>
             <div class="aura-bento-body">
-              <h3 class="aura-bento-title">Lagu yang Disukai</h3>
-              <p class="aura-bento-desc">Stasiun radio tanpa henti dari kompilasi lagu favorit yang Anda sukai.</p>
+              <h3 class="aura-bento-title">${isEn ? 'Liked Songs' : 'Lagu yang Disukai'}</h3>
+              <p class="aura-bento-desc">${isEn ? 'Non-stop radio stream of your collected favorite songs.' : 'Stasiun radio tanpa henti dari kompilasi lagu favorit yang Anda sukai.'}</p>
               <div class="aura-bento-actions">
-                <button class="aura-btn-circle-play aura-btn-ruby" onclick="event.stopPropagation(); window.app.playLikedRadio()" title="Putar Radio Favorit">
+                <button class="aura-btn-circle-play aura-btn-ruby" onclick="event.stopPropagation(); window.app.playLikedRadio()" title="${isEn ? 'Play Favorites Radio' : 'Putar Radio Favorit'}">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 </button>
-                <span class="aura-bento-action-label">Putar Radio Favorit →</span>
+                <span class="aura-bento-action-label">${isEn ? 'Play Favorites Radio →' : 'Putar Radio Favorit →'}</span>
               </div>
             </div>
           </div>
@@ -4541,11 +4674,11 @@ class App {
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
                 NAHIMIC & DOLBY
               </span>
-              <span class="aura-dsp-status-dot">DSP AKTIF</span>
+              <span class="aura-dsp-status-dot">${isEn ? 'DSP ACTIVE' : 'DSP AKTIF'}</span>
             </div>
             <div class="aura-bento-body">
-              <h3 class="aura-bento-title">Studio Spasial 3D</h3>
-              <p class="aura-bento-desc">Ganti profil akustik langsung dengan satu klik:</p>
+              <h3 class="aura-bento-title">${isEn ? '3D Spatial Studio' : 'Studio Spasial 3D'}</h3>
+              <p class="aura-bento-desc">${isEn ? 'Switch acoustic DSP profiles instantly with one click:' : 'Ganti profil akustik langsung dengan satu klik:'}</p>
               <div class="aura-dsp-pills-row">
                 <button class="aura-dsp-pill active" onclick="event.stopPropagation(); window.app.applyDspPreset('dolby')">Dolby Atmos</button>
                 <button class="aura-dsp-pill" onclick="event.stopPropagation(); window.app.applyDspPreset('bass')">Bass Boost</button>
@@ -4561,13 +4694,13 @@ class App {
       <section class="aura-section-wrap">
         <div class="aura-section-header-wrap">
           <div class="aura-section-title-box">
-            <span class="aura-kicker-tag">REKOMENDASI PERSONAL</span>
-            <h2 class="aura-modern-section-title">Lagu yang Berkaitan dengan Musikmu</h2>
+            <span class="aura-kicker-tag">${isEn ? 'PERSONAL RECOMMENDATIONS' : 'REKOMENDASI PERSONAL'}</span>
+            <h2 class="aura-modern-section-title">${isEn ? 'Songs Related to Your Music' : 'Lagu yang Berkaitan dengan Musikmu'}</h2>
           </div>
           <div class="ytm-section-actions">
             <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('related-picks', 0)">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-              Putar Semua
+              ${isEn ? 'Play All' : 'Putar Semua'}
             </button>
           </div>
         </div>
@@ -4589,7 +4722,7 @@ class App {
                   <div class="aura-resonance-meta">${track.artist}</div>
                 </div>
                 <div class="aura-resonance-right">
-                  <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('related-picks', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                  <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('related-picks', ${idx})" title="${isFav ? (isEn ? 'Remove from Favorites' : 'Hapus dari Favorit') : (isEn ? 'Add to Favorites' : 'Tambah ke Favorit')}">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                   </button>
                   <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
@@ -4604,10 +4737,10 @@ class App {
       <section class="aura-section-wrap">
         <div class="aura-section-header-wrap">
           <div class="aura-section-title-box">
-            <span class="aura-kicker-tag">RIWAYAT AKTIVITAS</span>
-            <h2 class="aura-modern-section-title">🕒 Baru Saja Didengarkan</h2>
+            <span class="aura-kicker-tag">${isEn ? 'ACTIVITY HISTORY' : 'RIWAYAT AKTIVITAS'}</span>
+            <h2 class="aura-modern-section-title">🕒 ${isEn ? 'Recently Played' : 'Baru Saja Didengarkan'}</h2>
           </div>
-          <span class="aura-section-subtext">Lagu yang telah kamu nikmati di AuraSound</span>
+          <span class="aura-section-subtext">${isEn ? 'Songs you have recently enjoyed on AuraSound' : 'Lagu yang telah kamu nikmati di AuraSound'}</span>
         </div>
         <div class="aura-resonance-grid" id="carousel-recently-played">
           ${history.map((track, idx) => {
@@ -4627,7 +4760,7 @@ class App {
                   <div class="aura-resonance-meta">${track.artist}</div>
                 </div>
                 <div class="aura-resonance-right">
-                  <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('recently-played', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
+                  <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('recently-played', ${idx})" title="${isFav ? (isEn ? 'Remove from Favorites' : 'Hapus dari Favorit') : (isEn ? 'Add to Favorites' : 'Tambah ke Favorit')}">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="${isFav ? '#ef4444' : 'none'}" stroke="${isFav ? '#ef4444' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                   </button>
                   <span class="aura-resonance-duration">${track.duration || '3:30'}</span>
