@@ -140,7 +140,7 @@ class SunoStudio {
         userNameEl.textContent = 'Suno AI Music Studio';
       }
       if (creditsPill) {
-        creditsPill.textContent = `⚡ ${info.credits || '50 Kredit (5 Lagu Hari Ini)'}`;
+        creditsPill.textContent = `${info.credits || '50 Kredit (5 Lagu Hari Ini)'}`;
         creditsPill.style.display = 'inline-flex';
         if (info.remaining_credits !== undefined && info.remaining_credits < 10) {
           creditsPill.style.background = 'rgba(239, 68, 68, 0.2)';
@@ -164,7 +164,7 @@ class SunoStudio {
         userNameEl.textContent = 'Suno AI Music Studio';
       }
       if (creditsPill) {
-        creditsPill.textContent = '⚡ Bebas Kuota';
+        creditsPill.textContent = 'Bebas Kuota';
         creditsPill.style.display = 'inline-flex';
       }
       if (statusTextEl) {
@@ -541,7 +541,7 @@ class SunoStudio {
       const safeTags = this.escapeHtml(cleanTags);
       const duration = track.duration || '2:00';
       const isV35 = track.model === 'chirp-v3-5' || track.model === 'v3.5';
-      const modelPillText = isV35 ? '🎵 v3.5' : '⚡ v6-mini';
+      const modelPillText = isV35 ? 'v3.5' : 'v6-mini';
 
       return `
         <div class="suno-creations-card" data-track-id="${track.id}">
@@ -556,7 +556,7 @@ class SunoStudio {
               <span class="suno-model-pill">${modelPillText}</span>
             </div>
             <div class="suno-card-badge-bottom">
-              <span class="suno-duration-pill">⏱ ${duration}</span>
+              <span class="suno-duration-pill">${duration}</span>
             </div>
           </div>
 
@@ -600,7 +600,6 @@ class SunoStudio {
     if (this.librarySearchQuery) {
       container.innerHTML = `
         <div style="grid-column: 1 / -1; padding: 48px 20px; text-align: center; color: #94a3b8;">
-          <div style="font-size: 2rem; margin-bottom: 8px;">🔍</div>
           <h3 style="color: #ffffff; margin-bottom: 6px;">Tidak ada lagu yang cocok</h3>
           <p style="font-size: 0.85rem; color: #64748b;">Tidak ditemukan lagu buatan Anda untuk kata kunci "${this.escapeHtml(this.librarySearchQuery)}".</p>
         </div>
@@ -610,13 +609,12 @@ class SunoStudio {
 
     container.innerHTML = `
       <div style="grid-column: 1 / -1; padding: 48px 24px; text-align: center; background: rgba(15, 23, 42, 0.4); border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 14px;">
-        <div style="font-size: 2.8rem; margin-bottom: 12px;">🎶</div>
         <h3 style="color: #ffffff; font-size: 1.15rem; margin-bottom: 8px;">Belum Ada Lagu Buatan Anda</h3>
         <p style="color: #94a3b8; font-size: 0.84rem; max-width: 440px; margin: 0 auto 18px; line-height: 1.6;">
           ${msg || 'Semua lagu yang Anda hasilkan melalui Suno AI Studio akan tersimpan murni di sini dan bisa diputar kapan saja.'}
         </p>
         <button class="btn-generate-ai" onclick="window.sunoStudio.switchSubTab('create')" style="display: inline-flex; width: auto; padding: 10px 24px;">
-          ✍️ Buka Studio & Buat Lagu Pertama
+          Buka Studio & Buat Lagu Pertama
         </button>
       </div>
     `;
@@ -629,7 +627,6 @@ class SunoStudio {
     if (this.creations.length === 0) {
       container.innerHTML = `
         <div class="suno-recent-empty">
-          <div class="suno-recent-empty-icon">🎹</div>
           <h4>Belum Ada Lagu Dibuat</h4>
           <p>Ketik tema, lirik, atau genre di formulir sebelah kiri lalu klik <strong>Generate Lagu</strong> untuk mulai berkreasi!</p>
         </div>
@@ -654,12 +651,12 @@ class SunoStudio {
         <div class="suno-recent-info">
           <div class="suno-recent-title" title="${safeTitle}">${safeTitle}</div>
           <div class="suno-recent-tags">
-            <span class="badge-ai" style="font-size: 0.65rem; padding: 2px 6px; margin-right: 4px; background: rgba(16, 185, 129, 0.25); color: #34d399;">⚡ Suno v6-mini (Terbaru)</span>
+            <span class="badge-ai" style="font-size: 0.65rem; padding: 2px 6px; margin-right: 4px; background: rgba(16, 185, 129, 0.25); color: #34d399;">Suno v6-mini (Terbaru)</span>
             ${safeTags}
           </div>
           <div class="suno-recent-meta">
-            <span>⏱ Durasi: ${duration}</span>
-            <span>📅 ${latest.created_at || 'Hari ini'}</span>
+            <span>Durasi: ${duration}</span>
+            <span>${latest.created_at || 'Hari ini'}</span>
           </div>
         </div>
         <div class="suno-recent-actions">
@@ -668,7 +665,7 @@ class SunoStudio {
             Putar Sekarang
           </button>
           <button class="btn-recent-sec" onclick="window.sunoStudio.switchSubTab('library')">
-            🎶 Buka Koleksi (${this.totalCreations})
+            Buka Koleksi (${this.totalCreations})
           </button>
         </div>
       </div>
@@ -742,7 +739,7 @@ class SunoStudio {
         statusEl.style.display = 'block';
         statusEl.style.background = 'rgba(239, 68, 68, 0.15)';
         statusEl.style.color = '#f87171';
-        statusEl.textContent = '❌ Masukkan Suno API Key terlebih dahulu.';
+        statusEl.textContent = 'Masukkan Suno API Key terlebih dahulu.';
       }
       return;
     }
@@ -777,7 +774,7 @@ class SunoStudio {
         localStorage.setItem('aurasound_suno_provider', provider);
 
         if (window.app && window.app.showToast) {
-          window.app.showToast(data.message || 'Suno API Key berhasil diaktifkan di perangkat ini! 🎉', 'success');
+          window.app.showToast(data.message || 'Suno API Key berhasil diaktifkan di perangkat ini!', 'success');
         }
         document.getElementById('modal-token')?.classList.remove('active');
         await this.checkApiStatus();
@@ -789,7 +786,7 @@ class SunoStudio {
         statusEl.style.display = 'block';
         statusEl.style.background = 'rgba(239, 68, 68, 0.15)';
         statusEl.style.color = '#f87171';
-        statusEl.textContent = `❌ ${e.message}`;
+        statusEl.textContent = e.message;
       }
       if (window.app && window.app.showToast) {
         window.app.showToast(e.message, 'error');
@@ -797,7 +794,7 @@ class SunoStudio {
     } finally {
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.textContent = '💾 Simpan & Aktifkan API Key';
+        saveBtn.textContent = 'Simpan & Aktifkan API Key';
       }
     }
   }

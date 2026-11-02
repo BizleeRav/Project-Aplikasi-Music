@@ -4178,7 +4178,6 @@ class App {
         <div class="aura-hero-inner">
           <div class="aura-hero-left">
             <div class="aura-greeting-capsule">
-              <span class="aura-greeting-icon">${greetingIcon}</span>
               <span class="aura-greeting-tag">AURASOUND HI-FI</span>
               <span class="aura-greeting-dot"></span>
               <span class="aura-dsp-hi-res-tag">BERANDA BERSIH</span>
@@ -4194,7 +4193,7 @@ class App {
 
             <div class="aura-hero-actions">
               <button class="aura-btn-hero-primary" onclick="window.app.openTasteModal()">
-                <span style="font-size: 1.1rem;">🎨</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z"/></svg>
                 <span>Atur Selera Musik</span>
               </button>
 
@@ -4406,7 +4405,6 @@ class App {
         <div class="aura-hero-inner">
           <div class="aura-hero-left">
             <div class="aura-greeting-capsule">
-              <span class="aura-greeting-icon">${greetingIcon}</span>
               <span class="aura-greeting-tag">${bentoSupermixBadge} • HI-FI SOUNDSTAGE</span>
               <span class="aura-greeting-dot"></span>
               <span class="aura-dsp-hi-res-tag">24-BIT / 96kHz HI-FI</span>
@@ -4438,7 +4436,7 @@ class App {
               </button>
 
               <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" title="Atur Selera Musik">
-                <span style="font-size: 1rem;">🎨</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z"/></svg>
                 <span>Atur Selera Musik</span>
               </button>
 
@@ -4818,7 +4816,6 @@ class App {
         <div class="aura-hero-inner">
           <div class="aura-hero-left">
             <div class="aura-greeting-capsule">
-              <span class="aura-greeting-icon">${greetingIcon}</span>
               <span class="aura-greeting-tag">AURASOUND AUDIO ENGINE</span>
               <span class="aura-greeting-dot"></span>
               <span class="aura-dsp-hi-res-tag">24-BIT / 96kHz HI-FI</span>
@@ -4852,7 +4849,7 @@ class App {
               </button>
 
               <button class="aura-btn-hero-glass" onclick="window.app.openTasteModal()" title="Ubah Selera Musik">
-                <span style="font-size: 1rem;">🎨</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z"/></svg>
                 <span>${isEn ? 'Tune Taste' : 'Atur Selera Musik'}</span>
               </button>
 
@@ -5378,7 +5375,6 @@ class App {
         <div class="aura-hero-inner">
           <div class="aura-hero-left">
             <div class="aura-greeting-capsule">
-              <span class="aura-greeting-icon">${greetingIcon}</span>
               <span class="aura-greeting-tag">AURASOUND ENGINE 2026</span>
               <span class="aura-greeting-dot"></span>
               <span class="aura-dsp-hi-res-tag">24-BIT / 96kHz HI-FI</span>
