@@ -2659,7 +2659,7 @@ class App {
     if (!this.currentTrack) return;
     if (this.cinemaTitle) this.cinemaTitle.textContent = this.currentTrack.title;
     if (this.cinemaArtist) {
-      this.cinemaArtist.textContent = this.cleanArtistName(this.currentTrack.artist);
+      this.cinemaArtist.innerHTML = this.renderArtistLinks(this.cleanArtistName(this.currentTrack.artist));
     }
     if (this.cinemaVinylThumb) {
       this.cinemaVinylThumb.src = this.currentTrack.thumbnail || '/images/supermix.jpg';
@@ -3578,6 +3578,28 @@ class App {
     }[m]));
   }
 
+  escapeJs(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/"/g, '&quot;');
+  }
+
+  renderArtistLinks(artistStr, className = 'aura-artist-clickable') {
+    if (!artistStr) return 'AuraSound';
+    const cleaned = this.cleanArtistName ? this.cleanArtistName(artistStr) : String(artistStr);
+    const parts = cleaned.split(/(\s*,\s*|\s+&\s+|\s+[Ff]eat\.?\s+|\s+[Ff]t\.?\s+|\s+[Ww]ith\s+|\s+x\s+)/);
+    return parts.map(part => {
+      const trimmed = part.trim();
+      if (!trimmed || /^([,&]|feat\.?|ft\.?|with|x)$/i.test(trimmed)) {
+        return `<span class="artist-sep">${this.escapeHtml(part)}</span>`;
+      }
+      const rawName = trimmed.replace(/["']/g, '');
+      return `<a href="javascript:void(0)" class="${className}" onclick="event.stopPropagation(); window.app.openArtistDetail('${this.escapeJs(rawName)}')" title="Lihat profil ${this.escapeHtml(rawName)}">${this.escapeHtml(trimmed)}</a>`;
+    }).join('');
+  }
+
   switchTab(tabName) {
     this.activeTab = tabName;
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -3587,6 +3609,11 @@ class App {
     document.querySelectorAll('.view-tab').forEach(view => {
       view.classList.toggle('active', view.id === `view-${tabName}`);
     });
+
+    const artistView = document.getElementById('view-artist');
+    if (artistView) {
+      artistView.style.display = (tabName === 'artist') ? 'block' : 'none';
+    }
 
     // Specific tab triggers
     if (tabName === 'suno') {
@@ -4719,7 +4746,7 @@ class App {
                 </div>
                 <div class="aura-resonance-info">
                   <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                  <div class="aura-resonance-meta">${track.artist}</div>
+                  <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                 </div>
                 <div class="aura-resonance-right">
                   <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('related-picks', ${idx})" title="${isFav ? (isEn ? 'Remove from Favorites' : 'Hapus dari Favorit') : (isEn ? 'Add to Favorites' : 'Tambah ke Favorit')}">
@@ -4757,7 +4784,7 @@ class App {
                 </div>
                 <div class="aura-resonance-info">
                   <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                  <div class="aura-resonance-meta">${track.artist}</div>
+                  <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                 </div>
                 <div class="aura-resonance-right">
                   <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('recently-played', ${idx})" title="${isFav ? (isEn ? 'Remove from Favorites' : 'Hapus dari Favorit') : (isEn ? 'Add to Favorites' : 'Tambah ke Favorit')}">
@@ -5065,7 +5092,7 @@ class App {
 
                     <div class="aura-resonance-info">
                       <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                      <div class="aura-resonance-meta">${track.artist}</div>
+                      <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                     </div>
 
                     <div class="aura-resonance-right">
@@ -5129,7 +5156,7 @@ class App {
 
                   <div class="aura-resonance-info">
                     <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                    <div class="aura-resonance-meta">${track.artist}</div>
+                    <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                   </div>
 
                   <div class="aura-resonance-right">
@@ -5269,7 +5296,7 @@ class App {
                   </div>
                   <div class="aura-resonance-info">
                     <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                    <div class="aura-resonance-meta">${track.artist}</div>
+                    <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                   </div>
                   <div class="aura-resonance-right">
                     <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('related-picks', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
@@ -5309,7 +5336,7 @@ class App {
                     </div>
                     <div class="aura-resonance-info">
                       <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                      <div class="aura-resonance-meta">${track.artist}</div>
+                      <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                     </div>
                     <div class="aura-resonance-right">
                       <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('recently-played', ${idx})" title="${isFav ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}">
@@ -5363,7 +5390,7 @@ class App {
 
                   <div class="aura-resonance-info">
                     <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                    <div class="aura-resonance-meta">${track.artist}</div>
+                    <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                   </div>
 
                   <div class="aura-resonance-right">
@@ -5412,7 +5439,7 @@ class App {
 
                   <div class="aura-resonance-info">
                     <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                    <div class="aura-resonance-meta">${track.artist}</div>
+                    <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                   </div>
 
                   <div class="aura-resonance-right">
@@ -5722,7 +5749,7 @@ class App {
 
                   <div class="aura-resonance-info">
                     <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                    <div class="aura-resonance-meta">${track.artist}</div>
+                    <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                   </div>
 
                   <div class="aura-resonance-right">
@@ -5848,7 +5875,7 @@ class App {
 
                   <div class="aura-resonance-info">
                     <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                    <div class="aura-resonance-meta">${track.artist}</div>
+                    <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                   </div>
 
                   <div class="aura-resonance-right">
@@ -5900,7 +5927,7 @@ class App {
                     </div>
                     <div class="aura-cinema-meta">
                       <div class="aura-cinema-title" title="${track.title}">${track.title}</div>
-                      <div class="aura-cinema-artist">${track.artist}</div>
+                      <div class="aura-cinema-artist">${this.renderArtistLinks(track.artist)}</div>
                     </div>
                   </div>
                 `;
@@ -5916,7 +5943,7 @@ class App {
                     </div>
                     <div class="aura-cinema-meta">
                       <div class="aura-cinema-title" title="${track.title}">${track.title}</div>
-                      <div class="aura-cinema-artist">${track.artist}</div>
+                      <div class="aura-cinema-artist">${this.renderArtistLinks(track.artist)}</div>
                     </div>
                   </div>
                 `;
@@ -6065,7 +6092,7 @@ class App {
                 </div>
                 <div class="aura-resonance-info">
                   <div class="aura-resonance-title" title="${track.title}">${track.title}</div>
-                  <div class="aura-resonance-meta">${track.artist}</div>
+                  <div class="aura-resonance-meta">${this.renderArtistLinks(track.artist)}</div>
                 </div>
                 <div class="aura-resonance-right">
                   <button class="aura-resonance-heart-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); window.app.toggleFavoriteFromRegistry('ytm-mood-quick', ${idx})" title="${isFav ? (isEn ? 'Remove from Liked' : 'Hapus dari Favorit') : (isEn ? 'Add to Liked' : 'Tambah ke Favorit')}">
@@ -6108,7 +6135,7 @@ class App {
                 </div>
                 <div class="aura-cinema-meta">
                   <div class="aura-cinema-title" title="${track.title}">${track.title}</div>
-                  <div class="aura-cinema-artist">${track.artist}</div>
+                  <div class="aura-cinema-artist">${this.renderArtistLinks(track.artist)}</div>
                 </div>
               </div>
             `).join('')}
@@ -6428,7 +6455,7 @@ class App {
           <img src="${track.thumbnail}" alt="${track.title}" class="track-row-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
           <div class="track-row-details">
             <div class="track-row-title">${track.title}</div>
-            <div class="track-row-artist">${track.artist}</div>
+            <div class="track-row-artist">${this.renderArtistLinks(track.artist)}</div>
           </div>
           <span class="track-row-duration">${track.duration}</span>
           <div class="track-row-actions" onclick="event.stopPropagation()">
@@ -6584,6 +6611,298 @@ class App {
       btn.disabled = false;
       btn.innerHTML = originalHtml;
     }
+  }
+
+  // =========================================================================
+  // ARTIST SHOWCASE & DISCOGRAPHY (Simple & Elegant Full Catalog View)
+  // =========================================================================
+  async openArtistDetail(artistName, page = 1, fromHistory = false) {
+    if (!artistName) return;
+    const cleanName = (this.cleanArtistName ? this.cleanArtistName(artistName) : artistName).trim();
+    if (!cleanName) return;
+
+    if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
+      this.closeCinemaMode();
+    }
+
+    if (!fromHistory) {
+      if (this.activeTab === 'artist' && this.currentArtist && this.currentArtist.name && this.currentArtist.name.toLowerCase() !== cleanName.toLowerCase()) {
+        this.artistHistoryStack = this.artistHistoryStack || [];
+        this.artistHistoryStack.push(this.currentArtist.name);
+      } else if (this.activeTab !== 'artist') {
+        this.previousTab = this.activeTab || 'home';
+        this.artistHistoryStack = [];
+      }
+    }
+
+    this.currentArtistName = cleanName;
+    this.currentArtistPage = page;
+    this.switchTab('artist');
+
+    const view = document.getElementById('view-artist');
+    const container = document.getElementById('artist-showcase-content');
+    if (view) view.style.display = 'block';
+    if (!container) return;
+
+    const isEn = (this.userProfile?.lang === 'en');
+
+    const mainContent = document.querySelector('.main-content') || window;
+    if (mainContent.scrollTo) mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+
+    container.innerHTML = `
+      <div class="artist-showcase-view">
+        <div class="artist-showcase-topbar">
+          <button class="artist-btn-back" onclick="window.app.closeArtistDetail()">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            <span>${isEn ? 'Back' : 'Kembali'}</span>
+          </button>
+        </div>
+        <div class="artist-hero-card">
+          <div class="artist-hero-ambient"></div>
+          <div class="artist-hero-content">
+            <div class="artist-avatar-wrapper">
+              <div class="artist-hero-avatar" style="background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center;">
+                <div class="simple-pulse-spinner" style="width: 32px; height: 32px; border-width: 2px;"></div>
+              </div>
+            </div>
+            <div class="artist-hero-info">
+              <div class="artist-verified-pill">${isEn ? 'Verified Artist' : 'Artis Terverifikasi'}</div>
+              <h1 class="artist-hero-name">${this.escapeHtml(cleanName)}</h1>
+              <p class="artist-hero-subtitle">${isEn ? 'Fetching artist profile & songs...' : 'Memuat profil artis & daftar lagu...'}</p>
+            </div>
+          </div>
+        </div>
+        ${this.renderLoadingState(isEn ? 'Loading songs...' : 'Memuat lagu...', true, 5)}
+      </div>
+    `;
+
+    try {
+      const res = await fetch(`/api/artist/${encodeURIComponent(cleanName)}?page=${page}&limit=20`);
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to load artist');
+      }
+
+      this.currentArtist = data.artist || { name: cleanName, subtitle: 'Artis Terverifikasi', avatar: '/images/supermix.jpg' };
+      this.currentArtistTracks = data.tracks || [];
+      this.currentArtistHasMore = !!data.hasMore;
+      this.artistCatalogSearchQuery = '';
+
+      this.renderArtistShowcaseContent();
+    } catch (err) {
+      console.error('openArtistDetail error:', err);
+      container.innerHTML = `
+        <div class="artist-showcase-view">
+          <div class="artist-showcase-topbar">
+            <button class="artist-btn-back" onclick="window.app.closeArtistDetail()">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              <span>${isEn ? 'Back' : 'Kembali'}</span>
+            </button>
+          </div>
+          <div class="empty-state" style="padding: 60px 20px;">
+            <div class="empty-icon">⚠️</div>
+            <h3>${isEn ? 'Could not load artist profile' : 'Gagal memuat profil artis'}</h3>
+            <p>${this.escapeHtml(err.message)}</p>
+            <button class="artist-btn-primary" onclick="window.app.openArtistDetail('${this.escapeJs(cleanName)}', ${page})" style="margin-top: 16px;">
+              ${isEn ? 'Try Again' : 'Coba Lagi'}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  renderArtistShowcaseContent() {
+    const container = document.getElementById('artist-showcase-content');
+    if (!container || !this.currentArtist) return;
+
+    const isEn = (this.userProfile?.lang === 'en');
+    const artist = this.currentArtist;
+    const tracks = this.currentArtistTracks || [];
+    const page = this.currentArtistPage || 1;
+    const hasMore = this.currentArtistHasMore;
+
+    const listKey = `artist-${artist.name}-p${page}`;
+    this.registerTrackList(listKey, tracks);
+
+    container.innerHTML = `
+      <div class="artist-showcase-view">
+        <div class="artist-showcase-topbar">
+          <button class="artist-btn-back" onclick="window.app.closeArtistDetail()" title="${isEn ? 'Back to previous page' : 'Kembali ke halaman sebelumnya'}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            <span>${isEn ? 'Back' : 'Kembali'}</span>
+          </button>
+        </div>
+
+        <div class="artist-hero-card">
+          <div class="artist-hero-ambient"></div>
+          <div class="artist-hero-content">
+            <div class="artist-avatar-wrapper">
+              <img class="artist-hero-avatar" src="${artist.avatar || '/images/supermix.jpg'}" alt="${this.escapeHtml(artist.name)}" onerror="this.src='/images/supermix.jpg'">
+            </div>
+            <div class="artist-hero-info">
+              <div class="artist-verified-pill">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                <span>${isEn ? 'Verified Artist' : 'Artis Terverifikasi'}</span>
+              </div>
+              <h1 class="artist-hero-name">${this.escapeHtml(artist.name)}</h1>
+              <p class="artist-hero-subtitle">${this.escapeHtml(artist.subtitle || (isEn ? 'Official YouTube Music Artist' : 'Artis Resmi YouTube Music'))}</p>
+              
+              <div class="artist-hero-actions">
+                <button class="artist-btn-primary" onclick="window.app.playArtistAll()">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  <span>${isEn ? 'Play All' : 'Putar Semua'}</span>
+                </button>
+                <button class="artist-btn-glass" onclick="window.app.playArtistShuffle()">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                  <span>${isEn ? 'Shuffle' : 'Acak'}</span>
+                </button>
+                <button class="artist-btn-glass" onclick="window.app.playArtistRadio()">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
+                  <span>${isEn ? 'Artist Radio' : 'Radio Artis'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="artist-catalog-toolbar">
+          <div class="artist-catalog-title-group">
+            <h2 class="artist-catalog-heading">${isEn ? 'Songs & Releases' : 'Daftar Lagu & Rilis'}</h2>
+            <span class="artist-catalog-count-pill" id="artist-catalog-count">${tracks.length} ${isEn ? 'songs' : 'lagu'}</span>
+          </div>
+          <div class="artist-catalog-search-wrap">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="artist-catalog-filter-input" placeholder="${isEn ? `Search in ${artist.name}'s songs...` : `Cari di lagu ${artist.name}...`}" oninput="window.app.filterArtistTracks(this.value)">
+          </div>
+        </div>
+
+        <div id="artist-tracks-container" class="track-list"></div>
+
+        <div class="artist-pagination-bar">
+          <button class="artist-pagination-btn" id="btn-artist-prev-page" ${page <= 1 ? 'disabled' : ''} onclick="window.app.changeArtistPage(${page - 1})">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            <span>${isEn ? 'Previous' : 'Sebelumnya'}</span>
+          </button>
+          <div class="artist-page-indicator">
+            ${isEn ? 'Page' : 'Halaman'} <span class="artist-page-current">${page}</span>
+          </div>
+          <button class="artist-pagination-btn" id="btn-artist-next-page" ${!hasMore ? 'disabled' : ''} onclick="window.app.changeArtistPage(${page + 1})">
+            <span>${isEn ? 'Next' : 'Berikutnya'}</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+
+    this.renderArtistTracksList(tracks);
+  }
+
+  renderArtistTracksList(tracksToRender) {
+    const listContainer = document.getElementById('artist-tracks-container');
+    if (!listContainer) return;
+    const isEn = (this.userProfile?.lang === 'en');
+    const artist = this.currentArtist;
+    const page = this.currentArtistPage || 1;
+    const listKey = `artist-${artist?.name || 'unknown'}-p${page}`;
+
+    if (!tracksToRender || tracksToRender.length === 0) {
+      listContainer.innerHTML = `
+        <div class="empty-state" style="padding: 40px 20px;">
+          <div class="empty-icon">🎵</div>
+          <h3>${isEn ? 'No songs found' : 'Tidak ada lagu yang cocok'}</h3>
+          <p>${isEn ? 'Try another keyword in the search box above.' : 'Coba gunakan kata kunci lain pada kotak pencarian di atas.'}</p>
+        </div>
+      `;
+      return;
+    }
+
+    listContainer.innerHTML = tracksToRender.map((track, idx) => {
+      const isCurrent = this.currentTrack && this.currentTrack.id === track.id;
+      const isFav = this.isFavorited(track.id);
+      return `
+        <div class="track-row ${isCurrent ? 'active' : ''}" data-track-id="${track.id}" data-index="${idx + 1}" onclick="window.app.playFromRegistry('${listKey}', ${idx})">
+          <span class="track-number">${isCurrent ? '▶' : idx + 1}</span>
+          <img src="${track.thumbnail}" alt="${this.escapeHtml(track.title)}" class="track-row-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+          <div class="track-row-details">
+            <div class="track-row-title">
+              ${this.escapeHtml(track.title)}
+              ${track.isOfficial ? `<span class="track-tag-badge track-tag-official">OFFICIAL</span>` : (track.tag === 'NON-OFFICIAL' ? `<span class="track-tag-badge track-tag-nonofficial">COVER / REMIX</span>` : '')}
+            </div>
+            <div class="track-row-artist">${this.renderArtistLinks(track.artist)}</div>
+          </div>
+          <span class="track-row-duration">${track.duration || '3:30'}</span>
+          <div class="track-row-actions" onclick="event.stopPropagation()">
+            <button class="icon-btn row-fav-btn ${isFav ? 'active' : ''}" data-fav-track-id="${track.id}" onclick="window.app.toggleFavoriteFromRegistry('${listKey}', ${idx})" title="${isFav ? (isEn ? 'Remove from Liked' : 'Hapus dari Favorit') : (isEn ? 'Like' : 'Suka')}">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="${isFav ? '#10b981' : 'none'}" stroke="${isFav ? '#10b981' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </button>
+            <button class="icon-btn" onclick="window.app.promptAddToPlaylistFromRegistry('${listKey}', ${idx})" title="${isEn ? 'Add to Playlist' : 'Tambah ke Playlist'}">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  filterArtistTracks(query) {
+    this.artistCatalogSearchQuery = (query || '').trim().toLowerCase();
+    const tracks = this.currentArtistTracks || [];
+    const countEl = document.getElementById('artist-catalog-count');
+    const isEn = (this.userProfile?.lang === 'en');
+
+    if (!this.artistCatalogSearchQuery) {
+      if (countEl) countEl.textContent = `${tracks.length} ${isEn ? 'songs' : 'lagu'}`;
+      this.renderArtistTracksList(tracks);
+      return;
+    }
+
+    const filtered = tracks.filter(t => {
+      const title = (t.title || '').toLowerCase();
+      const artist = (t.artist || '').toLowerCase();
+      return title.includes(this.artistCatalogSearchQuery) || artist.includes(this.artistCatalogSearchQuery);
+    });
+
+    if (countEl) countEl.textContent = `${filtered.length} ${isEn ? 'matched' : 'ditemukan'}`;
+    this.renderArtistTracksList(filtered);
+  }
+
+  changeArtistPage(newPage) {
+    if (newPage < 1) return;
+    if (this.currentArtist && this.currentArtist.name) {
+      this.openArtistDetail(this.currentArtist.name, newPage, true);
+    }
+  }
+
+  closeArtistDetail() {
+    if (this.artistHistoryStack && this.artistHistoryStack.length > 0) {
+      const prevArtist = this.artistHistoryStack.pop();
+      this.openArtistDetail(prevArtist, 1, true);
+      return;
+    }
+    const targetTab = this.previousTab || 'home';
+    this.switchTab(targetTab);
+  }
+
+  playArtistAll() {
+    if (!this.currentArtistTracks || this.currentArtistTracks.length === 0) return;
+    this.playTrackList(this.currentArtistTracks, 0);
+    const isEn = (this.userProfile?.lang === 'en');
+    this.showToast(isEn ? `Playing all songs by ${this.currentArtist?.name}` : `Memutar semua lagu dari ${this.currentArtist?.name}`, 'success');
+  }
+
+  playArtistShuffle() {
+    if (!this.currentArtistTracks || this.currentArtistTracks.length === 0) return;
+    const shuffled = [...this.currentArtistTracks].sort(() => Math.random() - 0.5);
+    this.playTrackList(shuffled, 0);
+    const isEn = (this.userProfile?.lang === 'en');
+    this.showToast(isEn ? `Playing shuffled songs by ${this.currentArtist?.name}` : `Memutar acak lagu dari ${this.currentArtist?.name}`, 'success');
+  }
+
+  playArtistRadio() {
+    if (!this.currentArtist?.name) return;
+    const query = `${this.currentArtist.name} Radio Mix`;
+    this.quickSearch(query);
   }
 
   closeHomeAlbumDetail() {
@@ -6898,7 +7217,7 @@ class App {
           <span class="card-duration">${track.duration}</span>
         </div>
         <div class="card-title" title="${track.title}">${track.title}</div>
-        <div class="card-artist">${track.artist}</div>
+        <div class="card-artist">${this.renderArtistLinks(track.artist)}</div>
       </div>
     `).join('');
   }
@@ -6917,7 +7236,7 @@ class App {
             ${track.title}
             ${track.isOfficial ? `<span class="track-tag-badge track-tag-official">OFFICIAL</span>` : (track.tag === 'NON-OFFICIAL' ? `<span class="track-tag-badge track-tag-nonofficial">COVER / REMIX</span>` : '')}
           </div>
-          <div class="track-row-artist">${track.artist}</div>
+          <div class="track-row-artist">${this.renderArtistLinks(track.artist)}</div>
         </div>
         <span class="track-row-duration">${track.duration}</span>
         <div class="track-row-actions" onclick="event.stopPropagation()">
@@ -7015,7 +7334,7 @@ class App {
         const track = this.currentTrack;
 
         if (this.playerTitle) this.playerTitle.textContent = track.title || 'Lagu';
-        if (this.playerArtist) this.playerArtist.textContent = track.artist || 'AuraSound';
+        if (this.playerArtist) this.playerArtist.innerHTML = this.renderArtistLinks(track.artist || 'AuraSound');
         if (this.playerThumb) {
           this.playerThumb.src = track.thumbnail || '/images/supermix.jpg';
           this.playerThumb.onerror = () => { this.playerThumb.src = '/images/supermix.jpg'; };
@@ -7154,7 +7473,7 @@ class App {
 
     // Update Player UI
     if (this.playerTitle) this.playerTitle.textContent = track.title;
-    if (this.playerArtist) this.playerArtist.textContent = track.artist || 'AuraSound';
+    if (this.playerArtist) this.playerArtist.innerHTML = this.renderArtistLinks(track.artist || 'AuraSound');
     if (this.playerThumb) {
       this.playerThumb.src = track.thumbnail || '/images/supermix.jpg';
       this.playerThumb.onerror = () => { this.playerThumb.src = '/images/supermix.jpg'; };
@@ -8150,7 +8469,7 @@ class App {
           <img src="${track.thumbnail}" alt="${track.title}" class="track-row-thumb" loading="lazy" onerror="this.src='/icons/icon.svg'">
           <div class="track-row-details">
             <div class="track-row-title">${track.title}</div>
-            <div class="track-row-artist">${track.artist}</div>
+            <div class="track-row-artist">${this.renderArtistLinks(track.artist)}</div>
           </div>
           <span class="track-row-duration">${track.duration}</span>
           <div class="track-row-actions" onclick="event.stopPropagation()">

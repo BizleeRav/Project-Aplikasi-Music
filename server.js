@@ -683,6 +683,77 @@ app.get('/api/home/album/:id/more', async (req, res) => {
   }
 });
 
+// 2.65 Dedicated Artist Showcase & Songs API
+app.get('/api/artist/:name', async (req, res) => {
+  const rawArtistName = (req.params.name || '').trim();
+  if (!rawArtistName) {
+    return res.status(400).json({ success: false, error: 'Artist name required' });
+  }
+
+  // Clean - Topic or extraneous characters
+  const artistName = rawArtistName.replace(/\s*-\s*Topic$/i, '').trim();
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.max(10, Math.min(50, parseInt(req.query.limit) || 20));
+
+  try {
+    const yt = await getInnertube();
+    let artistInfo = {
+      name: artistName,
+      subtitle: 'Artis Terverifikasi',
+      avatar: '/images/supermix.jpg',
+      banner: ''
+    };
+
+    // 1. Fetch Artist Metadata Card from YouTube Music
+    if (yt && yt.music) {
+      try {
+        const searchRes = await yt.music.search(artistName);
+        const card = searchRes.contents?.find(c => c.type === 'MusicCardShelf');
+        if (card) {
+          if (card.title?.text) artistInfo.name = card.title.text;
+          if (card.subtitle?.text) artistInfo.subtitle = card.subtitle.text;
+          const rawThumb = card.thumbnail?.contents?.[0]?.url;
+          if (rawThumb) {
+            artistInfo.avatar = rawThumb.includes('googleusercontent.com')
+              ? rawThumb.replace(/=w\d+-h\d+[^"]*/, '=w544-h544-l90-rj')
+              : rawThumb;
+            artistInfo.banner = artistInfo.avatar;
+          }
+        }
+      } catch (metaErr) {
+        console.warn('Artist metadata fetch warning:', metaErr.message);
+      }
+    }
+
+    // 2. Fetch Artist Songs with deep pagination support
+    let tracks = await searchYouTubeMusicSongs(artistName, limit, page);
+
+    // Fallback if empty on page 1
+    if ((!tracks || tracks.length === 0) && page === 1) {
+      tracks = await searchYouTubeMusicSongs(`${artistName} songs`, limit, 1);
+    }
+
+    if ((!artistInfo.avatar || artistInfo.avatar === '/images/supermix.jpg') && tracks.length > 0) {
+      artistInfo.avatar = tracks[0].thumbnail;
+      artistInfo.banner = tracks[0].thumbnail;
+    }
+
+    const hasMore = tracks.length >= limit;
+
+    res.json({
+      success: true,
+      artist: artistInfo,
+      tracks: tracks,
+      page,
+      limit,
+      hasMore
+    });
+  } catch (error) {
+    console.error('Error fetching artist details:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // 2.7 Smart Personalized Recommendations (Supermix & Liked Radio)
 app.post('/api/recommendations/supermix', async (req, res) => {
   try {
