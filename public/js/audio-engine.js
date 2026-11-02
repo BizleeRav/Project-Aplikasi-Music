@@ -269,6 +269,13 @@ class AudioEngine {
     }
   }
 
+  getDuration() {
+    if (this.sourceNode && this.sourceNode.mediaElement) {
+      return this.sourceNode.mediaElement.duration || 0;
+    }
+    return 0;
+  }
+
   setBandGain(bandIndex, gainValue) {
     const val = parseFloat(gainValue);
     this.currentGains[bandIndex] = val;

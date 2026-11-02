@@ -27,6 +27,7 @@ const deviceCredits = require('./device-credits');
 const tasteFeed = require('./taste-feed');
 const spotifyService = require('./spotify-service');
 const security = require('./security');
+const sunoCrypto = require('./suno-crypto');
 let ytdlInstance = null;
 let chooseFormatFn = null;
 async function getYtdl() {
@@ -1262,6 +1263,16 @@ app.get('/api/proxy-audio', async (req, res) => {
   // Security Suite: SSRF Firewall verification
   if (!security.isSafeAudioUrl(targetUrl)) {
     return res.status(403).send('Akses audio ditolak oleh Security Firewall (Invalid Origin / SSRF Protection).');
+  }
+
+  // Suno AI Audio Auto-Decryption Engine (Genuine Hi-Fi Decryption with HTTP 206 Range seeking)
+  const clipId = sunoCrypto.extractClipId(targetUrl, id);
+  if (sunoCrypto.isSunoEncrypted(targetUrl, clipId)) {
+    try {
+      return await sunoCrypto.streamDecryptedSunoAudio(req, res, clipId, targetUrl);
+    } catch (cryptoErr) {
+      console.warn(`[Suno Crypto] Decryption stream error for ${clipId}:`, cryptoErr.message);
+    }
   }
 
   try {

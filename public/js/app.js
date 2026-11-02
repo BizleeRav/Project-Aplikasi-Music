@@ -2810,7 +2810,7 @@ class App {
 
     const actualDuration = (overrideDuration && Number(overrideDuration) > 0)
       ? Math.round(Number(overrideDuration))
-      : (Number(track.seconds) || this.parseDuration(track.duration) || (this.nativeAudio?.duration ? Math.round(this.nativeAudio.duration) : 0) || (window.audioEngine?.getDuration() ? Math.round(window.audioEngine.getDuration()) : 0));
+      : (Number(track.seconds) || this.parseDuration(track.duration) || (this.nativeAudio?.duration ? Math.round(this.nativeAudio.duration) : 0) || (typeof window.audioEngine?.getDuration === 'function' ? Math.round(window.audioEngine.getDuration()) : 0));
     if (actualDuration > 0 && (!track.seconds || forceRefresh)) track.seconds = actualDuration;
 
     try {
