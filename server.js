@@ -683,7 +683,7 @@ app.get('/api/home/album/:id/more', async (req, res) => {
   }
 });
 
-// 2.65 Dedicated Artist Showcase & Songs API
+// 2.65 Dedicated Artist Showcase & Songs API (Pure Discography & Strict Artist Filtering)
 app.get('/api/artist/:name', async (req, res) => {
   const rawArtistName = (req.params.name || '').trim();
   if (!rawArtistName) {
@@ -704,7 +704,10 @@ app.get('/api/artist/:name', async (req, res) => {
       banner: ''
     };
 
-    // 1. Fetch Artist Metadata Card from YouTube Music
+    let allOfficialTracks = [];
+    let hasOfficialPlaylist = false;
+
+    // 1. Fetch Artist Metadata Card & Official Top Songs from YouTube Music
     if (yt && yt.music) {
       try {
         const searchRes = await yt.music.search(artistName);
@@ -719,31 +722,99 @@ app.get('/api/artist/:name', async (req, res) => {
               : rawThumb;
             artistInfo.banner = artistInfo.avatar;
           }
+
+          // Check if artist has an official channel browseId
+          const artistBrowseId = card.title?.endpoint?.payload?.browseId || card.on_tap?.payload?.browseId;
+          if (artistBrowseId) {
+            try {
+              const artistChannel = await yt.music.getArtist(artistBrowseId);
+              // Find Top Songs shelf
+              const topSongsShelf = artistChannel.sections?.find(sec => 
+                sec.type === 'MusicShelf' || /top songs|songs|lagu/i.test(sec.title?.text || sec.header?.title?.text || '')
+              );
+
+              const playlistBrowseId = topSongsShelf?.endpoint?.payload?.browseId;
+              if (playlistBrowseId) {
+                const pl = await yt.music.getPlaylist(playlistBrowseId);
+                if (pl && Array.isArray(pl.items) && pl.items.length > 0) {
+                  hasOfficialPlaylist = true;
+                  allOfficialTracks = pl.items.map(item => {
+                    const rawItemThumb = item.thumbnails?.[0]?.url || item.thumbnail?.contents?.[0]?.url || artistInfo.avatar || '/images/supermix.jpg';
+                    const hiresThumb = rawItemThumb.includes('googleusercontent.com')
+                      ? rawItemThumb.replace(/=w\d+-h\d+[^"]*/, '=w544-h544-l90-rj')
+                      : (rawItemThumb.includes('ytimg.com') ? rawItemThumb.replace(/hqdefault/, 'hq720') : rawItemThumb);
+                    const itemArtist = Array.isArray(item.artists)
+                      ? item.artists.map(a => a.name).join(', ')
+                      : (typeof item.author === 'string' ? item.author : artistInfo.name);
+                    const durationStr = typeof item.duration === 'string' ? item.duration : (item.duration?.text || '3:30');
+
+                    return {
+                      id: item.id,
+                      title: item.title || 'Unknown Title',
+                      artist: itemArtist || artistInfo.name,
+                      duration: durationStr,
+                      thumbnail: hiresThumb,
+                      type: 'youtube',
+                      isOfficial: true,
+                      tag: 'OFFICIAL'
+                    };
+                  });
+                }
+              }
+            } catch (chanErr) {
+              console.warn('Artist official playlist fetch warning:', chanErr.message);
+            }
+          }
         }
       } catch (metaErr) {
         console.warn('Artist metadata fetch warning:', metaErr.message);
       }
     }
 
-    // 2. Fetch Artist Songs with deep pagination support
-    let tracks = await searchYouTubeMusicSongs(artistName, limit, page);
+    let paginatedTracks = [];
+    let hasMore = false;
 
-    // Fallback if empty on page 1
-    if ((!tracks || tracks.length === 0) && page === 1) {
-      tracks = await searchYouTubeMusicSongs(`${artistName} songs`, limit, 1);
+    // Helper to strictly test if a song belongs to this artist
+    const targetKeywords = artistInfo.name.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
+    const isStrictArtist = (trackArtist, trackTitle) => {
+      const art = (trackArtist || '').toLowerCase();
+      const tit = (trackTitle || '').toLowerCase();
+      if (targetKeywords.length === 0) {
+        return art.includes(artistInfo.name.toLowerCase());
+      }
+      const matchesArtist = targetKeywords.some(kw => art.includes(kw));
+      const matchesTitleFeat = /feat|ft\.|with|x\s/i.test(tit) && targetKeywords.some(kw => tit.includes(kw));
+      return matchesArtist || matchesTitleFeat;
+    };
+
+    if (hasOfficialPlaylist && allOfficialTracks.length > 0) {
+      // 100% pure official discography from the artist's verified channel
+      const filtered = allOfficialTracks.filter(t => isStrictArtist(t.artist, t.title));
+      const startIdx = (page - 1) * limit;
+      paginatedTracks = filtered.slice(startIdx, startIdx + limit);
+      hasMore = filtered.length > startIdx + limit;
+    } else {
+      // Fallback: search and strictly filter out non-artist tracks
+      let rawTracks = await searchYouTubeMusicSongs(artistName, 50, page);
+      if ((!rawTracks || rawTracks.length === 0) && page === 1) {
+        rawTracks = await searchYouTubeMusicSongs(`${artistName} songs`, 50, 1);
+      }
+
+      // Strictly filter to only tracks performed by this artist
+      const strictlyFiltered = (rawTracks || []).filter(t => isStrictArtist(t.artist, t.title));
+      paginatedTracks = strictlyFiltered.slice(0, limit);
+      hasMore = strictlyFiltered.length >= limit;
     }
 
-    if ((!artistInfo.avatar || artistInfo.avatar === '/images/supermix.jpg') && tracks.length > 0) {
-      artistInfo.avatar = tracks[0].thumbnail;
-      artistInfo.banner = tracks[0].thumbnail;
+    if ((!artistInfo.avatar || artistInfo.avatar === '/images/supermix.jpg') && paginatedTracks.length > 0) {
+      artistInfo.avatar = paginatedTracks[0].thumbnail;
+      artistInfo.banner = paginatedTracks[0].thumbnail;
     }
-
-    const hasMore = tracks.length >= limit;
 
     res.json({
       success: true,
       artist: artistInfo,
-      tracks: tracks,
+      tracks: paginatedTracks,
       page,
       limit,
       hasMore

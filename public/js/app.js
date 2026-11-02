@@ -6613,6 +6613,20 @@ class App {
     }
   }
 
+  closeCinemaMode() {
+    this.closeStudioCinema();
+  }
+
+  handleCinemaArtistClick(e) {
+    if (e) {
+      try { e.preventDefault(); } catch (err) {}
+      try { e.stopPropagation(); } catch (err) {}
+    }
+    if (this.currentTrack && this.currentTrack.artist) {
+      this.openArtistDetail(this.cleanArtistName(this.currentTrack.artist));
+    }
+  }
+
   // =========================================================================
   // ARTIST SHOWCASE & DISCOGRAPHY (Simple & Elegant Full Catalog View)
   // =========================================================================
@@ -6622,7 +6636,7 @@ class App {
     if (!cleanName) return;
 
     if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
-      this.closeCinemaMode();
+      this.closeStudioCinema();
     }
 
     if (!fromHistory) {
@@ -7493,9 +7507,7 @@ class App {
       this.badgeSource.className = track.type === 'suno' ? 'player-hifi-badge badge-suno' : 'player-hifi-badge badge-yt';
     }
 
-    if (this.cinemaModal && this.cinemaModal.classList.contains('active')) {
-      this.syncCinemaTrackInfo();
-    }
+    this.syncCinemaTrackInfo();
 
     this.updateFavButtonState();
 

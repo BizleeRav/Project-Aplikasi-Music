@@ -7791,6 +7791,22 @@ body.music-playing .cinema-turntable-arm {
   border-radius: var(--radius-full);
 }
 
+#cinema-track-artist {
+  color: #94a3b8;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 10;
+  transition: color 0.18s, text-decoration 0.18s;
+}
+
+#cinema-track-artist:hover,
+#cinema-track-artist a:hover {
+  color: #38bdf8 !important;
+  text-decoration: underline !important;
+  text-underline-offset: 3px;
+}
+
 .cinema-title {
   font-size: clamp(1.2rem, 2.2vh, 1.55rem);
   font-weight: 900;
