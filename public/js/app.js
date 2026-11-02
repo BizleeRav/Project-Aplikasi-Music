@@ -1318,7 +1318,13 @@ class App {
       const tokenModalDesc = document.querySelector('#modal-token .modal-desc');
       if (tokenModalDesc) tokenModalDesc.textContent = isEn ? 'Select your connection method to Suno AI to generate studio-quality neural music:' : 'Pilih metode koneksi ke Suno AI untuk membuat musik neural berkualitas studio:';
       const autoLoginBtn = document.getElementById('btn-start-auto-login');
-      if (autoLoginBtn) autoLoginBtn.innerHTML = isEn ? '🚀 Open Window & Sign In to Suno' : '🚀 Buka Jendela & Login ke Suno';
+      if (autoLoginBtn) {
+        if (window.AuraSoundAndroid) {
+          autoLoginBtn.innerHTML = isEn ? '🚀 Sign In with Google (Suno.com)' : '🚀 Hubungkan Akun Suno (Login Google)';
+        } else {
+          autoLoginBtn.innerHTML = isEn ? '🚀 Open Window & Sign In to Suno' : '🚀 Buka Jendela & Login ke Suno';
+        }
+      }
 
       const importModalTitle = document.querySelector('#modal-import-playlist .modal-title');
       if (importModalTitle) importModalTitle.textContent = isEn ? 'Import Playlist & Album 📥' : 'Impor Playlist & Album 📥';

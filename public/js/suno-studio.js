@@ -249,13 +249,22 @@ class SunoStudio {
   }
 
   async startAutoLoginFlow() {
-    // If running on Android APK, call native Suno login dialog directly!
-    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openSunoLogin === 'function') {
-      if (window.app && window.app.showToast) {
-        window.app.showToast('Membuka login resmi Suno.com...', 'info');
+    // If running on Android APK
+    if (window.AuraSoundAndroid) {
+      if (typeof window.AuraSoundAndroid.openSunoLogin === 'function') {
+        if (window.app && window.app.showToast) {
+          window.app.showToast('Membuka login resmi Suno.com...', 'info');
+        }
+        window.AuraSoundAndroid.openSunoLogin();
+        return;
+      } else {
+        // Old APK detected on user's phone!
+        if (window.app && window.app.showToast) {
+          window.app.showToast('Fitur login di HP memerlukan update APK v1.2.0. Mengunduh update...', 'info');
+        }
+        window.location.href = '/download/AuraSound.apk';
+        return;
       }
-      window.AuraSoundAndroid.openSunoLogin();
-      return;
     }
 
     this.openSettingsModal();
