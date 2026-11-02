@@ -877,8 +877,13 @@ class SunoStudio {
     };
   }
 
-  playClip(clipId) {
-    const track = this.formatTrackObject(clipId);
+  playClip(clipIdOrTrack) {
+    let track = null;
+    if (typeof clipIdOrTrack === 'object' && clipIdOrTrack !== null && clipIdOrTrack.id) {
+      track = clipIdOrTrack;
+    } else {
+      track = this.formatTrackObject(clipIdOrTrack);
+    }
     if (track && window.app && window.app.playTrack) {
       window.app.playTrack(track);
     }
@@ -1081,6 +1086,17 @@ class SunoStudio {
       await this.fetchCreations(1, false);
       this.renderRecentPreview();
       await this.checkApiStatus();
+
+      // Automatically play newly generated song right inside the app & open Studio Cinema!
+      const createdTrack = clips[0];
+      if (createdTrack && createdTrack.id) {
+        this.playClip(createdTrack);
+        setTimeout(() => {
+          if (window.app && typeof window.app.openStudioCinema === 'function') {
+            window.app.openStudioCinema();
+          }
+        }, 300);
+      }
     } catch (err) {
       clearTimeout(timer1);
       clearTimeout(timer2);
