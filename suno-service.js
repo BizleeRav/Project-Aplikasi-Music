@@ -574,45 +574,14 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
             };
           }
         } catch (sunoErr) {
-          console.warn('Suno official direct call had captcha/challenge, routing via Suno Neural Cloud Bridge:', sunoErr.message);
-          const configKey = config.suno_api_key || '368b953dba13bca4791b6ee34b3c1c7a';
-          const bridgeRes = await axios.post(
-            'https://api.kie.ai/api/v1/jobs/createTask',
-            {
-              model: 'ai-music-api/generate',
-              input: {
-                prompt: finalPrompt,
-                title: finalTitle,
-                tags: finalTags,
-                make_instrumental: Boolean(make_instrumental),
-                model: model || 'v6-mini'
-              }
-            },
-            {
-              headers: {
-                'Authorization': `Bearer ${configKey}`,
-                'Content-Type': 'application/json'
-              },
-              timeout: 30000
-            }
-          );
-          if (bridgeRes.data && bridgeRes.data.code === 200 && bridgeRes.data.data?.taskId) {
-            return {
-              success: true,
-              is_auto: false,
-              data: [{
-                id: bridgeRes.data.data.taskId,
-                title: finalTitle,
-                artist: `${modelLabel} (Neural Cloud)`,
-                tags: finalTags,
-                prompt: finalPrompt,
-                lyrics: finalPrompt,
-                model: isV35 ? 'chirp-v3-5' : 'v6-mini',
-                status: 'submitted',
-                created_at: 'Sedang Diproses...'
-              }]
-            };
+          const status = sunoErr.response?.status;
+          if (status === 401 || status === 403) {
+            throw new Error('Sesi login akun Suno Anda telah kedaluwarsa. Silakan klik tombol "🔗 Hubungkan Akun Suno" di pojok kanan atas untuk login ulang (hanya 1 klik)!');
           }
+          if (sunoErr.response?.data?.message) {
+            throw new Error(`Suno Error: ${sunoErr.response.data.message}`);
+          }
+          throw new Error(sunoErr.message || 'Gagal membuat lagu di akun resmi Suno.');
         }
       }
       if (provider === 'goapi') {
