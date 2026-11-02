@@ -506,8 +506,9 @@ input::-ms-reveal {
   color: #fff;
 }
 
-/* In-Page Dedicated Search Hero */
+/* In-Page Dedicated Search Hero (Hidden on Desktop/Laptop - searches via Top Bar like YouTube Music; visible on Mobile) */
 .search-page-hero {
+  display: none !important;
   margin-bottom: 22px;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -10296,6 +10297,7 @@ body.music-playing .cinema-turntable-arm {
      2. DEDICATED IN-PAGE SEARCH HERO (Spotify & YouTube Music Android Style)
      ========================================================================== */
   .search-page-hero {
+    display: block !important;
     margin-bottom: 16px !important;
     padding: 14px 12px !important;
     border-radius: 16px !important;

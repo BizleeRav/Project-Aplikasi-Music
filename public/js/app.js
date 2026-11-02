@@ -3469,16 +3469,21 @@ class App {
         this.renderHomeForSkippedUser();
       }
     } else if (tabName === 'search') {
+      const isMobile = window.innerWidth <= 768;
       const searchPageInput = document.getElementById('search-page-input');
       const searchInput = document.getElementById('search-input');
-      if (searchPageInput && !searchPageInput.value) {
-        setTimeout(() => {
-          try { searchPageInput.focus(); } catch (e) {}
-        }, 150);
-      } else if (searchInput && !searchInput.value) {
-        setTimeout(() => {
-          try { searchInput.focus(); } catch (e) {}
-        }, 150);
+      if (isMobile) {
+        if (searchPageInput && !searchPageInput.value) {
+          setTimeout(() => {
+            try { searchPageInput.focus(); } catch (e) {}
+          }, 150);
+        }
+      } else {
+        if (searchInput) {
+          setTimeout(() => {
+            try { searchInput.focus(); } catch (e) {}
+          }, 150);
+        }
       }
     }
   }
