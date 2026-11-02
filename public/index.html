@@ -10,15 +10,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.48.0">
+  <link rel="stylesheet" href="/css/style.css?v=4.49.0">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
   <style>
-    /* 100% Guaranteed Native Browser Input Clear Button Elimination across Edge, Chrome, Android */
-    input::-webkit-search-cancel-button,
-    input::-webkit-search-decoration,
-    input::-webkit-search-results-button,
-    input::-webkit-search-results-decoration,
-    input::-webkit-clear-button {
+    /* 100% Standalone Cross-Engine Clear Button Elimination (NEVER comma-separated to prevent syntax dropping) */
+    input::-webkit-search-cancel-button {
       -webkit-appearance: none !important;
       appearance: none !important;
       display: none !important;
@@ -26,18 +22,95 @@
       height: 0 !important;
       margin: 0 !important;
       padding: 0 !important;
+      opacity: 0 !important;
       pointer-events: none !important;
       visibility: hidden !important;
     }
-    input::-ms-clear,
-    input::-ms-reveal,
-    input[type="text"]::-ms-clear,
-    input[type="search"]::-ms-clear {
+    input[type="search"]::-webkit-search-cancel-button {
+      -webkit-appearance: none !important;
+      appearance: none !important;
       display: none !important;
       width: 0 !important;
       height: 0 !important;
+      opacity: 0 !important;
       pointer-events: none !important;
       visibility: hidden !important;
+    }
+    input[type="text"]::-webkit-search-cancel-button {
+      -webkit-appearance: none !important;
+      appearance: none !important;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+    }
+    #search-page-input::-webkit-search-cancel-button {
+      -webkit-appearance: none !important;
+      appearance: none !important;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+    }
+    #search-input::-webkit-search-cancel-button {
+      -webkit-appearance: none !important;
+      appearance: none !important;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+    }
+    input::-webkit-search-decoration {
+      -webkit-appearance: none !important;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
+    input::-webkit-search-results-button {
+      -webkit-appearance: none !important;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
+    input::-webkit-search-results-decoration {
+      -webkit-appearance: none !important;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
+    input::-ms-clear {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+    }
+    input::-ms-reveal {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+    }
+    #search-page-input::-ms-clear {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      opacity: 0 !important;
+    }
+    #search-input::-ms-clear {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      opacity: 0 !important;
     }
   </style>
   <script type="module" src="/js/better-lyrics-core.js?v=1.16.14"></script>
@@ -202,9 +275,9 @@
           </div>
         </div>
 
-        <form id="search-form" class="search-box-wrapper ytm-search-box" action="javascript:void(0);" role="search">
+        <form id="search-form" class="search-box-wrapper ytm-search-box" action="javascript:void(0);">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" inputmode="search" id="search-input" placeholder="Cari lagu, album, artis, podcast..." enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <input type="text" inputmode="text" id="search-input" placeholder="Cari lagu, album, artis, podcast..." enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button type="button" class="btn-search-clear" id="btn-search-clear" style="display: none;" title="Hapus teks">✕</button>
           <button type="submit" class="btn-search-action" id="search-btn" title="Cari">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
@@ -279,9 +352,9 @@
         <section id="view-search" class="view-tab">
           <!-- In-Page Dedicated Search Hero for Mobile & Desktop -->
           <div class="search-page-hero">
-            <form id="search-page-form" class="search-page-box" action="javascript:void(0);" role="search">
+            <form id="search-page-form" class="search-page-box" action="javascript:void(0);">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--primary)" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              <input type="text" inputmode="search" id="search-page-input" placeholder="Ketik judul lagu, artis, atau band..." enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
+              <input type="text" inputmode="text" id="search-page-input" placeholder="Ketik judul lagu, artis, atau band..." enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
               <button type="button" class="btn-search-clear" id="btn-search-page-clear" style="display: none;" title="Hapus teks">✕</button>
               <button type="submit" class="search-page-submit-btn" id="search-page-btn">
                 <span>Cari</span>
@@ -1711,6 +1784,6 @@
   <script src="/js/yt-player.js?v=4.45.0"></script>
   <script src="/js/taste-engine.js?v=4.45.0"></script>
   <script src="/js/suno-studio.js?v=4.45.0"></script>
-  <script src="/js/app.js?v=4.49.0"></script>
+  <script src="/js/app.js?v=4.50.0"></script>
 </body>
 </html>

@@ -1444,13 +1444,14 @@ class App {
     const searchPageBtn = document.getElementById('search-page-btn');
     const searchPageClearBtn = document.getElementById('btn-search-page-clear');
 
-    // Dynamically enforce type='text' with inputmode='search' to completely eliminate native browser blue 'x'
+    // Dynamically enforce type='text' with inputmode='text' to completely eliminate native browser blue 'x'
     [searchInput, searchPageInput].forEach(inp => {
       if (inp) {
         try {
           inp.type = 'text';
-          inp.setAttribute('inputmode', 'search');
+          inp.setAttribute('inputmode', 'text');
           inp.setAttribute('enterkeyhint', 'search');
+          inp.removeAttribute('role');
         } catch (e) {}
       }
     });
