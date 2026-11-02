@@ -573,12 +573,9 @@ input::-ms-reveal {
   transform: scale(0.96);
 }
 
-/* Quick Search Chips */
+/* Quick Search Chips (Permanently Hidden) */
 .search-quick-tags-box {
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: none !important;
 }
 
 .search-quick-title {
@@ -10329,8 +10326,7 @@ body.music-playing .cinema-turntable-arm {
   }
 
   .search-quick-tags-box {
-    margin-top: 10px !important;
-    gap: 6px !important;
+    display: none !important;
   }
 
   .search-quick-title {
