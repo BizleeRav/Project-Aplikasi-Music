@@ -3222,6 +3222,69 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
   return parseAppleMusicTTML(ttmlString);
 }
 
+// Zero-dependency native LRC parser (foolproof fallback)
+function parseNativeLRC(lrcText, durMs = 180000) {
+  if (!lrcText || typeof lrcText !== 'string') return null;
+  const lines = lrcText.split(/\r?\n/);
+  const parsed = [];
+  const timeRegex = /\[(\d{1,2}):(\d{2})(?:\.(\d{2,3}))?\]/g;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const times = [];
+    let match;
+    timeRegex.lastIndex = 0;
+    while ((match = timeRegex.exec(line)) !== null) {
+      const min = parseInt(match[1], 10);
+      const sec = parseInt(match[2], 10);
+      const ms = match[3] ? (match[3].length === 2 ? parseInt(match[3], 10) * 10 : parseInt(match[3], 10)) : 0;
+      times.push((min * 60 + sec) * 1000 + ms);
+    }
+    const text = line.replace(/\[\d{1,2}:\d{2}(?:\.\d{2,3})?\]/g, '').trim();
+    if (times.length > 0 && text) {
+      for (const t of times) {
+        parsed.push({
+          startTimeMs: t,
+          durationMs: 3500,
+          words: text,
+          parts: [],
+          isInstrumental: false
+        });
+      }
+    }
+  }
+
+  if (parsed.length === 0) return null;
+  parsed.sort((a, b) => a.startTimeMs - b.startTimeMs);
+
+  for (let i = 0; i < parsed.length; i++) {
+    const curr = parsed[i];
+    const next = parsed[i + 1];
+    if (next) {
+      curr.durationMs = Math.max(500, Math.min(8000, next.startTimeMs - curr.startTimeMs));
+    } else {
+      curr.durationMs = Math.max(1000, Math.min(6000, durMs - curr.startTimeMs));
+    }
+  }
+  return parsed;
+}
+
+// Zero-dependency native Plain text parser
+function parseNativePlain(plainText, durMs = 180000) {
+  if (!plainText || typeof plainText !== 'string') return null;
+  const rawLines = plainText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (rawLines.length === 0) return null;
+  const stepMs = Math.max(2500, Math.floor(durMs / rawLines.length));
+  return rawLines.map((text, idx) => ({
+    startTimeMs: idx * stepMs,
+    durationMs: Math.min(5000, stepMs - 200),
+    words: text,
+    parts: [],
+    isInstrumental: false
+  }));
+}
+
 async function parseAnyLyricsToBraccato(sourceData, durationSec, title, artist) {
   if (!sourceData) return null;
   const parsers = await getBraccatoParsers();
@@ -3287,9 +3350,9 @@ async function parseAnyLyricsToBraccato(sourceData, durationSec, title, artist) 
       return line;
     }).join('\n');
 
+    let parsed = null;
     if (parsers) {
       try {
-        let parsed = null;
         if (parsers.parseLRC) {
           parsed = parsers.parseLRC(raw, durMs, { instrumentalGapMs: 5000 });
           if (parsers.lrcFixers && Array.isArray(parsed)) {
@@ -3298,49 +3361,59 @@ async function parseAnyLyricsToBraccato(sourceData, durationSec, title, artist) 
         } else if (parsers.detectParser) {
           parsed = parsers.detectParser(raw).parse(raw, durMs);
         }
-        if (parsed && Array.isArray(parsed) && parsed.length > 0) {
-          for (const l of parsed) {
-            if (!l.isInstrumental && l.words && (!l.parts || l.parts.length === 0)) {
-              try {
-                const romanizer = getLyricsRomanizer();
-                const lTime = l.startTimeMs / 1000;
-                const lEnd = (l.startTimeMs + l.durationMs) / 1000;
-                const interpolated = romanizer.interpolateLineWords(l.words, lTime, lEnd);
-                if (interpolated && interpolated.length > 0) {
-                  l.parts = interpolated.map(w => ({
-                    startTimeMs: Math.round(w.begin * 1000),
-                    durationMs: Math.max(50, Math.round((w.end - w.begin) * 1000)),
-                    words: (w.trailingSpace !== false) ? `${w.text} ` : w.text
-                  }));
-                }
-              } catch (e) {}
-            }
-          }
-          return {
-            lyrics: parsed,
-            lang: null,
-            isWordSynced: true
-          };
-        }
       } catch (e) {
         console.warn('Braccato parse error for synced lyrics:', e.message);
       }
+    }
+
+    // Native foolproof fallback if parsers was not available or failed
+    if (!parsed || !Array.isArray(parsed) || parsed.length === 0) {
+      parsed = parseNativeLRC(raw, durMs);
+    }
+
+    if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+      for (const l of parsed) {
+        if (!l.isInstrumental && l.words && (!l.parts || l.parts.length === 0)) {
+          try {
+            const romanizer = getLyricsRomanizer();
+            const lTime = l.startTimeMs / 1000;
+            const lEnd = (l.startTimeMs + l.durationMs) / 1000;
+            const interpolated = romanizer.interpolateLineWords(l.words, lTime, lEnd);
+            if (interpolated && interpolated.length > 0) {
+              l.parts = interpolated.map(w => ({
+                startTimeMs: Math.round(w.begin * 1000),
+                durationMs: Math.max(50, Math.round((w.end - w.begin) * 1000)),
+                words: (w.trailingSpace !== false) ? `${w.text} ` : w.text
+              }));
+            }
+          } catch (e) {}
+        }
+      }
+      return {
+        lyrics: parsed,
+        lang: null,
+        isWordSynced: true
+      };
     }
   }
 
   // 5. If source gave plainLyrics
   if (sourceData.plainLyrics && typeof sourceData.plainLyrics === 'string') {
+    let parsed = null;
     if (parsers?.PlainParser) {
       try {
-        const parsed = parsers.PlainParser.parse(sourceData.plainLyrics, durMs);
-        if (parsed && Array.isArray(parsed) && parsed.length > 0) {
-          return {
-            lyrics: parsed,
-            lang: null,
-            isWordSynced: false
-          };
-        }
+        parsed = parsers.PlainParser.parse(sourceData.plainLyrics, durMs);
       } catch (e) {}
+    }
+    if (!parsed || !Array.isArray(parsed) || parsed.length === 0) {
+      parsed = parseNativePlain(sourceData.plainLyrics, durMs);
+    }
+    if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+      return {
+        lyrics: parsed,
+        lang: null,
+        isWordSynced: false
+      };
     }
   }
 
@@ -4316,13 +4389,15 @@ app.get('/api/lyrics', async (req, res) => {
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v79___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v80___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
   if (!bypassCache && lyricsCache.has(cacheKey)) {
     const cached = lyricsCache.get(cacheKey);
-    return res.json({ success: true, ...cached, fromCache: true });
+    if (cached && (!cached.found || (Array.isArray(cached.parsedLyrics) && cached.parsedLyrics.length > 0))) {
+      return res.json({ success: true, ...cached, fromCache: true });
+    }
   }
 
   const headers = { 'User-Agent': 'AuraSound/3.9 (https://github.com/aurasound)' };
