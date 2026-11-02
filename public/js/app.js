@@ -4359,7 +4359,7 @@ class App {
         heroButtonLabel = isEn ? 'Play Supermix' : 'Putar Supermix';
         bentoSupermixBadge = 'SUPERMIX PRIBADI';
         bentoSupermixTitle = 'My Supermix';
-        bentoSupermixSubtitle = isEn ? 'Auto-Curated from Your Playlists' : 'Koleksi Playlist & Selera Anda';
+        bentoSupermixSubtitle = isEn ? 'Made for You' : 'Dibuat untuk Anda';
         bentoSupermixDesc = isEn
           ? 'A seamless mix of your playlists and listening history.'
           : 'Kombinasi lagu dari seluruh playlist dan riwayat musik Anda.';
@@ -4369,7 +4369,7 @@ class App {
         heroButtonLabel = isEn ? 'Play Supermix' : 'Putar Supermix';
         bentoSupermixBadge = 'SUPERMIX PRIBADI';
         bentoSupermixTitle = 'My Supermix';
-        bentoSupermixSubtitle = isEn ? `Collection from 1 Playlist (${sourceName}) & Taste` : `Koleksi 1 Playlist (${sourceName}) & Selera Anda`;
+        bentoSupermixSubtitle = isEn ? 'Made for You' : 'Dibuat untuk Anda';
         bentoSupermixDesc = isEn
           ? `A mix from playlist "${imp.title}" and your listening history.`
           : `Kombinasi lagu dari playlist "${imp.title}" dan riwayat musik Anda.`;
@@ -4377,7 +4377,7 @@ class App {
         heroButtonLabel = isEn ? 'Play My Supermix' : 'Putar Supermix';
         bentoSupermixBadge = 'SUPERMIX PRIBADI';
         bentoSupermixTitle = 'My Supermix';
-        bentoSupermixSubtitle = isEn ? 'Auto-Curated for Your Taste' : 'Racikan Otomatis Selera Anda';
+        bentoSupermixSubtitle = isEn ? 'Made for You' : 'Dibuat untuk Anda';
         bentoSupermixDesc = isEn
           ? 'A personalized mix of your favorite tracks and new discoveries.'
           : 'Kombinasi lagu favorit dan penemuan musik baru untuk Anda.';
@@ -5474,17 +5474,17 @@ class App {
             <div class="aura-bento-top">
               <span class="aura-pill-badge aura-pill-emerald">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
-                SUPERMIX AI 2026
+                SUPERMIX PRIBADI
               </span>
               <div class="aura-mini-equalizer">
                 <span></span><span></span><span></span><span></span><span></span>
               </div>
             </div>
             <div class="aura-bento-body">
-              <span class="aura-bento-subtitle">${isEn ? 'Auto-Curated for Your Taste' : 'Racikan Otomatis Selera Anda'}</span>
+              <span class="aura-bento-subtitle">${isEn ? 'Made for You' : 'Dibuat untuk Anda'}</span>
               <h3 class="aura-bento-title">My Supermix</h3>
               <p class="aura-bento-desc">
-                ${topArtists.length > 0 ? (isEn ? `Favorite Artists: ${topArtists.map(a => a.name).join(', ')}` : `Artis Favorit: ${topArtists.map(a => a.name).join(', ')}`) : (isEn ? 'Seamlessly synced with your listen history & favorite artists.' : 'Sinkronisasi riwayat dengar & artis kesukaan tanpa henti.')}
+                ${isEn ? 'A personalized mix of your favorite tracks and new discoveries.' : 'Kombinasi lagu favorit dan penemuan musik baru untuk Anda.'}
               </p>
               <div class="aura-bento-actions">
                 <button class="aura-btn-circle-play" onclick="event.stopPropagation(); window.app.playHomeAlbum('deck-supermix')" title="${isEn ? 'Play Supermix' : 'Putar Supermix'}">

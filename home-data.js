@@ -1957,23 +1957,21 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
   const artistSummary = activeArtists.slice(0, 4).join(', ');
 
   let supermixDescription = 'Kombinasi lagu favorit dan penemuan musik baru untuk Anda.';
-  let supermixArtist = `Berdasarkan riwayat dengar & artis favorit Anda`;
+  let supermixArtist = 'Dibuat untuk Anda • AuraSound';
   let supermixBadge = 'SUPERMIX PRIBADI';
-  let supermixSubtitle = 'Racikan Cerdas Selera Anda';
+  let supermixSubtitle = 'Dibuat untuk Anda';
 
   if (validImported.length === 1) {
     const p = validImported[0];
-    const sourceLabel = p.source === 'spotify' ? 'Spotify' : (p.source === 'youtube' ? 'YouTube Music' : 'Playlist');
     supermixDescription = `Kombinasi lagu dari playlist "${p.title.trim()}" dan riwayat musik Anda.`;
-    supermixArtist = `Playlist ${p.title.trim()} & Selera Anda`;
+    supermixArtist = 'Dibuat untuk Anda • AuraSound';
     supermixBadge = 'SUPERMIX PRIBADI';
-    supermixSubtitle = `Koleksi 1 Playlist (${sourceLabel}) & Selera Anda`;
+    supermixSubtitle = 'Dibuat untuk Anda';
   } else if (validImported.length >= 2) {
-    const sources = [...new Set(validImported.map(p => p.source === 'spotify' ? 'Spotify' : 'YouTube Music'))].join(' & ');
     supermixDescription = 'Kombinasi lagu dari seluruh playlist dan riwayat musik Anda.';
-    supermixArtist = `Koleksi ${validImported.length} Playlist (${sources}) & Selera Anda`;
+    supermixArtist = 'Dibuat untuk Anda • AuraSound';
     supermixBadge = 'SUPERMIX PRIBADI';
-    supermixSubtitle = 'Koleksi Playlist & Selera Anda';
+    supermixSubtitle = 'Dibuat untuk Anda';
   }
 
   const supermixAlbum = {
