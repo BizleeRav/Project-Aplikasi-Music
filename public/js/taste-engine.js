@@ -132,7 +132,7 @@ class TasteEngine {
     const favorites = (window.app && window.app.favorites) ? window.app.favorites.slice(0, 15) : [];
     const history = this.getRecentHistory(15);
     const importedPlaylists = (window.app && window.app.playlists)
-      ? window.app.playlists.filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube')
+      ? window.app.playlists.filter(p => (p.isImported || p.source === 'spotify' || p.source === 'youtube' || !p.isAiMix) && Array.isArray(p.tracks) && p.tracks.length > 0)
       : [];
     return { topArtists, favorites, history, importedPlaylists };
   }

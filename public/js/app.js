@@ -4264,7 +4264,7 @@ class App {
 
     // Fetch dynamic recommendations directly derived from user's listened songs & imported albums
     let hypermixData = null;
-    const importedPlaylists = (this.playlists || []).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+    const importedPlaylists = (this.playlists || []).filter(p => (p.isImported || p.source === 'spotify' || p.source === 'youtube' || !p.isAiMix) && Array.isArray(p.tracks) && p.tracks.length > 0);
     try {
       const res = await fetch('/api/recommendations/hypermix', {
         method: 'POST',
@@ -4333,31 +4333,70 @@ class App {
     else if (hour >= 15 && hour < 18) { greeting = 'Selamat Sore'; greetingIcon = '🌇'; }
     else { greeting = 'Selamat Malam'; greetingIcon = '🌌'; }
 
-    let heroButtonLabel = isEn ? 'Play My Supermix' : 'Putar My Supermix';
+    // Supermix Availability Logic:
+    // Supermix appears if user has playlists OR substantial history (>= 5 songs) OR setup their taste.
+    // Fresh users who just listened to 1-4 songs and have 0 playlists get "Lagu Terkait" instead of premature supermix.
+    const hasPlaylists = importedPlaylists.length > 0;
+    const hasSubstantialHistory = (history && history.length >= 5) || this.hasChosenTaste();
+    const shouldShowSupermix = hasPlaylists || hasSubstantialHistory;
+
+    let heroButtonLabel = isEn ? 'Play My Supermix' : 'Putar Supermix';
+    let heroAction = "window.app.playHomeAlbum('deck-supermix')";
+    let turntableClick = "window.app.openHomeAlbumDetail('deck-supermix')";
     let turntableTag = 'SUPERMIX • TACTILE VINYL • HI-FI';
-    let bentoSupermixBadge = 'SUPERMIX AI 2026';
+    let bentoSupermixBadge = 'SUPERMIX PRIBADI';
     let bentoSupermixTitle = 'My Supermix';
     let bentoSupermixSubtitle = isEn ? 'Auto-Curated for Your Taste' : 'Racikan Otomatis Selera Anda';
-    let bentoSupermixDesc = `Diramu otomatis dari artis dan lagu yang Anda nikmati (${topArtistNames}).`;
+    let bentoSupermixDesc = `Diramu otomatis dari lagu dan artis yang sering Anda dengar.`;
+    let bentoPodClick = "window.app.openHomeAlbumDetail('deck-supermix')";
+    let bentoPodPlay = "window.app.playHomeAlbum('deck-supermix')";
+    let bentoPodActionLabel = isEn ? 'Open Full Tracklist →' : 'Buka Tracklist Supermix →';
 
-    if (importedPlaylists.length === 1) {
-      const imp = importedPlaylists[0];
-      const sourceName = imp.source === 'spotify' ? 'Spotify' : 'YouTube Music';
-      heroButtonLabel = `Putar Supermix (${imp.title})`;
-      turntableTag = `${imp.title.toUpperCase()} • SUPERMIX HI-FI`;
-      bentoSupermixBadge = imp.source === 'spotify' ? 'SPOTIFY SUPERMIX' : 'ALBUM SUPERMIX';
-      bentoSupermixTitle = `Supermix: ${imp.title}`;
-      bentoSupermixSubtitle = `Impor dari ${sourceName} & Selera Musikmu`;
-      bentoSupermixDesc = `Memadukan album "${imp.title}", riwayat dengar (${topArtistNames}), dan penemuan musik baru.`;
-    } else if (importedPlaylists.length >= 2) {
-      const imp1 = importedPlaylists[0];
-      const imp2 = importedPlaylists[1];
-      heroButtonLabel = 'Putar Crossover Supermix';
-      turntableTag = 'CROSSOVER SUPERMIX • HI-FI';
-      bentoSupermixBadge = 'CROSSOVER SUPERMIX';
-      bentoSupermixTitle = `Fusion: ${imp1.title} × ${imp2.title}`;
-      bentoSupermixSubtitle = 'Perpaduan 2 Album Impor & Selera Musik';
-      bentoSupermixDesc = `Perpaduan hybrid cerdas antara "${imp1.title}", "${imp2.title}", dan selera musik Anda.`;
+    if (shouldShowSupermix) {
+      if (importedPlaylists.length >= 2) {
+        const titles = importedPlaylists.map(p => `"${p.title.trim()}"`).join(', ');
+        const sources = [...new Set(importedPlaylists.map(p => p.source === 'spotify' ? 'Spotify' : 'YouTube Music'))].join(' & ');
+        heroButtonLabel = isEn ? 'Play Supermix' : 'Putar Supermix';
+        bentoSupermixBadge = 'SUPERMIX PRIBADI';
+        bentoSupermixTitle = 'My Supermix';
+        bentoSupermixSubtitle = isEn ? `Curated from ${importedPlaylists.length} Playlists (${sources}) & Taste` : `Diracik dari ${importedPlaylists.length} Playlist (${sources}) & Selera Anda`;
+        bentoSupermixDesc = isEn
+          ? `Intelligent blend from all ${importedPlaylists.length} playlists (${titles}), listening history, and new discoveries.`
+          : `Perpaduan cerdas dari seluruh ${importedPlaylists.length} playlist Anda (${titles}), riwayat lagu yang sering Anda dengar, dan rekomendasi baru.`;
+      } else if (importedPlaylists.length === 1) {
+        const imp = importedPlaylists[0];
+        const sourceName = imp.source === 'spotify' ? 'Spotify' : (imp.source === 'youtube' ? 'YouTube Music' : 'Playlist');
+        heroButtonLabel = isEn ? 'Play Supermix' : 'Putar Supermix';
+        bentoSupermixBadge = 'SUPERMIX PRIBADI';
+        bentoSupermixTitle = 'My Supermix';
+        bentoSupermixSubtitle = isEn ? `Collection from 1 Playlist (${sourceName}) & Taste` : `Koleksi 1 Playlist (${sourceName}) & Selera Anda`;
+        bentoSupermixDesc = isEn
+          ? `Blending playlist "${imp.title}", your listening history, and new music discoveries.`
+          : `Memadukan playlist "${imp.title}", riwayat dengar Anda, dan penemuan musik baru.`;
+      } else {
+        heroButtonLabel = isEn ? 'Play My Supermix' : 'Putar Supermix';
+        bentoSupermixBadge = 'SUPERMIX PRIBADI';
+        bentoSupermixTitle = 'My Supermix';
+        bentoSupermixSubtitle = isEn ? 'Auto-Curated for Your Taste' : 'Racikan Otomatis Selera Anda';
+        bentoSupermixDesc = isEn
+          ? `Auto-mixed from artists and songs you enjoy (${topArtistNames}).`
+          : `Diramu otomatis dari artis dan lagu yang Anda nikmati (${topArtistNames}).`;
+      }
+    } else {
+      // Clean context without playlists (1-4 song history): Display pure related music without premature supermix
+      heroButtonLabel = isEn ? 'Play Related Music' : 'Putar Lagu Terkait';
+      heroAction = "window.app.playTrackList(window.app.getRegisteredTrackList('related-picks'), 0)";
+      turntableClick = "window.app.playTrackList(window.app.getRegisteredTrackList('related-picks'), 0)";
+      turntableTag = 'LAGU TERKAIT • HI-FI';
+      bentoSupermixBadge = 'LAGU TERKAIT';
+      bentoSupermixTitle = 'Mix Lagu Terkait';
+      bentoSupermixSubtitle = isEn ? `Based on "${history[0]?.title || 'Recent Play'}"` : `Berdasarkan "${history[0]?.title || 'Lagu Baru Diputar'}"`;
+      bentoSupermixDesc = isEn
+        ? `Recommendations derived from "${history[0]?.title || 'recent tracks'}" and ${topArtistNames}.`
+        : `Rekomendasi lagu baru yang memiliki aliran dan genre serupa dari lagu yang baru saja Anda nikmati.`;
+      bentoPodClick = "window.app.playTrackList(window.app.getRegisteredTrackList('related-picks'), 0)";
+      bentoPodPlay = "window.app.playTrackList(window.app.getRegisteredTrackList('related-picks'), 0)";
+      bentoPodActionLabel = isEn ? 'Play Related Tracks →' : 'Putar Koleksi Lagu Terkait →';
     }
 
     let html = `
@@ -4393,7 +4432,7 @@ class App {
             </div>
 
             <div class="aura-hero-actions">
-              <button class="aura-btn-hero-primary" onclick="window.app.playHomeAlbum('deck-supermix')">
+              <button class="aura-btn-hero-primary" onclick="${heroAction}">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 <span>${heroButtonLabel}</span>
               </button>
@@ -4411,7 +4450,7 @@ class App {
           </div>
 
           <div class="aura-hero-right">
-            <div class="aura-turntable-card" onclick="window.app.openHomeAlbumDetail('deck-supermix')">
+            <div class="aura-turntable-card" onclick="${turntableClick}">
               <div class="aura-turntable-chassis">
                 <div class="aura-vinyl-record ${isAudioPlaying ? 'is-spinning' : ''}">
                   <div class="aura-vinyl-grooves"></div>
@@ -4448,7 +4487,7 @@ class App {
 
         <div class="aura-bento-grid">
           <!-- Pod 1: My Supermix / Album Supermix -->
-          <div class="aura-bento-card aura-bento-supermix" onclick="window.app.openHomeAlbumDetail('deck-supermix')">
+          <div class="aura-bento-card aura-bento-supermix" onclick="${bentoPodClick}">
             <div class="aura-bento-bg" style="background-image: url('${heroThumb}');"></div>
             <div class="aura-bento-mesh"></div>
             <div class="aura-bento-top">
@@ -4465,10 +4504,10 @@ class App {
                 ${bentoSupermixDesc}
               </p>
               <div class="aura-bento-actions">
-                <button class="aura-btn-circle-play" onclick="event.stopPropagation(); window.app.playHomeAlbum('deck-supermix')" title="Putar Sekarang">
+                <button class="aura-btn-circle-play" onclick="event.stopPropagation(); ${bentoPodPlay}" title="Putar Sekarang">
                   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 </button>
-                <span class="aura-bento-action-label">Buka Tracklist Supermix →</span>
+                <span class="aura-bento-action-label">${bentoPodActionLabel}</span>
               </div>
             </div>
           </div>
@@ -6030,21 +6069,23 @@ class App {
           year: new Date().getFullYear(),
           genre: 'Imported Album'
         };
-      } else if (albumId.startsWith('mix-fusion-')) {
-        const imp = this.playlists.filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+      } else if (albumId.startsWith('mix-fusion-') || albumId === 'mix-fusion-all') {
+        const imp = (this.playlists || []).filter(p => (p.isImported || p.source === 'spotify' || p.source === 'youtube' || !p.isAiMix) && Array.isArray(p.tracks) && p.tracks.length > 0);
         if (imp.length >= 2) {
           const mergedTracks = [];
-          const maxT = Math.max(imp[0].tracks?.length || 0, imp[1].tracks?.length || 0);
+          const maxT = Math.max(...imp.map(p => (p.tracks || []).length));
           for (let i = 0; i < maxT; i++) {
-            if (imp[0].tracks && imp[0].tracks[i]) mergedTracks.push(imp[0].tracks[i]);
-            if (imp[1].tracks && imp[1].tracks[i]) mergedTracks.push(imp[1].tracks[i]);
+            for (const p of imp) {
+              if (p.tracks && p.tracks[i]) mergedTracks.push(p.tracks[i]);
+            }
           }
+          const titles = imp.map(p => `"${p.title.trim()}"`).join(', ');
           album = {
             id: albumId,
-            title: `${imp[0].title} × ${imp[1].title} Fusion`,
-            artist: `${imp[0].title} & ${imp[1].title}`,
-            description: `Perpaduan crossover harmonis antara album "${imp[0].title}" dan "${imp[1].title}".`,
-            thumbnail: imp[0].thumbnail || imp[1].thumbnail || '/images/supermix.jpg',
+            title: `Kompilasi Seluruh Playlist`,
+            artist: `Crossover Hybrid Mix (${imp.length} Playlist)`,
+            description: `Perpaduan crossover harmonis dari seluruh ${imp.length} playlist Anda (${titles}).`,
+            thumbnail: imp[0].thumbnail || '/images/supermix.jpg',
             tracks: mergedTracks,
             badge: 'FUSION MIX',
             year: '2026',

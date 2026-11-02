@@ -1804,20 +1804,34 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     return true;
   }
 
-  // 1. Tracks from Imported Playlists/Albums (40% Weight)
+  // 1. Tracks from Imported Playlists/Albums (Balanced across ALL playlists)
+  function sampleTracksFromPlaylist(tracks, count) {
+    if (!Array.isArray(tracks) || tracks.length === 0) return [];
+    if (tracks.length <= count) return [...tracks];
+    const result = [];
+    const step = tracks.length / count;
+    for (let i = 0; i < count; i++) {
+      const idx = Math.floor(i * step);
+      if (tracks[idx]) result.push(tracks[idx]);
+    }
+    return result;
+  }
+
   if (validImported.length === 1) {
-    for (const t of validImported[0].tracks) {
-      if (addTrackIfUnique(t, importedPool) && importedPool.length >= 12) break;
+    const sampled = sampleTracksFromPlaylist(validImported[0].tracks, 20);
+    for (const t of sampled) {
+      addTrackIfUnique(t, importedPool);
     }
   } else if (validImported.length >= 2) {
-    const maxImpLen = Math.max(...validImported.map(p => (p.tracks || []).length));
-    for (let i = 0; i < maxImpLen; i++) {
-      for (const p of validImported) {
-        if (p.tracks && p.tracks[i]) {
-          addTrackIfUnique(p.tracks[i], importedPool);
+    const perPlaylistTarget = Math.max(10, Math.floor(36 / validImported.length));
+    const sampledLists = validImported.map(p => sampleTracksFromPlaylist(p.tracks, perPlaylistTarget));
+    const maxLen = Math.max(...sampledLists.map(l => l.length));
+    for (let i = 0; i < maxLen; i++) {
+      for (const sList of sampledLists) {
+        if (sList[i]) {
+          addTrackIfUnique(sList[i], importedPool);
         }
       }
-      if (importedPool.length >= 16) break;
     }
   }
 
@@ -1942,23 +1956,34 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
 
   const artistSummary = activeArtists.slice(0, 4).join(', ');
 
-  let supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: memadukan lagu yang sering Anda dengar (${artistSummary}) dengan penemuan musik baru yang selaras dengan selera Anda.`;
-  let supermixArtist = `Berdasarkan selera musik Anda • ${artistSummary}`;
+  let supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: memadukan lagu favorit, riwayat musik (${artistSummary}), dan penemuan baru selaras dengan selera Anda.`;
+  let supermixArtist = `Berdasarkan riwayat dengar & artis favorit Anda`;
+  let supermixBadge = 'SUPERMIX PRIBADI';
+  let supermixSubtitle = 'Racikan Cerdas Selera Anda';
 
   if (validImported.length === 1) {
-    supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: memadukan album "${validImported[0].title}" dengan riwayat lagu Anda dan penemuan musik baru.`;
-    supermixArtist = `Album ${validImported[0].title} & Musik Terkait`;
+    const p = validImported[0];
+    const sourceLabel = p.source === 'spotify' ? 'Spotify' : (p.source === 'youtube' ? 'YouTube Music' : 'Playlist');
+    supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: memadukan playlist "${p.title.trim()}" (${sourceLabel}), riwayat dengar Anda, dan penemuan musik baru.`;
+    supermixArtist = `Playlist ${p.title.trim()} & Selera Anda`;
+    supermixBadge = 'SUPERMIX PRIBADI';
+    supermixSubtitle = `Koleksi 1 Playlist (${sourceLabel}) & Selera Anda`;
   } else if (validImported.length >= 2) {
-    supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: perpaduan crossover antara "${validImported[0].title}", "${validImported[1].title}", riwayat musik Anda, dan penemuan baru.`;
-    supermixArtist = `Fusion: ${validImported[0].title} × ${validImported[1].title}`;
+    const playlistTitles = validImported.map(p => `"${p.title.trim()}"`).join(', ');
+    const sources = [...new Set(validImported.map(p => p.source === 'spotify' ? 'Spotify' : 'YouTube Music'))].join(' & ');
+    supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: perpaduan cerdas dari seluruh ${validImported.length} playlist Anda (${playlistTitles}), riwayat lagu yang sering Anda putar, dan rekomendasi musik baru.`;
+    supermixArtist = `Koleksi ${validImported.length} Playlist (${sources}) & Selera Anda`;
+    supermixBadge = 'SUPERMIX PRIBADI';
+    supermixSubtitle = `Diracik dari ${validImported.length} Playlist (${sources}) & Selera Anda`;
   }
 
   const supermixAlbum = {
     id: 'deck-supermix',
     type: 'mix',
-    badge: validImported.length >= 2 ? 'CROSSOVER SUPERMIX' : (validImported.length === 1 ? 'ALBUM SUPERMIX' : 'SMART SUPERMIX'),
+    badge: supermixBadge,
     title: 'My Supermix',
     artist: supermixArtist,
+    subtitle: supermixSubtitle,
     releaseYear: '2026',
     genre: 'Algoritma Personalisasi AuraSound',
     thumbnail: validImported[0]?.thumbnail || '/images/supermix.jpg',

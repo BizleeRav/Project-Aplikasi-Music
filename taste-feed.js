@@ -525,16 +525,18 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
   // 1. Query YouTube Music Up Next recommendations from imported albums, history & favorites
   const recentVideoIds = [];
 
-  // Feed up to 2 tracks from imported albums for instant relevant discovery
+  // Feed up to 1-2 tracks from EACH imported album for diverse discovery
   for (const p of validImported) {
+    let pCount = 0;
     for (const t of (p.tracks || [])) {
       const rawId = (t?.id || '').replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
       if (rawId && rawId.length === 11 && !recentVideoIds.includes(rawId)) {
         recentVideoIds.push(rawId);
-        if (recentVideoIds.length >= 2) break;
+        pCount++;
+        if (pCount >= 2) break;
       }
     }
-    if (recentVideoIds.length >= 2) break;
+    if (recentVideoIds.length >= 6) break;
   }
 
   for (const h of validHistory) {
@@ -718,16 +720,15 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
   // 3. Build Algorithmic Dynamic Mixes for "Special Mixed Harmonies" (STRICTLY NO "My Supermix")
   const dynamicMixes = [];
 
-  // If 2+ albums imported, create a special Crossover Fusion Mix!
+  // If 2+ albums imported, create a special Crossover Fusion Mix representing all playlists!
   if (validImported.length >= 2) {
-    const albA = validImported[0];
-    const albB = validImported[1];
+    const titles = validImported.map(p => `"${p.title.trim()}"`).slice(0, 3).join(', ') + (validImported.length > 3 ? ` (+${validImported.length - 3})` : '');
     dynamicMixes.push({
-      id: `mix-fusion-${albA.id}-${albB.id}`,
-      albumId: `mix-fusion-${albA.id}-${albB.id}`,
-      title: `${albA.title} × ${albB.title} Fusion`,
-      artist: `Crossover Hybrid Mix dari 2 album yang kamu impor`,
-      thumbnail: albA.thumbnail || albB.thumbnail || '/images/supermix.jpg',
+      id: `mix-fusion-all`,
+      albumId: `mix-fusion-all`,
+      title: `Kompilasi Seluruh Playlist`,
+      artist: `Crossover Hybrid Mix dari ${validImported.length} playlist (${titles})`,
+      thumbnail: validImported[0].thumbnail || validImported[1]?.thumbnail || '/images/supermix.jpg',
       type: 'mix',
       cardType: 'square'
     });
