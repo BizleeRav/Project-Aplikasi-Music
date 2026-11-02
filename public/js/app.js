@@ -1881,6 +1881,9 @@ class App {
     // Studio Cinema Equalizer Toggle & Controls
     const cinemaEqDrawer = document.getElementById('cinema-eq-drawer');
     const btnCinemaOpenDsp = document.getElementById('btn-cinema-open-dsp');
+    if (btnCinemaOpenDsp) {
+      try { btnCinemaOpenDsp.remove(); } catch (e) {}
+    }
     const btnCinemaEq = document.getElementById('cinema-btn-eq');
     const btnCloseCinemaEq = document.getElementById('btn-close-cinema-eq');
 
@@ -2372,6 +2375,10 @@ class App {
 
   openStudioCinema() {
     if (!this.cinemaModal) return;
+    const dspChip = document.getElementById('btn-cinema-open-dsp');
+    if (dspChip) {
+      try { dspChip.remove(); } catch (e) {}
+    }
     this.cinemaModal.classList.add('active');
     document.body.classList.add('cinema-mode-active');
 
@@ -3455,6 +3462,7 @@ class App {
       this.renderFavorites();
     } else if (tabName === 'playlists') {
       this.renderPlaylists();
+      this.syncPlaylistsFromServer();
     } else if (tabName === 'home') {
       this.closeHomeAlbumDetail();
       if (!this.hasChosenTaste()) {
@@ -7349,19 +7357,21 @@ class App {
       if (!Array.isArray(rawList)) return;
       for (const p of rawList) {
         if (!p || !p.id || !p.title) continue;
-        if (p.title === 'K-POP SONG' || p.title === "J-POP SONG'S") continue;
         
         if (!playlistMap.has(p.id)) {
           playlistMap.set(p.id, p);
         } else {
-          // If already exists, prefer the version that has tracks populated
+          // If already exists, prefer the version that has tracks populated or higher track count
           const existing = playlistMap.get(p.id);
-          const existingHasTracks = Array.isArray(existing.tracks) && existing.tracks.length > 0;
-          const incomingHasTracks = Array.isArray(p.tracks) && p.tracks.length > 0;
-          if (!existingHasTracks && incomingHasTracks) {
+          const existingTracks = Array.isArray(existing.tracks) && existing.tracks.length > 0;
+          const incomingTracks = Array.isArray(p.tracks) && p.tracks.length > 0;
+          const existingCount = existingTracks ? existing.tracks.length : (existing.trackCount || 0);
+          const incomingCount = incomingTracks ? p.tracks.length : (p.trackCount || 0);
+
+          if (incomingCount > existingCount) {
             playlistMap.set(p.id, { ...existing, ...p });
-          } else if (existingHasTracks && !incomingHasTracks) {
-            playlistMap.set(p.id, { ...p, tracks: existing.tracks });
+          } else if (existingTracks && !incomingTracks) {
+            playlistMap.set(p.id, { ...p, tracks: existing.tracks, trackCount: existingCount });
           }
         }
       }
@@ -7424,7 +7434,7 @@ class App {
       const data = await res.json();
 
       if (data.success && Array.isArray(data.playlists)) {
-        const serverPlaylists = data.playlists.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
+        const serverPlaylists = data.playlists;
 
         // CRITICAL SELF-HEALING:
         // If server returned 0 playlists but client already has playlists locally (e.g. after Vercel redeployment / cold restart),
@@ -7467,10 +7477,15 @@ class App {
               const localPl = mergedMap.get(sPl.id);
               const localHasTracks = Array.isArray(localPl.tracks) && localPl.tracks.length > 0;
               const serverHasTracks = Array.isArray(sPl.tracks) && sPl.tracks.length > 0;
+              const localCount = localHasTracks ? localPl.tracks.length : (localPl.trackCount || 0);
+              const serverCount = serverHasTracks ? sPl.tracks.length : (sPl.trackCount || 0);
+              const resolvedTracks = (serverCount >= localCount && serverHasTracks) ? sPl.tracks : (localHasTracks ? localPl.tracks : (sPl.tracks || []));
+
               mergedMap.set(sPl.id, {
                 ...sPl,
                 ...localPl,
-                tracks: localHasTracks ? localPl.tracks : (serverHasTracks ? sPl.tracks : [])
+                tracks: resolvedTracks,
+                trackCount: Math.max(localCount, serverCount)
               });
             }
           }

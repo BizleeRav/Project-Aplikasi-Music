@@ -3311,17 +3311,10 @@ input::-ms-reveal {
     display: none !important;
   }
 
-  /* Tampilkan Chip Dolby Atmos DSP yang ringkas di kanan */
-  .cinema-dsp-chip {
-    padding: 6px 11px !important;
-    font-size: 0.72rem !important;
-    font-weight: 700 !important;
-    border-radius: 9999px !important;
-    gap: 6px !important;
-    flex-shrink: 0 !important;
-    background: rgba(16, 185, 129, 0.16) !important;
-    border: 1px solid rgba(16, 185, 129, 0.45) !important;
-    color: #34d399 !important;
+  /* Sembunyikan Chip Dolby Atmos DSP di Studio Cinema */
+  .cinema-dsp-chip,
+  #btn-cinema-open-dsp {
+    display: none !important;
   }
 
   /* Tombol Tutup X di posisi paling kanan yang bersih & ergonomis */
@@ -7214,21 +7207,10 @@ body.cinema-mode-active {
   transform: rotate(90deg) scale(1.1);
 }
 
-/* Studio Cinema Audio DSP Quick Trigger Chip */
-.cinema-dsp-chip {
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  color: #34d399;
-  font-size: 0.78rem;
-  font-weight: 700;
-  padding: 6px 14px;
-  border-radius: var(--radius-full);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  white-space: nowrap;
+/* Studio Cinema Audio DSP Quick Trigger Chip (Permanently Hidden) */
+.cinema-dsp-chip,
+#btn-cinema-open-dsp {
+  display: none !important;
 }
 
 .cinema-dsp-chip:hover {
@@ -11207,13 +11189,9 @@ body.music-playing .cinema-turntable-arm {
     display: none !important;
   }
 
-  .cinema-dsp-chip {
-    padding: 6px 11px !important;
-    font-size: 0.72rem !important;
-    font-weight: 700 !important;
-    border-radius: 9999px !important;
-    gap: 6px !important;
-    flex-shrink: 0 !important;
+  .cinema-dsp-chip,
+  #btn-cinema-open-dsp {
+    display: none !important;
   }
 
   .cinema-stage {

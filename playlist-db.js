@@ -32,32 +32,73 @@ try {
 let playlistsCache = null;
 
 function loadFromDisk() {
-  if (!fs.existsSync(DB_FILE)) return [];
-  try {
-    const raw = fs.readFileSync(DB_FILE, 'utf8');
-    return JSON.parse(raw) || [];
-  } catch (err) {
-    console.error('Error reading playlists DB from disk:', err);
-    return [];
+  let list = [];
+  if (fs.existsSync(DB_FILE)) {
+    try {
+      const raw = fs.readFileSync(DB_FILE, 'utf8');
+      list = JSON.parse(raw) || [];
+    } catch (err) {
+      console.error('Error reading playlists DB from disk:', err);
+    }
   }
+
+  // Fallback / merge with workspace backup if DB_FILE was empty or missing playlists
+  const localFile = path.join(__dirname, 'data', 'playlists.json');
+  if (localFile !== DB_FILE && fs.existsSync(localFile)) {
+    try {
+      const rawLocal = fs.readFileSync(localFile, 'utf8');
+      const localList = JSON.parse(rawLocal) || [];
+      if (Array.isArray(localList) && localList.length > 0) {
+        if (!Array.isArray(list) || list.length === 0) {
+          list = localList;
+        } else {
+          const idSet = new Set(list.map(p => p.id));
+          for (const lp of localList) {
+            if (!idSet.has(lp.id)) {
+              list.push(lp);
+              idSet.add(lp.id);
+            }
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  return Array.isArray(list) ? list : [];
 }
 
 function persistToDisk() {
   if (!playlistsCache) return;
+  const content = JSON.stringify(playlistsCache, null, 2);
   // Non-blocking asynchronous write to avoid locking event loop
-  fs.writeFile(DB_FILE, JSON.stringify(playlistsCache, null, 2), 'utf8', (err) => {
+  fs.writeFile(DB_FILE, content, 'utf8', (err) => {
     if (err) console.error('Error persisting playlists DB to disk:', err);
   });
+  // Also keep workspace data/playlists.json in sync so redeployments and restarts never lose playlists
+  const localFile = path.join(__dirname, 'data', 'playlists.json');
+  if (localFile !== DB_FILE) {
+    try {
+      fs.writeFile(localFile, content, 'utf8', () => {});
+    } catch (e) {}
+  }
 }
 
 function getAllPlaylists(userKey = null) {
   if (playlistsCache === null) {
     playlistsCache = loadFromDisk();
-    playlistsCache = playlistsCache.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
   }
   if (!userKey) return playlistsCache;
   const cleanKey = String(userKey).trim().toLowerCase();
   const normalizedKey = cleanKey.replace(/^usr_/, '').replace(/_gmail_com$/, '@gmail.com');
+
+  // Check active server session to prevent isolating user from their own playlists
+  let activeSessionEmail = null;
+  try {
+    const userDb = require('./user-db');
+    const sess = userDb.getActiveSession();
+    if (sess && sess.email) activeSessionEmail = sess.email.trim().toLowerCase();
+  } catch (e) {}
+
   return playlistsCache.filter(p => {
     const pEmail = String(p.userEmail || '').trim().toLowerCase();
     const pUserId = String(p.userId || '').trim().toLowerCase();
@@ -66,6 +107,17 @@ function getAllPlaylists(userKey = null) {
     if (pEmail === cleanKey || pEmail === normalizedKey) return true;
     if (pUserId === cleanKey || pUserId === normalizedKey) return true;
     if (pDevice === cleanKey || pDevice === normalizedKey) return true;
+
+    // Active session match
+    if (activeSessionEmail) {
+      if (cleanKey === activeSessionEmail || normalizedKey === activeSessionEmail) {
+        if (pEmail === activeSessionEmail || pUserId === activeSessionEmail || pDevice === activeSessionEmail) return true;
+      }
+      if (pEmail === activeSessionEmail || pUserId === activeSessionEmail || pDevice === activeSessionEmail) {
+        return true;
+      }
+    }
+
     const pOwnerNorm = (pEmail || pUserId || pDevice).replace(/^usr_/, '').replace(/_gmail_com$/, '@gmail.com');
     return pOwnerNorm === normalizedKey;
   });
@@ -127,7 +179,6 @@ function bulkUpsertPlaylists(incomingPlaylists, userKey = null) {
   const all = getAllPlaylists();
   for (const pl of incomingPlaylists) {
     if (!pl || !pl.id || !pl.title) continue;
-    if (pl.title === 'K-POP SONG' || pl.title === "J-POP SONG'S") continue;
     
     const idx = all.findIndex(p => p.id === pl.id);
     const resolvedUserKey = userKey || pl.userEmail || pl.userId || pl.deviceId || '';
