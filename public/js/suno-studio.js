@@ -228,13 +228,13 @@ class SunoStudio {
   }
 
   copyClerkScript() {
-    const code = 'copy(await window.Clerk.session.getToken())';
+    const code = "fetch('http://localhost:3000/api/suno/connect-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:await window.Clerk.session.getToken()})}).then(r=>r.json()).then(d=>alert(d.message));";
     navigator.clipboard.writeText(code).then(() => {
       if (window.app && window.app.showToast) {
-        window.app.showToast('Perintah disalin! Buka F12 -> Console di Suno.com, tempel & Enter. Token langsung otomatis tersalin ke clipboard!', 'success');
+        window.app.showToast('Perintah otomatis disalin! Buka F12 -> Console di tab Suno.com Chrome Anda, tempel (Ctrl+V) & tekan Enter!', 'success');
       }
     }).catch(() => {
-      prompt('Salin perintah ini dan jalankan di Console (F12) Suno.com:', code);
+      prompt('Salin perintah ini dan jalankan di Console (F12) tab Suno.com Chrome Anda:', code);
     });
   }
 

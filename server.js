@@ -1173,6 +1173,19 @@ app.post('/api/suno/disconnect', (req, res) => {
   res.json({ success: true, message: 'Koneksi Suno berhasil dihapus dan direset ke awal.' });
 });
 
+app.post('/api/suno/connect-token', (req, res) => {
+  const { token } = req.body;
+  if (!token || token.trim().length < 20) {
+    return res.status(400).json({ success: false, error: 'Token tidak valid' });
+  }
+  const cleanToken = token.trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '');
+  sunoService.saveConfig({
+    suno_api_key: cleanToken,
+    suno_provider: 'suno_official'
+  });
+  res.json({ success: true, message: '🎉 Akun Suno Resmi Anda berhasil terhubung ke AuraSound!' });
+});
+
 // 5. High-Fidelity Audio Streaming Proxy (Supports Range 206 & Progressive Streams)
 app.get('/api/proxy-audio', async (req, res) => {
   const { url, id } = req.query;
