@@ -2047,15 +2047,33 @@ input::-ms-reveal {
   border-radius: var(--radius-full);
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.limiter-text {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .limiter-dot {
   width: 6px;
   height: 6px;
+  min-width: 6px;
+  min-height: 6px;
+  max-width: 6px;
+  max-height: 6px;
   background: #10b981;
   border-radius: 50%;
   box-shadow: 0 0 8px #10b981;
+  display: inline-block;
+  flex-shrink: 0;
+  overflow: hidden;
+  font-size: 0;
+  line-height: 0;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* EQ Curve Visualizer Wrapper */
@@ -7537,7 +7555,9 @@ body.cinema-mode-active {
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
 .cinema-eq-close-btn {

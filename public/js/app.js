@@ -1011,7 +1011,7 @@ class App {
         }
         elements.forEach(el => {
           if (!el) return;
-          const span = el.querySelector('span:not(.badge):not(.pill):not(.dot):not(.subtab-count-badge)');
+          const span = el.querySelector('span:not(.badge):not(.pill):not(.dot):not([class*="dot"]):not([class*="icon"]):not(.subtab-count-badge)');
           if (span) {
             span.textContent = isEn ? enText : idText;
             return;
@@ -1278,11 +1278,21 @@ class App {
       // 11. Equalizer Drawer Texts
       const eqCurveTitle = document.querySelector('.eq-curve-title');
       if (eqCurveTitle) eqCurveTitle.textContent = isEn ? 'Real-Time Frequency Response' : 'Respon Frekuensi Real-Time';
-      const limiterBadge = document.querySelector('.limiter-badge');
-      if (limiterBadge) {
-        limiterBadge.title = isEn ? 'Master Brickwall Limiter prevents digital audio distortion' : 'Master Brickwall Limiter mencegah distorsi audio digital';
-        setNodeText('.limiter-badge', 'Studio Limiter: Aktif', 'Studio Limiter: Active');
-      }
+      const cinemaEqCurveTitle = document.querySelector('.cinema-eq-curve-title');
+      if (cinemaEqCurveTitle) cinemaEqCurveTitle.textContent = isEn ? 'Real-Time Frequency Response' : 'Respon Frekuensi Real-Time';
+
+      const limiterBadges = document.querySelectorAll('.limiter-badge, .cinema-limiter-badge');
+      limiterBadges.forEach(badge => {
+        badge.title = isEn ? 'Master Brickwall Limiter prevents digital audio distortion' : 'Master Brickwall Limiter mencegah distorsi audio digital';
+        const dot = badge.querySelector('.limiter-dot');
+        if (dot) dot.textContent = ''; // Ensure dot stays clean with no inner text
+        const textSpan = badge.querySelector('.limiter-text');
+        if (textSpan) {
+          textSpan.textContent = isEn ? 'Studio Limiter: Active' : 'Studio Limiter: Aktif';
+        } else {
+          setNodeText(badge, 'Studio Limiter: Aktif', 'Studio Limiter: Active');
+        }
+      });
       try {
         if (typeof this.updateEqStatusBanner === 'function') {
           this.updateEqStatusBanner();
