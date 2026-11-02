@@ -711,28 +711,23 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
               throw new Error(response.data?.msg || 'Gagal memulai pembuatan lagu di Kie.ai');
             }
           }
-            return {
-              success: true,
-              is_auto: false,
-              data: [
-                {
-                  id: taskId,
-                  title: finalTitle,
-                  artist: `${modelLabel} (Kie.ai)`,
-                  tags: finalTags,
-                  prompt: finalPrompt,
-                  lyrics: finalPrompt,
-                  model: isV35 ? 'chirp-v3-5' : 'v4',
-                  status: 'submitted',
-                  created_at: 'Sedang Diproses...'
-                }
-              ]
-            };
-          } else if (response.data?.code === 402 || (response.data?.msg && response.data.msg.toLowerCase().includes('credit'))) {
-            throw new Error(`Saldo kredit Suno AI (Kie.ai) tidak mencukupi (${response.data?.msg || 'Habis'}). Silakan hubungkan akun Suno.com gratis Anda (50 kredit gratis setiap hari) di tombol 🔗 Hubungkan Akun Suno.`);
-          } else {
-            throw new Error(response.data?.msg || 'Gagal memulai pembuatan lagu di Kie.ai');
-          }
+          return {
+            success: true,
+            is_auto: false,
+            data: [
+              {
+                id: taskId,
+                title: finalTitle,
+                artist: `${modelLabel} (Kie.ai)`,
+                tags: finalTags,
+                prompt: finalPrompt,
+                lyrics: finalPrompt,
+                model: isV35 ? 'chirp-v3-5' : 'v4',
+                status: 'submitted',
+                created_at: 'Sedang Diproses...'
+              }
+            ]
+          };
         } catch (kieErr) {
           if (kieErr.response?.data?.msg) {
             throw new Error(`Kie.ai Suno Error: ${kieErr.response.data.msg}`);
