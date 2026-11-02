@@ -10,8 +10,36 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.47.0">
+  <link rel="stylesheet" href="/css/style.css?v=4.48.0">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
+  <style>
+    /* 100% Guaranteed Native Browser Input Clear Button Elimination across Edge, Chrome, Android */
+    input::-webkit-search-cancel-button,
+    input::-webkit-search-decoration,
+    input::-webkit-search-results-button,
+    input::-webkit-search-results-decoration,
+    input::-webkit-clear-button {
+      -webkit-appearance: none !important;
+      appearance: none !important;
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+    }
+    input::-ms-clear,
+    input::-ms-reveal,
+    input[type="text"]::-ms-clear,
+    input[type="search"]::-ms-clear {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+    }
+  </style>
   <script type="module" src="/js/better-lyrics-core.js?v=1.16.14"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -1683,6 +1711,6 @@
   <script src="/js/yt-player.js?v=4.45.0"></script>
   <script src="/js/taste-engine.js?v=4.45.0"></script>
   <script src="/js/suno-studio.js?v=4.45.0"></script>
-  <script src="/js/app.js?v=4.47.0"></script>
+  <script src="/js/app.js?v=4.48.0"></script>
 </body>
 </html>
