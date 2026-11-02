@@ -992,33 +992,11 @@ app.get('/api/suno/account', async (req, res) => {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
 
-    // If client provided their own personal key, return their key account info
-    if (creds.isClientKey) {
-      const info = await sunoService.getApiKeyInfo(creds.key, creds.provider);
-      return res.json(info);
-    }
-
-    // Default System Engine with Isolated Per-Device Credits (Option 3)
-    const quota = deviceCredits.getDeviceCredits(deviceId, isLocalhost);
-    const totalCreations = sunoService.getCreations().length;
-
-    res.json({
-      configured: true,
-      is_auto: false,
-      is_device_quota: true,
-      provider: 'Suno AI Neural Studio',
-      providerCode: 'kie',
-      deviceId: quota.deviceId,
-      credits: `${quota.credits} Kredit (${quota.songs_remaining} Lagu Hari Ini)`,
-      remaining_credits: quota.credits,
-      daily_limit: quota.daily_limit,
-      songs_remaining: quota.songs_remaining,
-      cost_per_song: quota.cost_per_song,
-      statusText: 'Engine Siap • Buat lagu lengkap dengan vokal & instrumen AI',
-      totalCreations
-    });
+    // Return real account info from configured key or unconfigured state
+    const info = await sunoService.getApiKeyInfo(creds.key, creds.provider);
+    return res.json(info);
   } catch (error) {
-    res.status(500).json({ configured: true, is_auto: true, error: error.message });
+    res.status(500).json({ configured: false, is_auto: false, error: error.message });
   }
 });
 

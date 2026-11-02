@@ -476,6 +476,8 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
       custom: 'Custom Suno API Server'
     };
     let creditsInfo = 'Aktif';
+    let remaining_credits = undefined;
+    let statusText = `🟢 Suno AI Terhubung (${creditsInfo}) • Siap Membuat Lagu Neural Asli`;
     try {
       if (provider === 'kie') {
         const res = await axios.get('https://api.kie.ai/api/v1/chat/credit', {
@@ -484,6 +486,10 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
         });
         if (res.data && res.data.data !== undefined) {
           creditsInfo = `${res.data.data} Kredit`;
+          remaining_credits = Number(res.data.data);
+          if (remaining_credits < 10) {
+            statusText = `⚠️ Saldo Kie.ai tersisa ${remaining_credits} kredit (butuh min. 10 kredit/lagu) • Top-up di kie.ai atau hubungkan Akun Suno Resmi`;
+          }
         }
       }
     } catch (e) {
@@ -496,19 +502,21 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
       provider: providerNames[provider] || provider,
       providerCode: provider,
       credits: creditsInfo,
+      remaining_credits,
       maskedKey: `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`,
-      statusText: `🟢 Suno AI Terhubung (${creditsInfo}) • Siap Membuat Lagu Neural Asli`,
+      statusText,
       totalCreations: getCreations().length
     };
   }
 
-  // DEFAULT: Built-in Auto-Engine (No configuration / registration required!)
+  // If no apiKey configured:
   return {
-    configured: true,
-    is_auto: true,
-    provider: 'Suno AI Auto-Engine (Built-in)',
-    providerCode: 'auto',
-    statusText: '🟢 Suno AI Auto-Engine Aktif • Siap Membuat Lagu (Tanpa Daftar & Bebas Kuota)',
+    configured: false,
+    is_auto: false,
+    provider: 'Suno AI Music Studio',
+    providerCode: 'none',
+    credits: 'Belum Terhubung',
+    statusText: 'Akun Suno belum terhubung • Klik "Hubungkan Akun Suno" untuk login (Gratis 50 kredit/hari)',
     totalCreations: getCreations().length
   };
 }
@@ -766,52 +774,8 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
     }
   }
 
-  // 2. BUILT-IN AUTO-ENGINE: Generate immediately without requiring any key
-  const finalTitle = (title || '').trim() || generateCreativeTitle(prompt, tags);
-  const finalTags = (tags || '').trim() || 'Indonesian Pop, Emotional Vocal, 432Hz Studio Mix';
-  const finalPrompt = (prompt || '').trim() || 'Lagu pop aransemen modern dengan melodi hangat dan vokal ekspresif';
-  const structuredLyrics = lyrics || generateStructuredLyrics(finalTitle, finalPrompt, finalTags, make_instrumental);
-
-  // Match sound from sound pool according to genre/tags
-  const pLow = (finalPrompt + ' ' + finalTags).toLowerCase();
-  let pickedSound = AUTO_SOUND_POOL[0];
-  if (pLow.includes('lofi') || pLow.includes('lo-fi') || pLow.includes('study') || pLow.includes('relax')) {
-    pickedSound = AUTO_SOUND_POOL[1];
-  } else if (pLow.includes('synth') || pLow.includes('cyber') || pLow.includes('80s')) {
-    pickedSound = AUTO_SOUND_POOL[3];
-  } else if (pLow.includes('kpop') || pLow.includes('dance') || pLow.includes('koplo') || pLow.includes('trap')) {
-    pickedSound = AUTO_SOUND_POOL[4];
-  } else if (pLow.includes('pop') || pLow.includes('ballad') || pLow.includes('piano')) {
-    pickedSound = AUTO_SOUND_POOL[2];
-  }
-
-  const trackId = `suno-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-  const newTrack = {
-    id: trackId,
-    title: finalTitle,
-    artist: `${modelLabel} (Karya Saya)`,
-    tags: finalTags,
-    prompt: finalPrompt,
-    lyrics: structuredLyrics,
-    model: isV35 ? 'chirp-v3-5' : 'v6-mini',
-    instrumental: Boolean(make_instrumental),
-    thumbnail: pickedSound.thumbnail,
-    audio_url: pickedSound.audio_url,
-    duration: pickedSound.duration,
-    seconds: pickedSound.seconds,
-    status: 'complete',
-    type: 'suno',
-    created_at: 'Hari ini'
-  };
-
-  // Persist into user creations
-  addCreation(newTrack, deviceId);
-
-  return {
-    success: true,
-    is_auto: true,
-    data: [newTrack]
-  };
+  // 2. If no valid API key is present:
+  throw new Error('Akun Suno belum terhubung. Silakan klik tombol "🔗 Hubungkan Akun Suno" di atas untuk login ke akun resmi Suno.com Anda (Gratis 50 kredit setiap hari) atau masukkan API Key Kie.ai.');
 }
 
 /**

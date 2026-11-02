@@ -204,6 +204,8 @@ public class FocusWin {
                       const t = await window.Clerk.session.getToken();
                       if (t && typeof t === 'string' && t.length > 25) return t;
                     }
+                    const match = document.cookie.match(/__session=([^;]+)/);
+                    if (match && match[1] && match[1].length > 25) return match[1];
                   } catch (e) {}
                   return null;
                 })()`,

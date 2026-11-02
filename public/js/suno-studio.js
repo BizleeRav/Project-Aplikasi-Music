@@ -32,12 +32,6 @@ class SunoStudio {
   }
 
   init() {
-    // Purge old test key so user can start completely clean
-    if (localStorage.getItem('aurasound_suno_key') === '368b953dba13bca4791b6ee34b3c1c7a') {
-      localStorage.removeItem('aurasound_suno_key');
-      localStorage.removeItem('aurasound_suno_provider');
-    }
-
     this.checkApiStatus();
     this.fetchCreations(1, false);
 
@@ -83,13 +77,8 @@ class SunoStudio {
 
   async checkApiStatus() {
     try {
-      if (localStorage.getItem('aurasound_suno_key') === '368b953dba13bca4791b6ee34b3c1c7a') {
-        localStorage.removeItem('aurasound_suno_key');
-        localStorage.removeItem('aurasound_suno_provider');
-      }
-
       const localKey = localStorage.getItem('aurasound_suno_key') || '';
-      const localProvider = localStorage.getItem('aurasound_suno_provider') || 'kie';
+      const localProvider = localStorage.getItem('aurasound_suno_provider') || 'suno_official';
 
       const res = await fetch('/api/suno/account', {
         headers: this.getAuthHeaders()
@@ -118,66 +107,90 @@ class SunoStudio {
     }
   }
 
+  openSettingsModal() {
+    const modal = document.getElementById('modal-token');
+    if (modal) {
+      modal.classList.add('active');
+      const localKey = localStorage.getItem('aurasound_suno_key') || '';
+      const localProvider = localStorage.getItem('aurasound_suno_provider') || 'suno_official';
+      const keyInput = document.getElementById('input-suno-api-key');
+      const providerSel = document.getElementById('input-suno-provider');
+      if (keyInput && !keyInput.value) keyInput.value = localKey || '368b953dba13bca4791b6ee34b3c1c7a';
+      if (providerSel) providerSel.value = localProvider === 'suno_official' ? 'kie' : localProvider;
+    }
+  }
+
   updateConnectionUI(info) {
     const card = document.getElementById('suno-account-card');
     const userNameEl = document.getElementById('suno-user-name');
     const creditsPill = document.getElementById('suno-credits-pill');
     const statusTextEl = document.getElementById('suno-connection-status-text');
+    const connectBtn = document.getElementById('btn-suno-connect');
+    const connectBtnText = document.getElementById('btn-suno-connect-text');
     const disconnectBtn = document.getElementById('btn-suno-disconnect');
-    const settingsBtn = document.getElementById('btn-suno-settings');
-    if (settingsBtn) {
-      try { settingsBtn.remove(); } catch (e) {}
-    }
+    const dot = card ? card.querySelector('.status-dot') : null;
 
     if (!card) return;
 
-    card.classList.add('connected');
-    card.classList.remove('disconnected');
+    const isConnected = Boolean(info && info.configured && !info.is_auto);
+    const isOfficial = info && info.providerCode === 'suno_official';
+    const isLowCredit = info && info.remaining_credits !== undefined && info.remaining_credits < 10;
 
-    if (info && !info.is_auto && info.configured) {
-      const isOfficial = info.providerCode === 'suno_official';
+    if (isConnected) {
+      card.classList.add('connected');
+      card.classList.remove('disconnected');
+      if (dot) dot.className = isLowCredit ? 'status-dot warning' : 'status-dot active';
+
       if (userNameEl) {
-        userNameEl.textContent = 'Suno AI Music Studio';
+        userNameEl.textContent = isOfficial ? 'Suno AI (Akun Resmi Suno.com)' : (info.provider || 'Suno AI Studio');
       }
       if (creditsPill) {
-        creditsPill.textContent = `${info.credits || '50 Kredit (5 Lagu Hari Ini)'}`;
+        creditsPill.textContent = `${info.credits || '50 Kredit'}`;
         creditsPill.style.display = 'inline-flex';
-        if (info.remaining_credits !== undefined && info.remaining_credits < 10) {
+        if (isLowCredit) {
           creditsPill.style.background = 'rgba(239, 68, 68, 0.2)';
           creditsPill.style.color = '#f87171';
         } else {
-          creditsPill.style.background = '';
-          creditsPill.style.color = '';
+          creditsPill.style.background = 'rgba(16, 185, 129, 0.15)';
+          creditsPill.style.color = '#34d399';
         }
       }
       if (statusTextEl) {
-        statusTextEl.textContent = isOfficial
+        statusTextEl.textContent = info.statusText || (isOfficial
           ? 'Akun Suno.com Resmi Terhubung • Siap membuat lagu'
-          : 'Engine Siap • Buat lagu lengkap dengan vokal & instrumen AI';
+          : 'Engine Terhubung • Siap membuat lagu');
+      }
+      if (connectBtn) {
+        connectBtn.style.display = 'inline-flex';
+        if (connectBtnText) connectBtnText.textContent = 'Ganti / Kelola Akun';
       }
       if (disconnectBtn) {
-        disconnectBtn.style.display = isOfficial ? 'inline-flex' : 'none';
+        disconnectBtn.style.display = 'inline-flex';
       }
     } else {
-      // Auto-Engine Mode
+      card.classList.remove('connected');
+      card.classList.add('disconnected');
+      if (dot) dot.className = 'status-dot offline';
+
       if (userNameEl) {
         userNameEl.textContent = 'Suno AI Music Studio';
       }
       if (creditsPill) {
-        creditsPill.textContent = 'Bebas Kuota';
+        creditsPill.textContent = 'Belum Terhubung';
         creditsPill.style.display = 'inline-flex';
+        creditsPill.style.background = 'rgba(234, 179, 8, 0.15)';
+        creditsPill.style.color = '#fde047';
       }
       if (statusTextEl) {
-        statusTextEl.textContent = 'Engine Siap • Buat lagu lengkap dengan vokal & instrumen AI';
+        statusTextEl.textContent = 'Klik tombol di samping untuk login akun Suno (Gratis 50 kredit setiap hari)';
+      }
+      if (connectBtn) {
+        connectBtn.style.display = 'inline-flex';
+        if (connectBtnText) connectBtnText.textContent = 'Hubungkan Akun Suno (1-Klik)';
       }
       if (disconnectBtn) {
         disconnectBtn.style.display = 'none';
       }
-    }
-
-    const dot = card.querySelector('.status-dot');
-    if (dot) {
-      dot.className = 'status-dot active';
     }
   }
 
@@ -414,6 +427,72 @@ class SunoStudio {
       if (btn) {
         btn.disabled = false;
         btn.textContent = '🔗 Hubungkan Akun Suno Saya';
+      }
+    }
+  }
+
+  async saveApiKey() {
+    const keyInput = document.getElementById('input-suno-api-key');
+    const providerSelect = document.getElementById('input-suno-provider');
+    const customUrlInput = document.getElementById('input-suno-custom-url');
+    const statusEl = document.getElementById('modal-suno-status');
+    const btn = document.getElementById('btn-save-suno-token');
+
+    const key = keyInput ? keyInput.value.trim() : '';
+    const provider = providerSelect ? providerSelect.value : 'kie';
+    const customUrl = customUrlInput ? customUrlInput.value.trim() : '';
+
+    if (!key) {
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.style.background = 'rgba(239, 68, 68, 0.15)';
+        statusEl.style.color = '#f87171';
+        statusEl.textContent = '❌ Masukkan API Key terlebih dahulu.';
+      }
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Memverifikasi API Key...';
+    }
+
+    try {
+      const res = await fetch('/api/suno/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          suno_api_key: key,
+          suno_provider: provider,
+          suno_custom_url: customUrl
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('aurasound_suno_key', key);
+        localStorage.setItem('aurasound_suno_provider', provider);
+        if (window.app && window.app.showToast) {
+          window.app.showToast('API Key berhasil disimpan dan aktif!', 'success');
+        }
+        document.getElementById('modal-token')?.classList.remove('active');
+        await this.checkApiStatus();
+      } else {
+        throw new Error(data.error || 'Gagal memverifikasi API Key');
+      }
+    } catch (e) {
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.style.background = 'rgba(239, 68, 68, 0.15)';
+        statusEl.style.color = '#f87171';
+        statusEl.textContent = `❌ ${e.message}`;
+      }
+      if (window.app && window.app.showToast) {
+        window.app.showToast(e.message, 'error');
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Simpan & Aktifkan API Key';
       }
     }
   }

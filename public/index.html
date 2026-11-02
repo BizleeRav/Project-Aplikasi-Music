@@ -413,9 +413,13 @@
               </div>
             </div>
             <div class="suno-card-right">
-              <span id="suno-credits-pill" class="suno-credits-pill">50 Kredit (5 Lagu Hari Ini)</span>
-              <button class="suno-act-btn btn-danger-soft" id="btn-suno-disconnect" onclick="window.sunoStudio.disconnectAccount()" title="Putuskan koneksi saat ini dan kembali ke Auto-Engine" style="display: none; background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35);">
-                Putuskan Koneksi
+              <span id="suno-credits-pill" class="suno-credits-pill">50 Kredit</span>
+              <button class="suno-act-btn" id="btn-suno-connect" onclick="window.sunoStudio.openSettingsModal()" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); padding: 7px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <span id="btn-suno-connect-text">Hubungkan Akun Suno</span>
+              </button>
+              <button class="suno-act-btn btn-danger-soft" id="btn-suno-disconnect" onclick="window.sunoStudio.disconnectAccount()" title="Putuskan koneksi saat ini" style="display: none; background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35);">
+                Putuskan
               </button>
             </div>
           </div>

@@ -208,6 +208,8 @@ ipcMain.handle('open-suno-login', async () => {
                 return t;
               }
             }
+            const match = document.cookie.match(/__session=([^;]+)/);
+            if (match && match[1] && match[1].length > 20) return match[1];
           } catch (e) {}
           return null;
         })()
