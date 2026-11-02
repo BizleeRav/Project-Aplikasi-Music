@@ -8940,6 +8940,64 @@ class App {
   }
 }
 
+function checkAuraSoundAppVersion() {
+  if (!window.AuraSoundAndroid) return;
+  const currentVer = (typeof window.AuraSoundAndroid.getAppVersionCode === 'function')
+    ? window.AuraSoundAndroid.getAppVersionCode()
+    : 1;
+
+  if (currentVer < 3) {
+    setTimeout(() => {
+      if (document.getElementById('aurasound-update-banner')) return;
+      const banner = document.createElement('div');
+      banner.id = 'aurasound-update-banner';
+      banner.style.cssText = 'position:fixed; top:14px; left:14px; right:14px; z-index:9999999; background:linear-gradient(135deg, #090e1a, #162032); border:1.5px solid #10b981; border-radius:14px; padding:16px; box-shadow:0 12px 36px rgba(0,0,0,0.85); display:flex; flex-direction:column; gap:10px; color:#fff; font-family:system-ui,-apple-system,sans-serif;';
+      banner.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div style="font-weight:700; font-size:15px; color:#34d399; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:18px;">🚀</span> Update AuraSound v1.2.0 Tersedia!
+          </div>
+          <button id="close-update-banner" style="background:none; border:none; color:#94a3b8; font-size:20px; cursor:pointer; line-height:1; padding:0 4px;">✕</button>
+        </div>
+        <div style="font-size:13px; color:#cbd5e1; line-height:1.45;">
+          Perbarui aplikasi untuk mengaktifkan <b>Login Google Resmi Suno AI</b> dan sistem <b>Update Otomatis</b> di HP Anda.
+        </div>
+        <div style="display:flex; gap:10px; margin-top:2px;">
+          <button id="btn-do-update-apk" style="flex:1; background:linear-gradient(135deg,#10b981,#059669); color:#fff; font-weight:700; font-size:13px; padding:11px 16px; border-radius:8px; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+            ⬇️ Download & Pasang Sekarang (1 MB)
+          </button>
+        </div>
+      `;
+      document.body.appendChild(banner);
+
+      const closeBtn = banner.querySelector('#close-update-banner');
+      if (closeBtn) closeBtn.onclick = () => banner.remove();
+
+      const updateBtn = banner.querySelector('#btn-do-update-apk');
+      if (updateBtn) {
+        updateBtn.onclick = () => {
+          const apkUrl = 'https://project-aplikasi-music.vercel.app/download/AuraSound.apk';
+          if (typeof window.AuraSoundAndroid.downloadAndInstallUpdate === 'function') {
+            window.AuraSoundAndroid.downloadAndInstallUpdate(apkUrl);
+          } else if (typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
+            window.AuraSoundAndroid.openExternalBrowser(apkUrl);
+          } else {
+            const a = document.createElement('a');
+            a.href = apkUrl;
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          }
+        };
+      }
+    }, 1200);
+  }
+}
+
+window.checkAuraSoundAppVersion = checkAuraSoundAppVersion;
+
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new App();
+  checkAuraSoundAppVersion();
 });

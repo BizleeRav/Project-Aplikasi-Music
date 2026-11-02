@@ -259,14 +259,18 @@ class SunoStudio {
         return;
       } else {
         // Old APK detected on user's phone!
-        const apkUrl = 'https://raw.githubusercontent.com/BizleeRav/Project-Aplikasi-Music/main/public/download/AuraSound.apk';
-        if (window.app && window.app.showToast) {
-          window.app.showToast('Fitur login Suno di HP butuh APK v1.2.0. Membuka unduhan di browser HP...', 'info', 6000);
+        const apkUrl = 'https://project-aplikasi-music.vercel.app/download/AuraSound.apk';
+        if (typeof window.checkAuraSoundAppVersion === 'function') {
+          window.checkAuraSoundAppVersion();
         }
-        if (typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
+        if (window.app && window.app.showToast) {
+          window.app.showToast('Fitur login Suno butuh APK v1.2.0. Memulai unduhan update...', 'info', 6000);
+        }
+        if (typeof window.AuraSoundAndroid.downloadAndInstallUpdate === 'function') {
+          window.AuraSoundAndroid.downloadAndInstallUpdate(apkUrl);
+        } else if (typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
           window.AuraSoundAndroid.openExternalBrowser(apkUrl);
         } else {
-          // Open in external browser tab so WebView stays intact and does not turn blank
           const a = document.createElement('a');
           a.href = apkUrl;
           a.target = '_blank';
