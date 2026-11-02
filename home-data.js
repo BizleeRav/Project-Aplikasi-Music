@@ -1956,7 +1956,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
 
   const artistSummary = activeArtists.slice(0, 4).join(', ');
 
-  let supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: memadukan lagu favorit, riwayat musik (${artistSummary}), dan penemuan baru selaras dengan selera Anda.`;
+  let supermixDescription = 'Kombinasi lagu favorit dan penemuan musik baru untuk Anda.';
   let supermixArtist = `Berdasarkan riwayat dengar & artis favorit Anda`;
   let supermixBadge = 'SUPERMIX PRIBADI';
   let supermixSubtitle = 'Racikan Cerdas Selera Anda';
@@ -1964,17 +1964,16 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
   if (validImported.length === 1) {
     const p = validImported[0];
     const sourceLabel = p.source === 'spotify' ? 'Spotify' : (p.source === 'youtube' ? 'YouTube Music' : 'Playlist');
-    supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: memadukan playlist "${p.title.trim()}" (${sourceLabel}), riwayat dengar Anda, dan penemuan musik baru.`;
+    supermixDescription = `Kombinasi lagu dari playlist "${p.title.trim()}" dan riwayat musik Anda.`;
     supermixArtist = `Playlist ${p.title.trim()} & Selera Anda`;
     supermixBadge = 'SUPERMIX PRIBADI';
     supermixSubtitle = `Koleksi 1 Playlist (${sourceLabel}) & Selera Anda`;
   } else if (validImported.length >= 2) {
-    const playlistTitles = validImported.map(p => `"${p.title.trim()}"`).join(', ');
     const sources = [...new Set(validImported.map(p => p.source === 'spotify' ? 'Spotify' : 'YouTube Music'))].join(' & ');
-    supermixDescription = `Diracik otomatis oleh Algoritma Cerdas AuraSound: perpaduan cerdas dari seluruh ${validImported.length} playlist Anda (${playlistTitles}), riwayat lagu yang sering Anda putar, dan rekomendasi musik baru.`;
+    supermixDescription = 'Kombinasi lagu dari seluruh playlist dan riwayat musik Anda.';
     supermixArtist = `Koleksi ${validImported.length} Playlist (${sources}) & Selera Anda`;
     supermixBadge = 'SUPERMIX PRIBADI';
-    supermixSubtitle = `Diracik dari ${validImported.length} Playlist (${sources}) & Selera Anda`;
+    supermixSubtitle = 'Koleksi Playlist & Selera Anda';
   }
 
   const supermixAlbum = {

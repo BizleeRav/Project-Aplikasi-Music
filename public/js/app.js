@@ -4359,10 +4359,10 @@ class App {
         heroButtonLabel = isEn ? 'Play Supermix' : 'Putar Supermix';
         bentoSupermixBadge = 'SUPERMIX PRIBADI';
         bentoSupermixTitle = 'My Supermix';
-        bentoSupermixSubtitle = isEn ? `Curated from ${importedPlaylists.length} Playlists (${sources}) & Taste` : `Diracik dari ${importedPlaylists.length} Playlist (${sources}) & Selera Anda`;
+        bentoSupermixSubtitle = isEn ? 'Auto-Curated from Your Playlists' : 'Koleksi Playlist & Selera Anda';
         bentoSupermixDesc = isEn
-          ? `Intelligent blend from all ${importedPlaylists.length} playlists (${titles}), listening history, and new discoveries.`
-          : `Perpaduan cerdas dari seluruh ${importedPlaylists.length} playlist Anda (${titles}), riwayat lagu yang sering Anda dengar, dan rekomendasi baru.`;
+          ? 'A seamless mix of your playlists and listening history.'
+          : 'Kombinasi lagu dari seluruh playlist dan riwayat musik Anda.';
       } else if (importedPlaylists.length === 1) {
         const imp = importedPlaylists[0];
         const sourceName = imp.source === 'spotify' ? 'Spotify' : (imp.source === 'youtube' ? 'YouTube Music' : 'Playlist');
@@ -4371,16 +4371,16 @@ class App {
         bentoSupermixTitle = 'My Supermix';
         bentoSupermixSubtitle = isEn ? `Collection from 1 Playlist (${sourceName}) & Taste` : `Koleksi 1 Playlist (${sourceName}) & Selera Anda`;
         bentoSupermixDesc = isEn
-          ? `Blending playlist "${imp.title}", your listening history, and new music discoveries.`
-          : `Memadukan playlist "${imp.title}", riwayat dengar Anda, dan penemuan musik baru.`;
+          ? `A mix from playlist "${imp.title}" and your listening history.`
+          : `Kombinasi lagu dari playlist "${imp.title}" dan riwayat musik Anda.`;
       } else {
         heroButtonLabel = isEn ? 'Play My Supermix' : 'Putar Supermix';
         bentoSupermixBadge = 'SUPERMIX PRIBADI';
         bentoSupermixTitle = 'My Supermix';
         bentoSupermixSubtitle = isEn ? 'Auto-Curated for Your Taste' : 'Racikan Otomatis Selera Anda';
         bentoSupermixDesc = isEn
-          ? `Auto-mixed from artists and songs you enjoy (${topArtistNames}).`
-          : `Diramu otomatis dari artis dan lagu yang Anda nikmati (${topArtistNames}).`;
+          ? 'A personalized mix of your favorite tracks and new discoveries.'
+          : 'Kombinasi lagu favorit dan penemuan musik baru untuk Anda.';
       }
     } else {
       // Clean context without playlists (1-4 song history): Display pure related music without premature supermix
