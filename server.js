@@ -159,11 +159,14 @@ app.use(express.static(path.join(__dirname, 'public'), {
 app.get(['/download/apk', '/download/AuraSound.apk'], (req, res) => {
   const p1 = path.join(__dirname, 'public', 'download', 'AuraSound.apk');
   const p2 = path.join(__dirname, 'dist', 'AuraSound.apk');
-  const target = fs.existsSync(p1) ? p1 : p2;
-  if (fs.existsSync(target)) {
-    return res.download(target, 'AuraSound.apk');
+  const target = fs.existsSync(p1) ? p1 : (fs.existsSync(p2) ? p2 : null);
+  if (target) {
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="AuraSound.apk"');
+    return res.sendFile(path.resolve(target));
   }
-  return res.status(404).send('APK belum tersedia.');
+  // Fallback ke direct download GitHub raw jika berjalan di serverless tanpa bundled file
+  return res.redirect(302, 'https://raw.githubusercontent.com/BizleeRav/Project-Aplikasi-Music/main/public/download/AuraSound.apk');
 });
 
 // Persistent Playback State API (disk persistence fallback)
@@ -261,18 +264,6 @@ app.get('/api/network-info', async (req, res) => {
   }
 });
 
-app.get('/download/apk', (req, res) => {
-  const distPath = path.join(__dirname, 'dist', 'AuraSound.apk');
-  const pubPath = path.join(__dirname, 'public', 'download', 'AuraSound.apk');
-  const apkPath = fs.existsSync(distPath) ? distPath : (fs.existsSync(pubPath) ? pubPath : null);
-
-  if (apkPath) {
-    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.download(apkPath, 'AuraSound.apk');
-  } else {
-    res.status(404).send('File APK belum tersedia.');
-  }
-});
 
 // Native YouTube Music Search Client (via Innertube)
 let innertubeClient = null;

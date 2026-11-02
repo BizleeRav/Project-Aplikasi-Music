@@ -791,16 +791,32 @@ public class MainActivity extends Activity {
         // Expose Native Android Bridge to JavaScript
         webView.addJavascriptInterface(new AndroidMediaBridge(this), "AuraSoundAndroid");
 
+        // Intercept downloads and external apk links cleanly
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+            openExternalBrowser(url);
+        });
+
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request != null && request.getUrl() != null) {
+                    String u = request.getUrl().toString();
+                    if (u.endsWith(".apk") || u.contains("/download/") || u.startsWith("market://")) {
+                        openExternalBrowser(u);
+                        return true;
+                    }
+                }
                 return false;
             }
 
             @SuppressWarnings("deprecation")
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (url != null && (url.endsWith(".apk") || url.contains("/download/") || url.startsWith("market://"))) {
+                    openExternalBrowser(url);
+                    return true;
+                }
                 return false;
             }
 
