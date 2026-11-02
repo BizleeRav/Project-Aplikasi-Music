@@ -642,48 +642,63 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
         const finalTags = (tags || '').trim() || 'Indonesian Pop, Emotional Vocal, 432Hz Studio Mix';
         const finalPrompt = (lyrics || prompt || '').trim() || generateStructuredLyrics(finalTitle, prompt, finalTags, make_instrumental);
 
-        const response = await axios.post(
-          'https://api.kie.ai/api/v1/jobs/createTask',
-          {
-            model: 'ai-music-api/generate',
-            input: {
-              prompt: finalPrompt,
-              title: finalTitle,
-              tags: finalTags,
-              make_instrumental: Boolean(make_instrumental),
-              model: model || 'v6-mini'
-            }
-          },
-          {
-            headers: {
-              'Authorization': `Bearer ${apiKey.trim()}`,
-              'Content-Type': 'application/json'
-            },
-            timeout: 30000
-          }
-        );
+        let kieModel = 'V3_5';
+        if (model === 'v4' || model === 'chirp-v4') {
+          kieModel = 'V4';
+        } else if (model === 'v6' || model === 'chirp-v6' || model === 'v6-mini') {
+          kieModel = 'V3_5';
+        }
 
-        if (response.data && response.data.code === 200 && response.data.data?.taskId) {
-          const taskId = response.data.data.taskId;
-          return {
-            success: true,
-            is_auto: false,
-            data: [
-              {
-                id: taskId,
-                title: finalTitle,
-                artist: `${modelLabel} (Kie.ai)`,
-                tags: finalTags,
-                prompt: finalPrompt,
-                lyrics: finalPrompt,
-                model: isV35 ? 'chirp-v3-5' : 'v6-mini',
-                status: 'submitted',
-                created_at: 'Sedang Diproses...'
-              }
-            ]
-          };
-        } else {
-          throw new Error(response.data?.msg || 'Gagal memulai pembuatan lagu di Kie.ai');
+        try {
+          const response = await axios.post(
+            'https://api.kie.ai/api/v1/generate',
+            {
+              prompt: finalPrompt,
+              customMode: true,
+              instrumental: Boolean(make_instrumental),
+              model: kieModel,
+              style: finalTags,
+              title: finalTitle,
+              callBackUrl: 'https://project-aplikasi-music.vercel.app/api/suno/callback'
+            },
+            {
+              headers: {
+                'Authorization': `Bearer ${apiKey.trim()}`,
+                'Content-Type': 'application/json'
+              },
+              timeout: 30000
+            }
+          );
+
+          if (response.data && response.data.code === 200 && response.data.data?.taskId) {
+            const taskId = response.data.data.taskId;
+            return {
+              success: true,
+              is_auto: false,
+              data: [
+                {
+                  id: taskId,
+                  title: finalTitle,
+                  artist: `${modelLabel} (Kie.ai)`,
+                  tags: finalTags,
+                  prompt: finalPrompt,
+                  lyrics: finalPrompt,
+                  model: isV35 ? 'chirp-v3-5' : 'v4',
+                  status: 'submitted',
+                  created_at: 'Sedang Diproses...'
+                }
+              ]
+            };
+          } else if (response.data?.code === 402 || (response.data?.msg && response.data.msg.toLowerCase().includes('credit'))) {
+            throw new Error(`Saldo kredit Suno AI (Kie.ai) tidak mencukupi (${response.data?.msg || 'Habis'}). Silakan hubungkan akun Suno.com gratis Anda (50 kredit gratis setiap hari) di tombol 🔗 Hubungkan Akun Suno.`);
+          } else {
+            throw new Error(response.data?.msg || 'Gagal memulai pembuatan lagu di Kie.ai');
+          }
+        } catch (kieErr) {
+          if (kieErr.response?.data?.msg) {
+            throw new Error(`Kie.ai Suno Error: ${kieErr.response.data.msg}`);
+          }
+          throw kieErr;
         }
       }
 
@@ -732,8 +747,8 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
         data: formatted
       };
     } catch (err) {
-      console.warn('Custom API failed, falling back to Auto-Engine:', err.message);
-      // Fall through to Auto-Engine so user is NEVER blocked by network/quota error!
+      console.warn('Suno API call failed:', err.message);
+      throw err;
     }
   }
 
