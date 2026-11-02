@@ -25,6 +25,7 @@ const sunoLoginHelper = require('./suno-login-helper');
 const deviceCredits = require('./device-credits');
 const tasteFeed = require('./taste-feed');
 const spotifyService = require('./spotify-service');
+const security = require('./security');
 let ytdlInstance = null;
 let chooseFormatFn = null;
 async function getYtdl() {
@@ -48,6 +49,13 @@ const streamUrlCache = new Map(); // videoId -> { url, mimeType, contentLength, 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Security Suite: Mask server identity & enable reverse proxy trust
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+
+// Security Suite: Modern HTTP Security Headers
+app.use(security.securityHeaders);
+
 function getUnifiedDataDir() {
   if (process.env.AURASOUND_DATA_DIR && fs.existsSync(process.env.AURASOUND_DATA_DIR)) {
     return process.env.AURASOUND_DATA_DIR;
@@ -69,8 +77,19 @@ try {
 } catch (e) {}
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Security Suite: Safe default body limits (anti-memory exhaustion DoS)
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// Security Suite: Input Sanitization & Prototype Pollution Immunity
+app.use(security.sanitizeInputs);
+
+// Security Suite: Tiered Intelligent Rate Limiting
+app.use('/api/', security.apiLimiter);
+app.use('/api/search', security.searchLimiter);
+app.use('/api/suno/generate', security.aiStudioLimiter);
+app.use('/api/auth/', security.authLimiter);
 
 // Pre-hydrated Server Session & Playback Injection for Desktop Application (instant startup with 0ms reset)
 app.get(['/', '/index.html'], (req, res) => {
@@ -470,10 +489,12 @@ function sortTracksByRelevance(tracks, query) {
 
 // 2. Search Music on YouTube Music & Official Studio Catalogs (Unlimited Global Catalog)
 app.get('/api/search', async (req, res) => {
-  const query = req.query.q;
-  if (!query) {
+  const rawQuery = req.query.q;
+  if (!rawQuery || typeof rawQuery !== 'string' || !rawQuery.trim()) {
     return res.status(400).json({ success: false, error: 'Query parameter q is required' });
   }
+  // Sanitize and limit query length to prevent ReDoS / memory stress
+  const query = rawQuery.trim().slice(0, 150);
 
   const filter = (req.query.filter || 'all').toLowerCase(); // 'all' | 'official' | 'nonofficial'
   const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -1174,11 +1195,16 @@ app.get('/api/proxy-audio', async (req, res) => {
   let targetUrl = url;
 
   if (!targetUrl || targetUrl.includes('/api/forbidden')) {
-    if (id) {
+    if (id && /^[a-zA-Z0-9_-]{6,64}$/.test(id)) {
       targetUrl = `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${id}.m4a`;
     } else {
-      return res.status(400).send('Missing audio URL or ID');
+      return res.status(400).send('Missing or invalid audio URL or ID');
     }
+  }
+
+  // Security Suite: SSRF Firewall verification
+  if (!security.isSafeAudioUrl(targetUrl)) {
+    return res.status(403).send('Akses audio ditolak oleh Security Firewall (Invalid Origin / SSRF Protection).');
   }
 
   try {
@@ -1703,8 +1729,8 @@ app.get('/api/user/profile', (req, res) => {
   }
 });
 
-// 3. Update user profile (name, avatar, lang)
-app.post('/api/user/profile', (req, res) => {
+// 3. Update user profile (name, avatar, lang) - allows 20mb payload only for base64 avatars
+app.post('/api/user/profile', express.json({ limit: '20mb' }), (req, res) => {
   try {
     const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
     if (!userKey) {
@@ -1712,16 +1738,18 @@ app.post('/api/user/profile', (req, res) => {
     }
     let { name, avatar, lang, tasteProfile } = req.body;
 
-    // If an image was uploaded as Base64, save it permanently to disk!
+    // If an image was uploaded as Base64, save it permanently to disk with strict Path Traversal Guard!
     if (avatar && typeof avatar === 'string' && avatar.startsWith('data:image/')) {
       try {
         const matches = avatar.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
         if (matches && matches.length === 3) {
           const buffer = Buffer.from(matches[2], 'base64');
-          const cleanKey = userDb.normalizeUserKey ? userDb.normalizeUserKey(userKey) : String(userKey).replace(/[^a-zA-Z0-9_-]/g, '_');
+          const cleanKey = security.sanitizeUserKey(userKey);
           const avatarPath = path.join(AVATARS_DIR, `${cleanKey}.png`);
-          fs.writeFileSync(avatarPath, buffer);
-          avatar = `/api/user/avatar?userId=${encodeURIComponent(cleanKey)}&v=${Date.now()}`;
+          if (security.isSafePath(AVATARS_DIR, avatarPath)) {
+            fs.writeFileSync(avatarPath, buffer);
+            avatar = `/api/user/avatar?userId=${encodeURIComponent(cleanKey)}&v=${Date.now()}`;
+          }
         }
       } catch (avErr) {
         console.error('Error saving avatar image to disk:', avErr);
@@ -1735,16 +1763,16 @@ app.post('/api/user/profile', (req, res) => {
   }
 });
 
-// 3b. Serve persistent user profile avatar
+// 3b. Serve persistent user profile avatar (with Path Traversal Defense)
 app.get('/api/user/avatar', (req, res) => {
   try {
     const userKey = req.query.userId || req.query.email || req.headers['x-user-email'];
     if (!userKey) {
       return res.sendFile(path.join(__dirname, 'public', 'images', 'avatar.jpg'));
     }
-    const cleanKey = userDb.normalizeUserKey ? userDb.normalizeUserKey(userKey) : String(userKey).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanKey = security.sanitizeUserKey(userKey);
     const avatarPath = path.join(AVATARS_DIR, `${cleanKey}.png`);
-    if (fs.existsSync(avatarPath)) {
+    if (security.isSafePath(AVATARS_DIR, avatarPath) && fs.existsSync(avatarPath)) {
       res.setHeader('Cache-Control', 'public, max-age=86400');
       return res.sendFile(avatarPath);
     }
@@ -4695,6 +4723,9 @@ app.get('/api/lyrics', async (req, res) => {
     res.status(500).json({ success: false, error: 'Gagal mengambil lirik' });
   }
 });
+
+// Security Suite: Centralized Safe Error Handler (Leak Prevention)
+app.use(security.safeErrorHandler);
 
 // Start Server
 if (!process.env.VERCEL && !process.env.NO_SERVER_LISTEN) {
