@@ -558,15 +558,22 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
           throw new Error('Akun Suno belum terhubung. Silakan klik tombol "🔗 Hubungkan Akun Suno" di pojok kanan atas untuk login ke akun Suno Anda!');
         }
 
+        let officialMv = 'chirp-v3-5';
+        if (model === 'v4' || model === 'chirp-v4') {
+          officialMv = 'chirp-v4';
+        } else if (model === 'v3' || model === 'chirp-v3-0') {
+          officialMv = 'chirp-v3-0';
+        }
+
         try {
           const sunoRes = await axios.post(
-            'https://studio-api.suno.ai/api/generate/v2/',
+            'https://studio-api.prod.suno.com/api/generate/v2/',
             {
               prompt: finalPrompt,
               tags: finalTags,
               title: finalTitle,
               make_instrumental: Boolean(make_instrumental),
-              mv: modelVersion
+              mv: officialMv
             },
             {
               headers: buildSunoOfficialHeaders(apiKey),
@@ -582,11 +589,11 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
               data: clips.map(c => ({
                 id: c.id,
                 title: c.title || finalTitle,
-                artist: `${modelLabel} (Akun Resmi)`,
+                artist: `Suno Official (${officialMv})`,
                 tags: finalTags,
                 prompt: finalPrompt,
                 lyrics: finalPrompt,
-                model: isV35 ? 'chirp-v3-5' : 'v6-mini',
+                model: officialMv,
                 status: 'submitted',
                 created_at: 'Sedang Diproses...'
               }))
@@ -594,8 +601,18 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
           }
         } catch (sunoErr) {
           const status = sunoErr.response?.status;
+          console.warn('[Suno Generate] Error status:', status, 'data:', sunoErr.response?.data);
           if (status === 401 || status === 403) {
-            throw new Error('Sesi login akun Suno Anda telah kedaluwarsa. Silakan klik tombol "🔗 Hubungkan Akun Suno" di pojok kanan atas untuk login ulang (hanya 1 klik)!');
+            throw new Error('Sesi login akun Suno Anda telah kedaluwarsa. Silakan klik tombol "🔗 Hubungkan Akun Suno" untuk login ulang (1 klik)!');
+          }
+          if (status === 402) {
+            throw new Error('Kuota kredit akun Suno Anda untuk hari ini telah habis (50 kredit). Kuota akan otomatis di-reset besok oleh Suno!');
+          }
+          if (status === 503) {
+            throw new Error('Server Suno.com sedang mengalami lonjakan antrean (503). Silakan coba 1 menit lagi.');
+          }
+          if (sunoErr.response?.data?.detail) {
+            throw new Error(`Suno: ${sunoErr.response.data.detail}`);
           }
           if (sunoErr.response?.data?.message) {
             throw new Error(`Suno Error: ${sunoErr.response.data.message}`);
@@ -796,7 +813,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
   try {
     if (provider === 'suno_official') {
       try {
-        const res = await axios.get(`https://studio-api.suno.ai/api/feed/v2?ids=${idsQuery}`, {
+        const res = await axios.get(`https://studio-api.prod.suno.com/api/feed/v2?ids=${idsQuery}`, {
           headers: buildSunoOfficialHeaders(apiKey),
           timeout: 15000
         });

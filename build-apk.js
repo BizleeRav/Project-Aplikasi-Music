@@ -1454,8 +1454,12 @@ try {
 
   execSync(`"${ZIPALIGN}" -f 4 "${path.join(BUILD_DIR, 'initial.apk')}" "${alignedApk}"`, { stdio: 'inherit' });
 
-  // Generate debug keystore jika belum ada
-  const keystorePath = path.join(BUILD_DIR, 'debug.keystore');
+  // Gunakan keystore permanen agar tanda tangan APK konsisten selamanya
+  const keystoreDir = path.join(PROJECT_ROOT, 'android-keystore');
+  if (!fs.existsSync(keystoreDir)) {
+    fs.mkdirSync(keystoreDir, { recursive: true });
+  }
+  const keystorePath = path.join(keystoreDir, 'aurasound.keystore');
   if (!fs.existsSync(keystorePath)) {
     execSync(`"${KEYTOOL}" -genkeypair -validity 10000 -dname "CN=AuraSound,O=AuraSound,C=ID" -keystore "${keystorePath}" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048`, { stdio: 'inherit' });
   }
