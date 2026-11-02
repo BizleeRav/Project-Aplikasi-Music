@@ -249,38 +249,13 @@ class SunoStudio {
   }
 
   async startAutoLoginFlow() {
-    // If running on Android APK
-    if (window.AuraSoundAndroid) {
-      if (typeof window.AuraSoundAndroid.openSunoLogin === 'function') {
-        if (window.app && window.app.showToast) {
-          window.app.showToast('Membuka login resmi Suno.com...', 'info');
-        }
-        window.AuraSoundAndroid.openSunoLogin();
-        return;
-      } else {
-        // Old APK detected on user's phone!
-        const apkUrl = 'https://project-aplikasi-music.vercel.app/download/AuraSound.apk';
-        if (typeof window.checkAuraSoundAppVersion === 'function') {
-          window.checkAuraSoundAppVersion();
-        }
-        if (window.app && window.app.showToast) {
-          window.app.showToast('Fitur login Suno butuh APK v1.2.0. Memulai unduhan update...', 'info', 6000);
-        }
-        if (typeof window.AuraSoundAndroid.downloadAndInstallUpdate === 'function') {
-          window.AuraSoundAndroid.downloadAndInstallUpdate(apkUrl);
-        } else if (typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
-          window.AuraSoundAndroid.openExternalBrowser(apkUrl);
-        } else {
-          const a = document.createElement('a');
-          a.href = apkUrl;
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        }
-        return;
+    // If running on Android APK with native Suno sheet
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openSunoLogin === 'function') {
+      if (window.app && window.app.showToast) {
+        window.app.showToast('Membuka login resmi Suno.com...', 'info');
       }
+      window.AuraSoundAndroid.openSunoLogin();
+      return;
     }
 
     this.openSettingsModal();

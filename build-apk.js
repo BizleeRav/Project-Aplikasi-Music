@@ -716,7 +716,9 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.net.http.SslError;
 import android.webkit.CookieManager;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -754,7 +756,6 @@ public class MainActivity extends Activity {
 
         handleDeepLink(getIntent());
 
-        webView.clearCache(true);
         webView.loadUrl(APP_URL);
 
         startPeriodicBridgeSync();
@@ -851,16 +852,22 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                handler.proceed();
+            }
+
+            @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 super.onReceivedError(view, request, error);
                 if (request.isForMainFrame()) {
-                    String errorHtml = "<html><body style='background:#070a12; color:#fff; font-family:sans-serif; text-align:center; padding:40px 20px;'>"
-                        + "<h2 style='color:#10b981;'>AuraSound Music Hub</h2>"
-                        + "<p style='color:#94a3b8; font-size:14px;'>Tidak dapat terhubung ke server online.</p>"
-                        + "<p style='color:#cbd5e1; font-size:13px;'>Pastikan koneksi internet (kuota data atau Wi-Fi) di HP Anda aktif.</p>"
-                        + "<button onclick='location.reload()' style='background:#10b981; color:#fff; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; margin-top:20px; font-size:15px;'>Coba Sambung Lagi</button>"
+                    String errorHtml = "<html><body style=\\"background:#070a12; color:#fff; font-family:sans-serif; text-align:center; padding:40px 20px;\\">"
+                        + "<h2 style=\\"color:#10b981;\\">AuraSound Music Hub</h2>"
+                        + "<p style=\\"color:#94a3b8; font-size:14px;\\">Sedang menyambungkan ke server...</p>"
+                        + "<p style=\\"color:#cbd5e1; font-size:13px;\\">Pastikan koneksi internet (kuota data atau Wi-Fi) di HP Anda aktif.</p>"
+                        + "<button onclick=\\"window.location.href=\'" + APP_URL + "\'\\" style=\\"background:#10b981; color:#fff; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; margin-top:20px; font-size:15px;\\">Coba Sambung Lagi</button>"
+                        + "<script>setTimeout(function(){ window.location.href=\'" + APP_URL + "\'; }, 3000);</script>"
                         + "</body></html>";
-                    view.loadDataWithBaseURL(null, errorHtml, "text/html", "utf-8", null);
+                    view.loadDataWithBaseURL(APP_URL, errorHtml, "text/html", "utf-8", null);
                 }
             }
         });
@@ -983,6 +990,11 @@ public class MainActivity extends Activity {
                 });
 
                 loginWebView.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                        handler.proceed();
+                    }
+
                     @Override
                     public void onPageFinished(WebView view, String url) {
                         super.onPageFinished(view, url);
