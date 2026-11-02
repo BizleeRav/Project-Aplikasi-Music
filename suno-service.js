@@ -650,28 +650,67 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
         }
 
         try {
-          const response = await axios.post(
-            'https://api.kie.ai/api/v1/generate',
-            {
-              prompt: finalPrompt,
-              customMode: true,
-              instrumental: Boolean(make_instrumental),
-              model: kieModel,
-              style: finalTags,
-              title: finalTitle,
-              callBackUrl: 'https://project-aplikasi-music.vercel.app/api/suno/callback'
-            },
-            {
-              headers: {
-                'Authorization': `Bearer ${apiKey.trim()}`,
-                'Content-Type': 'application/json'
+          // 1. Try Kie.ai createTask with model: 'suno' (proven official model)
+          let taskId = null;
+          try {
+            const taskRes = await axios.post(
+              'https://api.kie.ai/api/v1/jobs/createTask',
+              {
+                model: 'suno',
+                input: {
+                  prompt: finalPrompt,
+                  title: finalTitle,
+                  tags: finalTags,
+                  make_instrumental: Boolean(make_instrumental)
+                }
               },
-              timeout: 30000
+              {
+                headers: {
+                  'Authorization': `Bearer ${apiKey.trim()}`,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 30000
+              }
+            );
+            if (taskRes.data?.code === 200 && taskRes.data?.data?.taskId) {
+              taskId = taskRes.data.data.taskId;
+            } else if (taskRes.data?.code === 402 || taskRes.data?.msg?.toLowerCase().includes('credit')) {
+              throw new Error(`Saldo kredit API Key Kie.ai Anda saat ini tidak mencukupi (${taskRes.data?.msg || 'Habis'}). Silakan top up di https://kie.ai atau gunakan akun Suno.com gratis Anda (50 kredit/hari) di menu Hubungkan Akun.`);
             }
-          );
+          } catch (taskErr) {
+            if (taskErr.message?.includes('Saldo kredit')) throw taskErr;
+          }
 
-          if (response.data && response.data.code === 200 && response.data.data?.taskId) {
-            const taskId = response.data.data.taskId;
+          // 2. Fallback to /api/v1/generate if createTask didn't return taskId
+          if (!taskId) {
+            const response = await axios.post(
+              'https://api.kie.ai/api/v1/generate',
+              {
+                prompt: finalPrompt,
+                customMode: true,
+                instrumental: Boolean(make_instrumental),
+                model: kieModel,
+                style: finalTags,
+                title: finalTitle,
+                callBackUrl: 'https://project-aplikasi-music.vercel.app/api/suno/callback'
+              },
+              {
+                headers: {
+                  'Authorization': `Bearer ${apiKey.trim()}`,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 30000
+              }
+            );
+
+            if (response.data && response.data.code === 200 && response.data.data?.taskId) {
+              taskId = response.data.data.taskId;
+            } else if (response.data?.code === 402 || (response.data?.msg && response.data.msg.toLowerCase().includes('credit'))) {
+              throw new Error(`Saldo kredit API Key Kie.ai Anda saat ini tidak mencukupi (${response.data?.msg || 'Habis'}). Silakan hubungkan akun Suno.com gratis Anda (50 kredit gratis setiap hari) di tombol 🔗 Hubungkan Akun Suno.`);
+            } else {
+              throw new Error(response.data?.msg || 'Gagal memulai pembuatan lagu di Kie.ai');
+            }
+          }
             return {
               success: true,
               is_auto: false,
