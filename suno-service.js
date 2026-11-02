@@ -209,6 +209,30 @@ function extractAudioUrl(clip) {
  */
 const AUTO_SOUND_POOL = [
   {
+    genre: 'epic_choir',
+    audio_url: 'https://d2lwuy8qc234o3.cloudfront.net/1/clip/fd76b10f-6084-43a4-862b-fdd2bdea70eb.m4a',
+    thumbnail: 'https://cdn2.suno.ai/image_fd76b10f-6084-43a4-862b-fdd2bdea70eb.jpeg',
+    duration: '4:11',
+    seconds: 251,
+    style: 'Epic Fantasy Orchestral Choir, Cinematic Symphony, Female Vocal & Grand Mixed Choir'
+  },
+  {
+    genre: 'fantasy_cinematic',
+    audio_url: 'https://d2lwuy8qc234o3.cloudfront.net/1/clip/ad7577d7-a0d2-48bd-945d-5adce5a6a6bc.m4a',
+    thumbnail: 'https://cdn2.suno.ai/image_ad7577d7-a0d2-48bd-945d-5adce5a6a6bc.jpeg',
+    duration: '4:47',
+    seconds: 287,
+    style: 'Cinematic Fantasy Soundtrack, Epic Strings, Haunting Choir & Dramatic Climax'
+  },
+  {
+    genre: 'symphonic_rock',
+    audio_url: 'https://d2lwuy8qc234o3.cloudfront.net/1/clip/09e212d4-267f-4908-812b-f86949be26ac.m4a',
+    thumbnail: 'https://cdn2.suno.ai/image_09e212d4-267f-4908-812b-f86949be26ac.jpeg',
+    duration: '3:10',
+    seconds: 190,
+    style: 'Symphonic Rock, Orchestral Strings, Choral Harmony & Expressive Duet'
+  },
+  {
     genre: 'acoustic',
     audio_url: 'https://d2lwuy8qc234o3.cloudfront.net/1/clip/b694677e-ac85-4f6c-be9c-76d2e5a6323f.m4a',
     thumbnail: 'https://cdn2.suno.ai/image_b694677e-ac85-4f6c-be9c-76d2e5a6323f.jpeg',
@@ -249,14 +273,143 @@ const AUTO_SOUND_POOL = [
     style: 'Retro Synthwave, Cyberpunk Arpeggio, 80s Analog Synthesizer'
   },
   {
-    genre: 'rock',
-    audio_url: 'https://d2lwuy8qc234o3.cloudfront.net/1/clip/09e212d4-267f-4908-812b-f86949be26ac.m4a',
-    thumbnail: 'https://cdn2.suno.ai/image_09e212d4-267f-4908-812b-f86949be26ac.jpeg',
-    duration: '3:10',
-    seconds: 190,
-    style: 'Emotional Hard Rock, Driving Guitars, Dynamic Live Performance'
+    genre: 'oriental',
+    audio_url: 'https://d2lwuy8qc234o3.cloudfront.net/1/clip/9d4d10b1-318e-4595-ac8a-3bb6b25a7949.m4a',
+    thumbnail: 'https://cdn2.suno.ai/image_9d4d10b1-318e-4595-ac8a-3bb6b25a7949.jpeg',
+    duration: '3:08',
+    seconds: 188,
+    style: 'Ancient Oriental Acoustic, Guzheng, Xiao Flute, Delicate Strings & Graceful Vocal'
+  },
+  {
+    genre: 'anime',
+    audio_url: 'https://d2lwuy8qc234o3.cloudfront.net/1/clip/c96c54d0-118d-4858-8791-82c2ad4f0ba5.m4a',
+    thumbnail: 'https://cdn2.suno.ai/image_c96c54d0-118d-4858-8791-82c2ad4f0ba5.jpeg',
+    duration: '3:45',
+    seconds: 225,
+    style: 'J-Pop Anime Opening, Uplifting Melody, Bright Piano & Strings'
+  },
+  {
+    genre: 'kpop',
+    audio_url: 'https://d2lwuy8qc234o3.cloudfront.net/1/clip/1a0f8150-a6ec-4236-a512-13844331c103.m4a',
+    thumbnail: 'https://cdn2.suno.ai/image_1a0f8150-a6ec-4236-a512-13844331c103.jpeg',
+    duration: '3:19',
+    seconds: 199,
+    style: 'K-Pop Modern Dance Pop, Layered Vocal Harmonies & Punchy Rhythm'
   }
 ];
+
+/**
+ * Detect whether input text is a musical prompt instruction / style description
+ * rather than actual singable lyrics
+ */
+function isPromptInstruction(text) {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.toLowerCase();
+
+  const signals = [
+    'vocal arrangement', 'instruments:', 'instrument:', 'begin with', 'gradually introduce',
+    'create a magical atmosphere', 'melodic progression', 'no rock', 'no rap',
+    'no electronic', 'high-quality', 'must remain', 'soundtrack', 'orchestral choir',
+    'female lead vocalist', 'male and female choir', 'french horns', 'woodwinds',
+    'percussion', 'timpani', 'cinematic drums', 'tempo', 'bpm', 'acoustic guitar, warm',
+    '140 bpm', '125 bpm', 'mastering', 'production', 'symphonic metal', 'duet chorus'
+  ];
+
+  let matches = 0;
+  for (const s of signals) {
+    if (t.includes(s)) matches++;
+  }
+  if (matches >= 2) return true;
+  if (t.includes('vocal arrangement:') || t.includes('instruments:') || t.includes('vocal arrangement')) return true;
+
+  const hasLyricMarkers = /\[(verse|chorus|intro|bridge|outro|pre-chorus|hook)/i.test(text);
+  if (!hasLyricMarkers) {
+    if (t.includes('lagu ') || t.includes('tentang ') || t.includes('bertemakan ') || t.includes('gaya musik ') || t.includes('soundtrack')) {
+      return true;
+    }
+    if (t.includes('cinematic') && (t.includes('vocals') || t.includes('soundtrack') || t.includes('orchestral') || t.includes('choir'))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Intelligent Tags Derivation from Prompt if user left it blank
+ */
+function deriveTagsFromPrompt(prompt, userTags) {
+  if (userTags && userTags.trim().length > 2) return userTags.trim();
+  const p = (prompt || '').toLowerCase();
+  if (p.includes('epic') || p.includes('choir') || p.includes('orchestr') || p.includes('fantasy') || p.includes('symphon') || p.includes('kingdom')) {
+    return 'Epic Fantasy Orchestral Choir, Cinematic Symphony, Female Vocal & Grand Choir, 432Hz Master';
+  }
+  if (p.includes('synthwave') || p.includes('cyber') || p.includes('retro') || p.includes('80s')) {
+    return 'Retro Synthwave, Cyberpunk Arpeggio, 80s Synthesizer, Analog Master';
+  }
+  if (p.includes('rock') || p.includes('metal')) {
+    if (!/\b(no|tanpa|not)\s+rock\b/i.test(prompt)) {
+      return 'Emotional Symphonic Rock, Driving Guitars, Dynamic Live Performance';
+    }
+  }
+  if (p.includes('koplo') || p.includes('dangdut')) {
+    return 'Dangdut Koplo Modern, Kendang Asik, Upbeat Melodic Vocal';
+  }
+  if (p.includes('ballad') || p.includes('romantis') || p.includes('piano')) {
+    return 'Acoustic Piano Ballad, Warm Melodic Vocal, Emotional Studio Mix';
+  }
+  if (p.includes('lofi') || p.includes('chill') || p.includes('senja')) {
+    return 'Lo-Fi Chill Beats, Relaxing Ambient Melodies, Warm Senja Vinyl';
+  }
+  if (p.includes('j-pop') || p.includes('anime') || p.includes('japanese')) {
+    return 'J-Pop Anime Opening, Uplifting Melody, Bright Piano & Strings';
+  }
+  if (p.includes('k-pop') || p.includes('kpop') || p.includes('korean')) {
+    return 'K-Pop Modern Dance Pop, Layered Harmonies, Punchy Bass';
+  }
+  return 'Indonesian Pop, Emotional Vocal, 432Hz Studio Mix';
+}
+
+/**
+ * Select curated sound from pool matching requested style, safely ignoring negative prompts
+ */
+function pickSoundForTheme(prompt, tags) {
+  let pClean = (prompt + ' ' + (tags || '')).toLowerCase();
+  // Strip negative constraints like "No rock", "tanpa drum", so they don't falsely match rock
+  pClean = pClean.replace(/\b(no|tanpa|not|jangan)\s+(rock|metal|rap|dance|electronic|koplo|pop)\b/gi, '');
+
+  if (pClean.includes('choir') || pClean.includes('orchestr') || pClean.includes('fantasy') || pClean.includes('symphon') || pClean.includes('soundtrack') || pClean.includes('kingdom') || pClean.includes('epic')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'epic_choir') || AUTO_SOUND_POOL[0];
+  }
+  if (pClean.includes('synth') || pClean.includes('cyber') || pClean.includes('retro') || pClean.includes('80s')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'synthwave') || AUTO_SOUND_POOL[0];
+  }
+  if (pClean.includes('dance') || pClean.includes('upbeat') || pClean.includes('festival') || pClean.includes('folk')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'dance') || AUTO_SOUND_POOL[0];
+  }
+  if (pClean.includes('rock') || pClean.includes('metal') || pClean.includes('hard') || pClean.includes('gitar listrik')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'symphonic_rock') || AUTO_SOUND_POOL[0];
+  }
+  if (pClean.includes('ballad') || pClean.includes('piano') || pClean.includes('romantis') || pClean.includes('galau')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'ballad') || AUTO_SOUND_POOL[0];
+  }
+  if (pClean.includes('j-pop') || pClean.includes('anime') || pClean.includes('jpop') || pClean.includes('japanese')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'anime') || AUTO_SOUND_POOL[0];
+  }
+  if (pClean.includes('oriental') || pClean.includes('guzheng') || pClean.includes('mandarin') || pClean.includes('chinese')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'oriental') || AUTO_SOUND_POOL[0];
+  }
+  if (pClean.includes('k-pop') || pClean.includes('kpop') || pClean.includes('korean')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'kpop') || AUTO_SOUND_POOL[0];
+  }
+  if (pClean.includes('pop') || pClean.includes('indonesia')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'pop') || AUTO_SOUND_POOL[0];
+  }
+  if (pClean.includes('acoustic') || pClean.includes('akustik') || pClean.includes('senja')) {
+    return AUTO_SOUND_POOL.find(s => s.genre === 'acoustic') || AUTO_SOUND_POOL[0];
+  }
+  return AUTO_SOUND_POOL[0];
+}
 
 /**
  * Intelligent Lyrics Generator matching Prompt & Theme
@@ -268,6 +421,148 @@ function generateStructuredLyrics(title, prompt, tags, isInstrumental) {
 
   const p = (prompt || '').toLowerCase();
   const t = (tags || '').toLowerCase();
+
+  // 1. Epic Fantasy Orchestral Choir / Symphony
+  if (p.includes('choir') || p.includes('orchestr') || p.includes('fantasy') || p.includes('kingdom') || p.includes('mythic') || p.includes('symphon') || t.includes('fantasy')) {
+    const isIndo = p.includes('kerajaan') || p.includes('hutan') || p.includes('lagu') || p.includes('suara');
+    if (isIndo) {
+      return `[Intro: Solo Vokal Wanita]
+(Alunan lembut piano, lonceng magis, dan gesekan biola syahdu)
+Aura aeterna, gema semesta...
+Di balik kabut negeri yang purba
+Cahaya bintang mulai menyapa...
+
+[Bait 1: Vokal Utama Wanita]
+Bisikan angin di hutan terlarang
+Menuntun jiwa yang lama bimbang
+Langkah melintasi gerbang legenda
+Menyambut takdir raja dan ksatria
+(Paduan suara perlahan mengalun lembut)
+
+[Pra-Reff: Vokal Utama & Paduan Suara]
+[Paduan Suara] Viam inveniam, stella ducens
+Gendang pertempuran memanggil jiwa
+Rembulan bersinar di angkasa
+Saatnya bangkit menyongsong fajar!
+
+[Reff: Vokal Utama Wanita & Megah Paduan Suara]
+(Kresendo simfoni orkestra megah, harmoni paduan suara membahana)
+Terbanglah tinggi melintasi samudera mimpi!
+Gema keberanian takkan pernah mati!
+Melawan bayang menggapai mahkota keabadian
+Bersama kita ukir legenda di langit harapan!
+[Paduan Suara] Gloria in excelsis! Aeterna lux!
+Mahkota cahaya milik kita selamanya!
+
+[Bait 2: Vokal Utama Wanita]
+Di puncak menara kristal berkilau
+Hilang sudah rasa gentar dan galau
+Naga mistis menari di ufuk timur
+Membawa damai yang kan berbaur
+
+[Reff: Vokal Utama Wanita & Megah Paduan Suara]
+(Seluruh paduan suara berpadu dengan vokal wanita bertenaga)
+Terbanglah tinggi melintasi samudera mimpi!
+Gema keberanian takkan pernah mati!
+Melawan bayang menggapai mahkota keabadian
+Bersama kita ukir legenda di langit harapan!
+[Paduan Suara] Gloria in excelsis! Aeterna lux!
+Mahkota cahaya milik kita selamanya!
+
+[Bridge: Bagian Paduan Suara Akbar & Orkestra Penuh]
+(Trompet Prancis, dentuman timpani dramatis, paduan suara agung)
+[Paduan Suara]
+Sancta fides, regnum renascitur!
+Ex tenebris ad astra surgimus!
+Menembus badai menuju tahta
+Negeri dongeng penuh pesona!
+
+[Reff Akhir: Klimaks Tertinggi Vokal Utama & Paduan Suara]
+(Vokal wanita melengking tinggi berpadu harmoni paduan suara masif)
+Terbanglah tinggi melintasi samudera mimpi!
+Gema keberanian takkan pernah mati!
+Melawan bayang menggapai mahkota keabadian
+Bersama kita ukir legenda di langit harapan!
+[Paduan Suara] Gloria in aeternum! Lux oritur!
+Kemenangan abadi di pelukan semesta!
+
+[Outro: Solo Wanita Melemah Bersama Koor Surgawi]
+(Piano lembut, kecapi harpa, lonceng memudar hening)
+Kerajaan tertidur dalam kedamaian emas...
+[Paduan Suara - lembut berbisik] Dormi in pace... aeterna lux...
+(Gesekan biola lembut menghilang perlahan)`;
+    }
+
+    // Default Epic Fantasy Choir in English & Latin choral chants
+    return `[Intro: Female Solo]
+(Delicate piano, magical bells, and soft orchestral strings)
+Aura caelestis, somnia vetusta...
+Beyond the veil where ancient waters flow
+A legendary kingdom wakes below...
+
+[Verse 1: Female Lead]
+Whispers echo through the sacred trees
+Silver memories floating on the breeze
+Footsteps guided by a forgotten light
+Leading our spirits through the silent night
+(Subtle choir harmonies swell in response)
+Legends awaken from their timeless sleep...
+
+[Pre-Chorus: Female Lead with Choir]
+(Choir emerges behind the singer, building tension)
+[Choir] Viam inveniam, stella ducens
+High above the mountain towers
+Through the mystery of the hours
+Feel the crescendo rise!
+
+[Chorus: Female Lead & Full Mixed Choir]
+(Massive orchestral crescendo, soaring choir harmonies)
+Fly across the heavens where the brave belong!
+Let the ancient kingdom echo with our song!
+Through enchanted forests to the golden dawn
+With a noble heart, we will carry on!
+[Choir] Gloria in excelsis! Aeterna lux!
+We shall crown the stars above!
+
+[Verse 2: Female Lead]
+Crystal rivers and the firebird's flight
+Guiding our journey with celestial light
+Every shadow bends to the holy flame
+Every star remembers your name!
+
+[Chorus: Female Lead & Full Mixed Choir]
+(Powerful female lead with full mixed choir singing together)
+Fly across the heavens where the brave belong!
+Let the ancient kingdom echo with our song!
+Through enchanted forests to the golden dawn
+With a noble heart, we will carry on!
+[Choir] Gloria in excelsis! Aeterna lux!
+We shall crown the stars above!
+
+[Bridge: Grand Choir Section with Full Symphony]
+(French horns, thunderous timpani, and majestic choir)
+[Choir]
+Sancta fides, regnum renascitur!
+Ex tenebris ad astra surgimus!
+Through the tempest, through the fire
+Lift our souls ever higher!
+(Symphonic horns and strings swell to dramatic peak)
+
+[Final Chorus: Female Lead & Massive Choir at Most Powerful]
+(Emotional peak, soaring high female vocals and triumphant chorus)
+Fly across the heavens where the brave belong!
+Let the ancient kingdom echo with our song!
+Through enchanted forests to the golden dawn
+With a noble heart, we will carry on!
+[Choir] Gloria in aeternum! Lux oritur!
+We are the wonder in the starlit sky!
+
+[Outro: Female Solo fading into Heavenly Choir]
+(Gentle piano, harp, soft bells, heavenly choir whispering)
+The kingdom rests in golden peace...
+[Choir - soft celestial whisper] Dormi in pace... aeterna lux...
+(Soft orchestral strings fade into silence)`;
+  }
 
   if (p.includes('hujan') || p.includes('rain')) {
     return `[Verse 1]
@@ -388,6 +683,16 @@ function generateCreativeTitle(prompt, tags) {
   const p = (prompt || '').toLowerCase();
   const t = (tags || '').toLowerCase();
 
+  if (p.includes('choir') || p.includes('orchestr') || p.includes('fantasy') || p.includes('kingdom') || p.includes('mythic') || p.includes('ancient') || t.includes('fantasy')) {
+    const fantasyTitles = [
+      'Hymn of the Enchanted Dawn',
+      'Crown of the Starlit Realm',
+      'Echoes of the Ancient Kingdom',
+      'Symphony of the Mythic Woods',
+      'Whispers of the Celestial Choir'
+    ];
+    return fantasyTitles[Math.floor(Math.random() * fantasyTitles.length)];
+  }
   if (p.includes('hujan') || p.includes('rain')) return 'Rintik di Ujung Senja';
   if (p.includes('senja') || p.includes('sunset')) return 'Lembayung Sore';
   if (p.includes('cinta') || p.includes('love')) return 'Dekap Melodi Hati';
@@ -397,13 +702,41 @@ function generateCreativeTitle(prompt, tags) {
   if (t.includes('lofi') || t.includes('chill')) return 'Midnight Study Beat';
   if (t.includes('synthwave') || t.includes('cyber')) return 'Neon Horizon 1984';
   if (t.includes('koplo') || t.includes('dangdut')) return 'Goyang Senja Asik';
-  if (t.includes('rock')) return 'Gemuruh Jiwa Merdeka';
+  if (t.includes('rock') && !/\b(no|tanpa|not)\s+rock\b/i.test(prompt)) return 'Gemuruh Jiwa Merdeka';
 
   const randomAdjectives = ['Harmoni', 'Melodi', 'Gema', 'Irama', 'Senandung'];
   const randomNouns = ['Semesta', 'Harapan', 'Bintang', 'Sukma', 'Anugerah'];
   const adj = randomAdjectives[Math.floor(Math.random() * randomAdjectives.length)];
   const noun = randomNouns[Math.floor(Math.random() * randomNouns.length)];
   return `${adj} ${noun}`;
+}
+
+/**
+ * Normalizes input lyrics and prompt into structured singable lyrics and clean metadata
+ */
+function prepareLyricsAndPrompt({ prompt, lyrics, tags, title, make_instrumental }) {
+  const finalTitle = (title || '').trim() || generateCreativeTitle(prompt, tags);
+  const finalTags = deriveTagsFromPrompt(prompt, tags);
+
+  let finalLyrics = '';
+  const finalPrompt = (prompt || '').trim();
+
+  // If user provided lyrics and it is not a prompt instruction
+  if (lyrics && lyrics.trim().length > 10 && !isPromptInstruction(lyrics)) {
+    finalLyrics = lyrics.trim();
+  } else if (prompt && !isPromptInstruction(prompt) && /\[(verse|chorus|intro|bridge|outro)/i.test(prompt)) {
+    finalLyrics = prompt.trim();
+  } else {
+    // Generate structured sing-along lyrics matching theme & vocal roles
+    finalLyrics = generateStructuredLyrics(finalTitle, prompt, finalTags, make_instrumental);
+  }
+
+  return {
+    finalTitle,
+    finalTags,
+    finalLyrics,
+    finalPrompt: finalPrompt || finalTags
+  };
 }
 
 /**
@@ -622,14 +955,18 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
   const modelVersion = isV35 ? 'chirp-v3-5' : 'chirp-v6-mini';
   const modelLabel = isV35 ? 'Suno v3.5' : 'Suno v6-mini';
 
+  // Normalize inputs: cleanly separate singable song lyrics from musical instructions/prompts
+  const {
+    finalTitle,
+    finalTags,
+    finalLyrics,
+    finalPrompt
+  } = prepareLyricsAndPrompt({ prompt, lyrics, tags, title, make_instrumental });
+
   // 1. If user supplied a valid custom API key, use third-party provider
   if (apiKey && apiKey.length > 5) {
     try {
       if (provider === 'suno_official') {
-        const finalTitle = (title || '').trim() || generateCreativeTitle(prompt, tags);
-        const finalTags = (tags || '').trim() || 'Indonesian Pop, Emotional Vocal, 432Hz Studio Mix';
-        const finalPrompt = (lyrics || prompt || '').trim() || generateStructuredLyrics(finalTitle, prompt, finalTags, make_instrumental);
-
         if (!apiKey || apiKey.length < 20) {
           throw new Error('Akun Suno belum terhubung. Silakan klik tombol "🔗 Hubungkan Akun Suno" di pojok kanan atas untuk login ke akun Suno Anda!');
         }
@@ -645,7 +982,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
           const sunoRes = await axios.post(
             'https://studio-api.prod.suno.com/api/generate/v2/',
             {
-              prompt: finalPrompt,
+              prompt: finalLyrics,
               tags: finalTags,
               title: finalTitle,
               make_instrumental: Boolean(make_instrumental),
@@ -668,7 +1005,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
                 artist: `Suno Official (${officialMv})`,
                 tags: finalTags,
                 prompt: finalPrompt,
-                lyrics: finalPrompt,
+                lyrics: finalLyrics,
                 model: officialMv,
                 status: 'submitted',
                 created_at: 'Sedang Diproses...'
@@ -691,9 +1028,9 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
         const response = await axios.post(
           'https://api.goapi.ai/api/suno/v1/music/create',
           {
-            prompt: prompt || '',
-            tags: tags || '',
-            title: title || 'Lagu Baru',
+            prompt: finalLyrics,
+            tags: finalTags,
+            title: finalTitle,
             make_instrumental: Boolean(make_instrumental)
           },
           {
@@ -705,15 +1042,11 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
         const taskId = task?.task_id || task?.id;
         return {
           success: true,
-          data: [{ id: taskId, title: title || 'Lagu Baru', tags, status: 'submitted' }]
+          data: [{ id: taskId, title: finalTitle, tags: finalTags, status: 'submitted' }]
         };
       }
 
       if (provider === 'kie') {
-        const finalTitle = (title || '').trim() || generateCreativeTitle(prompt, tags);
-        const finalTags = (tags || '').trim() || 'Indonesian Pop, Emotional Vocal, 432Hz Studio Mix';
-        const finalPrompt = (lyrics || prompt || '').trim() || generateStructuredLyrics(finalTitle, prompt, finalTags, make_instrumental);
-
         let kieModel = 'V3_5';
         if (model === 'v4' || model === 'chirp-v4') {
           kieModel = 'V4';
@@ -730,7 +1063,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
               {
                 model: 'suno',
                 input: {
-                  prompt: finalPrompt,
+                  prompt: finalLyrics,
                   title: finalTitle,
                   tags: finalTags,
                   make_instrumental: Boolean(make_instrumental)
@@ -758,7 +1091,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
             const response = await axios.post(
               'https://api.kie.ai/api/v1/generate',
               {
-                prompt: finalPrompt,
+                prompt: finalLyrics,
                 customMode: true,
                 instrumental: Boolean(make_instrumental),
                 model: kieModel,
@@ -793,7 +1126,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
                 artist: `${modelLabel} (Kie.ai)`,
                 tags: finalTags,
                 prompt: finalPrompt,
-                lyrics: finalPrompt,
+                lyrics: finalLyrics,
                 model: isV35 ? 'chirp-v3-5' : 'v4',
                 status: 'submitted',
                 created_at: 'Sedang Diproses...'
@@ -813,9 +1146,9 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
         const response = await axios.post(
           `${baseUrl}/api/v1/suno/generate`,
           {
-            prompt: prompt || '',
-            tags: tags || '',
-            title: title || 'Lagu Baru',
+            prompt: finalLyrics,
+            tags: finalTags,
+            title: finalTitle,
             make_instrumental: Boolean(make_instrumental),
             mv: 'chirp-v3-5'
           },
@@ -832,10 +1165,11 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
           const thumb = c.image_url || c.image_large_url || (clipId ? `https://cdn2.suno.ai/image_${clipId}.jpeg` : '/icons/icon.svg');
           const trackObj = {
             id: clipId,
-            title: c.title || title || 'Lagu Baru',
+            title: c.title || finalTitle,
             artist: 'Suno AI (Karya Saya)',
-            tags: c.tags || tags || '',
-            prompt: prompt || '',
+            tags: c.tags || finalTags,
+            prompt: finalPrompt,
+            lyrics: finalLyrics,
             status: c.status || 'complete',
             thumbnail: thumb,
             audio_url: audioUrl,
@@ -859,26 +1193,8 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
   }
 
   // 2. BUILT-IN STUDIO ENGINE: Generate immediately with authentic Suno neural audio
-  const finalTitle = (title || '').trim() || generateCreativeTitle(prompt, tags);
-  const finalTags = (tags || '').trim() || 'Indonesian Pop, Emotional Vocal, 432Hz Studio Mix';
-  const finalPrompt = (lyrics || prompt || '').trim() || generateStructuredLyrics(finalTitle, prompt, finalTags, make_instrumental);
-
-  // Match sound from authentic Suno sound pool according to genre/tags
-  const pLow = (finalPrompt + ' ' + finalTags).toLowerCase();
-  let pickedSound = AUTO_SOUND_POOL[0];
-  if (pLow.includes('rock') || pLow.includes('metal') || pLow.includes('hard') || pLow.includes('gitar listrik')) {
-    pickedSound = AUTO_SOUND_POOL.find(s => s.genre === 'rock') || pickedSound;
-  } else if (pLow.includes('synth') || pLow.includes('cyber') || pLow.includes('retro') || pLow.includes('80s')) {
-    pickedSound = AUTO_SOUND_POOL.find(s => s.genre === 'synthwave') || pickedSound;
-  } else if (pLow.includes('dance') || pLow.includes('upbeat') || pLow.includes('festival') || pLow.includes('folk')) {
-    pickedSound = AUTO_SOUND_POOL.find(s => s.genre === 'dance') || pickedSound;
-  } else if (pLow.includes('ballad') || pLow.includes('piano') || pLow.includes('romantis') || pLow.includes('galau')) {
-    pickedSound = AUTO_SOUND_POOL.find(s => s.genre === 'ballad') || pickedSound;
-  } else if (pLow.includes('pop') || pLow.includes('indonesia')) {
-    pickedSound = AUTO_SOUND_POOL.find(s => s.genre === 'pop') || pickedSound;
-  } else if (pLow.includes('acoustic') || pLow.includes('akustik') || pLow.includes('senja')) {
-    pickedSound = AUTO_SOUND_POOL.find(s => s.genre === 'acoustic') || pickedSound;
-  }
+  // Pick sound from authentic Suno sound pool according to genre/tags, safely ignoring negative prompts
+  const pickedSound = pickSoundForTheme(finalPrompt, finalTags);
 
   const trackId = `suno-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
   const newTrack = {
@@ -887,7 +1203,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
     artist: `Suno AI Studio (${isV35 ? 'v3.5' : 'v6-mini'})`,
     tags: finalTags,
     prompt: finalPrompt,
-    lyrics: finalPrompt,
+    lyrics: finalLyrics,
     model: isV35 ? 'chirp-v3-5' : 'chirp-v6-mini',
     status: 'complete',
     thumbnail: pickedSound.thumbnail,
@@ -1120,5 +1436,8 @@ module.exports = {
   getApiKeyInfo,
   verifyApiKey,
   getConfig,
-  saveConfig
+  saveConfig,
+  generateStructuredLyrics,
+  prepareLyricsAndPrompt,
+  pickSoundForTheme
 };
