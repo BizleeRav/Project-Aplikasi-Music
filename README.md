@@ -12,6 +12,7 @@ AuraSound kini dapat diunduh langsung untuk perangkat HP dan Komputer Anda:
 | :--- | :--- | :--- | :--- |
 | 📱 **Android (HP)** | `AuraSound.apk` (~1 MB) | Mendukung pemutaran audio di latar belakang (*background playback*) & kontrol layar kunci. | [⬇️ **Download AuraSound.apk**](https://github.com/BizleeRav/Project-Aplikasi-Music/releases/download/v4.66.0/AuraSound.apk) |
 | 💻 **Windows (PC/Laptop)** | `AuraSound-Windows-v4.66.0.zip` (~232 MB) | Paket lengkap aplikasi Desktop Windows. Ekstrak file ZIP dan langsung klik `AuraSound.exe`. | [⬇️ **Download AuraSound Windows**](https://github.com/BizleeRav/Project-Aplikasi-Music/releases/download/v4.66.0/AuraSound-Windows-v4.66.0.zip) |
+| 🍎 **iOS (iPhone/iPad)** | *PWA (Safari Web App)* | Buka di **Safari** ➜ Ketuk tombol **Share** ➜ Pilih **"Add to Home Screen"** untuk instalasi layar penuh instan tanpa App Store. | Buka di Safari HP |
 
 👉 *Lihat catatan rilis selengkapnya di [Halaman Rilis GitHub v4.66.0](https://github.com/BizleeRav/Project-Aplikasi-Music/releases/tag/v4.66.0)*.
 
