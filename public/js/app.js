@@ -8960,13 +8960,36 @@ function initAppUpdateCheck() {
 
   if (btnInstall) {
     btnInstall.addEventListener('click', (e) => {
+      const apkUrl = 'https://project-aplikasi-music.vercel.app/download/AuraSound.apk';
+
+      // Auto copy link to clipboard on touch/click
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(apkUrl);
+        }
+      } catch (err) {}
+
       if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.downloadAndInstallUpdate === 'function') {
         e.preventDefault();
         window.AuraSoundAndroid.downloadAndInstallUpdate(apkUrl);
+        return;
       } else if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
         e.preventDefault();
         window.AuraSoundAndroid.openExternalBrowser(apkUrl);
+        return;
       }
+
+      // Old APK fallback: provide clear feedback & attempt intent
+      btnInstall.style.background = '#2563eb';
+      btnInstall.innerHTML = '✅ Link Disalin! Buka Chrome HP';
+      if (window.app && window.app.showToast) {
+        window.app.showToast('Link unduhan disalin! Buka Google Chrome di HP & tempel.', 'success', 8000);
+      }
+
+      const intentUrl = 'intent://project-aplikasi-music.vercel.app/download/AuraSound.apk#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end;';
+      try {
+        window.location.href = intentUrl;
+      } catch (err) {}
     });
   }
 
