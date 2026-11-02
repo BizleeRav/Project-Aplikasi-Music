@@ -35,14 +35,14 @@ function securityHeaders(req, res, next) {
   // Restrict sensitive browser hardware APIs
   res.setHeader(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()'
+    'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
   );
 
   // Content Security Policy (Tailored for AuraSound Hi-Fi & YouTube / Suno / Audio Worklets)
   const cspDirectives = [
     "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://www.youtube.com https://s.ytimg.com https://apis.google.com https://accounts.google.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://accounts.google.com",
     "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com",
     "img-src 'self' data: blob: https: http:",
     "media-src 'self' data: blob: https: http:",
