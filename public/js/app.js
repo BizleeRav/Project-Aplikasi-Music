@@ -516,12 +516,35 @@ class App {
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.favorites)) {
-        this.favorites = data.favorites;
-        try {
-          localStorage.setItem(this.getFavsStorageKey(), JSON.stringify(this.favorites));
-        } catch (e) {}
-        this.updateFavButtonState();
-        if (this.activeTab === 'favorites') this.renderFavorites();
+        if (data.favorites.length === 0 && Array.isArray(this.favorites) && this.favorites.length > 0) {
+          // Server was reset on redeploy; restore local favorites to server
+          fetch('/api/user/favorites/sync', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-email': this.currentUser?.email || '',
+              'x-user-id': userKey,
+              'x-device-id': userKey
+            },
+            body: JSON.stringify({ userId: userKey, favorites: this.favorites })
+          }).catch(e => console.warn('Restore favorites error:', e));
+        } else if (data.favorites.length > 0) {
+          // Smart merge favorites by id
+          const favMap = new Map();
+          for (const f of (this.favorites || [])) {
+            if (f && f.id) favMap.set(f.id, f);
+          }
+          for (const f of data.favorites) {
+            if (f && f.id) favMap.set(f.id, f);
+          }
+          this.favorites = Array.from(favMap.values());
+          try {
+            localStorage.setItem(this.getFavsStorageKey(), JSON.stringify(this.favorites));
+            localStorage.setItem('aurasound_favorites_backup', JSON.stringify(this.favorites));
+          } catch (e) {}
+          this.updateFavButtonState();
+          if (this.activeTab === 'favorites') this.renderFavorites();
+        }
       }
     } catch (e) {
       console.warn('syncFavoritesFromDb error:', e);
@@ -7319,30 +7342,77 @@ class App {
   }
 
   loadPlaylists() {
+    const playlistMap = new Map();
+
+    const addPlaylists = (rawList) => {
+      if (!Array.isArray(rawList)) return;
+      for (const p of rawList) {
+        if (!p || !p.id || !p.title) continue;
+        if (p.title === 'K-POP SONG' || p.title === "J-POP SONG'S") continue;
+        
+        if (!playlistMap.has(p.id)) {
+          playlistMap.set(p.id, p);
+        } else {
+          // If already exists, prefer the version that has tracks populated
+          const existing = playlistMap.get(p.id);
+          const existingHasTracks = Array.isArray(existing.tracks) && existing.tracks.length > 0;
+          const incomingHasTracks = Array.isArray(p.tracks) && p.tracks.length > 0;
+          if (!existingHasTracks && incomingHasTracks) {
+            playlistMap.set(p.id, { ...existing, ...p });
+          } else if (existingHasTracks && !incomingHasTracks) {
+            playlistMap.set(p.id, { ...p, tracks: existing.tracks });
+          }
+        }
+      }
+    };
+
     try {
-      const scoped = JSON.parse(localStorage.getItem(this.getPlaylistsStorageKey()));
-      if (Array.isArray(scoped) && scoped.length > 0) {
-        return scoped.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
+      // 1. Scoped user key
+      const scoped = JSON.parse(localStorage.getItem(this.getPlaylistsStorageKey()) || '[]');
+      addPlaylists(scoped);
+
+      // 2. Global backup key
+      const backup = JSON.parse(localStorage.getItem('aurasound_playlists_backup') || '[]');
+      addPlaylists(backup);
+
+      // 3. General custom playlists key
+      const general = JSON.parse(localStorage.getItem('aurasound_custom_playlists') || '[]');
+      addPlaylists(general);
+
+      // 4. Scan all localStorage keys matching aurasound_playlists_* to recover orphaned playlists
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('aurasound_playlists_') && k !== this.getPlaylistsStorageKey() && k !== 'aurasound_playlists_backup') {
+          try {
+            const extra = JSON.parse(localStorage.getItem(k) || '[]');
+            addPlaylists(extra);
+          } catch (e) {}
+        }
       }
-      const general = JSON.parse(localStorage.getItem('aurasound_custom_playlists'));
-      if (Array.isArray(general) && general.length > 0) {
-        return general.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
-      }
-      return [];
     } catch (e) {
-      return [];
+      console.warn('loadPlaylists error:', e);
     }
+
+    const result = Array.from(playlistMap.values());
+    return result;
   }
 
   savePlaylists() {
     try {
-      localStorage.setItem(this.getPlaylistsStorageKey(), JSON.stringify(this.playlists));
-    } catch (e) {}
+      const dataStr = JSON.stringify(this.playlists || []);
+      localStorage.setItem(this.getPlaylistsStorageKey(), dataStr);
+      localStorage.setItem('aurasound_playlists_backup', dataStr);
+      localStorage.setItem('aurasound_custom_playlists', dataStr);
+    } catch (e) {
+      console.warn('savePlaylists error:', e);
+    }
   }
 
   async syncPlaylistsFromServer() {
     try {
       const userKey = this.getUserKey();
+      const localPlaylists = this.loadPlaylists();
+
       const res = await fetch(`/api/playlists?userId=${encodeURIComponent(userKey)}`, {
         headers: {
           'x-user-email': this.currentUser?.email || '',
@@ -7351,10 +7421,90 @@ class App {
         }
       });
       const data = await res.json();
+
       if (data.success && Array.isArray(data.playlists)) {
-        const filtered = data.playlists.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
-        this.playlists = filtered;
-        this.savePlaylists();
+        const serverPlaylists = data.playlists.filter(p => p.title !== 'K-POP SONG' && p.title !== "J-POP SONG'S");
+
+        // CRITICAL SELF-HEALING:
+        // If server returned 0 playlists but client already has playlists locally (e.g. after Vercel redeployment / cold restart),
+        // DO NOT overwrite client storage! Instead, upload client playlists back to server!
+        if (serverPlaylists.length === 0 && localPlaylists.length > 0) {
+          console.log('[PlaylistSync] Server DB reset on redeploy; self-healing by restoring local playlists to server...');
+          this.playlists = localPlaylists;
+          this.savePlaylists();
+          // Restore to server in the background
+          fetch('/api/playlists/sync', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-email': this.currentUser?.email || '',
+              'x-user-id': userKey,
+              'x-device-id': userKey
+            },
+            body: JSON.stringify({
+              userId: userKey,
+              userEmail: this.currentUser?.email || '',
+              deviceId: userKey,
+              playlists: localPlaylists
+            })
+          }).catch(err => console.warn('[PlaylistSync] Failed to restore to server:', err));
+        } else {
+          // Merge server playlists and local playlists by ID
+          const mergedMap = new Map();
+          
+          // First add local playlists
+          for (const pl of localPlaylists) {
+            mergedMap.set(pl.id, pl);
+          }
+
+          let localNeedsUpload = false;
+          // Merge server playlists
+          for (const sPl of serverPlaylists) {
+            if (!mergedMap.has(sPl.id)) {
+              mergedMap.set(sPl.id, sPl);
+            } else {
+              const localPl = mergedMap.get(sPl.id);
+              const localHasTracks = Array.isArray(localPl.tracks) && localPl.tracks.length > 0;
+              const serverHasTracks = Array.isArray(sPl.tracks) && sPl.tracks.length > 0;
+              mergedMap.set(sPl.id, {
+                ...sPl,
+                ...localPl,
+                tracks: localHasTracks ? localPl.tracks : (serverHasTracks ? sPl.tracks : [])
+              });
+            }
+          }
+
+          // Check if any local playlist was missing from server
+          for (const pl of localPlaylists) {
+            if (!serverPlaylists.some(sp => sp.id === pl.id)) {
+              localNeedsUpload = true;
+              break;
+            }
+          }
+
+          this.playlists = Array.from(mergedMap.values());
+          this.savePlaylists();
+
+          // If there were local playlists not yet on server, sync them up
+          if (localNeedsUpload) {
+            fetch('/api/playlists/sync', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-user-email': this.currentUser?.email || '',
+                'x-user-id': userKey,
+                'x-device-id': userKey
+              },
+              body: JSON.stringify({
+                userId: userKey,
+                userEmail: this.currentUser?.email || '',
+                deviceId: userKey,
+                playlists: this.playlists
+              })
+            }).catch(err => console.warn('[PlaylistSync] Sync up error:', err));
+          }
+        }
+
         if (this.activeTab === 'playlists') {
           if (this.currentPlaylistDetail) {
             this.openPlaylistDetail(this.currentPlaylistDetail.id);
@@ -7364,7 +7514,10 @@ class App {
         }
       }
     } catch (err) {
-      console.warn('Failed to sync playlists with server, using local cache:', err);
+      console.warn('Failed to sync playlists with server, preserving local cache:', err);
+      if (!this.playlists || this.playlists.length === 0) {
+        this.playlists = this.loadPlaylists();
+      }
     }
   }
 
@@ -7822,6 +7975,8 @@ class App {
     try {
       const scoped = JSON.parse(localStorage.getItem(this.getFavsStorageKey()));
       if (Array.isArray(scoped) && scoped.length > 0) return scoped;
+      const backup = JSON.parse(localStorage.getItem('aurasound_favorites_backup'));
+      if (Array.isArray(backup) && backup.length > 0) return backup;
       const general = JSON.parse(localStorage.getItem('aurasound_favs'));
       if (Array.isArray(general) && general.length > 0) return general;
       if (this.currentUser && Array.isArray(this.currentUser.favorites) && this.currentUser.favorites.length > 0) {

@@ -59,9 +59,14 @@ function getAllPlaylists(userKey = null) {
   const cleanKey = String(userKey).trim().toLowerCase();
   const normalizedKey = cleanKey.replace(/^usr_/, '').replace(/_gmail_com$/, '@gmail.com');
   return playlistsCache.filter(p => {
-    const pOwner = String(p.userEmail || p.userId || p.deviceId || '').trim().toLowerCase();
-    if (pOwner === cleanKey || pOwner === normalizedKey) return true;
-    const pOwnerNorm = pOwner.replace(/^usr_/, '').replace(/_gmail_com$/, '@gmail.com');
+    const pEmail = String(p.userEmail || '').trim().toLowerCase();
+    const pUserId = String(p.userId || '').trim().toLowerCase();
+    const pDevice = String(p.deviceId || '').trim().toLowerCase();
+    if (!pEmail && !pUserId && !pDevice) return true; // Legacy or shared imported playlist
+    if (pEmail === cleanKey || pEmail === normalizedKey) return true;
+    if (pUserId === cleanKey || pUserId === normalizedKey) return true;
+    if (pDevice === cleanKey || pDevice === normalizedKey) return true;
+    const pOwnerNorm = (pEmail || pUserId || pDevice).replace(/^usr_/, '').replace(/_gmail_com$/, '@gmail.com');
     return pOwnerNorm === normalizedKey;
   });
 }
@@ -73,7 +78,7 @@ function getPlaylistsSummary(userKey = null) {
     id: p.id,
     title: p.title,
     thumbnail: p.thumbnail,
-    trackCount: p.tracks?.length || 0,
+    trackCount: p.trackCount !== undefined ? p.trackCount : (p.tracks?.length || 0),
     createdAt: p.createdAt,
     isImported: p.isImported,
     userEmail: p.userEmail,
@@ -84,11 +89,15 @@ function getPlaylistsSummary(userKey = null) {
 function getPlaylistById(id, userKey = null) {
   const all = getAllPlaylists();
   const cleanKey = userKey ? String(userKey).trim().toLowerCase() : null;
+  const normalizedKey = cleanKey ? cleanKey.replace(/^usr_/, '').replace(/_gmail_com$/, '@gmail.com') : null;
   return all.find(p => {
     if (p.id !== id) return false;
     if (!cleanKey) return true;
     const pOwner = String(p.userEmail || p.userId || p.deviceId || '').trim().toLowerCase();
-    return pOwner === cleanKey;
+    if (!pOwner) return true;
+    if (pOwner === cleanKey || pOwner === normalizedKey) return true;
+    const pOwnerNorm = pOwner.replace(/^usr_/, '').replace(/_gmail_com$/, '@gmail.com');
+    return pOwnerNorm === normalizedKey;
   }) || null;
 }
 
@@ -96,12 +105,54 @@ function addOrUpdatePlaylist(playlist) {
   const all = getAllPlaylists();
   const idx = all.findIndex(p => p.id === playlist.id);
   if (idx !== -1) {
-    all[idx] = { ...all[idx], ...playlist };
+    const existing = all[idx];
+    const incomingTracks = Array.isArray(playlist.tracks) && playlist.tracks.length > 0;
+    const existingTracks = Array.isArray(existing.tracks) && existing.tracks.length > 0;
+    all[idx] = {
+      ...existing,
+      ...playlist,
+      tracks: incomingTracks ? playlist.tracks : (existingTracks ? existing.tracks : [])
+    };
   } else {
     all.unshift(playlist);
   }
   persistToDisk();
   return playlist;
+}
+
+function bulkUpsertPlaylists(incomingPlaylists, userKey = null) {
+  if (!Array.isArray(incomingPlaylists) || incomingPlaylists.length === 0) {
+    return getAllPlaylists(userKey);
+  }
+  const all = getAllPlaylists();
+  for (const pl of incomingPlaylists) {
+    if (!pl || !pl.id || !pl.title) continue;
+    if (pl.title === 'K-POP SONG' || pl.title === "J-POP SONG'S") continue;
+    
+    const idx = all.findIndex(p => p.id === pl.id);
+    const resolvedUserKey = userKey || pl.userEmail || pl.userId || pl.deviceId || '';
+    const enriched = {
+      ...pl,
+      userId: pl.userId || resolvedUserKey,
+      deviceId: pl.deviceId || resolvedUserKey,
+      userEmail: pl.userEmail || (resolvedUserKey && resolvedUserKey.includes('@') ? resolvedUserKey : '')
+    };
+
+    if (idx !== -1) {
+      const existing = all[idx];
+      const hasTracksIncoming = Array.isArray(enriched.tracks) && enriched.tracks.length > 0;
+      const hasTracksExisting = Array.isArray(existing.tracks) && existing.tracks.length > 0;
+      all[idx] = {
+        ...existing,
+        ...enriched,
+        tracks: hasTracksIncoming ? enriched.tracks : (hasTracksExisting ? existing.tracks : [])
+      };
+    } else {
+      all.unshift(enriched);
+    }
+  }
+  persistToDisk();
+  return getAllPlaylists(userKey);
 }
 
 function deletePlaylist(id) {
@@ -141,6 +192,7 @@ module.exports = {
   getPlaylistsSummary,
   getPlaylistById,
   addOrUpdatePlaylist,
+  bulkUpsertPlaylists,
   deletePlaylist,
   addTrackToPlaylist,
   removeTrackFromPlaylist

@@ -1192,8 +1192,13 @@ app.post('/api/playlist/import', async (req, res) => {
   // Handle Spotify Playlist / Album / Track Import
   if (spotifyService.isSpotifyUrl(url)) {
     try {
-      const deviceId = req.headers['x-device-id'] || req.body?.deviceId || null;
-      const newPlaylist = await spotifyService.importFromSpotify(url, deviceId);
+      const userEmail = req.headers['x-user-email'] || req.body?.userEmail || (userDb.getActiveSession()?.email) || '';
+      const userId = req.headers['x-user-id'] || req.body?.userId || userEmail || '';
+      const deviceId = req.headers['x-device-id'] || req.body?.deviceId || userEmail || '';
+      const newPlaylist = await spotifyService.importFromSpotify(url, deviceId || userEmail);
+      newPlaylist.userEmail = userEmail;
+      newPlaylist.userId = userId || deviceId || userEmail;
+      newPlaylist.deviceId = deviceId || userEmail || 'anonymous';
       playlistDb.addOrUpdatePlaylist(newPlaylist);
       return res.json({
         success: true,
@@ -1322,6 +1327,11 @@ app.post('/api/playlist/import', async (req, res) => {
       }
     }
 
+    const userEmail = req.headers['x-user-email'] || req.body?.userEmail || (userDb.getActiveSession()?.email) || '';
+    const userId = req.headers['x-user-id'] || req.body?.userId || userEmail || '';
+    const deviceId = req.headers['x-device-id'] || req.body?.deviceId || userEmail || '';
+    const ownerKey = userEmail || userId || deviceId || 'anonymous';
+
     const newPlaylist = {
       id: 'pl-' + Date.now(),
       title,
@@ -1330,7 +1340,9 @@ app.post('/api/playlist/import', async (req, res) => {
       thumbnail: allTracks[0]?.thumbnail || '/icons/icon.svg',
       createdAt: new Date().toLocaleDateString('id-ID'),
       isImported: true,
-      deviceId: req.headers['x-device-id'] || req.body?.deviceId || null
+      userEmail,
+      userId: userId || ownerKey,
+      deviceId: ownerKey
     };
     playlistDb.addOrUpdatePlaylist(newPlaylist);
 
@@ -1367,8 +1379,25 @@ app.get('/api/playlists', (req, res) => {
   try {
     const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
     const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.userEmail || req.headers['x-device-id'] || req.query.deviceId || defaultUserKey;
-    const playlists = playlistDb.getPlaylistsSummary(userKey);
+    const playlists = playlistDb.getAllPlaylists(userKey);
     res.json({ success: true, count: playlists.length, playlists });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Self-healing multi-playlist bulk sync endpoint
+app.post('/api/playlists/sync', (req, res) => {
+  try {
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body?.userId || req.body?.userEmail || req.headers['x-device-id'] || req.body?.deviceId || defaultUserKey;
+    const { playlists } = req.body;
+    if (Array.isArray(playlists) && playlists.length > 0) {
+      const updated = playlistDb.bulkUpsertPlaylists(playlists, userKey);
+      return res.json({ success: true, count: updated.length, playlists: updated });
+    }
+    const current = playlistDb.getAllPlaylists(userKey);
+    res.json({ success: true, count: current.length, playlists: current });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1388,19 +1417,21 @@ app.get('/api/playlists/:id', (req, res) => {
 
 app.post('/api/playlists', (req, res) => {
   try {
-    const { title, tracks, thumbnail } = req.body;
+    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId || defaultUserKey;
+    const { id, title, tracks, thumbnail, isImported } = req.body;
     if (!title) return res.status(400).json({ success: false, error: 'Nama playlist diperlukan' });
     const trackList = Array.isArray(tracks) ? tracks : [];
-    const userEmail = req.headers['x-user-email'] || req.body.userEmail || null;
-    const userId = req.headers['x-user-id'] || req.body.userId || null;
-    const deviceId = req.headers['x-device-id'] || req.body.deviceId || null;
+    const userEmail = req.headers['x-user-email'] || req.body.userEmail || (userDb.getActiveSession()?.email) || '';
+    const userId = req.headers['x-user-id'] || req.body.userId || userKey || '';
+    const deviceId = req.headers['x-device-id'] || req.body.deviceId || userKey || '';
     const newPl = {
-      id: 'pl-' + Date.now(),
+      id: id || ('pl-' + Date.now()),
       title: title.trim(),
       tracks: trackList,
       thumbnail: thumbnail || (trackList[0] ? trackList[0].thumbnail : '/icons/icon.svg'),
       createdAt: new Date().toLocaleDateString('id-ID'),
-      isImported: false,
+      isImported: !!isImported,
       userEmail,
       userId,
       deviceId: userEmail || userId || deviceId
@@ -1683,84 +1714,7 @@ app.post('/api/user/taste', (req, res) => {
   }
 });
 
-// 10. Playlists CRUD & Server Persistence
-app.get('/api/playlists', (req, res) => {
-  try {
-    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId || defaultUserKey;
-    const playlists = playlistDb.getAllPlaylists(userKey);
-    res.json({ success: true, playlists });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
-app.get('/api/playlists/:id', (req, res) => {
-  try {
-    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.query.userId || req.query.email || req.headers['x-device-id'] || req.query.deviceId || defaultUserKey;
-    const playlist = playlistDb.getPlaylistById(req.params.id, userKey);
-    if (!playlist) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
-    res.json({ success: true, playlist });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/playlists', (req, res) => {
-  try {
-    const defaultUserKey = (userDb.getActiveSession() && userDb.getActiveSession().email) || null;
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId || defaultUserKey;
-    const { id, title, tracks, thumbnail, isImported } = req.body;
-    if (!title) return res.status(400).json({ success: false, error: 'Judul playlist diperlukan' });
-    const pl = {
-      id: id || ('pl_' + Date.now()),
-      title,
-      tracks: Array.isArray(tracks) ? tracks : [],
-      thumbnail: thumbnail || (tracks && tracks[0] && tracks[0].thumbnail) || '/images/supermix.jpg',
-      createdAt: new Date().toLocaleDateString('id-ID'),
-      isImported: !!isImported,
-      userEmail: req.headers['x-user-email'] || (userDb.getActiveSession()?.email) || '',
-      userId: userKey || '',
-      deviceId: userKey || ''
-    };
-    const saved = playlistDb.addOrUpdatePlaylist(pl);
-    res.json({ success: true, playlist: saved });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.delete('/api/playlists/:id', (req, res) => {
-  try {
-    playlistDb.deletePlaylist(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/playlists/:id/tracks', (req, res) => {
-  try {
-    const { track } = req.body;
-    if (!track) return res.status(400).json({ success: false, error: 'Track diperlukan' });
-    const pl = playlistDb.addTrackToPlaylist(req.params.id, track);
-    if (!pl) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
-    res.json({ success: true, playlist: pl });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.delete('/api/playlists/:id/tracks/:trackId', (req, res) => {
-  try {
-    const pl = playlistDb.removeTrackFromPlaylist(req.params.id, req.params.trackId);
-    if (!pl) return res.status(404).json({ success: false, error: 'Playlist tidak ditemukan' });
-    res.json({ success: true, playlist: pl });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 // ==========================================
 // 8. REAL-TIME SYNCHRONIZED LYRICS API (LRCLIB Proxy with In-Memory Caching)
