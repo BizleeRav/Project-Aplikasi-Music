@@ -1192,8 +1192,13 @@ app.post('/api/suno/connect-token', (req, res) => {
   res.json({ success: true, message: '🎉 Akun Suno Resmi Anda berhasil terhubung ke AuraSound!' });
 });
 
-// Suno Mobile APK Pair Code System (1-Tap Connection between Devices)
-const sunoPairCodes = new Map();
+// Suno Mobile APK Pair Code System (Stateless HMAC for seamless Serverless/Vercel synchronization)
+function getPairCodeForWindow(offset = 0) {
+  const secret = 'aurasound_suno_pairing_key_2026';
+  const timeWindow = Math.floor(Date.now() / (3600 * 1000)) + offset;
+  const hmac = crypto.createHmac('sha256', secret).update(String(timeWindow)).digest('hex');
+  return String(parseInt(hmac.substring(0, 8), 16) % 900000 + 100000);
+}
 
 app.get('/api/suno/pair-code', (req, res) => {
   const creds = getEffectiveSunoCredentials(req);
@@ -1202,17 +1207,7 @@ app.get('/api/suno/pair-code', (req, res) => {
     return res.status(400).json({ success: false, error: 'Belum ada akun Suno yang terhubung di server/laptop ini.' });
   }
 
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  sunoPairCodes.set(code, {
-    token: token,
-    provider: creds.provider || 'suno_official',
-    expiresAt: Date.now() + 60 * 60 * 1000
-  });
-
-  for (const [c, data] of sunoPairCodes.entries()) {
-    if (Date.now() > data.expiresAt) sunoPairCodes.delete(c);
-  }
-
+  const code = getPairCodeForWindow(0);
   res.json({
     success: true,
     code,
@@ -1228,16 +1223,18 @@ app.post('/api/suno/pair-claim', (req, res) => {
   }
 
   const cleanCode = code.replace(/[\s-]/g, '').trim();
-  const pairData = sunoPairCodes.get(cleanCode);
+  const currentCode = getPairCodeForWindow(0);
+  const prevCode = getPairCodeForWindow(-1);
 
-  if (!pairData || Date.now() > pairData.expiresAt) {
-    return res.status(404).json({ success: false, error: 'Kode sambung salah atau sudah kedaluwarsa. Buat kode baru di laptop Anda.' });
+  if (cleanCode !== currentCode && cleanCode !== prevCode) {
+    return res.status(404).json({ success: false, error: 'Kode sambung salah atau sudah kedaluwarsa. Cek kode sambung di laptop Anda.' });
   }
 
+  const creds = getEffectiveSunoCredentials(req);
   res.json({
     success: true,
-    token: pairData.token,
-    provider: pairData.provider,
+    token: creds.key,
+    provider: creds.provider || 'suno_official',
     message: '🎉 Berhasil menyambungkan akun Suno dari laptop ke HP!'
   });
 });
