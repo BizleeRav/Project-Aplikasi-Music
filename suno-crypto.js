@@ -172,38 +172,39 @@ async function streamDecryptedSunoAudio(req, res, clipId, targetUrl) {
     if (parts[1]) {
       end = parseInt(parts[1], 10);
     }
-  }
 
-  // Cap chunk size per request to 512KB for instant response and smooth streaming
-  const maxChunk = 512 * 1024;
-  if (end - start + 1 > maxChunk) {
-    end = start + maxChunk - 1;
-  }
-  if (totalLength > 0 && end >= totalLength) {
-    end = totalLength - 1;
-  }
+    // Cap chunk size per request to 512KB for instant response and smooth streaming
+    const maxChunk = 512 * 1024;
+    if (end - start + 1 > maxChunk) {
+      end = start + maxChunk - 1;
+    }
+    if (totalLength > 0 && end >= totalLength) {
+      end = totalLength - 1;
+    }
 
-  const chunkLength = end - start + 1;
-
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Range, Accept, Origin, Content-Type');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type');
-  res.setHeader('Content-Type', 'audio/mp4');
-  res.setHeader('Accept-Ranges', 'bytes');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
-
-  if (rangeHeader || totalLength > 0) {
+    const chunkLength = end - start + 1;
     res.status(206);
     res.setHeader('Content-Range', `bytes ${start}-${end}/${totalLength}`);
     res.setHeader('Content-Length', chunkLength);
-  } else {
-    res.status(200);
-    res.setHeader('Content-Length', totalLength);
+
+    const decryptedChunk = await decryptAudioRange(clipId, start, end, fetchUrl);
+    return res.end(decryptedChunk);
   }
 
-  const decryptedChunk = await decryptAudioRange(clipId, start, end, fetchUrl);
-  res.end(decryptedChunk);
+  // Full file stream (e.g. for fetch() or direct download)
+  res.status(200);
+  res.setHeader('Content-Length', totalLength);
+
+  let current = 0;
+  const chunkSize = 512 * 1024;
+  while (current < totalLength) {
+    if (res.writableEnded || res.destroyed) break;
+    const chunkEnd = Math.min(totalLength - 1, current + chunkSize - 1);
+    const chunk = await decryptAudioRange(clipId, current, chunkEnd, fetchUrl);
+    res.write(chunk);
+    current = chunkEnd + 1;
+  }
+  res.end();
 }
 
 module.exports = {

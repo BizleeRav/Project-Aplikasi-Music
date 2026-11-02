@@ -2709,6 +2709,174 @@ class App {
     this.renderCinemaLyrics(this.currentTrack);
   }
 
+  alignSunoLyricsByStructure(candidateText, duration = 180) {
+    if (!candidateText || typeof candidateText !== 'string') return [];
+
+    const rawLines = candidateText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const lrcRegex = /^\[(\d{1,2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/;
+    let lrcMatchCount = 0;
+    for (const line of rawLines) {
+      if (lrcRegex.test(line)) lrcMatchCount++;
+    }
+
+    // 1. If text contains standard LRC timestamps, parse directly
+    if (lrcMatchCount >= 2) {
+      const parsed = [];
+      let currentSection = '';
+      for (let i = 0; i < rawLines.length; i++) {
+        const line = rawLines[i];
+        const match = line.match(lrcRegex);
+        if (match) {
+          const m = parseInt(match[1], 10);
+          const s = parseFloat(match[2]);
+          const time = Math.round((m * 60 + s) * 100) / 100;
+          let text = match[3].trim();
+          const secMatch = text.match(/^\[([^\]]+)\]\s*(.*)$/);
+          if (secMatch) {
+            currentSection = secMatch[1].trim();
+            text = secMatch[2].trim();
+          }
+          if (text) {
+            parsed.push({ time, text, section: currentSection });
+          }
+        } else if (line.startsWith('[') && line.endsWith(']')) {
+          currentSection = line.replace(/[\[\]]/g, '').trim();
+        }
+      }
+
+      // Assign realistic endTimes
+      for (let i = 0; i < parsed.length; i++) {
+        const next = parsed[i + 1];
+        if (next) {
+          const lineGap = next.time - parsed[i].time;
+          parsed[i].endTime = Math.round((parsed[i].time + Math.min(lineGap - 0.2, Math.max(2.5, lineGap * 0.88))) * 100) / 100;
+        } else {
+          parsed[i].endTime = Math.round((parsed[i].time + 5.0) * 100) / 100;
+        }
+      }
+
+      if (parsed.length > 0) return parsed;
+    }
+
+    // 2. Intelligent Musical Structure Aligner for Raw Suno Lyrics
+    const sections = [];
+    let currentSection = { name: '', type: 'verse', lines: [] };
+
+    const detectSectionType = (name) => {
+      const n = (name || '').toLowerCase();
+      if (n.includes('intro')) return 'intro';
+      if (n.includes('pre-chorus') || n.includes('pre chorus')) return 'pre_chorus';
+      if (n.includes('chorus') || n.includes('refrain') || n.includes('hook')) return 'chorus';
+      if (n.includes('bridge') || n.includes('trans')) return 'bridge';
+      if (n.includes('outro') || n.includes('ending') || n.includes('fade')) return 'outro';
+      if (n.includes('solo') || n.includes('drop') || n.includes('break')) return 'interlude';
+      if (n.includes('verse')) return 'verse';
+      return 'verse';
+    };
+
+    for (const line of rawLines) {
+      if (line.startsWith('[') && line.endsWith(']')) {
+        const header = line.replace(/[\[\]]/g, '').trim();
+        if (currentSection.lines.length > 0) {
+          sections.push(currentSection);
+        }
+        currentSection = {
+          name: header,
+          type: detectSectionType(header),
+          lines: []
+        };
+        continue;
+      }
+      currentSection.lines.push(line);
+    }
+    if (currentSection.lines.length > 0) {
+      sections.push(currentSection);
+    }
+
+    if (sections.length === 0) return [];
+
+    const totalSec = Math.max(30, duration);
+    const introLead = Math.min(14, Math.max(6, Math.round(totalSec * 0.045)));
+    const outroTail = Math.min(20, Math.max(6, Math.round(totalSec * 0.065)));
+    const vocalWindow = Math.max(15, totalSec - introLead - outroTail);
+
+    const weights = {
+      intro: 4.0,
+      verse: 4.8,
+      pre_chorus: 4.0,
+      chorus: 5.2,
+      bridge: 6.0,
+      interlude: 4.0,
+      outro: 4.6
+    };
+
+    const gaps = {
+      after_chorus: 6.0,
+      after_verse: 2.0,
+      after_pre_chorus: 1.0,
+      after_bridge: 3.0,
+      after_interlude: 2.0,
+      default: 1.5
+    };
+
+    let totalWeightedUnits = 0;
+    let totalFixedGaps = 0;
+
+    sections.forEach((sec, sIdx) => {
+      const lineWeight = weights[sec.type] || 4.8;
+      sec.weight = sec.lines.reduce((acc, l) => {
+        const lenFactor = Math.min(1.25, Math.max(0.75, l.length / 32));
+        return acc + (lineWeight * lenFactor);
+      }, 0);
+      totalWeightedUnits += sec.weight;
+
+      if (sIdx < sections.length - 1) {
+        let gap = gaps.default;
+        if (sec.type === 'chorus') gap = gaps.after_chorus;
+        else if (sec.type === 'verse') gap = gaps.after_verse;
+        else if (sec.type === 'pre_chorus') gap = gaps.after_pre_chorus;
+        else if (sec.type === 'bridge') gap = gaps.after_bridge;
+        sec.postGap = gap;
+        totalFixedGaps += gap;
+      } else {
+        sec.postGap = 0;
+      }
+    });
+
+    const availableVocalTime = Math.max(10, vocalWindow - totalFixedGaps);
+    const timePerUnit = availableVocalTime / Math.max(1, totalWeightedUnits);
+
+    const result = [];
+    let currentTime = introLead;
+
+    sections.forEach((sec) => {
+      const secDuration = sec.weight * timePerUnit;
+      let secElapsed = 0;
+
+      sec.lines.forEach((lineText) => {
+        const lenFactor = Math.min(1.25, Math.max(0.75, lineText.length / 32));
+        const lineUnit = (weights[sec.type] || 4.8) * lenFactor;
+        const lineDuration = lineUnit * timePerUnit;
+
+        const lyricTimestamp = Math.round((currentTime + secElapsed) * 10) / 10;
+        const endTime = Math.round((lyricTimestamp + Math.max(1.8, lineDuration * 0.9)) * 10) / 10;
+
+        result.push({
+          time: lyricTimestamp,
+          endTime: endTime,
+          text: lineText,
+          section: sec.name || ''
+        });
+
+        secElapsed += lineDuration;
+      });
+
+      currentTime += secDuration + (sec.postGap || 0);
+    });
+
+    return result;
+  }
+
   async renderCinemaLyrics(track, overrideDuration = null, forceRefresh = false) {
     if (!this.cinemaLyricsStream || !track) return;
 
@@ -2735,43 +2903,32 @@ class App {
       return;
     }
 
-    // 2. If it's a Suno AI track, prioritize genuine singable lyrics over prompt instructions
+    // 2. If it's a Suno AI track, handle structured syncing and pre-aligned LRC
     if (track.type === 'suno') {
+      const candidateSynced = (track.syncedLyrics && track.syncedLyrics.trim().length > 0)
+        ? track.syncedLyrics
+        : (track.lyrics_synced && track.lyrics_synced.trim().length > 0 ? track.lyrics_synced : '');
+
       const candidateText = (track.lyrics && track.lyrics.trim().length > 0)
         ? track.lyrics
         : ((track.prompt && !this.isPromptInstructionText(track.prompt)) ? track.prompt : '');
 
-      if (candidateText && typeof candidateText === 'string') {
-        const rawLines = candidateText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        const parsedLines = [];
-        let currentSection = '';
+      const textToUse = candidateSynced || candidateText;
 
-        for (const line of rawLines) {
-          if (line.startsWith('[') && line.endsWith(']')) {
-            currentSection = line.replace(/[\[\]]/g, '').trim();
-            continue;
-          }
-          parsedLines.push({
-            text: line,
-            section: currentSection
-          });
-        }
+      if (textToUse && typeof textToUse === 'string') {
+        const actualDuration = (overrideDuration && Number(overrideDuration) > 0)
+          ? Math.round(Number(overrideDuration))
+          : (Number(track.seconds) || this.parseDuration(track.duration) || (this.nativeAudio?.duration ? Math.round(this.nativeAudio.duration) : 0) || (typeof window.audioEngine?.getDuration === 'function' ? Math.round(window.audioEngine.getDuration()) : 0) || 180);
 
-        if (parsedLines.length > 0) {
-          const duration = this.parseDuration(track.duration) || Number(track.seconds) || 180;
-          const introLeadTime = Math.min(10, Math.max(4, duration * 0.05));
-          const availableTime = Math.max(10, duration - introLeadTime - 6);
-          const interval = availableTime / Math.max(1, parsedLines.length);
+        const parsed = this.alignSunoLyricsByStructure(textToUse, actualDuration);
 
-          this.currentLyricsData = parsedLines.map((item, idx) => ({
-            time: Math.floor(introLeadTime + interval * idx),
-            text: item.text,
-            section: item.section
-          }));
-
-          track._parsedLyrics = this.currentLyricsData;
-          track._lyricsType = 'suno_ai';
-          this.displayLyricsList(this.currentLyricsData, 'suno_ai');
+        if (parsed && parsed.length > 0) {
+          this.currentLyricsData = parsed;
+          track._parsedLyrics = parsed;
+          track._lyricsType = candidateSynced ? 'synced' : 'suno_ai';
+          track._lyricsEngineVersion = 'v79';
+          track._cachedForTrackId = trackId;
+          this.displayLyricsList(this.currentLyricsData, track._lyricsType);
           const curTime = this.getCurrentPlaybackTime();
           this.updateActiveLyricsLine(curTime);
           return;
@@ -3036,7 +3193,10 @@ class App {
     if (this.cinemaLyricsBadge) {
       this.cinemaLyricsBadge.style.display = 'inline-flex';
       if (type === 'synced') {
-        if (this.hasWordSync) {
+        if (this.currentTrack && this.currentTrack.type === 'suno') {
+          this.cinemaLyricsBadge.className = 'cinema-lyrics-badge suno';
+          this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> ⚡ SUNO MASTER SYNC`;
+        } else if (this.hasWordSync) {
           if (this.currentLyricsLang === 'ja') {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';
             this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇯🇵 BETTER LYRICS • ROMAJI`;
@@ -3067,7 +3227,7 @@ class App {
         }
       } else if (type === 'suno_ai') {
         this.cinemaLyricsBadge.className = 'cinema-lyrics-badge suno';
-        this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot"></span> AI GENERATED`;
+        this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> ⚡ SUNO AI SYNCED`;
       } else {
         this.cinemaLyricsBadge.className = 'cinema-lyrics-badge plain';
         this.cinemaLyricsBadge.textContent = 'LIRIK TEKS';

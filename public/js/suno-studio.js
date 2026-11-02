@@ -871,6 +871,8 @@ class SunoStudio {
       tags: clip.tags || '',
       prompt: clip.prompt || '',
       lyrics: clip.lyrics || '',
+      syncedLyrics: clip.syncedLyrics || clip.lyrics_synced || '',
+      lyrics_synced: clip.lyrics_synced || clip.syncedLyrics || '',
       thumbnail: clip.thumbnail || (clip.id ? `https://cdn2.suno.ai/image_${clip.id}.jpeg` : '/icons/icon.svg'),
       audio_url: targetAudio,
       duration: clip.duration || '2:00',
