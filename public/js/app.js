@@ -8954,13 +8954,12 @@ function initAppUpdateCheck() {
   setTimeout(check, 1800);
 
   const btnInstall = document.getElementById('btn-modal-install-update');
-  const btnChrome = document.getElementById('btn-open-chrome-update');
-  const btnCopy = document.getElementById('btn-copy-update-link');
-  const apkUrl = 'https://raw.githubusercontent.com/BizleeRav/Project-Aplikasi-Music/main/public/download/AuraSound.apk';
+  const guideBox = document.getElementById('update-copied-guide');
+  const apkUrl = 'https://project-aplikasi-music.vercel.app/download/AuraSound.apk';
 
   if (btnInstall) {
     btnInstall.addEventListener('click', (e) => {
-      const apkUrl = 'https://project-aplikasi-music.vercel.app/download/AuraSound.apk';
+      e.preventDefault();
 
       // Auto copy link to clipboard on touch/click
       try {
@@ -8970,49 +8969,22 @@ function initAppUpdateCheck() {
       } catch (err) {}
 
       if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.downloadAndInstallUpdate === 'function') {
-        e.preventDefault();
         window.AuraSoundAndroid.downloadAndInstallUpdate(apkUrl);
         return;
       } else if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
-        e.preventDefault();
         window.AuraSoundAndroid.openExternalBrowser(apkUrl);
         return;
       }
 
-      // Old APK fallback: provide clear feedback & attempt intent
+      // Old APK fallback: NEVER navigate WebView to avoid ERR_UNKNOWN_URL_SCHEME
       btnInstall.style.background = '#2563eb';
       btnInstall.innerHTML = '✅ Link Disalin! Buka Chrome HP';
+      if (guideBox) {
+        guideBox.style.display = 'block';
+      }
       if (window.app && window.app.showToast) {
         window.app.showToast('Link unduhan disalin! Buka Google Chrome di HP & tempel.', 'success', 8000);
       }
-
-      const intentUrl = 'intent://project-aplikasi-music.vercel.app/download/AuraSound.apk#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end;';
-      try {
-        window.location.href = intentUrl;
-      } catch (err) {}
-    });
-  }
-
-  if (btnChrome) {
-    btnChrome.addEventListener('click', () => {
-      const intentUrl = 'intent://raw.githubusercontent.com/BizleeRav/Project-Aplikasi-Music/main/public/download/AuraSound.apk#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end;';
-      try {
-        window.location.href = intentUrl;
-      } catch (e) {
-        window.location.href = apkUrl;
-      }
-    });
-  }
-
-  if (btnCopy) {
-    btnCopy.addEventListener('click', () => {
-      navigator.clipboard.writeText(apkUrl).then(() => {
-        if (window.app && window.app.showToast) {
-          window.app.showToast('Link unduhan berhasil disalin! Silakan buka Chrome & tempel.', 'success');
-        }
-      }).catch(() => {
-        prompt('Salin link unduhan:', apkUrl);
-      });
     });
   }
 }
