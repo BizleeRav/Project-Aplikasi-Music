@@ -1261,11 +1261,11 @@
   </div>
 
   <!-- Modal App Update (Android In-App Update) -->
-  <div id="modal-app-update" class="modal-overlay">
-    <div class="modal-card" style="max-width: 420px; text-align: center; border: 1.5px solid #10b981; background: #0c1220; box-shadow: 0 16px 40px rgba(0,0,0,0.85);">
-      <button class="modal-close-btn" onclick="document.getElementById('modal-app-update').classList.remove('active')">✕</button>
+  <div id="modal-app-update" class="modal-overlay" style="z-index: 2147483647 !important; background: rgba(0, 0, 0, 0.85);">
+    <div class="modal-card" style="max-width: 420px; text-align: center; border: 2px solid #10b981; background: #0c1220; box-shadow: 0 16px 40px rgba(0,0,0,0.95); z-index: 2147483647; position: relative;">
+      <button class="modal-close-btn" onclick="document.getElementById('modal-app-update').classList.remove('active'); document.getElementById('modal-app-update').style.display='none';">✕</button>
       <div style="font-size: 42px; margin-bottom: 8px;">🚀</div>
-      <div class="modal-title" style="font-size: 1.25rem; color: #10b981; margin-bottom: 6px;">Pembaruan AuraSound v1.2.0</div>
+      <div class="modal-title" style="font-size: 1.25rem; color: #10b981; margin-bottom: 6px; font-weight: bold;">Pembaruan AuraSound v1.2.0</div>
       <div class="modal-desc" style="color: #cbd5e1; font-size: 0.88rem; line-height: 1.5; margin-bottom: 18px;">
         Pasang update untuk mengaktifkan <b>Login Google Suno AI</b> langsung di HP Anda.
       </div>
