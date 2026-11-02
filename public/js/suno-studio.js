@@ -50,6 +50,13 @@ class SunoStudio {
         }
       });
     }
+
+    // Auto-detect when account becomes connected from Chrome
+    setInterval(() => {
+      if (!this.hasApiKey) {
+        this.checkApiStatus();
+      }
+    }, 3000);
   }
 
   getDeviceId() {
@@ -117,6 +124,9 @@ class SunoStudio {
       const providerSel = document.getElementById('input-suno-provider');
       if (keyInput && !keyInput.value) keyInput.value = localKey || '368b953dba13bca4791b6ee34b3c1c7a';
       if (providerSel) providerSel.value = localProvider === 'suno_official' ? 'kie' : localProvider;
+      if (this.hasApiKey && !window.AuraSoundAndroid) {
+        this.loadPairCode();
+      }
     }
   }
 
@@ -239,55 +249,102 @@ class SunoStudio {
   }
 
   async startAutoLoginFlow() {
-    // If running inside Electron desktop app: use native auto-token capture with Google bypass
-    if (window.electronAPI && window.electronAPI.openSunoLogin) {
-      const btn = document.getElementById('btn-start-auto-login');
-      const loadingBox = document.getElementById('auto-login-loading');
-      const statusText = document.getElementById('auto-login-status-text');
-
-      if (btn) btn.disabled = true;
-      if (loadingBox) loadingBox.style.display = 'block';
-      if (statusText) statusText.textContent = 'Jendela Suno dibuka. Silakan login, akun Anda akan terhubung otomatis!';
-
-      await window.electronAPI.openSunoLogin();
-
+    // If running on Android APK, call native Suno login dialog directly!
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openSunoLogin === 'function') {
       if (window.app && window.app.showToast) {
-        window.app.showToast('Jendela Suno dibuka. Silakan login ke akun Anda!', 'info');
+        window.app.showToast('Membuka login resmi Suno.com...', 'info');
       }
+      window.AuraSoundAndroid.openSunoLogin();
       return;
     }
 
-    return this.startExternalBrowserLogin();
-  }
-
-  async startExternalBrowserLogin() {
-    const btn = document.getElementById('btn-start-external-login');
-    const btnAuto = document.getElementById('btn-start-auto-login');
+    this.openSettingsModal();
+    const btn = document.getElementById('btn-start-auto-login');
+    const btnExt = document.getElementById('btn-start-external-login');
     const loadingBox = document.getElementById('auto-login-loading');
     const statusText = document.getElementById('auto-login-status-text');
 
     if (btn) btn.disabled = true;
-    if (btnAuto) btnAuto.disabled = true;
+    if (btnExt) btnExt.disabled = true;
     if (loadingBox) loadingBox.style.display = 'block';
-    if (statusText) statusText.textContent = 'Membuka Microsoft Edge / Chrome di laptop Anda...';
+    if (statusText) statusText.textContent = 'Membuka Google Chrome di laptop Anda...';
 
     try {
-      const res = await fetch('/api/suno/login-auto', { method: 'POST' });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Gagal membuka browser');
+      if (window.electronAPI && window.electronAPI.openSunoLogin) {
+        await window.electronAPI.openSunoLogin();
+      } else {
+        const res = await fetch('/api/suno/login-auto', { method: 'POST' });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Gagal membuka browser');
       }
 
-      if (statusText) statusText.textContent = 'Microsoft Edge / Chrome terbuka! Silakan login di browser tersebut...';
+      if (statusText) statusText.textContent = 'Google Chrome terbuka! Silakan klik "Continue with Google" & login akun Anda...';
+      if (window.app && window.app.showToast) {
+        window.app.showToast('Jendela Google Chrome terbuka! Silakan login dengan akun Google Anda.', 'info');
+      }
       this.pollAutoLogin();
     } catch (err) {
       if (btn) btn.disabled = false;
-      if (btnAuto) btnAuto.disabled = false;
+      if (btnExt) btnExt.disabled = false;
       if (loadingBox) loadingBox.style.display = 'none';
       if (window.app && window.app.showToast) {
         window.app.showToast(`Gagal: ${err.message}`, 'error');
       }
     }
+  }
+
+  async loadPairCode() {
+    try {
+      const res = await fetch('/api/suno/pair-code', {
+        headers: this.getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.success && data.code) {
+        const display = document.getElementById('suno-pair-code-display');
+        const box = document.getElementById('box-laptop-pair-display');
+        if (display) display.textContent = data.code.slice(0, 3) + ' ' + data.code.slice(3);
+        if (box) box.style.display = 'block';
+      }
+    } catch (e) {}
+  }
+
+  async claimPairCode() {
+    const input = document.getElementById('input-suno-pair-code');
+    const code = (input ? input.value : '').replace(/[\s-]/g, '').trim();
+    if (!code || code.length !== 6) {
+      if (window.app && window.app.showToast) {
+        window.app.showToast('Masukkan 6-digit kode sambung dari laptop Anda.', 'warning');
+      }
+      return;
+    }
+    try {
+      if (window.app && window.app.showToast) {
+        window.app.showToast('Menyambungkan akun Suno...', 'info');
+      }
+      const res = await fetch('/api/suno/pair-claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const data = await res.json();
+      if (data.success && data.token) {
+        if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.saveSunoToken === 'function') {
+          window.AuraSoundAndroid.saveSunoToken(data.token);
+        }
+        await this.saveOfficialTokenFromAuto(data.token);
+        if (input) input.value = '';
+      } else {
+        throw new Error(data.error || 'Kode salah atau sudah kedaluwarsa');
+      }
+    } catch (err) {
+      if (window.app && window.app.showToast) {
+        window.app.showToast(`Gagal: ${err.message}`, 'error');
+      }
+    }
+  }
+
+  async startExternalBrowserLogin() {
+    return this.startAutoLoginFlow();
   }
 
   pollAutoLogin() {
@@ -338,6 +395,9 @@ class SunoStudio {
 
   async saveOfficialTokenFromAuto(token) {
     try {
+      if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.saveSunoToken === 'function') {
+        window.AuraSoundAndroid.saveSunoToken(token);
+      }
       const res = await fetch('/api/suno/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

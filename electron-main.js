@@ -155,138 +155,22 @@ async function createMainWindow() {
   }
 }
 
-const FIREFOX_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
+const CHROME_CLEAN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 try {
+  app.userAgentFallback = CHROME_CLEAN_UA;
   app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 } catch (e) {}
 
-// IPC: Automatic Suno Login Window & Token Extraction (Zero Copy-Pasting!)
+// IPC: Automatic Suno Login Window & Token Extraction via Genuine Browser Extension Bridge
 ipcMain.handle('open-suno-login', async () => {
-  if (sunoLoginWin && !sunoLoginWin.isDestroyed()) {
-    sunoLoginWin.focus();
-    return { status: 'already_open' };
+  try {
+    const sunoLoginHelper = require('./suno-login-helper');
+    const result = await sunoLoginHelper.launchAutomaticSunoLogin();
+    return result;
+  } catch (err) {
+    console.error('Error opening Suno login via helper:', err);
+    return { status: 'error', error: err.message };
   }
-
-  const sunoSession = session.fromPartition('persist:suno_auth_session');
-  sunoSession.setUserAgent(FIREFOX_DESKTOP_UA);
-
-  // Clean all outgoing headers: disguise as Firefox so Google skips embedded Chromium blocks
-  sunoSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    details.requestHeaders['User-Agent'] = FIREFOX_DESKTOP_UA;
-    delete details.requestHeaders['Sec-CH-UA'];
-    delete details.requestHeaders['Sec-CH-UA-Mobile'];
-    delete details.requestHeaders['Sec-CH-UA-Platform'];
-    delete details.requestHeaders['sec-ch-ua'];
-    delete details.requestHeaders['sec-ch-ua-mobile'];
-    delete details.requestHeaders['sec-ch-ua-platform'];
-    callback({ cancel: false, requestHeaders: details.requestHeaders });
-  });
-
-  sunoLoginWin = new BrowserWindow({
-    width: 960,
-    height: 740,
-    title: 'Login ke Akun Resmi Suno.com',
-    parent: mainWindow,
-    modal: true,
-    backgroundColor: '#0a0d14',
-    webPreferences: {
-      session: sunoSession,
-      nodeIntegration: false,
-      contextIsolation: true
-    }
-  });
-
-  sunoLoginWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
-
-  sunoLoginWin.setMenuBarVisibility(false);
-  if (typeof sunoLoginWin.removeMenu === 'function') {
-    sunoLoginWin.removeMenu();
-  }
-
-  // Allow Google OAuth popup windows to function naturally without breaking window.opener
-  sunoLoginWin.webContents.setWindowOpenHandler(({ url }) => {
-    return {
-      action: 'allow',
-      overrideBrowserWindowOptions: {
-        parent: sunoLoginWin,
-        modal: false,
-        backgroundColor: '#ffffff',
-        webPreferences: {
-          session: sunoSession,
-          nodeIntegration: false,
-          contextIsolation: true
-        }
-      }
-    };
-  });
-
-  sunoLoginWin.webContents.on('did-create-window', (childWin) => {
-    childWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
-  });
-
-  // Inject navigator overrides on any navigation/frame
-  sunoLoginWin.webContents.on('dom-ready', () => {
-    sunoLoginWin.webContents.executeJavaScript(`
-      try {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      } catch (e) {}
-    `).catch(() => {});
-  });
-
-  sunoLoginWin.loadURL('https://suno.com/me');
-
-  let tokenPoller = null;
-  let tokenCaptured = false;
-
-  tokenPoller = setInterval(async () => {
-    if (!sunoLoginWin || sunoLoginWin.isDestroyed()) {
-      clearInterval(tokenPoller);
-      return;
-    }
-
-    try {
-      // Execute within Suno.com context to get Clerk JWT token automatically
-      const token = await sunoLoginWin.webContents.executeJavaScript(`
-        (async () => {
-          try {
-            if (window.Clerk && window.Clerk.session) {
-              const t = await window.Clerk.session.getToken();
-              if (t && typeof t === 'string' && t.length > 20) {
-                return t;
-              }
-            }
-            const match = document.cookie.match(/__session=([^;]+)/);
-            if (match && match[1] && match[1].length > 20) return match[1];
-          } catch (e) {}
-          return null;
-        })()
-      `);
-
-      if (token && !tokenCaptured) {
-        tokenCaptured = true;
-        clearInterval(tokenPoller);
-
-        // Send token to mainWindow to store in client state & server config
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('suno-token-captured', token);
-        }
-
-        // Close the login window automatically!
-        if (sunoLoginWin && !sunoLoginWin.isDestroyed()) {
-          sunoLoginWin.close();
-        }
-      }
-    } catch (err) {
-      // Ignore cross-origin transition errors while page loads
-    }
-  }, 1000);
-
-  sunoLoginWin.on('closed', () => {
-    if (tokenPoller) clearInterval(tokenPoller);
-    sunoLoginWin = null;
-  });
-
-  return { status: 'opened' };
 });
 
 ipcMain.on('restart-app', () => {

@@ -174,6 +174,9 @@ function updateUserProfile(rawKey, updates = {}) {
   if (updates.tasteProfile !== undefined) {
     user.tasteProfile = updates.tasteProfile;
   }
+  if (typeof updates.suno_token === 'string') {
+    user.suno_token = updates.suno_token;
+  }
 
   user.updatedAt = Date.now();
   all[user.id] = user;

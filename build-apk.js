@@ -122,8 +122,8 @@ public class BackgroundAudioWebView extends WebView {
 fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurasound.musichub"
-    android:versionCode="2"
-    android:versionName="1.1.0">
+    android:versionCode="3"
+    android:versionName="1.2.0">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -154,6 +154,12 @@ fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="aurasound" android:host="suno-auth" />
             </intent-filter>
         </activity>
 
@@ -209,6 +215,35 @@ public class AndroidMediaBridge {
     @JavascriptInterface
     public boolean isAndroidApp() {
         return true;
+    }
+
+    @JavascriptInterface
+    public void openSunoLogin() {
+        if (activity != null) {
+            activity.openSunoLoginFlow();
+        }
+    }
+
+    @JavascriptInterface
+    public void openExternalBrowser(String url) {
+        if (activity != null) {
+            activity.openExternalBrowser(url);
+        }
+    }
+
+    @JavascriptInterface
+    public void saveSunoToken(String token) {
+        if (activity != null) {
+            activity.saveSunoToken(token);
+        }
+    }
+
+    @JavascriptInterface
+    public String getSunoToken() {
+        if (activity != null) {
+            return activity.getSunoToken();
+        }
+        return "";
     }
 }
 `);
@@ -638,23 +673,36 @@ public class MediaPlaybackService extends Service {
 fs.writeFileSync(path.join(BUILD_DIR, 'src', 'com', 'aurasound', 'musichub', 'MainActivity.java'), `package com.aurasound.musichub;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.Typeface;
 import android.media.AudioManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Message;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
 
 public class MainActivity extends Activity {
     public static MainActivity instance;
@@ -662,6 +710,10 @@ public class MainActivity extends Activity {
     private static final String APP_URL = "https://project-aplikasi-music.vercel.app";
     private Handler bridgeHandler = new Handler(Looper.getMainLooper());
     private Runnable bridgeRunnable;
+
+    private Dialog sunoLoginDialog;
+    private WebView loginWebView;
+    private boolean isCapturingSunoToken = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -675,6 +727,8 @@ public class MainActivity extends Activity {
         initWebView();
         requestAudioFocus();
         requestNotificationPermission();
+
+        handleDeepLink(getIntent());
 
         webView.clearCache(true);
         webView.loadUrl(APP_URL);
@@ -717,7 +771,15 @@ public class MainActivity extends Activity {
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setOffscreenPreRaster(true);
         settings.setEnableSmoothTransition(true);
-        settings.setUserAgentString(settings.getUserAgentString() + " AuraSoundAndroid/1.2");
+
+        // Genuine Mobile Chrome User-Agent
+        settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.102 Mobile Safari/537.36");
+
+        CookieManager cm = CookieManager.getInstance();
+        cm.setAcceptCookie(true);
+        if (Build.VERSION.SDK_INT >= 21) {
+            cm.setAcceptThirdPartyCookies(webView, true);
+        }
 
         // Expose Native Android Bridge to JavaScript
         webView.addJavascriptInterface(new AndroidMediaBridge(this), "AuraSoundAndroid");
@@ -745,6 +807,7 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 injectUniversalBridge();
+                restoreSavedSunoToken();
             }
 
             @Override
@@ -761,6 +824,254 @@ public class MainActivity extends Activity {
                 }
             }
         });
+    }
+
+    private void restoreSavedSunoToken() {
+        if (webView == null) return;
+        String saved = getSunoToken();
+        if (saved != null && saved.length() > 20) {
+            String js = "(function() {"
+                + "  if (!localStorage.getItem('aurasound_suno_key')) {"
+                + "    localStorage.setItem('aurasound_suno_key', '" + saved + "');"
+                + "    localStorage.setItem('aurasound_suno_provider', 'suno_official');"
+                + "    if (window.sunoStudio && typeof window.sunoStudio.checkApiStatus === 'function') {"
+                + "      window.sunoStudio.checkApiStatus();"
+                + "    }"
+                + "  }"
+                + "})();";
+            webView.evaluateJavascript(js, null);
+        }
+    }
+
+    public void openSunoLoginFlow() {
+        runOnUiThread(() -> {
+            try {
+                if (sunoLoginDialog != null && sunoLoginDialog.isShowing()) {
+                    sunoLoginDialog.dismiss();
+                }
+                isCapturingSunoToken = false;
+
+                sunoLoginDialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+
+                LinearLayout rootLayout = new LinearLayout(this);
+                rootLayout.setOrientation(LinearLayout.VERTICAL);
+                rootLayout.setBackgroundColor(Color.parseColor("#070a12"));
+                rootLayout.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+                // Header Bar
+                LinearLayout header = new LinearLayout(this);
+                header.setOrientation(LinearLayout.HORIZONTAL);
+                header.setBackgroundColor(Color.parseColor("#0f172a"));
+                header.setPadding(32, 40, 32, 28);
+                header.setGravity(Gravity.CENTER_VERTICAL);
+                header.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                Button btnClose = new Button(this);
+                btnClose.setText("✕ Tutup");
+                btnClose.setTextColor(Color.parseColor("#94a3b8"));
+                btnClose.setBackgroundColor(Color.TRANSPARENT);
+                btnClose.setTextSize(14);
+                btnClose.setOnClickListener(v -> {
+                    if (sunoLoginDialog != null) sunoLoginDialog.dismiss();
+                });
+                header.addView(btnClose);
+
+                TextView tvTitle = new TextView(this);
+                tvTitle.setText("Login Resmi Suno AI");
+                tvTitle.setTextColor(Color.WHITE);
+                tvTitle.setTextSize(16);
+                tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
+                tvTitle.setGravity(Gravity.CENTER);
+                LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                tvTitle.setLayoutParams(titleParams);
+                header.addView(tvTitle);
+
+                Button btnChrome = new Button(this);
+                btnChrome.setText("Buka Chrome");
+                btnChrome.setTextColor(Color.parseColor("#38bdf8"));
+                btnChrome.setBackgroundColor(Color.TRANSPARENT);
+                btnChrome.setTextSize(12);
+                btnChrome.setOnClickListener(v -> openExternalBrowser("https://suno.com/login"));
+                header.addView(btnChrome);
+
+                rootLayout.addView(header);
+
+                // Subtitle Info Bar
+                TextView banner = new TextView(this);
+                banner.setText("Klik 'Continue with Google' untuk login akun Suno Anda. Sesi akan otomatis terhubung!");
+                banner.setTextColor(Color.parseColor("#34d399"));
+                banner.setBackgroundColor(Color.parseColor("#06281e"));
+                banner.setTextSize(12);
+                banner.setPadding(32, 20, 32, 20);
+                banner.setGravity(Gravity.CENTER);
+                rootLayout.addView(banner);
+
+                // WebView for Suno Login
+                loginWebView = new WebView(this);
+                loginWebView.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+                WebSettings ws = loginWebView.getSettings();
+                ws.setJavaScriptEnabled(true);
+                ws.setDomStorageEnabled(true);
+                ws.setDatabaseEnabled(true);
+                ws.setAllowFileAccess(true);
+                ws.setAllowContentAccess(true);
+                ws.setSupportMultipleWindows(true);
+                ws.setJavaScriptCanOpenWindowsAutomatically(true);
+                ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+
+                // Genuine Chrome Mobile User-Agent to avoid Google OAuth blocking
+                ws.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.102 Mobile Safari/537.36");
+
+                CookieManager cm = CookieManager.getInstance();
+                cm.setAcceptCookie(true);
+                if (Build.VERSION.SDK_INT >= 21) {
+                    cm.setAcceptThirdPartyCookies(loginWebView, true);
+                }
+
+                loginWebView.setWebChromeClient(new WebChromeClient() {
+                    @Override
+                    public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
+                        WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+                        transport.setWebView(view);
+                        resultMsg.sendToTarget();
+                        return true;
+                    }
+                });
+
+                loginWebView.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public void onPageFinished(WebView view, String url) {
+                        super.onPageFinished(view, url);
+                        checkAndExtractSunoCookie(url);
+                    }
+
+                    @Override
+                    public void onLoadResource(WebView view, String url) {
+                        super.onLoadResource(view, url);
+                        if (url != null && (url.contains("suno.com") || url.contains("clerk"))) {
+                            checkAndExtractSunoCookie(url);
+                        }
+                    }
+                });
+
+                rootLayout.addView(loginWebView);
+
+                sunoLoginDialog.setContentView(rootLayout);
+                sunoLoginDialog.show();
+
+                loginWebView.loadUrl("https://suno.com/login");
+            } catch (Exception e) {
+                e.printStackTrace();
+                Toast.makeText(this, "Gagal membuka login: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void checkAndExtractSunoCookie(String currentUrl) {
+        if (isCapturingSunoToken) return;
+        try {
+            CookieManager cm = CookieManager.getInstance();
+            String cookieStr = cm.getCookie("https://suno.com");
+            if (cookieStr == null || !cookieStr.contains("__session=")) {
+                cookieStr = cm.getCookie("https://auth.suno.com");
+                if (cookieStr == null || !cookieStr.contains("__session=")) {
+                    cookieStr = cm.getCookie("https://clerk.suno.com");
+                }
+            }
+
+            if (cookieStr != null && cookieStr.contains("__session=")) {
+                String token = "";
+                String[] parts = cookieStr.split(";");
+                for (String p : parts) {
+                    String trimmed = p.trim();
+                    if (trimmed.startsWith("__session=")) {
+                        token = trimmed.substring("__session=".length()).trim();
+                        break;
+                    }
+                }
+
+                if (token.length() > 20) {
+                    isCapturingSunoToken = true;
+                    final String finalToken = token;
+                    runOnUiThread(() -> onSunoTokenExtracted(finalToken));
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void onSunoTokenExtracted(String token) {
+        saveSunoToken(token);
+        if (sunoLoginDialog != null && sunoLoginDialog.isShowing()) {
+            sunoLoginDialog.dismiss();
+        }
+        Toast.makeText(this, "Akun Suno Resmi Berhasil Terhubung ke AuraSound!", Toast.LENGTH_LONG).show();
+        if (webView != null) {
+            String js = "(function() {"
+                + "  localStorage.setItem('aurasound_suno_key', '" + token + "');"
+                + "  localStorage.setItem('aurasound_suno_provider', 'suno_official');"
+                + "  if (window.sunoStudio) {"
+                + "    if (typeof window.sunoStudio.saveOfficialTokenFromAuto === 'function') {"
+                + "      window.sunoStudio.saveOfficialTokenFromAuto('" + token + "');"
+                + "    } else {"
+                + "      window.sunoStudio.checkApiStatus();"
+                + "    }"
+                + "  }"
+                + "})();";
+            webView.evaluateJavascript(js, null);
+        }
+        isCapturingSunoToken = false;
+    }
+
+    public void saveSunoToken(String token) {
+        try {
+            SharedPreferences prefs = getSharedPreferences("aurasound_prefs", Context.MODE_PRIVATE);
+            prefs.edit().putString("suno_token", token).apply();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String getSunoToken() {
+        try {
+            SharedPreferences prefs = getSharedPreferences("aurasound_prefs", Context.MODE_PRIVATE);
+            return prefs.getString("suno_token", "");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public void openExternalBrowser(String url) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "Gagal membuka browser: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleDeepLink(intent);
+    }
+
+    private void handleDeepLink(Intent intent) {
+        if (intent == null || intent.getData() == null) return;
+        Uri uri = intent.getData();
+        if ("aurasound".equals(uri.getScheme())) {
+            String token = uri.getQueryParameter("token");
+            if (token != null && token.length() > 20) {
+                onSunoTokenExtracted(token);
+            }
+        }
     }
 
     private void startPeriodicBridgeSync() {
@@ -1012,7 +1323,7 @@ try {
     ...fs.readdirSync(javaSrcDir).filter(f => f.endsWith('.java')).map(f => `"${path.join(javaSrcDir, f)}"`)
   ].join(' ');
 
-  execSync(`"${JAVAC}" -d "${path.join(BUILD_DIR, 'bin')}" -cp "${PLATFORM_JAR}" ${javaFiles}`, { stdio: 'inherit' });
+  execSync(`"${JAVAC}" -encoding UTF-8 -d "${path.join(BUILD_DIR, 'bin')}" -cp "${PLATFORM_JAR}" ${javaFiles}`, { stdio: 'inherit' });
 
   console.log('⚡ [4/6] Menghasilkan classes.dex dengan d8...');
   const classFiles = fs.readdirSync(path.join(BUILD_DIR, 'bin', 'com', 'aurasound', 'musichub'))

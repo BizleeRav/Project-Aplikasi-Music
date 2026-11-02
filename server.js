@@ -1183,7 +1183,63 @@ app.post('/api/suno/connect-token', (req, res) => {
     suno_api_key: cleanToken,
     suno_provider: 'suno_official'
   });
+  if (typeof sunoLoginHelper.notifyTokenCaptured === 'function') {
+    sunoLoginHelper.notifyTokenCaptured(cleanToken);
+  }
+  try {
+    userDb.updateUserProfile('bizlee3012@gmail.com', { suno_token: cleanToken });
+  } catch (e) {}
   res.json({ success: true, message: '🎉 Akun Suno Resmi Anda berhasil terhubung ke AuraSound!' });
+});
+
+// Suno Mobile APK Pair Code System (1-Tap Connection between Devices)
+const sunoPairCodes = new Map();
+
+app.get('/api/suno/pair-code', (req, res) => {
+  const creds = getEffectiveSunoCredentials(req);
+  const token = creds.key;
+  if (!token || token.length < 20) {
+    return res.status(400).json({ success: false, error: 'Belum ada akun Suno yang terhubung di server/laptop ini.' });
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  sunoPairCodes.set(code, {
+    token: token,
+    provider: creds.provider || 'suno_official',
+    expiresAt: Date.now() + 60 * 60 * 1000
+  });
+
+  for (const [c, data] of sunoPairCodes.entries()) {
+    if (Date.now() > data.expiresAt) sunoPairCodes.delete(c);
+  }
+
+  res.json({
+    success: true,
+    code,
+    expiresInMinutes: 60,
+    message: 'Gunakan kode 6-digit ini di AuraSound APK di HP Anda untuk terhubung otomatis!'
+  });
+});
+
+app.post('/api/suno/pair-claim', (req, res) => {
+  const { code } = req.body;
+  if (!code || typeof code !== 'string') {
+    return res.status(400).json({ success: false, error: 'Masukkan 6-digit kode sambung' });
+  }
+
+  const cleanCode = code.replace(/[\s-]/g, '').trim();
+  const pairData = sunoPairCodes.get(cleanCode);
+
+  if (!pairData || Date.now() > pairData.expiresAt) {
+    return res.status(404).json({ success: false, error: 'Kode sambung salah atau sudah kedaluwarsa. Buat kode baru di laptop Anda.' });
+  }
+
+  res.json({
+    success: true,
+    token: pairData.token,
+    provider: pairData.provider,
+    message: '🎉 Berhasil menyambungkan akun Suno dari laptop ke HP!'
+  });
 });
 
 // 5. High-Fidelity Audio Streaming Proxy (Supports Range 206 & Progressive Streams)

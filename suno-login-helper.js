@@ -1,8 +1,9 @@
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const os = require('os');
 const path = require('path');
-const http = require('http');
 const fs = require('fs');
+const crypto = require('crypto');
+const axios = require('axios');
 
 let activeLoginProcess = null;
 let activeLoginState = {
@@ -12,7 +13,7 @@ let activeLoginState = {
   timestamp: 0
 };
 
-// Find available browser (Chrome in AppData or Program Files, or Microsoft Edge)
+// Locate Chrome or Edge
 function findBrowserExecutable() {
   const userChrome = path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'Application', 'chrome.exe');
   const candidates = [
@@ -50,48 +51,216 @@ function cancelLogin() {
 
 function clearLoginSessionProfile() {
   cancelLogin();
-  const tempProfileDir = path.join(os.tmpdir(), 'suno_auto_login_profile');
-  if (fs.existsSync(tempProfileDir)) {
+  const profileDir = path.join(os.homedir(), 'AppData', 'Roaming', 'AuraSound', 'suno_browser_profile');
+  if (fs.existsSync(profileDir)) {
     try {
-      fs.rmSync(tempProfileDir, { recursive: true, force: true });
+      fs.rmSync(profileDir, { recursive: true, force: true });
     } catch (e) {}
   }
 }
 
 /**
- * Launch official browser window and automatically capture Clerk session token on login
+ * DPAPI Master Key Decryption for Chromium
+ */
+function getMasterKey(localStatePath) {
+  if (!fs.existsSync(localStatePath)) return null;
+  try {
+    const state = JSON.parse(fs.readFileSync(localStatePath, 'utf8'));
+    const b64Key = state?.os_crypt?.encrypted_key;
+    if (!b64Key) return null;
+    const rawKey = Buffer.from(b64Key, 'base64');
+    const dpapiPayload = rawKey.slice(5);
+
+    const psScript = `
+      Add-Type -AssemblyName System.Security
+      $b = [Convert]::FromBase64String('${dpapiPayload.toString('base64')}')
+      $un = [System.Security.Cryptography.ProtectedData]::Unprotect($b, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+      [Convert]::ToBase64String($un)
+    `;
+    const out = execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], { encoding: 'utf8' }).trim();
+    return Buffer.from(out, 'base64');
+  } catch (e) {
+    return null;
+  }
+}
+
+function decryptCookieValue(encryptedBuffer, masterKey) {
+  if (!encryptedBuffer || encryptedBuffer.length < 3 + 12 + 16) return null;
+  const prefix = encryptedBuffer.slice(0, 3).toString('utf8');
+  if (prefix !== 'v10' && prefix !== 'v11') return null;
+  const iv = encryptedBuffer.slice(3, 15);
+  const ciphertextAndTag = encryptedBuffer.slice(15);
+  const tag = ciphertextAndTag.slice(ciphertextAndTag.length - 16);
+  const ciphertext = ciphertextAndTag.slice(0, ciphertextAndTag.length - 16);
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', masterKey, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Directly extracts active Suno/Clerk session from Chromium profile SQLite cookies database
+ */
+async function extractSunoSessionFromProfile(profileDir) {
+  const localStatePath = path.join(profileDir, 'Local State');
+  const cookiesPath = path.join(profileDir, 'Default', 'Network', 'Cookies');
+  if (!fs.existsSync(cookiesPath) || !fs.existsSync(localStatePath)) return null;
+
+  const masterKey = getMasterKey(localStatePath);
+  if (!masterKey) return null;
+
+  const tempCopy = path.join(os.tmpdir(), `temp_suno_extract_${Date.now()}.sqlite`);
+  try {
+    fs.copyFileSync(cookiesPath, tempCopy);
+  } catch (e) {
+    return null;
+  }
+
+  try {
+    const raw = fs.readFileSync(tempCopy);
+    try { fs.unlinkSync(tempCopy); } catch (e) {}
+
+    let clientJwt = null;
+    const targets = ['__client_Jnxw', '__client', '__session'];
+
+    for (const t of targets) {
+      let idx = 0;
+      while ((idx = raw.indexOf(Buffer.from(t), idx + 1)) !== -1) {
+        const slice = raw.slice(idx, idx + 4000);
+        let v10Pos = 0;
+        while ((v10Pos = slice.indexOf(Buffer.from('v10'), v10Pos + 1)) !== -1) {
+          for (let len = 30; len <= 1200; len++) {
+            const cand = slice.slice(v10Pos, v10Pos + len);
+            const dec = decryptCookieValue(cand, masterKey);
+            if (dec && dec.includes('eyJhbGciOiJSUzI1NiIsImtpZCI6InN1bm8tYXBpLXJzMjU2LWtleS0xIiwidHlwIjoiSldUIn0')) {
+              const match = dec.match(/eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/);
+              if (match) {
+                clientJwt = match[0];
+                break;
+              }
+            }
+          }
+          if (clientJwt) break;
+        }
+        if (clientJwt) break;
+      }
+      if (clientJwt) break;
+    }
+
+    if (!clientJwt) return null;
+
+    // Exchange client JWT for fresh Suno session access token via official auth endpoint
+    const res = await axios.get('https://auth.suno.com/v1/client', {
+      headers: {
+        'Cookie': `__client=${clientJwt}`,
+        'Origin': 'https://suno.com'
+      },
+      timeout: 10000
+    });
+
+    const clientData = res.data?.response;
+    const session = clientData?.sessions?.[0];
+    const jwt = session?.last_active_token?.jwt;
+    const username = session?.user?.username || session?.user?.first_name || 'ravenstars';
+
+    return {
+      token: jwt || clientJwt,
+      username,
+      sessionId: session?.id
+    };
+  } catch (err) {
+    try { fs.unlinkSync(tempCopy); } catch (e) {}
+    return null;
+  }
+}
+
+/**
+ * Called when a valid token is captured
+ */
+function notifyTokenCaptured(token) {
+  activeLoginState = {
+    status: 'success',
+    message: '🎉 Berhasil login! Akun Suno resmi Anda telah terhubung!',
+    token,
+    timestamp: Date.now()
+  };
+
+  // Automatically save to sunoService config
+  try {
+    const sunoService = require('./suno-service');
+    sunoService.saveConfig({
+      suno_api_key: token,
+      suno_provider: 'suno_official'
+    });
+  } catch (e) {}
+
+  // Close the browser window automatically
+  if (activeLoginProcess) {
+    try {
+      activeLoginProcess.kill();
+      activeLoginProcess = null;
+    } catch (e) {}
+  }
+
+  // Force close any lingering Chrome processes using this isolated profile
+  try {
+    const ps = `Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" | Where-Object { $_.CommandLine -like "*suno_browser_profile*" } | Stop-Process -Force`;
+    spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { detached: true, stdio: 'ignore' }).unref();
+  } catch (e) {}
+
+  // Notify Electron main window to refresh UI
+  try {
+    const { BrowserWindow } = require('electron');
+    const wins = BrowserWindow.getAllWindows();
+    for (const win of wins) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('suno-token-captured', token);
+      }
+    }
+  } catch (e) {}
+}
+
+/**
+ * Launch official browser window and automatically poll profile database for session completion
  */
 async function launchAutomaticSunoLogin() {
   const browserPath = findBrowserExecutable();
   if (!browserPath) {
-    throw new Error('Tidak ditemukan Microsoft Edge atau Google Chrome di laptop ini.');
+    throw new Error('Tidak ditemukan Google Chrome atau Microsoft Edge di laptop ini.');
   }
 
-  // Cancel any previous session
   cancelLogin();
 
-  const debugPort = 9226;
-  const tempProfileDir = path.join(os.tmpdir(), 'suno_auto_login_profile');
-  if (!fs.existsSync(tempProfileDir)) {
-    fs.mkdirSync(tempProfileDir, { recursive: true });
+  const profileDir = path.join(os.homedir(), 'AppData', 'Roaming', 'AuraSound', 'suno_browser_profile');
+  if (!fs.existsSync(profileDir)) {
+    fs.mkdirSync(profileDir, { recursive: true });
   }
+
+  // Check if session is already present in profile
+  try {
+    const existing = await extractSunoSessionFromProfile(profileDir);
+    if (existing && existing.token) {
+      notifyTokenCaptured(existing.token);
+      return { success: true, message: 'Akun Suno Anda langsung terhubung secara otomatis!' };
+    }
+  } catch (e) {}
 
   activeLoginState = {
     status: 'waiting_login',
-    message: 'Jendela Suno dibuka di layar Anda. Silakan login ke akun Anda...',
+    message: 'Google Chrome terbuka! Silakan klik "Continue with Google" dan pilih akun Anda...',
     token: null,
     timestamp: Date.now()
   };
 
-  // Chromium flags for guaranteed visible separate window with remote debugging
+  // Clean Chrome flags WITHOUT any remote debugging port or automation flags
   const args = [
-    `--remote-debugging-port=${debugPort}`,
-    `--remote-debugging-address=127.0.0.1`,
-    `--user-data-dir=${tempProfileDir}`,
-    '--disable-blink-features=AutomationControlled',
+    `--user-data-dir=${profileDir}`,
     '--no-first-run',
     '--no-default-browser-check',
-    '--window-size=960,780',
+    '--window-size=980,780',
     '--new-window',
     'https://suno.com/me'
   ];
@@ -112,167 +281,38 @@ async function launchAutomaticSunoLogin() {
     throw err;
   }
 
-  // Force window to foreground after launch
-  const bringToFront = () => {
-    try {
-      const ps = `Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class FocusWin {
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr pid);
-  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
-  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint id1, uint id2, bool f);
-  public static void Force(IntPtr h) {
-    IntPtr fg = GetForegroundWindow();
-    uint t1 = GetWindowThreadProcessId(fg, IntPtr.Zero);
-    uint t2 = GetCurrentThreadId();
-    AttachThreadInput(t2, t1, true);
-    ShowWindow(h, 9);
-    BringWindowToTop(h);
-    SetForegroundWindow(h);
-    AttachThreadInput(t2, t1, false);
-  }
-}
-"@; Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { [FocusWin]::Force($_.MainWindowHandle) }`;
-      spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { detached: true, stdio: 'ignore' }).unref();
-    } catch (e) {}
-  };
-
-  setTimeout(bringToFront, 1200);
-  setTimeout(bringToFront, 2500);
-
-  // Poller loop to check CDP for Clerk session token
+  // Poller loop: Directly watches the Chromium cookies database every 1.5s
   const startTime = Date.now();
-  const maxTimeoutMs = 180000; // 3 minutes timeout
-  let cdpConnectedOnce = false;
-  let cdpFailCount = 0;
+  const maxTimeoutMs = 300000; // 5 mins
 
-  const pollInterval = setInterval(() => {
+  const cookiePoller = setInterval(async () => {
+    if (activeLoginState.status !== 'waiting_login') {
+      clearInterval(cookiePoller);
+      return;
+    }
+
     if (Date.now() - startTime > maxTimeoutMs) {
-      clearInterval(pollInterval);
+      clearInterval(cookiePoller);
       cancelLogin();
       activeLoginState = {
         status: 'failed',
-        message: 'Waktu login habis (timeout 3 menit).',
+        message: 'Waktu login habis (timeout 5 menit).',
         token: null,
         timestamp: Date.now()
       };
       return;
     }
 
-    if (activeLoginState.status !== 'waiting_login') {
-      clearInterval(pollInterval);
-      return;
-    }
-
-    // Query CDP targets
-    const req = http.get(`http://127.0.0.1:${debugPort}/json`, res => {
-      cdpConnectedOnce = true;
-      cdpFailCount = 0;
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const targets = JSON.parse(data);
-          const sunoPage = targets.find(t => t.type === 'page' && (t.url.includes('suno.com') || t.url.includes('clerk.suno.com')));
-          if (!sunoPage || !sunoPage.webSocketDebuggerUrl) return;
-
-          // Connect via native Node.js WebSocket
-          const ws = new WebSocket(sunoPage.webSocketDebuggerUrl);
-          let wsClosed = false;
-
-          const closeWs = () => {
-            if (!wsClosed) {
-              wsClosed = true;
-              try { ws.close(); } catch (e) {}
-            }
-          };
-
-          const wsTimer = setTimeout(closeWs, 1800);
-
-          ws.onopen = () => {
-            ws.send(JSON.stringify({
-              id: 1,
-              method: 'Runtime.evaluate',
-              params: {
-                expression: `(async () => {
-                  try {
-                    if (window.Clerk && window.Clerk.session) {
-                      const t = await window.Clerk.session.getToken();
-                      if (t && typeof t === 'string' && t.length > 25) return t;
-                    }
-                    const match = document.cookie.match(/__session=([^;]+)/);
-                    if (match && match[1] && match[1].length > 25) return match[1];
-                  } catch (e) {}
-                  return null;
-                })()`,
-                awaitPromise: true,
-                returnByValue: true
-              }
-            }));
-          };
-
-          ws.onmessage = (event) => {
-            clearTimeout(wsTimer);
-            try {
-              const resp = JSON.parse(event.data);
-              const capturedToken = resp?.result?.result?.value;
-
-              if (capturedToken && typeof capturedToken === 'string' && capturedToken.length > 25) {
-                clearInterval(pollInterval);
-                closeWs();
-
-                activeLoginState = {
-                  status: 'success',
-                  message: 'Berhasil login! Akun Suno resmi Anda telah terhubung!',
-                  token: capturedToken,
-                  timestamp: Date.now()
-                };
-
-                // Close browser window cleanly now that login succeeded via CDP
-                try {
-                  ws.send(JSON.stringify({ id: 99, method: 'Browser.close' }));
-                } catch (e) {}
-
-                if (activeLoginProcess) {
-                  try { activeLoginProcess.kill(); } catch (e) {}
-                  activeLoginProcess = null;
-                }
-              }
-            } catch (err) {}
-            closeWs();
-          };
-
-          ws.onerror = () => {
-            clearTimeout(wsTimer);
-            closeWs();
-          };
-        } catch (parseErr) {}
-      });
-    });
-
-    req.on('error', () => {
-      if (cdpConnectedOnce) {
-        cdpFailCount++;
-        // If window was closed by the user after being connected
-        if (cdpFailCount > 8) {
-          clearInterval(pollInterval);
-          activeLoginState = {
-            status: 'failed',
-            message: 'Jendela Suno ditutup.',
-            token: null,
-            timestamp: Date.now()
-          };
-        }
+    try {
+      const session = await extractSunoSessionFromProfile(profileDir);
+      if (session && session.token && session.token.length > 20) {
+        clearInterval(cookiePoller);
+        notifyTokenCaptured(session.token);
       }
-    });
+    } catch (e) {}
   }, 1500);
 
-  return { success: true, message: 'Jendela login Suno berhasil dibuka di layar Anda.' };
+  return { success: true, message: 'Google Chrome berhasil dibuka. Silakan login dengan akun Google Anda.' };
 }
 
 module.exports = {
@@ -280,5 +320,7 @@ module.exports = {
   getLoginStatus,
   cancelLogin,
   clearLoginSessionProfile,
-  findBrowserExecutable
+  findBrowserExecutable,
+  notifyTokenCaptured,
+  extractSunoSessionFromProfile
 };
