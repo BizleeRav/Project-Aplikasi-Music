@@ -245,22 +245,48 @@ ipcMain.handle('open-suno-login', async () => {
     }
 
     try {
-      // Execute within Suno.com context to get Clerk JWT token automatically
-      const token = await sunoLoginWin.webContents.executeJavaScript(`
-        (async () => {
-          try {
-            if (window.Clerk && window.Clerk.session) {
-              const t = await window.Clerk.session.getToken();
-              if (t && typeof t === 'string' && t.length > 20) {
-                return t;
-              }
-            }
-            const match = document.cookie.match(/__session=([^;]+)/);
-            if (match && match[1] && match[1].length > 20) return match[1];
-          } catch (e) {}
-          return null;
-        })()
-      `);
+      let token = null;
+
+      // 1. Directly query Electron in-memory cookies (instant & 100% reliable)
+      try {
+        const cookies = await sunoSession.cookies.get({});
+        const sessCookie = cookies.find(c => c.name === '__session');
+        if (sessCookie && sessCookie.value && sessCookie.value.length > 20) {
+          token = sessCookie.value;
+        }
+      } catch (e) {}
+
+      // 2. Also check defaultSession cookies as fallback
+      if (!token) {
+        try {
+          const cookies = await session.defaultSession.cookies.get({});
+          const sessCookie = cookies.find(c => c.name === '__session');
+          if (sessCookie && sessCookie.value && sessCookie.value.length > 20) {
+            token = sessCookie.value;
+          }
+        } catch (e) {}
+      }
+
+      // 3. Fallback: Execute within Suno.com context
+      if (!token) {
+        try {
+          token = await sunoLoginWin.webContents.executeJavaScript(`
+            (async () => {
+              try {
+                if (window.Clerk && window.Clerk.session) {
+                  const t = await window.Clerk.session.getToken();
+                  if (t && typeof t === 'string' && t.length > 20) {
+                    return t;
+                  }
+                }
+                const match = document.cookie.match(/__session=([^;]+)/);
+                if (match && match[1] && match[1].length > 20) return match[1];
+              } catch (e) {}
+              return null;
+            })()
+          `);
+        } catch (e) {}
+      }
 
       if (token && !tokenCaptured) {
         tokenCaptured = true;
