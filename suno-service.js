@@ -683,13 +683,12 @@ function prepareLyricsAndPrompt({ prompt, lyrics, tags, title, make_instrumental
   let finalLyrics = '';
   const finalPrompt = (prompt || '').trim();
 
-  // If user provided lyrics and it is not a prompt instruction
-  if (lyrics && lyrics.trim().length > 10 && !isPromptInstruction(lyrics)) {
+  // PRESERVE USER INPUT VERBATIM: Never discard user lyrics or prompt!
+  if (lyrics && lyrics.trim().length > 0) {
     finalLyrics = lyrics.trim();
-  } else if (prompt && !isPromptInstruction(prompt) && /\[(verse|chorus|intro|bridge|outro)/i.test(prompt)) {
+  } else if (prompt && prompt.trim().length > 0) {
     finalLyrics = prompt.trim();
   } else {
-    // Generate structured sing-along lyrics matching theme & vocal roles
     finalLyrics = generateStructuredLyrics(finalTitle, prompt, finalTags, make_instrumental);
   }
 
@@ -697,7 +696,7 @@ function prepareLyricsAndPrompt({ prompt, lyrics, tags, title, make_instrumental
     finalTitle,
     finalTags,
     finalLyrics,
-    finalPrompt: finalPrompt || finalTags
+    finalPrompt: finalPrompt || finalLyrics || finalTags
   };
 }
 
@@ -933,7 +932,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
     try {
       if (provider === 'suno_official') {
         if (!apiKey || apiKey.length < 20) {
-          throw new Error('Akun Suno belum terhubung. Silakan klik tombol "🔗 Hubungkan Akun Suno" di pojok kanan atas untuk login ke akun Suno Anda!');
+          throw new Error('Akun Suno belum terhubung. Silakan klik tombol "🔗 Hubungkan Akun Suno" untuk login ke akun Suno Anda!');
         }
 
         let officialMv = 'chirp-v3-5';
@@ -943,6 +942,58 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
           officialMv = 'chirp-v3-0';
         }
 
+        // 1. Genuine in-app generation via Electron session
+        if (typeof global.generateWithSunoBrowser === 'function') {
+          console.log('[Suno Generate] Running genuine in-browser generation via Electron session...');
+          try {
+            const genRes = await global.generateWithSunoBrowser({
+              prompt: finalPrompt || prompt,
+              lyrics: finalLyrics,
+              tags: finalTags,
+              title: finalTitle,
+              make_instrumental: Boolean(make_instrumental),
+              model: officialMv
+            });
+
+            if (genRes && genRes.success && genRes.clips && genRes.clips.length > 0) {
+              const formattedClips = genRes.clips.map(c => {
+                const clipId = c.id;
+                const audioUrl = extractAudioUrl(c);
+                const thumb = c.image_url || c.image_large_url || (clipId ? `https://cdn2.suno.ai/image_${clipId}.jpeg` : '/icons/icon.svg');
+                const trackObj = {
+                  id: clipId,
+                  title: c.title || finalTitle,
+                  artist: `Suno Official (${c.major_model_version || officialMv})`,
+                  tags: c.metadata?.tags || c.tags || finalTags,
+                  prompt: finalPrompt,
+                  lyrics: finalLyrics,
+                  model: c.major_model_version || officialMv,
+                  status: c.status || 'submitted',
+                  thumbnail: thumb,
+                  audio_url: audioUrl,
+                  duration: 'Sedang dibuat...',
+                  seconds: 120,
+                  type: 'suno',
+                  created_at: 'Hari ini',
+                  deviceId: deviceId || undefined
+                };
+                addCreation(trackObj, deviceId);
+                return trackObj;
+              });
+
+              return {
+                success: true,
+                is_auto: false,
+                data: formattedClips
+              };
+            }
+          } catch (electronErr) {
+            console.error('[Suno Generate] In-browser generation failed:', electronErr.message);
+            throw electronErr;
+          }
+        }
+
+        // 2. Direct API attempt (if outside Electron)
         try {
           const sunoRes = await axios.post(
             'https://studio-api.prod.suno.com/api/generate/v2/',
@@ -961,11 +1012,12 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
 
           const clips = sunoRes.data?.clips || sunoRes.data?.data?.clips || [];
           if (clips.length > 0) {
-            return {
-              success: true,
-              is_auto: false,
-              data: clips.map(c => ({
-                id: c.id,
+            const formatted = clips.map(c => {
+              const clipId = c.id;
+              const audioUrl = extractAudioUrl(c);
+              const thumb = c.image_url || c.image_large_url || (clipId ? `https://cdn2.suno.ai/image_${clipId}.jpeg` : '/icons/icon.svg');
+              const trackObj = {
+                id: clipId,
                 title: c.title || finalTitle,
                 artist: `Suno Official (${officialMv})`,
                 tags: finalTags,
@@ -973,51 +1025,34 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
                 lyrics: finalLyrics,
                 model: officialMv,
                 status: 'submitted',
-                created_at: 'Sedang Diproses...'
-              }))
+                thumbnail: thumb,
+                audio_url: audioUrl,
+                duration: 'Sedang dibuat...',
+                seconds: 120,
+                type: 'suno',
+                created_at: 'Hari ini',
+                deviceId: deviceId || undefined
+              };
+              addCreation(trackObj, deviceId);
+              return trackObj;
+            });
+            return {
+              success: true,
+              is_auto: false,
+              data: formatted
             };
           }
         } catch (sunoErr) {
           const status = sunoErr.response?.status;
           const data = sunoErr.response?.data;
-          console.warn('[Suno Generate] Error status:', status, 'data:', data);
+          console.warn('[Suno Generate] Direct API error:', status, data);
           if (status === 402) {
             throw new Error('Kuota kredit akun Suno Anda untuk hari ini telah habis (50 kredit). Kuota akan otomatis di-reset besok oleh Suno!');
           }
-          // If Suno challenges direct API request with Turnstile/Bot verification (422),
-          // use the genuine offscreen browser session directly:
-          try {
-            console.log('[Suno Generate] Direct API challenged. Launching genuine browser generator session...');
-            const browserGen = require('./suno-browser-generator');
-            const res = await browserGen.triggerSunoBrowserGenerate({
-              prompt: finalPrompt || prompt,
-              tags: finalTags,
-              title: finalTitle,
-              make_instrumental
-            });
-            if (res.success && res.clips && res.clips.length > 0) {
-              return {
-                success: true,
-                is_auto: false,
-                data: res.clips.map(c => ({
-                  id: c.id,
-                  title: c.title || finalTitle,
-                  artist: `Suno Official (${c.model || officialMv})`,
-                  tags: finalTags,
-                  prompt: finalPrompt,
-                  lyrics: finalLyrics,
-                  model: c.model || officialMv,
-                  status: 'submitted',
-                  created_at: 'Sedang Diproses...'
-                }))
-              };
-            }
-          } catch (browserErr) {
-            console.warn('[Suno Generate] Browser generation error:', browserErr.message);
-          }
-          // Fall through to Studio Engine below if browser generation not available (e.g. mobile/serverless)
+          throw new Error('Suno menolak generate langsung: ' + (data?.detail || data?.error_type || sunoErr.message));
         }
       }
+
       if (provider === 'goapi') {
         const response = await axios.post(
           'https://api.goapi.ai/api/suno/v1/music/create',

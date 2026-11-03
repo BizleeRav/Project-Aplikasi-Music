@@ -155,12 +155,15 @@ async function createMainWindow() {
   }
 }
 
-const FIREFOX_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
+const CHROME_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 try {
   app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 } catch (e) {}
 
 // IPC: Automatic Suno Login Window & Token Extraction (In-App Google OAuth Anti-Block!)
+// Load authentic in-app Suno generator
+try { require('./electron-suno-generator'); } catch (e) { console.warn('Could not load electron-suno-generator:', e); }
+
 ipcMain.handle('open-suno-login', async () => {
   if (sunoLoginWin && !sunoLoginWin.isDestroyed()) {
     sunoLoginWin.focus();
@@ -168,11 +171,11 @@ ipcMain.handle('open-suno-login', async () => {
   }
 
   const sunoSession = session.fromPartition('persist:suno_auth_session');
-  sunoSession.setUserAgent(FIREFOX_DESKTOP_UA);
+  sunoSession.setUserAgent(CHROME_DESKTOP_UA);
 
   // Clean all outgoing headers: disguise as Firefox so Google skips embedded Chromium blocks
   sunoSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    details.requestHeaders['User-Agent'] = FIREFOX_DESKTOP_UA;
+    details.requestHeaders['User-Agent'] = CHROME_DESKTOP_UA;
     delete details.requestHeaders['Sec-CH-UA'];
     delete details.requestHeaders['Sec-CH-UA-Mobile'];
     delete details.requestHeaders['Sec-CH-UA-Platform'];
@@ -196,7 +199,7 @@ ipcMain.handle('open-suno-login', async () => {
     }
   });
 
-  sunoLoginWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
+  sunoLoginWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
 
   sunoLoginWin.setMenuBarVisibility(false);
   if (typeof sunoLoginWin.removeMenu === 'function') {
@@ -228,7 +231,7 @@ ipcMain.handle('open-suno-login', async () => {
     if (typeof childWin.removeMenu === 'function') {
       childWin.removeMenu();
     }
-    childWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
+    childWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
     childWin.webContents.on('dom-ready', () => {
       childWin.webContents.executeJavaScript(`
         try {
