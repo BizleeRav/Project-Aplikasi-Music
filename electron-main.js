@@ -398,7 +398,65 @@ ipcMain.on('restart-app', () => {
   }
 });
 
+
+async function checkSunoSessionCookies() {
+  try {
+    const sunoSession = session.fromPartition('persist:suno_auth_session');
+    const cookies = await sunoSession.cookies.get({});
+    let token = null;
+
+    const sessCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__session'));
+    if (sessCookie && sessCookie.value && sessCookie.value.length > 20) {
+      token = sessCookie.value;
+    }
+
+    if (!token) {
+      const clientCookie = cookies.find(c => c.name === '__client' || c.name.startsWith('__client'));
+      if (clientCookie && clientCookie.value && clientCookie.value.length > 20) {
+        try {
+          const axios = require('axios');
+          for (const host of ['auth.suno.com', 'clerk.suno.com']) {
+            try {
+              const res = await axios.get(`https://${host}/v1/client`, {
+                headers: {
+                  'Cookie': `__client=${clientCookie.value}`,
+                  'Origin': 'https://suno.com'
+                },
+                timeout: 3000
+              });
+              const sess = res.data?.response?.sessions?.[0];
+              const jwt = sess?.last_active_token?.jwt;
+              if (jwt && jwt.length > 20) {
+                token = jwt;
+                break;
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (token) {
+      const sunoService = require('./suno-service');
+      const cfg = sunoService.getConfig();
+      if (!cfg.suno_api_key || cfg.suno_api_key !== token) {
+        sunoService.saveConfig({
+          suno_api_key: token,
+          suno_provider: 'suno_official'
+        });
+        sunoService.syncOfficialFeed(token).catch(() => {});
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('suno-token-captured', token);
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 app.whenReady().then(() => {
+  setTimeout(checkSunoSessionCookies, 2000);
+  setInterval(checkSunoSessionCookies, 10000);
+
   try {
     if (session && session.defaultSession) {
       const defaultUa = session.defaultSession.getUserAgent();
