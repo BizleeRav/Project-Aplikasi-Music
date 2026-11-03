@@ -1314,14 +1314,16 @@ class App {
       }
 
       const tokenModalTitle = document.querySelector('#modal-token .modal-title');
-      if (tokenModalTitle) tokenModalTitle.textContent = isEn ? 'Sign In ke Suno AI 🎵' : 'Sign In ke Suno AI 🎵';
+      if (tokenModalTitle) tokenModalTitle.textContent = isEn ? 'Connect Suno AI 🎵' : 'Hubungkan Suno AI 🎵';
       const tokenModalDesc = document.querySelector('#modal-token .modal-desc');
-      if (tokenModalDesc) tokenModalDesc.textContent = isEn 
-        ? 'Sign in with your Suno account to sync your music library and get 50 free credits daily.' 
-        : 'Masuk dengan akun Suno resmi Anda untuk sinkronisasi lagu otomatis & kuota 50 kredit gratis setiap hari.';
+      if (tokenModalDesc) tokenModalDesc.textContent = isEn ? 'Select your connection method to Suno AI to generate studio-quality neural music:' : 'Pilih metode koneksi ke Suno AI untuk membuat musik neural berkualitas studio:';
       const autoLoginBtn = document.getElementById('btn-start-auto-login');
       if (autoLoginBtn) {
-        autoLoginBtn.innerHTML = isEn ? '🚀 Sign In with Suno' : '🚀 Sign In dengan Akun Suno';
+        if (window.AuraSoundAndroid) {
+          autoLoginBtn.innerHTML = isEn ? '🚀 Sign In with Google (Suno.com)' : '🚀 Hubungkan Akun Suno (Login Google)';
+        } else {
+          autoLoginBtn.innerHTML = isEn ? '🚀 Open Window & Sign In to Suno' : '🚀 Buka Jendela & Login ke Suno';
+        }
       }
 
       const importModalTitle = document.querySelector('#modal-import-playlist .modal-title');
@@ -2919,17 +2921,13 @@ class App {
 
             this.currentLyricsData = alignData.parsedLyrics;
             this.hasWordSync = Boolean(alignData.hasWordSync);
-            this.currentLyricsLang = alignData.detectedLang || null;
-            this.currentHasRomaji = Boolean(alignData.hasRomaji);
             track._parsedLyrics = alignData.parsedLyrics;
             track._lyricsType = 'synced';
             track._hasWordSync = this.hasWordSync;
-            track._lyricsLang = this.currentLyricsLang;
-            track._hasRomaji = this.currentHasRomaji;
             track._lyricsEngineVersion = 'v79';
             track._cachedForTrackId = trackId;
 
-            this.displayLyricsList(this.currentLyricsData, 'synced', this.currentLyricsLang, this.currentHasRomaji, this.hasWordSync);
+            this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
             const curTime = this.getCurrentPlaybackTime();
             this.updateActiveLyricsLine(curTime);
             return;
@@ -3229,21 +3227,10 @@ class App {
       this.cinemaLyricsBadge.style.display = 'inline-flex';
       if (type === 'synced') {
         if (this.currentTrack && this.currentTrack.type === 'suno') {
-          if (this.currentLyricsLang === 'ja') {
-            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇯🇵 SUNO ROMAJI REALTIME SYNC`;
-          } else if (this.currentLyricsLang === 'ko') {
-            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ko';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇰🇷 SUNO ROMAJA REALTIME SYNC`;
-          } else if (this.currentLyricsLang === 'zh') {
-            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-zh';
-            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 SUNO PINYIN REALTIME SYNC`;
-          } else {
-            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge suno';
-            this.cinemaLyricsBadge.innerHTML = this.hasWordSync
-              ? `<span class="badge-dot pulse"></span> ⚡ SUNO REALTIME WORD SYNC`
-              : `<span class="badge-dot pulse"></span> ⚡ SUNO MASTER SYNC`;
-          }
+          this.cinemaLyricsBadge.className = 'cinema-lyrics-badge suno';
+          this.cinemaLyricsBadge.innerHTML = this.hasWordSync
+            ? `<span class="badge-dot pulse"></span> ⚡ SUNO REALTIME WORD SYNC`
+            : `<span class="badge-dot pulse"></span> ⚡ SUNO MASTER SYNC`;
         } else if (this.hasWordSync) {
           if (this.currentLyricsLang === 'ja') {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';
@@ -7832,27 +7819,13 @@ class App {
       if (playPromise !== undefined) {
         playPromise.then(() => {
           this.updatePlayState(true);
-          if (window.audioEngine) window.audioEngine.resume();
         }).catch(e => {
-          console.warn('Native audio play error:', e.name, e.message);
-          if (e.name === 'NotAllowedError') {
-            this.showToast('Klik tombol Play untuk memulai pemutaran audio 🎵', 'info');
+          console.warn('Native audio proxy play error, trying direct stream:', e);
+          this.nativeAudio.src = targetUrl;
+          this.nativeAudio.play().then(() => this.updatePlayState(true)).catch(err => {
+            console.error('Audio direct play error:', err);
             this.updatePlayState(false);
-          } else {
-            // Retry with refreshed stream proxy once
-            setTimeout(() => {
-              if (this.currentTrack && this.currentTrack.id === track.id) {
-                this.nativeAudio.src = `${streamUrl}&_retry=${Date.now()}`;
-                this.nativeAudio.play().then(() => {
-                  this.updatePlayState(true);
-                  if (window.audioEngine) window.audioEngine.resume();
-                }).catch(err2 => {
-                  console.error('Retry play failed:', err2);
-                  this.updatePlayState(false);
-                });
-              }
-            }, 300);
-          }
+          });
         });
       }
 

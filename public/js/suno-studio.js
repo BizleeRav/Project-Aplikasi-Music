@@ -263,52 +263,14 @@ class SunoStudio {
   }
 
   copyClerkScript() {
-    const origin = window.location.origin || 'http://localhost:3000';
-    const code = "(async()=>{try{const t=await window.Clerk.session.getToken();await navigator.clipboard.writeText(t);try{const r=await fetch('" + origin + "/api/suno/connect-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});const d=await r.json();if(d.success){alert('🎉 '+d.message);return;}}catch(e){}alert('✅ Token Suno berhasil disalin ke clipboard! Buka AuraSound lalu tempel di kotak input dan klik Sambungkan.');}catch(err){alert('Gagal mengambil token: '+err.message);}})();";
+    const code = "fetch('http://localhost:3000/api/suno/connect-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:await window.Clerk.session.getToken()})}).then(r=>r.json()).then(d=>alert(d.message));";
     navigator.clipboard.writeText(code).then(() => {
       if (window.app && window.app.showToast) {
         window.app.showToast('Perintah otomatis disalin! Buka F12 -> Console di tab Suno.com Chrome Anda, tempel (Ctrl+V) & tekan Enter!', 'success');
       }
     }).catch(() => {
-      prompt('Salin perintah ini dan jalankan di Console (F12) tab Suno.com:', code);
+      prompt('Salin perintah ini dan jalankan di Console (F12) tab Suno.com Chrome Anda:', code);
     });
-  }
-
-  async connectOfficialTokenDirect(customToken = null) {
-    const input = document.getElementById('input-suno-official-token');
-    const token = (customToken || input?.value || '').trim();
-
-    if (!token || token.length < 20) {
-      if (window.app && window.app.showToast) {
-        window.app.showToast('Masukkan Token atau Cookie Suno yang valid!', 'error');
-      }
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/suno/connect-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (window.app && window.app.showToast) {
-          window.app.showToast(data.message || 'Akun Suno berhasil terhubung! 🎉', 'success');
-        }
-        const modal = document.getElementById('modal-token');
-        if (modal) modal.classList.remove('active');
-        if (input) input.value = '';
-        await this.checkAccountStatus();
-        await this.fetchCreations(1, true);
-      } else {
-        throw new Error(data.error || 'Gagal menghubungkan token');
-      }
-    } catch (err) {
-      if (window.app && window.app.showToast) {
-        window.app.showToast('Error: ' + err.message, 'error');
-      }
-    }
   }
 
   async startAutoLoginFlow() {
@@ -337,7 +299,7 @@ class SunoStudio {
     if (btn) btn.disabled = true;
     if (btnExt) btnExt.disabled = true;
     if (loadingBox) loadingBox.style.display = 'block';
-    if (statusText) statusText.textContent = 'Membuka jendela login resmi Suno...';
+    if (statusText) statusText.textContent = 'Membuka Google Chrome di laptop Anda...';
 
     try {
       if (window.electronAPI && window.electronAPI.openSunoLogin) {
@@ -348,7 +310,7 @@ class SunoStudio {
         if (!data.success) throw new Error(data.error || 'Gagal membuka browser');
       }
 
-      if (statusText) statusText.textContent = 'Jendela Suno terbuka! Silakan klik Sign In / Continue with Google...';
+      if (statusText) statusText.textContent = 'Google Chrome terbuka! Silakan klik "Continue with Google" & login akun Anda...';
       if (window.app && window.app.showToast) {
         window.app.showToast('Jendela Google Chrome terbuka! Silakan login dengan akun Google Anda.', 'info');
       }
@@ -791,7 +753,7 @@ class SunoStudio {
             </div>
           </div>
 
-          <div class="suno-card-body" onclick="window.sunoStudio.playClip('${track.id}')" style="cursor: pointer;">
+          <div class="suno-card-body">
             <h4 class="suno-card-title" title="${safeTitle}">${safeTitle}</h4>
             <div class="suno-card-tags" title="${this.escapeHtml(rawTags)}">
               ${safeTags}
@@ -941,14 +903,6 @@ class SunoStudio {
       track = this.formatTrackObject(clipIdOrTrack);
     }
     if (track && window.app && window.app.playTrack) {
-      if (Array.isArray(this.creations) && this.creations.length > 0) {
-        const fullQueue = this.creations.map(c => this.formatTrackObject(c.id));
-        const idx = fullQueue.findIndex(t => t.id === track.id);
-        if (idx !== -1) {
-          window.app.queue = fullQueue;
-          window.app.queueIndex = idx;
-        }
-      }
       window.app.playTrack(track);
       setTimeout(() => {
         if (typeof window.app.openStudioCinema === 'function') {

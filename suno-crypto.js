@@ -1,15 +1,7 @@
 const axios = require('axios');
 const https = require('https');
 
-// Persistent Keep-Alive Agent for instant HTTP connection reuse
-const httpsAgent = new https.Agent({
-  keepAlive: true,
-  maxSockets: 64,
-  timeout: 15000
-});
-
 const rightsCache = new Map();
-const fileSizeCache = new Map();
 
 /**
  * Align big integer increment for AES-CTR 16-byte block counter
@@ -29,11 +21,11 @@ function incrementIv(iv, blockOffset) {
 }
 
 /**
- * Fetch and derive Suno clip AES-CTR decryption keys (cached for 60 minutes)
+ * Fetch and derive Suno clip AES-CTR decryption keys
  */
 async function getClipCryptoKeys(clipId) {
   const cached = rightsCache.get(clipId);
-  if (cached && Date.now() - cached.timestamp < 60 * 60 * 1000) {
+  if (cached && Date.now() - cached.timestamp < 30 * 60 * 1000) {
     return cached;
   }
 
@@ -48,7 +40,6 @@ async function getClipCryptoKeys(clipId) {
       'Referer': 'https://suno.com/create',
       'Origin': 'https://suno.com'
     },
-    httpsAgent,
     timeout: 10000
   });
 
@@ -79,51 +70,11 @@ async function getClipCryptoKeys(clipId) {
 }
 
 /**
- * Determine exact file byte length via fast range probe (cached per clipId)
- */
-async function getFileTotalLength(fetchUrl, clipId) {
-  if (fileSizeCache.has(clipId)) {
-    return fileSizeCache.get(clipId);
-  }
-
-  try {
-    const res = await axios.get(fetchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        'Range': 'bytes=0-0',
-        'Referer': 'https://suno.com/'
-      },
-      httpsAgent,
-      validateStatus: (s) => s === 206 || s === 200,
-      timeout: 7000
-    });
-
-    let total = 0;
-    const cr = res.headers['content-range'];
-    if (cr) {
-      const match = cr.match(/\/(\d+)$/);
-      if (match) total = parseInt(match[1], 10);
-    }
-    if (!total && res.headers['content-length']) {
-      total = parseInt(res.headers['content-length'], 10);
-    }
-
-    if (total > 0) {
-      fileSizeCache.set(clipId, total);
-      return total;
-    }
-  } catch (err) {
-    console.warn(`[Suno Crypto] Fast size fetch failed for ${clipId}:`, err.message);
-  }
-
-  return 3679593; // Safe standard 128kbps m4a fallback size
-}
-
-/**
  * Decrypt a specific byte range of a Suno clip
  */
 async function decryptAudioRange(clipId, startByte, endByte, targetUrl) {
   const { aesKey, rawIv } = await getClipCryptoKeys(clipId);
+
   const fetchUrl = targetUrl || `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${clipId}.m4a`;
 
   // Align start to 16-byte block boundary for AES-CTR
@@ -131,10 +82,9 @@ async function decryptAudioRange(clipId, startByte, endByte, targetUrl) {
   const byteOffsetInBlock = startByte - alignedStart;
   const blockOffset = BigInt(alignedStart / 16);
 
-  // Fetch encrypted slice from CloudFront via keep-alive connection
+  // Fetch encrypted slice from CloudFront
   const encryptedBuf = await new Promise((resolve, reject) => {
     const req = https.get(fetchUrl, {
-      agent: httpsAgent,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         'Range': `bytes=${alignedStart}-${endByte}`,
@@ -142,9 +92,6 @@ async function decryptAudioRange(clipId, startByte, endByte, targetUrl) {
       },
       timeout: 15000
     }, res => {
-      if (res.statusCode !== 200 && res.statusCode !== 206) {
-        return reject(new Error(`CloudFront returned status ${res.statusCode}`));
-      }
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => resolve(Buffer.concat(chunks)));
@@ -193,43 +140,40 @@ function extractClipId(url, id) {
 }
 
 /**
- * Stream decrypted Suno audio to client with complete HTTP 206 Range & HEAD support
+ * Stream decrypted Suno audio to client with HTTP 206 Range support
  */
 async function streamDecryptedSunoAudio(req, res, clipId, targetUrl) {
   const fetchUrl = targetUrl || `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${clipId}.m4a`;
 
-  // Always set standard audio streaming headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Range, Accept, Origin, Content-Type');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type');
-  res.setHeader('Content-Type', 'audio/mp4');
-  res.setHeader('Accept-Ranges', 'bytes');
-
-  const totalLength = await getFileTotalLength(fetchUrl, clipId);
-
-  // 1. Instant HEAD response for browser preflight checks
-  if (req.method === 'HEAD') {
-    res.status(200);
-    res.setHeader('Content-Length', totalLength);
-    return res.end();
+  // 1. Get total file length via HEAD request
+  let totalLength = 0;
+  try {
+    const headRes = await axios.head(fetchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Referer': 'https://suno.com/'
+      },
+      timeout: 10000
+    });
+    totalLength = parseInt(headRes.headers['content-length'] || '0', 10);
+  } catch (headErr) {
+    // Fallback default ~4.5MB
+    totalLength = 4638891;
   }
 
   const rangeHeader = req.headers.range;
 
-  // 2. HTTP 206 Partial Content Range streaming
+  let start = 0;
+  let end = totalLength > 0 ? totalLength - 1 : 4638890;
+
   if (rangeHeader) {
     const parts = rangeHeader.replace(/bytes=/, '').split('-');
-    let start = parseInt(parts[0], 10) || 0;
-    let end = parts[1] ? parseInt(parts[1], 10) : (totalLength > 0 ? totalLength - 1 : 0);
-
-    if (start >= totalLength && totalLength > 0) {
-      res.status(416);
-      res.setHeader('Content-Range', `bytes */${totalLength}`);
-      return res.end();
+    start = parseInt(parts[0], 10) || 0;
+    if (parts[1]) {
+      end = parseInt(parts[1], 10);
     }
 
-    // Stream up to 512KB per range request for smooth buffering
+    // Cap chunk size per request to 512KB for instant response and smooth streaming
     const maxChunk = 512 * 1024;
     if (end - start + 1 > maxChunk) {
       end = start + maxChunk - 1;
@@ -238,7 +182,7 @@ async function streamDecryptedSunoAudio(req, res, clipId, targetUrl) {
       end = totalLength - 1;
     }
 
-    const chunkLength = Math.max(0, end - start + 1);
+    const chunkLength = end - start + 1;
     res.status(206);
     res.setHeader('Content-Range', `bytes ${start}-${end}/${totalLength}`);
     res.setHeader('Content-Length', chunkLength);
@@ -247,7 +191,7 @@ async function streamDecryptedSunoAudio(req, res, clipId, targetUrl) {
     return res.end(decryptedChunk);
   }
 
-  // 3. Full file progressive stream (no Range header)
+  // Full file stream (e.g. for fetch() or direct download)
   res.status(200);
   res.setHeader('Content-Length', totalLength);
 
@@ -260,7 +204,7 @@ async function streamDecryptedSunoAudio(req, res, clipId, targetUrl) {
     res.write(chunk);
     current = chunkEnd + 1;
   }
-  return res.end();
+  res.end();
 }
 
 module.exports = {

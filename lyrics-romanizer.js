@@ -411,7 +411,7 @@ class LyricsRomanizer {
     return this.jpInitPromise;
   }
 
-  detectLanguage(text, context = {}) {
+  detectLanguage(text) {
     if (!text || typeof text !== 'string') return null;
 
     // 1. Korean (Hangul syllables & jamo)
@@ -423,54 +423,13 @@ class LyricsRomanizer {
     // 3. Chinese (CJK ideographs without Kana or Hangul)
     if (/[\u4E00-\u9FFF]/.test(text)) return 'zh';
 
-    // 4. Tone marks in Pinyin
-    if (/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(text)) return 'zh';
-
-    // 5. Context Hints (Tags / Prompt / Title)
-    const combinedMeta = `${context.tags || ''} ${context.prompt || ''} ${context.title || ''}`.toLowerCase();
-    if (/\b(j-pop|jpop|japanese|anime|vocaloid|romaji)\b/i.test(combinedMeta)) return 'ja';
-    if (/\b(k-pop|kpop|korean|hangul|romaja)\b/i.test(combinedMeta)) return 'ko';
-    if (/\b(c-pop|cpop|chinese|mandarin|guzheng|dizi|pinyin)\b/i.test(combinedMeta)) return 'zh';
-
-    // 6. English / Latin Guard: if common English function words dominate, it is English!
-    const words = text.toLowerCase().match(/[a-z’']+/g) || [];
-    if (words.length >= 3) {
-      const EN_COMMON = new Set(['the','and','to','of','a','in','that','is','for','it','with','as','on','be','at','by','i','this','not','are','from','or','have','you','all','there','we','when','will','if','out','so','what','up','can','my','now','like','our','over','me','after','through','where','your','under','here','well']);
-      const enCount = words.filter(w => EN_COMMON.has(w)).length;
-      if (enCount >= 3 && (enCount / words.length) >= 0.15) {
-        return 'en';
-      }
-
-      let jaScore = 0;
-      let koScore = 0;
-      let zhScore = 0;
-
-      const JA_MARKERS = new Set(['no','wo','wa','ga','ni','de','te','kara','made','kono','sono','ano','kokoro','watashi','boku','anata','kaze','sora','yume','hikari','sekai','kimi','ima','yorokobi','daijoubu','ashita','motto','zutto','subete','namida','egao','tsunagu','odoru','hiraite','tanoshimou','ii','da','desu','arigatou','suki','hajimari','doko','kyou','kotoba']);
-      const KO_MARKERS = new Set(['eun','neun','eul','reul','eseo','uro','hada','hamkke','neowa','urin','geu','neol','geuttae','ireon','jigeum','hajaneun','eopseo','isseo','sarang','maeum','sigan','nunbusyeo','haengbokhae','oneul','bam','tteugeopge','ttwieo','gata','miso','soneul','japgo','mirae','kkeutkkaji','gaja','geureodo','chinjeokhae','molratgetji','chajanaen']);
-      const ZH_MARKERS = new Set(['wo','ni','ta','de','le','ma','zai','bu','shi','hen','you','meiyou','yue','guang','shui','hua','xiang','feng','chui','dong','chuang','ping','jing','mian','shang','ren','sheng','nian','tian','di','xin','ai']);
-
-      for (const w of words) {
-        if (JA_MARKERS.has(w)) jaScore += 2;
-        if (KO_MARKERS.has(w)) koScore += 2;
-        if (ZH_MARKERS.has(w)) zhScore += 2;
-        if (/(eo|eu|ae|ui|yeo|yae|kk|tt|pp|jj|ss)$/.test(w)) koScore += 1.5;
-      }
-
-      const max = Math.max(jaScore, koScore, zhScore);
-      if (max >= 4 && max > enCount * 2) {
-        if (max === jaScore) return 'ja';
-        if (max === koScore) return 'ko';
-        if (max === zhScore) return 'zh';
-      }
-    }
-
     return null;
   }
 
-  detectLyricsLanguage(lines, context = {}) {
+  detectLyricsLanguage(lines) {
     if (!Array.isArray(lines) || lines.length === 0) return null;
     const fullText = lines.join(' ');
-    return this.detectLanguage(fullText, context);
+    return this.detectLanguage(fullText);
   }
 
   async romanizeLine(text, lang) {
@@ -822,10 +781,10 @@ class LyricsRomanizer {
     }
   }
 
-  async romanizeLyricsList(parsedLines, context = {}) {
-    if (!Array.isArray(parsedLines) || parsedLines.length === 0) return { lines: parsedLines, detectedLang: null };
+  async romanizeLyricsList(parsedLines) {
+    if (!Array.isArray(parsedLines) || parsedLines.length === 0) return parsedLines;
 
-    const overallLang = this.detectLyricsLanguage(parsedLines.map(p => p.text), context);
+    const overallLang = this.detectLyricsLanguage(parsedLines.map(p => p.text));
 
     const result = [];
     for (const item of parsedLines) {
@@ -849,23 +808,13 @@ class LyricsRomanizer {
           lineLang = 'zh';
         } else if (item.lang && item.lang !== 'en') {
           lineLang = item.lang.split('-')[0].toLowerCase();
-        } else if (overallLang) {
-          lineLang = overallLang;
         } else {
-          lineLang = this.detectLanguage(inspectText, context);
+          lineLang = this.detectLanguage(inspectText);
         }
       }
 
       if (!romaji && item.text && lineLang) {
-        if (lineLang === 'ja' && !/[\u3040-\u30ff\u4e00-\u9fff]/.test(item.text)) {
-          // Song is already written in Romaji: generate Hiragana subtitle
-          try {
-            romaji = wanakana.toHiragana(item.text);
-          } catch(e) {}
-        } else {
-          romaji = await this.romanizeLine(item.text, lineLang);
-        }
-
+        romaji = await this.romanizeLine(item.text, lineLang);
         // If romaji is identical to original (e.g. English line in J-pop song), don't duplicate
         if (romaji && romaji.toLowerCase().replace(/[^a-z0-9]/g, '') === item.text.toLowerCase().replace(/[^a-z0-9]/g, '')) {
           romaji = null;
@@ -875,15 +824,7 @@ class LyricsRomanizer {
       let updatedWords = item.words || null;
       if (Array.isArray(item.words) && item.words.length > 0) {
         if (lineLang === 'ja') {
-          if (!/[\u3040-\u30ff\u4e00-\u9fff]/.test(item.text)) {
-            // Already in Romaji: map each word to its Hiragana reading for 1:1 sync
-            updatedWords = item.words.map(w => ({
-              ...w,
-              romaji: wanakana.toHiragana(w.text)
-            }));
-          } else {
-            updatedWords = await this.alignJapaneseWords(item.text, item.words);
-          }
+          updatedWords = await this.alignJapaneseWords(item.text, item.words);
         } else if (lineLang === 'ko') {
           updatedWords = this.alignKoreanWords(item.text, item.words);
         } else if (lineLang === 'zh') {

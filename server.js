@@ -1005,17 +1005,19 @@ app.get('/api/suno/config', (req, res) => {
 app.post('/api/suno/config', async (req, res) => {
   try {
     const { suno_api_key, suno_provider = 'kie', suno_custom_url = '' } = req.body;
-    const ip = req.ip || req.connection?.remoteAddress || '';
-    const isLocal = !process.env.VERCEL || ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost' || ip.includes('10.') || ip.includes('192.168.') || ip.includes('172.');
     if (!suno_api_key || suno_api_key.trim().length === 0) {
-      if (isLocal) {
+      const ip = req.ip || req.connection?.remoteAddress || '';
+      const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
+      if (isLocalhost) {
         sunoService.saveConfig({ suno_api_key: '', suno_provider, suno_custom_url });
       }
       return res.json({ success: true, message: 'Kembali ke Suno Auto-Engine (Built-in)' });
     }
 
     const testResult = await sunoService.verifyApiKey(suno_api_key, suno_provider, suno_custom_url);
-    if (isLocal) {
+    const ip = req.ip || req.connection?.remoteAddress || '';
+    const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
+    if (isLocalhost) {
       sunoService.saveConfig({
         suno_api_key: suno_api_key.trim(),
         suno_provider,
@@ -1041,7 +1043,12 @@ app.get('/api/suno/creations', async (req, res) => {
     const deviceId = (req.headers['x-device-id'] || req.query.device_id || '').trim();
     const creds = getEffectiveSunoCredentials(req);
 
-    // Library sync disabled: only user creations made in AuraSound are displayed
+    // Live sync from Suno official account
+    if (sync === '1' || sync === 'true') {
+      await sunoService.syncOfficialFeed(creds.key, deviceId);
+    } else {
+      sunoService.syncOfficialFeed(creds.key, deviceId).catch(() => {});
+    }
 
     const result = sunoService.getCreationsPaginated({ page, pageSize, query: q, deviceId, apiKey: creds.key });
     res.json(result);
@@ -1066,30 +1073,8 @@ app.get('/api/suno/aligned-lyrics/:id', async (req, res) => {
     const clipId = req.params.id;
     const creds = getEffectiveSunoCredentials(req);
     const result = await sunoService.getAlignedLyrics(clipId, creds.key);
-    if (result && result.found && Array.isArray(result.parsedLyrics)) {
-      // Run Multi-Lingual Romanizer (Japanese Romaji, Chinese Pinyin, Korean Romaja)
-      const romanizer = getLyricsRomanizer();
-      const allCreations = sunoService.getCreations();
-      const trackMeta = allCreations.find(t => t.id === clipId);
-
-      const romanized = await romanizer.romanizeLyricsList(result.parsedLyrics, {
-        tags: trackMeta?.tags || '',
-        prompt: trackMeta?.prompt || '',
-        title: trackMeta?.title || ''
-      });
-
-      const hasRomaji = Boolean(
-        romanized.lines && romanized.lines.some(l => l.romaji || (Array.isArray(l.romajiWords) && l.romajiWords.length > 0))
-      );
-
-      return res.json({
-        found: true,
-        hasWordSync: result.hasWordSync,
-        hasRomaji,
-        detectedLang: romanized.detectedLang || null,
-        parsedLyrics: romanized.lines,
-        totalWords: result.totalWords
-      });
+    if (result && result.found) {
+      return res.json(result);
     }
     res.json({ found: false });
   } catch (err) {
@@ -1215,19 +1200,14 @@ app.post('/api/suno/connect-token', (req, res) => {
   if (!token || token.trim().length < 20) {
     return res.status(400).json({ success: false, error: 'Token tidak valid' });
   }
-  let cleanToken = token.trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '');
-  const sessionMatch = cleanToken.match(/__session=([^;]+)/);
-  if (sessionMatch) cleanToken = sessionMatch[1].trim();
+  const cleanToken = token.trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '');
   const ip = req.ip || req.connection?.remoteAddress || '';
-  const isLocal = !process.env.VERCEL || ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost' || ip.includes('10.') || ip.includes('192.168.') || ip.includes('172.');
-  if (isLocal) {
+  const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
+  if (isLocalhost) {
     sunoService.saveConfig({
       suno_api_key: cleanToken,
       suno_provider: 'suno_official'
     });
-    try {
-      sunoService.syncOfficialFeed(cleanToken).catch(() => {});
-    } catch (e) {}
     if (typeof sunoLoginHelper.notifyTokenCaptured === 'function') {
       sunoLoginHelper.notifyTokenCaptured(cleanToken);
     }

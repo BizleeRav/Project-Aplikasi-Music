@@ -1,10 +1,6 @@
 # Build outputs and large executables
 dist/
 android-build/
-android-keystore/
-build-apk.js
-electron-main.js
-preload.js
 *.exe
 *.apk
 *.zip
