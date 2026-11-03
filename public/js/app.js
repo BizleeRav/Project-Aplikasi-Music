@@ -1314,16 +1314,14 @@ class App {
       }
 
       const tokenModalTitle = document.querySelector('#modal-token .modal-title');
-      if (tokenModalTitle) tokenModalTitle.textContent = isEn ? 'Connect Suno AI 🎵' : 'Hubungkan Suno AI 🎵';
+      if (tokenModalTitle) tokenModalTitle.textContent = isEn ? 'Sign In ke Suno AI 🎵' : 'Sign In ke Suno AI 🎵';
       const tokenModalDesc = document.querySelector('#modal-token .modal-desc');
-      if (tokenModalDesc) tokenModalDesc.textContent = isEn ? 'Select your connection method to Suno AI to generate studio-quality neural music:' : 'Pilih metode koneksi ke Suno AI untuk membuat musik neural berkualitas studio:';
+      if (tokenModalDesc) tokenModalDesc.textContent = isEn 
+        ? 'Sign in with your Suno account to sync your music library and get 50 free credits daily.' 
+        : 'Masuk dengan akun Suno resmi Anda untuk sinkronisasi lagu otomatis & kuota 50 kredit gratis setiap hari.';
       const autoLoginBtn = document.getElementById('btn-start-auto-login');
       if (autoLoginBtn) {
-        if (window.AuraSoundAndroid) {
-          autoLoginBtn.innerHTML = isEn ? '🚀 Sign In with Google (Suno.com)' : '🚀 Hubungkan Akun Suno (Login Google)';
-        } else {
-          autoLoginBtn.innerHTML = isEn ? '🚀 Open Window & Sign In to Suno' : '🚀 Buka Jendela & Login ke Suno';
-        }
+        autoLoginBtn.innerHTML = isEn ? '🚀 Sign In with Suno' : '🚀 Sign In dengan Akun Suno';
       }
 
       const importModalTitle = document.querySelector('#modal-import-playlist .modal-title');

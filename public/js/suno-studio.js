@@ -337,7 +337,7 @@ class SunoStudio {
     if (btn) btn.disabled = true;
     if (btnExt) btnExt.disabled = true;
     if (loadingBox) loadingBox.style.display = 'block';
-    if (statusText) statusText.textContent = 'Membuka Google Chrome di laptop Anda...';
+    if (statusText) statusText.textContent = 'Membuka jendela login resmi Suno...';
 
     try {
       if (window.electronAPI && window.electronAPI.openSunoLogin) {
@@ -348,7 +348,7 @@ class SunoStudio {
         if (!data.success) throw new Error(data.error || 'Gagal membuka browser');
       }
 
-      if (statusText) statusText.textContent = 'Google Chrome terbuka! Silakan klik "Continue with Google" & login akun Anda...';
+      if (statusText) statusText.textContent = 'Jendela Suno terbuka! Silakan klik Sign In / Continue with Google...';
       if (window.app && window.app.showToast) {
         window.app.showToast('Jendela Google Chrome terbuka! Silakan login dengan akun Google Anda.', 'info');
       }
