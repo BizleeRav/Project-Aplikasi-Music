@@ -81,14 +81,25 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     // 4. Wait 2 seconds for Cloudflare Turnstile token validation to complete naturally
     await new Promise(r => setTimeout(r, 2000));
 
-    // 5. Fill user's exact lyrics, title, and tags, then click Create
+    // Determine if input has explicit custom lyrics vs a prompt theme description
+    const rawText = (lyrics || prompt || '').trim();
+    const hasVerseMarkers = /\[(verse|chorus|intro|bridge|outro|hook|pre-chorus)/i.test(rawText);
+    const isCustomLyrics = hasVerseMarkers || (lyrics && lyrics.trim().length > 25 && lyrics.includes('\n'));
+
+    const genPayload = {
+      isCustomLyrics,
+      title: (title || '').trim(),
+      lyrics: isCustomLyrics ? rawText : '',
+      prompt: rawText,
+      tags: (tags || '').trim(),
+      make_instrumental: Boolean(make_instrumental)
+    };
+
+    // 5. Fill input and click Create
     const fillResult = await genWin.webContents.executeJavaScript(`
       (async () => {
         try {
-          const title = ${JSON.stringify(title || '')};
-          const lyrics = ${JSON.stringify(lyrics || prompt || '')};
-          const tags = ${JSON.stringify(tags || '')};
-          const isInstrumental = ${JSON.stringify(Boolean(make_instrumental))};
+          const payload = ${JSON.stringify(genPayload)};
 
           function setNativeValue(el, val) {
             if (!el) return;
@@ -100,7 +111,6 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             el.dispatchEvent(new Event('change', { bubbles: true }));
           }
 
-          // Toggle Custom mode if title or separate tags provided
           const allButtons = Array.from(document.querySelectorAll('button, [role="switch"]'));
           const customSwitch = allButtons.find(b => {
             const txt = (b.innerText || b.getAttribute('aria-label') || '').toLowerCase();
@@ -108,30 +118,48 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
           });
 
           const textareas = () => Array.from(document.querySelectorAll('textarea'));
-          if (customSwitch && textareas().length < 2 && (title || tags)) {
-            customSwitch.click();
-            await new Promise(r => setTimeout(r, 700));
+          const isCustomActive = textareas().length >= 2 || !!document.querySelector('input[placeholder*="title" i]');
+
+          if (payload.isCustomLyrics) {
+            // Ensure Custom mode is turned ON
+            if (customSwitch && !isCustomActive) {
+              customSwitch.click();
+              await new Promise(r => setTimeout(r, 700));
+            }
+
+            const tas = textareas();
+            const inputs = Array.from(document.querySelectorAll('input'));
+
+            if (tas.length >= 2) {
+              setNativeValue(tas[0], payload.lyrics);
+              setNativeValue(tas[1], payload.tags);
+            } else if (tas.length === 1) {
+              setNativeValue(tas[0], payload.lyrics);
+            }
+
+            if (payload.title) {
+              const titleInput = inputs.find(i => {
+                const ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase();
+                return ph.includes('title') || ph.includes('judul');
+              });
+              if (titleInput) setNativeValue(titleInput, payload.title);
+            }
+          } else {
+            // Standard / Simple Mode: Suno writes the lyrics and music automatically from the prompt!
+            if (customSwitch && isCustomActive) {
+              customSwitch.click();
+              await new Promise(r => setTimeout(r, 700));
+            }
+
+            const tas = textareas();
+            const fullDesc = [payload.prompt, payload.tags, payload.title].filter(Boolean).join('. ');
+            if (tas.length > 0) {
+              setNativeValue(tas[0], fullDesc);
+            }
           }
 
-          const tas = textareas();
-          const inputs = Array.from(document.querySelectorAll('input'));
-
-          if (tas.length >= 2) {
-            setNativeValue(tas[0], lyrics);
-            setNativeValue(tas[1], tags);
-          } else if (tas.length === 1) {
-            setNativeValue(tas[0], lyrics || tags);
-          }
-
-          if (title) {
-            const titleInput = inputs.find(i => {
-              const ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase();
-              return ph.includes('title') || ph.includes('judul');
-            });
-            if (titleInput) setNativeValue(titleInput, title);
-          }
-
-          if (isInstrumental) {
+          // Handle Instrumental toggle
+          if (payload.make_instrumental) {
             const instrBtn = Array.from(document.querySelectorAll('button, [role="switch"]')).find(b => {
               const txt = (b.innerText || b.getAttribute('aria-label') || '').toLowerCase();
               return txt.includes('instrumental');
@@ -162,7 +190,7 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
           createBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
           createBtn.click();
 
-          return { success: true, text: createBtn.innerText };
+          return { success: true, text: createBtn.innerText, mode: payload.isCustomLyrics ? 'custom' : 'standard' };
         } catch (err) {
           return { error: err.message };
         }
@@ -219,7 +247,8 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
 
     return {
       success: true,
-      clips: capturedClips
+      clips: capturedClips,
+      isCustomLyrics
     };
   } finally {
     try {

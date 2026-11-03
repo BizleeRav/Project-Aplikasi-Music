@@ -119,7 +119,7 @@ function deleteCreation(id) {
 
 function getCreationsPaginated({ page = 1, pageSize = 12, query = '', deviceId = null, apiKey = null }) {
   if (apiKey && apiKey.length > 20) {
-    syncOfficialFeed(apiKey, deviceId).catch(() => {});
+    // sync removed
   }
   const all = getCreations(deviceId);
   const q = (query || '').toLowerCase().trim();
@@ -683,20 +683,22 @@ function prepareLyricsAndPrompt({ prompt, lyrics, tags, title, make_instrumental
   let finalLyrics = '';
   const finalPrompt = (prompt || '').trim();
 
-  // PRESERVE USER INPUT VERBATIM: Never discard user lyrics or prompt!
-  if (lyrics && lyrics.trim().length > 0) {
+  // If user provided explicit custom lyrics with verse/section markers
+  if (lyrics && lyrics.trim().length > 0 && !isPromptInstruction(lyrics)) {
     finalLyrics = lyrics.trim();
-  } else if (prompt && prompt.trim().length > 0) {
+  } else if (prompt && !isPromptInstruction(prompt) && (/\[(verse|chorus|intro|bridge|outro|hook|pre-chorus)/i.test(prompt) || (prompt.includes('\n') && prompt.split('\n').length >= 4))) {
     finalLyrics = prompt.trim();
   } else {
-    finalLyrics = generateStructuredLyrics(finalTitle, prompt, finalTags, make_instrumental);
+    // If user provided a prompt description (theme/style), DO NOT make prompt into lyrics!
+    // Suno AI will compose the music AND write the real singable lyrics!
+    finalLyrics = '';
   }
 
   return {
     finalTitle,
     finalTags,
     finalLyrics,
-    finalPrompt: finalPrompt || finalLyrics || finalTags
+    finalPrompt: finalPrompt || finalTags
   };
 }
 
@@ -829,7 +831,7 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
       } catch (e) {}
 
       // Background sync official feed
-      syncOfficialFeed(apiKey).catch(() => {});
+      // sync removed
 
       return {
         configured: true,
@@ -960,13 +962,14 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
                 const clipId = c.id;
                 const audioUrl = extractAudioUrl(c);
                 const thumb = c.image_url || c.image_large_url || (clipId ? `https://cdn2.suno.ai/image_${clipId}.jpeg` : '/icons/icon.svg');
+                const genuineLyrics = (c.metadata?.prompt || c.prompt || '').trim();
                 const trackObj = {
                   id: clipId,
                   title: c.title || finalTitle,
                   artist: `Suno Official (${c.major_model_version || officialMv})`,
                   tags: c.metadata?.tags || c.tags || finalTags,
                   prompt: finalPrompt,
-                  lyrics: finalLyrics,
+                  lyrics: genuineLyrics || finalLyrics || finalPrompt,
                   model: c.major_model_version || officialMv,
                   status: c.status || 'submitted',
                   thumbnail: thumb,

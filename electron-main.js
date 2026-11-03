@@ -358,7 +358,7 @@ ipcMain.handle('open-suno-login', async () => {
             suno_api_key: token,
             suno_provider: 'suno_official'
           });
-          sunoService.syncOfficialFeed(token).catch(() => {});
+          // syncOfficialFeed removed
         } catch (e) {}
 
         // Send token to mainWindow to store in client state & server config
@@ -447,7 +447,7 @@ async function checkSunoSessionCookies() {
           suno_api_key: token,
           suno_provider: 'suno_official'
         });
-        sunoService.syncOfficialFeed(token).catch(() => {});
+        // syncOfficialFeed removed
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('suno-token-captured', token);
         }
