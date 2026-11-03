@@ -1230,6 +1230,9 @@ app.post('/api/suno/connect-token', (req, res) => {
       suno_api_key: cleanToken,
       suno_provider: 'suno_official'
     });
+    try {
+      sunoService.syncOfficialFeed(cleanToken).catch(() => {});
+    } catch (e) {}
     if (typeof sunoLoginHelper.notifyTokenCaptured === 'function') {
       sunoLoginHelper.notifyTokenCaptured(cleanToken);
     }

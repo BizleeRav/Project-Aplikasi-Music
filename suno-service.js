@@ -49,6 +49,12 @@ function saveConfig(data) {
   const current = getConfig();
   const updated = { ...current, ...data };
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2), 'utf8');
+  try {
+    const repoConfig = path.join(__dirname, 'config.json');
+    if (CONFIG_FILE !== repoConfig) {
+      fs.writeFileSync(repoConfig, JSON.stringify(updated, null, 2), 'utf8');
+    }
+  } catch (e) {}
   return updated;
 }
 
