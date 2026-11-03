@@ -81,6 +81,42 @@ blyrics-letter-wave = true;
 
 class App {
   constructor() {
+    // 0. Enforce clean-slate reset requested by user
+    const RESET_VERSION = 'v_reset_clean_all_2026_11_03';
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('aurasound_songs_clean_version') !== RESET_VERSION) {
+        console.log('[AuraSound] Performing clean-slate song reset requested by user...');
+        const keysToRemove = [
+          'aurasound_playlists',
+          'aurasound_play_history',
+          'aurasound_favorites',
+          'aurasound_chosen_taste',
+          'aurasound_taste_profile',
+          'aurasound_taste_completed',
+          'aurasound_current_queue',
+          'aurasound_current_track',
+          'aurasound_last_queue',
+          'aurasound_last_track',
+          'suno_creations_cache',
+          'suno_local_creations'
+        ];
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && (
+            k.startsWith('aurasound_playlists_') ||
+            k.startsWith('aurasound_play_history_') ||
+            k.startsWith('aurasound_favorites_') ||
+            k.startsWith('aurasound_chosen_taste_') ||
+            k.startsWith('suno_')
+          )) {
+            localStorage.removeItem(k);
+          }
+        }
+        localStorage.setItem('aurasound_songs_clean_version', RESET_VERSION);
+      }
+    } catch (e) {}
+
     this.currentTrack = null;
     this.queue = [];
     this.queueIndex = -1;

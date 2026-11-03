@@ -2574,6 +2574,12 @@ async function generateLikedRadio({ favorites = [] } = {}) {
   return radioAlbum;
 }
 
+function clearHomeCaches() {
+  userHomeCache.clear();
+  albumEnrichCache.clear();
+  moodCache.clear();
+}
+
 module.exports = {
   getHomeFeed,
   getAlbumDetail,
@@ -2584,6 +2590,7 @@ module.exports = {
   cleanArtistKey,
   isOfficialMusicTrack,
   isNonOfficialMusicTrack,
+  clearHomeCaches,
   HOME_SECTIONS,
   ALBUM_CATALOG
 };

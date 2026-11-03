@@ -1822,6 +1822,12 @@ async function getAlignedLyrics(clipId, userToken = null) {
   return null;
 }
 
+function resetAllCreations() {
+  saveCreations([]);
+  const repoFile = path.join(__dirname, 'data', 'suno-creations.json');
+  try { fs.writeFileSync(repoFile, '[]', 'utf8'); } catch (e) {}
+}
+
 module.exports = {
   getCreations,
   addCreation,
@@ -1837,5 +1843,6 @@ module.exports = {
   prepareLyricsAndPrompt,
   pickSoundForTheme,
   syncOfficialFeed,
-  getAlignedLyrics
+  getAlignedLyrics,
+  resetAllCreations
 };

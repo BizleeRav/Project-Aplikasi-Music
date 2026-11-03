@@ -238,6 +238,14 @@ function removeTrackFromPlaylist(playlistId, trackId) {
   return pl;
 }
 
+function resetAllPlaylists() {
+  playlistsCache = [];
+  persistToDisk();
+  const repoFile = path.join(__dirname, 'data', 'playlists.json');
+  try { fs.writeFileSync(repoFile, '[]', 'utf8'); } catch (e) {}
+  return [];
+}
+
 module.exports = {
   getAllPlaylists,
   getPlaylistsSummary,
@@ -246,5 +254,6 @@ module.exports = {
   bulkUpsertPlaylists,
   deletePlaylist,
   addTrackToPlaylist,
-  removeTrackFromPlaylist
+  removeTrackFromPlaylist,
+  resetAllPlaylists
 };
