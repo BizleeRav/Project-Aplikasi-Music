@@ -204,6 +204,7 @@ ipcMain.handle('open-suno-login', async () => {
   }
 
   // Allow Google OAuth popup windows to function naturally without breaking window.opener
+  const childWindows = new Set();
   sunoLoginWin.webContents.setWindowOpenHandler(({ url }) => {
     return {
       action: 'allow',
@@ -211,6 +212,7 @@ ipcMain.handle('open-suno-login', async () => {
         parent: sunoLoginWin,
         modal: false,
         backgroundColor: '#ffffff',
+        autoHideMenuBar: true,
         webPreferences: {
           session: sunoSession,
           nodeIntegration: false,
@@ -221,7 +223,22 @@ ipcMain.handle('open-suno-login', async () => {
   });
 
   sunoLoginWin.webContents.on('did-create-window', (childWin) => {
+    childWindows.add(childWin);
+    childWin.setMenuBarVisibility(false);
+    if (typeof childWin.removeMenu === 'function') {
+      childWin.removeMenu();
+    }
     childWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
+    childWin.webContents.on('dom-ready', () => {
+      childWin.webContents.executeJavaScript(`
+        try {
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        } catch (e) {}
+      `).catch(() => {});
+    });
+    childWin.on('closed', () => {
+      childWindows.delete(childWin);
+    });
   });
 
   // Inject navigator overrides on any navigation/frame
@@ -239,7 +256,7 @@ ipcMain.handle('open-suno-login', async () => {
   let tokenCaptured = false;
 
   tokenPoller = setInterval(async () => {
-    if (!sunoLoginWin || sunoLoginWin.isDestroyed()) {
+    if ((!sunoLoginWin || sunoLoginWin.isDestroyed()) && childWindows.size === 0) {
       clearInterval(tokenPoller);
       return;
     }
@@ -250,9 +267,36 @@ ipcMain.handle('open-suno-login', async () => {
       // 1. Directly query Electron in-memory cookies (instant & 100% reliable)
       try {
         const cookies = await sunoSession.cookies.get({});
-        const sessCookie = cookies.find(c => c.name === '__session');
+        const sessCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__session'));
         if (sessCookie && sessCookie.value && sessCookie.value.length > 20) {
           token = sessCookie.value;
+        }
+
+        // 1b. If no direct __session, look for __client to exchange with Clerk auth endpoint
+        if (!token) {
+          const clientCookie = cookies.find(c => c.name === '__client' || c.name.startsWith('__client'));
+          if (clientCookie && clientCookie.value && clientCookie.value.length > 20) {
+            try {
+              const axios = require('axios');
+              for (const host of ['auth.suno.com', 'clerk.suno.com']) {
+                try {
+                  const res = await axios.get(`https://${host}/v1/client`, {
+                    headers: {
+                      'Cookie': `__client=${clientCookie.value}`,
+                      'Origin': 'https://suno.com'
+                    },
+                    timeout: 3000
+                  });
+                  const session = res.data?.response?.sessions?.[0];
+                  const jwt = session?.last_active_token?.jwt;
+                  if (jwt && jwt.length > 20) {
+                    token = jwt;
+                    break;
+                  }
+                } catch (e) {}
+              }
+            } catch (e) {}
+          }
         }
       } catch (e) {}
 
@@ -260,32 +304,44 @@ ipcMain.handle('open-suno-login', async () => {
       if (!token) {
         try {
           const cookies = await session.defaultSession.cookies.get({});
-          const sessCookie = cookies.find(c => c.name === '__session');
+          const sessCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__session'));
           if (sessCookie && sessCookie.value && sessCookie.value.length > 20) {
             token = sessCookie.value;
           }
         } catch (e) {}
       }
 
-      // 3. Fallback: Execute within Suno.com context
+      // 3. Fallback: Execute within Suno.com context on sunoLoginWin AND any child window
       if (!token) {
-        try {
-          token = await sunoLoginWin.webContents.executeJavaScript(`
-            (async () => {
-              try {
-                if (window.Clerk && window.Clerk.session) {
-                  const t = await window.Clerk.session.getToken();
-                  if (t && typeof t === 'string' && t.length > 20) {
-                    return t;
+        const allTargets = [];
+        if (sunoLoginWin && !sunoLoginWin.isDestroyed()) allTargets.push(sunoLoginWin);
+        for (const cw of childWindows) {
+          if (cw && !cw.isDestroyed()) allTargets.push(cw);
+        }
+
+        for (const win of allTargets) {
+          try {
+            const t = await win.webContents.executeJavaScript(`
+              (async () => {
+                try {
+                  if (window.Clerk && window.Clerk.session) {
+                    const tok = await window.Clerk.session.getToken();
+                    if (tok && typeof tok === 'string' && tok.length > 20) {
+                      return tok;
+                    }
                   }
-                }
-                const match = document.cookie.match(/__session=([^;]+)/);
-                if (match && match[1] && match[1].length > 20) return match[1];
-              } catch (e) {}
-              return null;
-            })()
-          `);
-        } catch (e) {}
+                  const match = document.cookie.match(/__session=([^;]+)/);
+                  if (match && match[1] && match[1].length > 20) return match[1];
+                } catch (e) {}
+                return null;
+              })()
+            `);
+            if (t && typeof t === 'string' && t.length > 20 && t.startsWith('eyJ')) {
+              token = t;
+              break;
+            }
+          } catch (e) {}
+        }
       }
 
       if (token && !tokenCaptured) {
@@ -299,6 +355,7 @@ ipcMain.handle('open-suno-login', async () => {
             suno_api_key: token,
             suno_provider: 'suno_official'
           });
+          sunoService.syncOfficialFeed(token).catch(() => {});
         } catch (e) {}
 
         // Send token to mainWindow to store in client state & server config
@@ -306,7 +363,14 @@ ipcMain.handle('open-suno-login', async () => {
           mainWindow.webContents.send('suno-token-captured', token);
         }
 
-        // Close the login window automatically!
+        // Close all child popup windows & login window automatically!
+        for (const cw of childWindows) {
+          try {
+            if (cw && !cw.isDestroyed()) cw.close();
+          } catch (e) {}
+        }
+        childWindows.clear();
+
         if (sunoLoginWin && !sunoLoginWin.isDestroyed()) {
           sunoLoginWin.close();
         }
@@ -316,7 +380,7 @@ ipcMain.handle('open-suno-login', async () => {
     }
   }, 1000);
 
-  sunoLoginWin.on('closed', () => {
+    sunoLoginWin.on('closed', () => {
     if (tokenPoller) clearInterval(tokenPoller);
     sunoLoginWin = null;
   });
