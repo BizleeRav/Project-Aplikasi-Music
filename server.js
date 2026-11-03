@@ -619,7 +619,8 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/home', async (req, res) => {
   try {
     const mood = req.query.mood || 'all';
-    const feed = await homeData.getHomeFeed(mood);
+    const refresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    const feed = await homeData.getHomeFeed(mood, { refresh });
     res.json(feed);
   } catch (error) {
     console.error('Home feed error:', error);

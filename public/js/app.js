@@ -4532,16 +4532,12 @@ class App {
               return;
             }
           } catch (feedErr) {
-            console.warn('Personalized feed failed, falling back to default home:', feedErr.message);
+            console.warn('Personalized feed failed, falling back to dynamic home:', feedErr.message);
           }
-        } else {
-          // If user skipped or has not chosen any taste: render dynamically based on listening history
-          await this.renderHomeForSkippedUser();
-          return;
         }
       }
 
-      // 2. Otherwise load category/mood feed from YouTube
+      // 2. Load live dynamic YouTube Music Home Feed
       const res = await fetch(`/api/home?mood=${encodeURIComponent(mood)}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to load home feed');
@@ -4585,7 +4581,7 @@ class App {
 
     // 1. Pengguna belum pernah memutar lagu apapun dan belum mengimpor album (0 lagu & 0 album):
     if ((!history || history.length === 0) && importedPlaylists.length === 0) {
-      this.renderEmptyCleanHome();
+      await this.loadYTMHome('all');
       return;
     }
 
@@ -5762,6 +5758,18 @@ class App {
 
     this.cachedSections = sections;
     this.cachedUser = user;
+
+    // Prepend user's actual recently played tracks into Listen Again if available
+    const history = this.getPlayHistory();
+    if (history && history.length > 0 && Array.isArray(sections.listenAgain)) {
+      const historyIds = new Set();
+      const userCards = history.slice(0, 4).map(h => {
+        historyIds.add(h.id);
+        return { ...h, cardType: 'video', views: h.views || (this.userProfile?.lang === 'en' ? 'Recently Played' : 'Baru Saja Diputar') };
+      });
+      const remaining = sections.listenAgain.filter(s => !historyIds.has(s.id));
+      sections.listenAgain = [...userCards, ...remaining].slice(0, 8);
+    }
 
     // Register track collections into registry for seamless queuing
     if (sections.showcasePlaylists) this.registerTrackList('mockup-showcase', sections.showcasePlaylists);
