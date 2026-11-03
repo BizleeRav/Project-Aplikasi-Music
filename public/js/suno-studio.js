@@ -68,13 +68,31 @@ class SunoStudio {
     return id;
   }
 
+  getUserEmail() {
+    try {
+      if (window.app && window.app.currentUser && window.app.currentUser.email) {
+        return window.app.currentUser.email.trim().toLowerCase();
+      }
+      const saved = localStorage.getItem('aurasound_google_user');
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u && u.email) return u.email.trim().toLowerCase();
+      }
+    } catch (e) {}
+    return '';
+  }
+
   getAuthHeaders() {
     const key = localStorage.getItem('aurasound_suno_key') || '';
     const provider = localStorage.getItem('aurasound_suno_provider') || 'kie';
+    const email = this.getUserEmail();
     const headers = { 
       'Content-Type': 'application/json',
       'X-Device-Id': this.getDeviceId()
     };
+    if (email) {
+      headers['X-User-Email'] = email;
+    }
     if (key) {
       headers['X-Suno-Api-Key'] = key;
       headers['X-Suno-Provider'] = provider;
@@ -86,8 +104,10 @@ class SunoStudio {
     try {
       const localKey = localStorage.getItem('aurasound_suno_key') || '';
       const localProvider = localStorage.getItem('aurasound_suno_provider') || 'suno_official';
+      const userEmail = this.getUserEmail();
+      const emailParam = userEmail ? `?user_email=${encodeURIComponent(userEmail)}` : '';
 
-      const res = await fetch('/api/suno/account', {
+      const res = await fetch(`/api/suno/account${emailParam}`, {
         headers: this.getAuthHeaders()
       });
       const data = await res.json();
@@ -653,7 +673,9 @@ class SunoStudio {
     try {
       const q = encodeURIComponent(this.librarySearchQuery || '');
       const syncParam = forceSync ? '&sync=1' : '';
-      const res = await fetch(`/api/suno/creations?page=${page}&pageSize=12&q=${q}${syncParam}`, {
+      const userEmail = this.getUserEmail();
+      const emailParam = userEmail ? `&user_email=${encodeURIComponent(userEmail)}` : '';
+      const res = await fetch(`/api/suno/creations?page=${page}&pageSize=12&q=${q}${syncParam}${emailParam}`, {
         headers: this.getAuthHeaders()
       });
       const data = await res.json();
@@ -924,7 +946,9 @@ class SunoStudio {
     if (!confirm(`Hapus lagu "${title}" dari koleksi buatan Anda?`)) return;
 
     try {
-      const res = await fetch(`/api/suno/creations/${clipId}`, { 
+      const userEmail = this.getUserEmail();
+      const emailParam = userEmail ? `?user_email=${encodeURIComponent(userEmail)}` : '';
+      const res = await fetch(`/api/suno/creations/${clipId}${emailParam}`, { 
         method: 'DELETE',
         headers: this.getAuthHeaders()
       });
@@ -1077,6 +1101,7 @@ class SunoStudio {
     }, 2400);
 
     try {
+      const userEmail = this.getUserEmail();
       const response = await fetch('/api/suno/generate', {
         method: 'POST',
         headers: this.getAuthHeaders(),
@@ -1085,7 +1110,8 @@ class SunoStudio {
           tags,
           prompt,
           make_instrumental,
-          model: model || 'v6-mini'
+          model: model || 'v6-mini',
+          user_email: userEmail
         })
       });
 

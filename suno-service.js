@@ -53,21 +53,46 @@ function saveConfig(data) {
 }
 
 /**
- * Persistent Storage for User Creations (Pure Lagu Buatan Kita)
+ * Persistent Storage for User Creations (Multi-User & Multi-Device Isolation)
  */
-function getCreations(deviceId = null) {
+function getAllCreationsRaw() {
   if (fs.existsSync(CREATIONS_FILE)) {
     try {
       const data = JSON.parse(fs.readFileSync(CREATIONS_FILE, 'utf8'));
-      const list = Array.isArray(data) ? data : [];
-      if (deviceId) {
-        return list.filter(t => !t.deviceId || t.deviceId === deviceId);
-      }
-      return list;
+      return Array.isArray(data) ? data : [];
     } catch (e) {
       return [];
     }
   }
+  const repoFile = path.join(__dirname, 'data', 'suno-creations.json');
+  if (fs.existsSync(repoFile)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(repoFile, 'utf8'));
+      return Array.isArray(data) ? data : [];
+    } catch (e) {}
+  }
+  return [];
+}
+
+function getCreations(userEmail = null, deviceId = null) {
+  const list = getAllCreationsRaw();
+  const cleanEmail = (userEmail || '').trim().toLowerCase();
+  const cleanDevice = (deviceId || '').trim();
+
+  // 1. Registered / Logged-in User: Strict account isolation
+  if (cleanEmail) {
+    return list.filter(t => {
+      const tEmail = (t.userEmail || '').trim().toLowerCase();
+      return tEmail === cleanEmail;
+    });
+  }
+
+  // 2. Guest user on a specific device: Only creations generated on this device without account
+  if (cleanDevice) {
+    return list.filter(t => t.deviceId && t.deviceId === cleanDevice && !t.userEmail);
+  }
+
+  // 3. Fallback: Empty array so no user's private songs bleed into unauthenticated views
   return [];
 }
 
@@ -86,11 +111,24 @@ function saveCreations(list) {
 }
 
 let isSyncingFeed = false;
-async function syncOfficialFeed(rawToken, deviceId = null) {
+async function syncOfficialFeed(rawToken, deviceId = null, userEmail = null) {
   if (isSyncingFeed) return;
   isSyncingFeed = true;
   try {
     let cleanJwt = (rawToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+
+    // Extract owner email from token
+    let ownerEmail = (userEmail || '').trim().toLowerCase();
+    if (cleanJwt) {
+      try {
+        const parts = cleanJwt.split('.');
+        if (parts.length >= 2) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+          const claimEmail = payload['suno.com/claims/email'] || payload.email;
+          if (claimEmail) ownerEmail = claimEmail.trim().toLowerCase();
+        }
+      } catch (e) {}
+    }
 
     let clips = [];
     const fetchWithToken = async (token) => {
@@ -132,6 +170,7 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
         const sess = await helper.extractSunoSessionFromProfile(profileDir);
         if (sess && sess.token) {
           cleanJwt = sess.token;
+          ownerEmail = sess.email || ownerEmail || 'bizlee3012@gmail.com';
           saveConfig({ suno_api_key: cleanJwt, suno_provider: 'suno_official' });
           clips = await fetchWithToken(cleanJwt);
         }
@@ -163,18 +202,28 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
           seconds: dur,
           type: 'suno',
           created_at: c.created_at ? new Date(c.created_at).toLocaleDateString('id-ID') : 'Hari ini',
-          deviceId: deviceId || undefined
+          deviceId: deviceId || undefined,
+          userEmail: ownerEmail || undefined
         });
       }
 
-      // Preserve any local user creations that aren't on Suno official feed (filter out hardcoded dummy placeholders)
-      const currentList = getCreations();
-      const nonOfficial = currentList.filter(t => t.id && !officialMap.has(t.id) && !t.is_auto && !t.id.startsWith('suno-mvzc'));
+      // Preserve other users' creations safely in the database
+      const currentList = getAllCreationsRaw();
+      const preservedOtherTracks = currentList.filter(t => {
+        if (!t.id) return false;
+        if (officialMap.has(t.id)) return false;
+        const tEmail = (t.userEmail || '').trim().toLowerCase();
+        // If track belongs to another registered account, keep it!
+        if (ownerEmail && tEmail && tEmail !== ownerEmail) return true;
+        // If track belongs to another device, keep it!
+        if (deviceId && t.deviceId && t.deviceId !== deviceId) return true;
+        if (t.is_auto || t.id.startsWith('suno-mvzc')) return false;
+        return true;
+      });
 
-      // Clean list: official clips on top, followed by any custom local additions
-      const merged = [...Array.from(officialMap.values()), ...nonOfficial];
+      const merged = [...Array.from(officialMap.values()), ...preservedOtherTracks];
       saveCreations(merged);
-      console.log(`[Suno Sync] Synchronized ${officialMap.size} live songs directly from official Suno account!`);
+      console.log(`[Suno Sync] Synchronized ${officialMap.size} live songs for ${ownerEmail || 'user'} directly from official Suno account!`);
       return merged;
     }
   } catch (err) {
@@ -184,30 +233,43 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
   }
 }
 
-function addCreation(track, deviceId = null) {
+function addCreation(track, deviceId = null, userEmail = null) {
   if (!track || !track.id) return;
   if (deviceId && !track.deviceId) {
     track.deviceId = deviceId;
   }
-  const list = getCreations(); // load all
+  if (userEmail && !track.userEmail) {
+    track.userEmail = userEmail.trim().toLowerCase();
+  }
+  const list = getAllCreationsRaw();
   const filtered = list.filter(t => t.id !== track.id);
   filtered.unshift(track);
   saveCreations(filtered);
   return track;
 }
 
-function deleteCreation(id) {
-  const list = getCreations();
-  const filtered = list.filter(t => t.id !== id);
+function deleteCreation(id, userEmail = null, deviceId = null) {
+  const list = getAllCreationsRaw();
+  const cleanEmail = (userEmail || '').trim().toLowerCase();
+  const cleanDevice = (deviceId || '').trim();
+
+  const filtered = list.filter(t => {
+    if (t.id !== id) return true;
+    // Verify ownership before deleting
+    if (cleanEmail && t.userEmail && t.userEmail.toLowerCase() === cleanEmail) return false;
+    if (cleanDevice && t.deviceId && t.deviceId === cleanDevice) return false;
+    if (!t.userEmail && !t.deviceId) return false;
+    return true; // Keep if belonging to someone else
+  });
   saveCreations(filtered);
   return { success: true, count: filtered.length };
 }
 
-function getCreationsPaginated({ page = 1, pageSize = 12, query = '', deviceId = null, apiKey = null }) {
-  if (apiKey && apiKey.length > 20) {
-    syncOfficialFeed(apiKey, deviceId).catch(() => {});
+function getCreationsPaginated({ page = 1, pageSize = 12, query = '', deviceId = null, userEmail = null, apiKey = null, isClientKey = false }) {
+  if (isClientKey && apiKey && apiKey.length > 20) {
+    syncOfficialFeed(apiKey, deviceId, userEmail).catch(() => {});
   }
-  const all = getCreations(deviceId);
+  const all = getCreations(userEmail, deviceId);
   const q = (query || '').toLowerCase().trim();
 
   const filtered = q
@@ -880,13 +942,13 @@ async function verifyApiKey(apiKey, provider = 'kie', customUrl = '') {
 /**
  * Get current API status (Always Active via Built-in Auto-Engine or Custom Key)
  */
-async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
+async function getApiKeyInfo(overrideKey = null, overrideProvider = null, userEmail = null, deviceId = null) {
   const config = getConfig();
   let apiKey = overrideKey !== null ? (overrideKey || '').trim() : (config.suno_api_key || '').trim();
   const provider = overrideProvider || config.suno_provider || 'kie';
 
-  // If local server and no token in config, attempt auto-detect from local profile
-  if (!apiKey && typeof process !== 'undefined' && !process.env.VERCEL) {
+  // If local server and no token in config, attempt auto-detect from local profile (only if overrideKey not explicitly passed)
+  if (overrideKey === null && !apiKey && typeof process !== 'undefined' && !process.env.VERCEL) {
     try {
       const helper = require('./suno-login-helper');
       const profile = path.join(require('os').homedir(), 'AppData', 'Roaming', 'AuraSound', 'suno_browser_profile');
@@ -913,7 +975,7 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
       } catch (e) {}
 
       // Background sync official feed
-      syncOfficialFeed(apiKey).catch(() => {});
+      syncOfficialFeed(apiKey, deviceId, userEmail).catch(() => {});
 
       return {
         configured: true,
@@ -923,7 +985,7 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
         credits: '50 Kredit Harian Suno',
         maskedKey: `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}`,
         statusText: `🟢 Akun Resmi Suno.com Terhubung (${userId}) • Koleksi Tersinkron`,
-        totalCreations: getCreations().length
+        totalCreations: getCreations(userEmail, deviceId).length
       };
     }
 
@@ -962,7 +1024,7 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
       remaining_credits,
       maskedKey: `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`,
       statusText,
-      totalCreations: getCreations().length
+      totalCreations: getCreations(userEmail, deviceId).length
     };
   }
 
@@ -974,7 +1036,7 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
     providerCode: 'auto',
     credits: '5 Lagu / Hari',
     statusText: '🟢 Mesin Otomatis Suno v6-mini Aktif • Siap Membuat Lagu (Gratis & Selalu Tersedia)',
-    totalCreations: getCreations().length
+    totalCreations: getCreations(userEmail, deviceId).length
   };
 }
 
@@ -994,7 +1056,7 @@ function buildSunoOfficialHeaders(rawToken) {
 /**
  * Generate audio with Suno AI (Kie.ai, Auto-Engine, or Custom Provider)
  */
-async function generateSunoSong({ prompt, tags, title, make_instrumental = false, lyrics = '', model = 'v6-mini', apiKey: customApiKey = null, provider: customProvider = null, deviceId = null }) {
+async function generateSunoSong({ prompt, tags, title, make_instrumental = false, lyrics = '', model = 'v6-mini', apiKey: customApiKey = null, provider: customProvider = null, deviceId = null, userEmail = null }) {
   const config = getConfig();
   const apiKey = customApiKey !== null ? (customApiKey || '').trim() : (config.suno_api_key || '').trim();
   const provider = customProvider || config.suno_provider || 'kie';
@@ -1255,7 +1317,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
             type: 'suno',
             created_at: 'Hari ini'
           };
-          addCreation(trackObj, deviceId);
+          addCreation(trackObj, deviceId, userEmail);
           return trackObj;
         });
 
@@ -1292,7 +1354,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
     is_auto: true
   };
 
-  addCreation(newTrack, deviceId);
+  addCreation(newTrack, deviceId, userEmail);
 
   return {
     success: true,
@@ -1304,7 +1366,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
 /**
  * Check generation status for songs
  */
-async function checkSunoStatus(ids, customApiKey = null, customProvider = null, deviceId = null) {
+async function checkSunoStatus(ids, customApiKey = null, customProvider = null, deviceId = null, userEmail = null) {
   const config = getConfig();
   const apiKey = customApiKey !== null ? (customApiKey || '').trim() : (config.suno_api_key || '').trim();
   const provider = customProvider || config.suno_provider || 'kie';
@@ -1373,7 +1435,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
             created_at: 'Hari ini'
           };
           if (c.status === 'complete' && audioUrl) {
-            addCreation(trackObj, deviceId);
+            addCreation(trackObj, deviceId, userEmail);
           }
           return trackObj;
         });
@@ -1407,7 +1469,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
           created_at: 'Hari ini'
         };
         if (c.status === 'complete') {
-          addCreation(trackObj, deviceId);
+          addCreation(trackObj, deviceId, userEmail);
         }
         return trackObj;
       });
@@ -1466,7 +1528,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
                 created_at: 'Hari ini'
               };
 
-              addCreation(trackObj, deviceId);
+              addCreation(trackObj, deviceId, userEmail);
               results.push(trackObj);
             }
           } else if (state === 'failed') {
@@ -1519,7 +1581,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
         created_at: 'Hari ini'
       };
       if (clip.status === 'complete') {
-        addCreation(trackObj);
+        addCreation(trackObj, deviceId, userEmail);
       }
       return trackObj;
     });

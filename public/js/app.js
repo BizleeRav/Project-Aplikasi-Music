@@ -682,6 +682,11 @@ class App {
       this.renderPlaylists();
     }
 
+    if (window.sunoStudio) {
+      window.sunoStudio.checkApiStatus();
+      window.sunoStudio.fetchCreations(1, false);
+    }
+
     this.showToast(this.userProfile?.lang === 'en'
       ? `Logged in as ${this.userProfile.name} (${googleUser.email})! ✅`
       : `Akun Google aktif: ${this.userProfile.name} (${googleUser.email})! ✅`, 'success');
@@ -730,6 +735,11 @@ class App {
       this.renderFavorites();
     } else if (this.activeTab === 'playlists') {
       this.renderPlaylists();
+    }
+
+    if (window.sunoStudio) {
+      window.sunoStudio.checkApiStatus();
+      window.sunoStudio.fetchCreations(1, false);
     }
 
     this.showToast(isEn ? 'Logged out from Google account' : 'Berhasil keluar dari akun Google', 'info');
