@@ -615,12 +615,38 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-// 2.5 YouTube Music Home Feed (Listen again, Quick picks, Covers, New releases, etc.)
+// 2.5 YouTube Music Home Feed (Listen again, Quick picks, Covers, New releases, etc. - Strictly Isolated per Account)
 app.get('/api/home', async (req, res) => {
   try {
     const mood = req.query.mood || 'all';
     const refresh = req.query.refresh === '1' || req.query.refresh === 'true';
-    const feed = await homeData.getHomeFeed(mood, { refresh });
+
+    // 1. Extract and sanitize multi-user identity
+    const userEmail = (req.headers['x-user-email'] || req.query.user_email || req.query.userEmail || req.query.email || '').trim().toLowerCase();
+    const deviceId = (req.headers['x-device-id'] || req.query.device_id || req.query.deviceId || '').trim();
+    const userId = (req.headers['x-user-id'] || req.query.user_id || req.query.userId || '').trim();
+
+    const activeSession = userDb.getActiveSession();
+    const effectiveEmail = userEmail || (activeSession?.email) || '';
+    const rawUserKey = effectiveEmail || userId || deviceId || 'guest';
+    const normKey = userDb.normalizeUserKey(rawUserKey) || 'guest';
+
+    let userObj = userDb.getUser(normKey) || (effectiveEmail ? userDb.getUser(effectiveEmail) : null);
+    if (!userObj && effectiveEmail && effectiveEmail.includes('@')) {
+      userObj = userDb.loginOrRegisterUser({ email: effectiveEmail });
+    }
+
+    // 2. Fetch playlists isolated to this user
+    const userPlaylists = playlistDb.getAllPlaylists(rawUserKey);
+
+    // 3. Delegate to personalized home feed engine
+    const feed = await homeData.getHomeFeed(mood, {
+      userKey: normKey,
+      user: userObj,
+      playlists: userPlaylists,
+      refresh
+    });
+
     res.json(feed);
   } catch (error) {
     console.error('Home feed error:', error);
@@ -628,15 +654,42 @@ app.get('/api/home', async (req, res) => {
   }
 });
 
-// 2.6 Album & Curated Playlist Details
+// 2.6 Album & Curated Playlist Details (Strictly User Isolated)
 app.get('/api/home/album/:id', async (req, res) => {
   try {
+    const userEmail = (req.headers['x-user-email'] || req.query.user_email || req.query.userEmail || req.query.email || '').trim().toLowerCase();
+    const deviceId = (req.headers['x-device-id'] || req.query.device_id || req.query.deviceId || '').trim();
+    const userId = (req.headers['x-user-id'] || req.query.user_id || req.query.userId || '').trim();
+    const activeSession = userDb.getActiveSession();
+    const effectiveEmail = userEmail || (activeSession?.email) || '';
+    const rawUserKey = effectiveEmail || userId || deviceId || 'guest';
+    const normKey = userDb.normalizeUserKey(rawUserKey) || 'guest';
+    const userObj = userDb.getUser(normKey) || (effectiveEmail ? userDb.getUser(effectiveEmail) : null);
+
+    // Dynamic My Supermix per user
+    if (req.params.id === 'deck-supermix') {
+      const supermix = await homeData.generatePersonalizedSupermix({
+        favorites: userObj?.favorites || [],
+        history: userObj?.playHistory || [],
+        importedPlaylists: playlistDb.getAllPlaylists(rawUserKey).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube')
+      });
+      return res.json({ success: true, album: supermix });
+    }
+
+    // Dynamic Liked Music Radio per user
+    if (req.params.id === 'mix-liked-radio' || req.params.id === 'mix-liked') {
+      const likedRadio = await homeData.generateLikedRadio({
+        favorites: userObj?.favorites || []
+      });
+      return res.json({ success: true, album: likedRadio });
+    }
+
     let album = await homeData.getAlbumDetail(req.params.id);
 
-    // If not found in default catalog, check user playlists DB
+    // If not found in default catalog, check user playlists DB (strictly isolated to rawUserKey)
     if (!album) {
-      const allPlaylists = playlistDb.getAllPlaylists();
-      const pl = allPlaylists.find(p => p.id === req.params.id || String(p.id) === String(req.params.id));
+      const userPlaylists = playlistDb.getAllPlaylists(rawUserKey);
+      const pl = userPlaylists.find(p => p.id === req.params.id || String(p.id) === String(req.params.id));
       if (pl) {
         album = {
           id: pl.id,
@@ -654,9 +707,9 @@ app.get('/api/home/album/:id', async (req, res) => {
 
     // Support dynamic Crossover Fusion mixes (mix-fusion-[id1]-[id2])
     if (!album && req.params.id.startsWith('mix-fusion-')) {
-      const allPlaylists = playlistDb.getAllPlaylists().filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
-      const pl1 = allPlaylists.find(p => req.params.id.includes(p.id)) || allPlaylists[0];
-      const pl2 = allPlaylists.filter(p => p.id !== pl1?.id).find(p => req.params.id.includes(p.id)) || allPlaylists[1];
+      const userPlaylists = playlistDb.getAllPlaylists(rawUserKey).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+      const pl1 = userPlaylists.find(p => req.params.id.includes(p.id)) || userPlaylists[0];
+      const pl2 = userPlaylists.filter(p => p.id !== pl1?.id).find(p => req.params.id.includes(p.id)) || userPlaylists[1];
       if (pl1 && pl2) {
         const mergedTracks = [];
         const maxT = Math.max(pl1.tracks?.length || 0, pl2.tracks?.length || 0);

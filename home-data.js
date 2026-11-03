@@ -1149,11 +1149,28 @@ const MOOD_QUERIES = {
 const moodCache = new Map();
 
 // ==========================================
-// DYNAMIC REAL-TIME YOUTUBE MUSIC HOME FEED
+// DYNAMIC REAL-TIME YOUTUBE MUSIC HOME FEED (PER-ACCOUNT ISOLATION)
 // ==========================================
-let dynamicHomeCache = null;
-let lastHomeFetchTime = 0;
-const HOME_CACHE_TTL = 30 * 60 * 1000; // 30 minutes in-memory cache
+const userHomeCache = new Map();
+const USER_CACHE_TTL = 15 * 60 * 1000; // 15 minutes TTL
+
+function getFromUserCache(key) {
+  if (!userHomeCache.has(key)) return null;
+  const entry = userHomeCache.get(key);
+  if (Date.now() - entry.timestamp > USER_CACHE_TTL) {
+    userHomeCache.delete(key);
+    return null;
+  }
+  return entry.feed;
+}
+
+function setToUserCache(key, feed) {
+  if (userHomeCache.size > 250) {
+    const oldestKey = userHomeCache.keys().next().value;
+    userHomeCache.delete(oldestKey);
+  }
+  userHomeCache.set(key, { feed, timestamp: Date.now() });
+}
 
 function cleanHomeTitle(t = '') {
   return (t || '')
@@ -1174,7 +1191,7 @@ function formatHomeViews(views) {
   return `${views} views`;
 }
 
-async function fetchCleanHomeCategory(query, minSec = 80, maxSec = 480, limit = 9) {
+async function fetchCleanHomeCategory(query, minSec = 75, maxSec = 520, limit = 9) {
   try {
     const res = await ytSearch(query);
     const list = (res && Array.isArray(res.videos))
@@ -1196,71 +1213,216 @@ async function fetchCleanHomeCategory(query, minSec = 80, maxSec = 480, limit = 
   }
 }
 
+// Curated catalog of genre definitions and search queries
+const GENRE_DEFINITIONS = {
+  'pop-indo': { name: 'Pop Indonesia', query: 'lagu pop indonesia hits official music video', classicQuery: 'lagu band indonesia 2000an terbaik official' },
+  'western-pop': { name: 'Global Pop Hits', query: 'global billboard pop hits official music video', classicQuery: '2000s pop rock classic hits official' },
+  'rock-indie': { name: 'Rock & Indie', query: 'indie rock alternative hits official music video', classicQuery: '90s 2000s rock band hits official' },
+  'kpop': { name: 'K-Pop Hits', query: 'kpop hits official mv', classicQuery: '2nd gen kpop classics official mv' },
+  'jpop-anime': { name: 'J-Pop & Anime', query: 'top jpop anime ost official mv', classicQuery: 'classic anime opening official mv' },
+  'koplo': { name: 'Dangdut Koplo Modern', query: 'dangdut koplo modern official music video', classicQuery: 'dangdut campursari klasik terbaik' },
+  'lofi': { name: 'Lo-Fi & Study Beats', query: 'lofi hip hop study beats chill audio', classicQuery: 'lofi jazz ambient chill' },
+  'hiphop-rnb': { name: 'Hip-Hop & R&B', query: 'hip hop rnb hits official music video', classicQuery: '2000s throwback rnb hip hop official' },
+  'akustik': { name: 'Akustik & Relaxing', query: 'cover lagu pop akustik santai', classicQuery: 'akustik fingerstyle klasik' },
+  'edm-phonk': { name: 'EDM, Phonk & Bass', query: 'drift phonk bass festival edm official audio', classicQuery: 'classic electro dance festival hits' },
+  'jazz': { name: 'Jazz & Soul Lounge', query: 'smooth jazz cafe acoustic lounge official', classicQuery: 'classic vocal jazz standards' }
+};
+
+const GENRE_KEY_ALIASES = {
+  'pop': 'pop-indo',
+  'indonesia': 'pop-indo',
+  'rock': 'rock-indie',
+  'indie': 'rock-indie',
+  'metal': 'rock-indie',
+  'alternative': 'rock-indie',
+  'western': 'western-pop',
+  'k-pop': 'kpop',
+  'korean': 'kpop',
+  'j-pop': 'jpop-anime',
+  'jpop': 'jpop-anime',
+  'anime': 'jpop-anime',
+  'dangdut': 'koplo',
+  'rnb': 'hiphop-rnb',
+  'hiphop': 'hiphop-rnb',
+  'chill': 'lofi',
+  'edm': 'edm-phonk',
+  'phonk': 'edm-phonk'
+};
+
 async function getDynamicHomeFeed(options = {}) {
   const forceRefresh = options.refresh === true || options.refresh === '1';
-  if (!forceRefresh && dynamicHomeCache && (Date.now() - lastHomeFetchTime < HOME_CACHE_TTL)) {
-    return dynamicHomeCache;
+  const userObj = options.user || null;
+  const userKey = (options.userKey || (userObj && (userObj.email || userObj.id)) || 'guest').toLowerCase().trim();
+  const cacheKey = `${userKey}_all`;
+
+  if (!forceRefresh) {
+    const cached = getFromUserCache(cacheKey);
+    if (cached) return cached;
   }
 
   try {
-    // Parallel fetch authentic, live music categories from YouTube
-    const [
-      trendingIndo,
-      globalHits,
-      videoHits,
-      newReleasesRaw,
-      coversRaw,
-      kpopRaw,
-      classicsRaw
-    ] = await Promise.all([
-      fetchCleanHomeCategory('lagu indonesia terpopuler official music video', 90, 480, 10),
-      fetchCleanHomeCategory('pop hits official music video', 90, 480, 10),
-      fetchCleanHomeCategory('trending music video official', 90, 480, 8),
-      fetchCleanHomeCategory('lagu baru rilis official music video', 90, 480, 6),
-      fetchCleanHomeCategory('cover lagu pop akustik', 60, 600, 8),
-      fetchCleanHomeCategory('kpop hits official mv', 90, 480, 8),
-      fetchCleanHomeCategory('indonesia 2000an official music video', 90, 480, 8)
-    ]);
+    // 1. Determine user preferences and identity
+    const userName = (userObj && userObj.name && userObj.name !== 'User')
+      ? userObj.name
+      : (userObj?.email ? (userObj.email.split('@')[0].charAt(0).toUpperCase() + userObj.email.split('@')[0].slice(1)) : 'Sobat Musik');
 
-    // 1. Quick Picks: 12 dynamic trending singles interleaved (Indo & Global)
-    const quickPicks = [];
-    const seenQuick = new Set();
-    const maxP = Math.max(trendingIndo.length, globalHits.length);
-    for (let i = 0; i < maxP; i++) {
-      if (trendingIndo[i] && !seenQuick.has(trendingIndo[i].id)) {
-        seenQuick.add(trendingIndo[i].id);
-        quickPicks.push(trendingIndo[i]);
+    const userEmail = (userObj && userObj.email) ? userObj.email : '';
+    const userAvatar = (userObj && userObj.avatar) ? userObj.avatar : '/images/avatar.jpg';
+    const userFavorites = (userObj && Array.isArray(userObj.favorites)) ? userObj.favorites : [];
+    const userHistory = (userObj && Array.isArray(userObj.playHistory)) ? userObj.playHistory : [];
+
+    // Extract top unique artists from user's history and favorites
+    const artistSet = new Set();
+    [...userFavorites, ...userHistory].forEach(t => {
+      if (t && t.artist && t.artist !== 'Unknown Artist' && t.artist !== 'Artist') {
+        const cleaned = t.artist.split(/[,&x/]/)[0].trim();
+        if (cleaned.length > 2 && !artistSet.has(cleaned.toLowerCase())) {
+          artistSet.add(cleaned);
+        }
       }
-      if (globalHits[i] && !seenQuick.has(globalHits[i].id)) {
-        seenQuick.add(globalHits[i].id);
-        quickPicks.push(globalHits[i]);
+    });
+    const topArtists = Array.from(artistSet).slice(0, 5);
+
+    // Extract genres from taste profile
+    let rawGenres = [];
+    if (userObj?.tasteProfile) {
+      if (Array.isArray(userObj.tasteProfile)) {
+        rawGenres = userObj.tasteProfile;
+      } else if (Array.isArray(userObj.tasteProfile.genres)) {
+        rawGenres = userObj.tasteProfile.genres;
       }
     }
 
-    // 2. Widescreen 16:9 Video Cards (Listen Again)
-    const listenAgain = (videoHits.length > 0 ? videoHits : quickPicks).slice(0, 7).map(v => ({
-      ...v,
-      cardType: 'video'
-    }));
+    let userGenres = rawGenres.map(g => GENRE_KEY_ALIASES[g.toLowerCase()] || g).filter(g => GENRE_DEFINITIONS[g]);
 
-    // 3. New Releases: 6 dynamic vinyl albums / EPs with real single tracks
+    // If user has no genres set, derive a seed palette from userKey hash so each user has their own distinct sound
+    if (userGenres.length === 0) {
+      let hash = 5381;
+      for (let i = 0; i < userKey.length; i++) {
+        hash = ((hash << 5) + hash) ^ userKey.charCodeAt(i);
+      }
+      const paletteIndex = Math.abs(hash) % 6;
+      const seedPalettes = [
+        ['pop-indo', 'western-pop', 'akustik'],
+        ['rock-indie', 'western-pop', 'lofi'],
+        ['kpop', 'edm-phonk', 'western-pop'],
+        ['jpop-anime', 'lofi', 'akustik'],
+        ['koplo', 'pop-indo', 'akustik'],
+        ['hiphop-rnb', 'jazz', 'lofi']
+      ];
+      userGenres = seedPalettes[paletteIndex];
+    }
+
+    const gKey1 = userGenres[0] || 'pop-indo';
+    const gKey2 = userGenres[1] || 'western-pop';
+    const gKey3 = userGenres[2] || 'akustik';
+
+    const gMeta1 = GENRE_DEFINITIONS[gKey1] || GENRE_DEFINITIONS['pop-indo'];
+    const gMeta2 = GENRE_DEFINITIONS[gKey2] || GENRE_DEFINITIONS['western-pop'];
+    const gMeta3 = GENRE_DEFINITIONS[gKey3] || GENRE_DEFINITIONS['akustik'];
+
+    // Construct personalized search queries for this account
+    const quickPickQuery1 = topArtists.length > 0
+      ? `"${topArtists[0]}" official music video`
+      : gMeta1.query;
+
+    const quickPickQuery2 = topArtists.length > 1
+      ? `"${topArtists[1]}" official audio`
+      : gMeta2.query;
+
+    const videoHitsQuery = topArtists.length > 2
+      ? `"${topArtists[2]}" live performance official`
+      : `${gMeta1.name} trending music video official`;
+
+    const newReleasesQuery = `${gMeta1.name} lagu baru rilis official music video`;
+    const coversQuery = `cover lagu akustik ${gMeta1.name}`;
+    const genreSectionQuery = gMeta2.query;
+    const nostalgiaQuery = gMeta1.classicQuery;
+
+    // Parallel YouTube fetching
+    const [
+      resQuick1,
+      resQuick2,
+      resVideos,
+      resNewReleases,
+      resCovers,
+      resGenre,
+      resNostalgia
+    ] = await Promise.all([
+      fetchCleanHomeCategory(quickPickQuery1, 75, 520, 10),
+      fetchCleanHomeCategory(quickPickQuery2, 75, 520, 10),
+      fetchCleanHomeCategory(videoHitsQuery, 90, 600, 8),
+      fetchCleanHomeCategory(newReleasesQuery, 75, 520, 8),
+      fetchCleanHomeCategory(coversQuery, 60, 600, 8),
+      fetchCleanHomeCategory(genreSectionQuery, 75, 520, 8),
+      fetchCleanHomeCategory(nostalgiaQuery, 90, 600, 8)
+    ]);
+
+    // 1. Quick Picks: 12 dynamic singles interleaved and deduplicated
+    const quickPicks = [];
+    const seenQuick = new Set();
+    const maxP = Math.max(resQuick1.length, resQuick2.length);
+    for (let i = 0; i < maxP; i++) {
+      if (resQuick1[i] && !seenQuick.has(resQuick1[i].id)) {
+        seenQuick.add(resQuick1[i].id);
+        quickPicks.push(resQuick1[i]);
+      }
+      if (resQuick2[i] && !seenQuick.has(resQuick2[i].id)) {
+        seenQuick.add(resQuick2[i].id);
+        quickPicks.push(resQuick2[i]);
+      }
+    }
+
+    // 2. Listen Again: 16:9 widescreen video cards
+    // Priority: Real play history of this account!
+    let listenAgain = [];
+    const seenListen = new Set();
+    if (userHistory.length > 0) {
+      userHistory.slice(0, 8).forEach(h => {
+        if (!seenListen.has(h.id)) {
+          seenListen.add(h.id);
+          listenAgain.push({
+            ...h,
+            cardType: 'video',
+            views: 'Baru Saja Diputar'
+          });
+        }
+      });
+    }
+    // Supplement with personalized video hits if history has fewer than 7 tracks
+    const videoPool = resVideos.length > 0 ? resVideos : resQuick1;
+    for (const v of videoPool) {
+      if (!seenListen.has(v.id)) {
+        seenListen.add(v.id);
+        listenAgain.push({
+          ...v,
+          cardType: 'video'
+        });
+        if (listenAgain.length >= 8) break;
+      }
+    }
+
+    // 3. New Releases: 6 dynamic vinyl albums with real tracks
     const dynamicAlbums = {};
-    const newReleases = (newReleasesRaw.length > 0 ? newReleasesRaw : trendingIndo).slice(0, 6).map((v) => {
+    const releasesSource = resNewReleases.length > 0 ? resNewReleases : resQuick1;
+    const newReleases = releasesSource.slice(0, 6).map(v => {
       const albumId = `album-release-${v.id}`;
-      dynamicAlbums[albumId] = {
+      const alb = {
         id: albumId,
         type: 'album',
         badge: 'RELEASE',
         title: v.title,
         artist: v.artist,
         releaseYear: `${new Date().getFullYear()}`,
-        genre: 'Pop • New Release',
+        genre: `${gMeta1.name} • New Release`,
         thumbnail: v.thumbnail,
         description: `Single & rilis terbaru dari ${v.artist}.`,
         tracks: [
           { id: v.id, title: v.title, artist: v.artist, duration: v.duration, thumbnail: v.thumbnail, type: 'youtube' }
         ]
       };
+      dynamicAlbums[albumId] = alb;
+      albumEnrichCache.set(albumId, alb);
       return {
         id: v.id,
         albumId,
@@ -1274,26 +1436,67 @@ async function getDynamicHomeFeed(options = {}) {
     });
 
     // 4. Covers & Spotlight
-    const coversAndRemixes = coversRaw.length > 0 ? coversRaw.slice(0, 8) : trendingIndo.slice(0, 8);
+    const coversAndRemixes = resCovers.length > 0 ? resCovers.slice(0, 8) : resQuick1.slice(0, 8);
 
-    // 5. K-Pop Hits
-    const kpopHits = kpopRaw.length > 0 ? kpopRaw.slice(0, 8) : globalHits.slice(0, 8);
+    // 5. Genre Spotlight
+    const kpopHits = resGenre.length > 0 ? resGenre.slice(0, 8) : resQuick2.slice(0, 8);
 
     // 6. Nostalgia / Forgotten Favorites
-    const forgottenFavorites = classicsRaw.length > 0 ? classicsRaw.slice(0, 8) : trendingIndo.slice(0, 8);
+    const forgottenFavorites = resNostalgia.length > 0 ? resNostalgia.slice(0, 8) : resQuick1.slice(0, 8);
 
-    // 7. Mixed For You (Dynamic Themed Mixes)
-    const themeDefinitions = [
-      { id: 'mix-indo-vibes', title: 'Pop Indo Vibes Mix', subtitle: 'Kumpulan Lagu Hits Indonesia Pilihan', query: 'lagu pop indonesia santai official', thumb: trendingIndo[0]?.thumbnail },
-      { id: 'mix-global-pulse', title: 'Global Hits Mix', subtitle: 'Top International Anthems & Pop', query: 'global billboard pop hits official', thumb: globalHits[0]?.thumbnail },
-      { id: 'mix-acoustic-coffee', title: 'Acoustic Coffee & Chill', subtitle: 'Petikan Akustik Syahdu & Santai', query: 'lagu akustik cafe santai', thumb: coversRaw[0]?.thumbnail || trendingIndo[1]?.thumbnail },
-      { id: 'mix-kpop-energy', title: 'K-Pop High Energy', subtitle: 'Dance & Idol Anthems Korea', query: 'kpop dance party hits official', thumb: kpopRaw[0]?.thumbnail },
-      { id: 'mix-nostalgia-gold', title: 'Nostalgia Emas 2000-an', subtitle: 'Lagu Legendaris Band Indonesia', query: 'lagu band indonesia 2000an terbaik', thumb: classicsRaw[0]?.thumbnail || trendingIndo[2]?.thumbnail },
-      { id: 'mix-lofi-focus', title: 'Deep Focus & Study', subtitle: 'Lo-Fi Chill & Instrumental Flow', query: 'lofi hip hop study beats chill', thumb: 'https://i.ytimg.com/vi/jfKfPfyJRdk/mqdefault.jpg' }
-    ];
+    // 7. Mixed For You: Curated themed mixes tailored to this user
+    const themeDefs = [];
+    if (topArtists.length > 0) {
+      themeDefs.push({
+        id: `mix-artist-${cleanHomeTitle(topArtists[0]).toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        title: `${topArtists[0]} & Friends`,
+        subtitle: `Hits pilihan ${topArtists[0]} dan musisi seirama`,
+        query: `"${topArtists[0]}" official music video`,
+        thumb: quickPicks[0]?.thumbnail
+      });
+    }
+    if (topArtists.length > 1) {
+      themeDefs.push({
+        id: `mix-artist-${cleanHomeTitle(topArtists[1]).toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+        title: `${topArtists[1]} Radio`,
+        subtitle: `Stasiun radio sefrekuensi dengan ${topArtists[1]}`,
+        query: `"${topArtists[1]}" official audio`,
+        thumb: quickPicks[1]?.thumbnail
+      });
+    }
+    themeDefs.push(
+      {
+        id: `mix-${gKey1}-vibes`,
+        title: `${gMeta1.name} Resonance`,
+        subtitle: `Kurasi terbaik ${gMeta1.name} untuk Anda`,
+        query: gMeta1.query,
+        thumb: resQuick1[0]?.thumbnail
+      },
+      {
+        id: `mix-${gKey2}-pulse`,
+        title: `${gMeta2.name} Energy`,
+        subtitle: `Irama dinamis ${gMeta2.name} pilihan`,
+        query: gMeta2.query,
+        thumb: resGenre[0]?.thumbnail || resQuick2[0]?.thumbnail
+      },
+      {
+        id: `mix-acoustic-chill`,
+        title: 'Acoustic Coffee & Chill',
+        subtitle: 'Petikan akustik syahdu & relaxing',
+        query: 'lagu akustik cafe santai official audio',
+        thumb: resCovers[0]?.thumbnail || quickPicks[2]?.thumbnail
+      },
+      {
+        id: 'mix-lofi-flow',
+        title: 'Deep Focus & Study',
+        subtitle: 'Lo-Fi Chill & Instrumental Flow',
+        query: 'lofi hip hop study beats chill audio',
+        thumb: 'https://i.ytimg.com/vi/jfKfPfyJRdk/mqdefault.jpg'
+      }
+    );
 
-    const mixedForYou = themeDefinitions.map(th => {
-      dynamicAlbums[th.id] = {
+    const mixedForYou = themeDefs.slice(0, 6).map(th => {
+      const alb = {
         id: th.id,
         type: 'mix',
         badge: 'AURA MIX',
@@ -1305,6 +1508,8 @@ async function getDynamicHomeFeed(options = {}) {
         searchQuery: th.query,
         tracks: []
       };
+      dynamicAlbums[th.id] = alb;
+      albumEnrichCache.set(th.id, alb);
       return {
         id: th.id,
         albumId: th.id,
@@ -1319,26 +1524,26 @@ async function getDynamicHomeFeed(options = {}) {
       };
     });
 
-    // 8. Showcase Playlists (Top Cards)
+    // 8. Showcase Playlists
     const showcasePlaylists = [
       {
-        id: trendingIndo[0]?.id || 'trending-indo',
-        albumId: 'showcase-trending-indo',
-        title: 'Top Hits Indonesia',
-        subtitle: `${trendingIndo[0]?.artist || 'Hits Populer'} & Viral`,
-        thumbnail: trendingIndo[0]?.thumbnail || '/images/supermix.jpg',
+        id: quickPicks[0]?.id || 'showcase-1',
+        albumId: `mix-${gKey1}-vibes`,
+        title: `${gMeta1.name} Top Hits`,
+        subtitle: `${quickPicks[0]?.artist || gMeta1.name} & Pilihan Teratas`,
+        thumbnail: quickPicks[0]?.thumbnail || '/images/supermix.jpg',
         badge: 'Top Hits',
         isFeatured: true,
         isAlbum: true,
         type: 'youtube'
       },
       {
-        id: globalHits[0]?.id || 'global-hits',
-        albumId: 'showcase-global-pop',
-        title: 'Global Pop Resonance',
-        subtitle: `${globalHits[0]?.artist || 'International'} • Chart Hits`,
-        thumbnail: globalHits[0]?.thumbnail || '/images/discover.jpg',
-        badge: 'Global Chart',
+        id: quickPicks[1]?.id || 'showcase-2',
+        albumId: `mix-${gKey2}-pulse`,
+        title: `${gMeta2.name} Pulse`,
+        subtitle: `${quickPicks[1]?.artist || gMeta2.name} • Chart Resonance`,
+        thumbnail: quickPicks[1]?.thumbnail || '/images/discover.jpg',
+        badge: 'Trending',
         isFeatured: false,
         isAlbum: true,
         type: 'youtube'
@@ -1350,17 +1555,6 @@ async function getDynamicHomeFeed(options = {}) {
         subtitle: 'Lo-fi Nights • Study & Work Flow',
         thumbnail: '/images/focus_beats.jpg',
         badge: 'Lo-Fi Chill',
-        isFeatured: false,
-        isAlbum: true,
-        type: 'youtube'
-      },
-      {
-        id: coversRaw[0]?.id || trendingIndo[1]?.id || 'acoustic-chill',
-        albumId: 'showcase-chill-vibes',
-        title: 'Chill Vibes & Acoustic',
-        subtitle: `${coversRaw[0]?.artist || 'Akustik'} • Ambient Waves`,
-        thumbnail: coversRaw[0]?.thumbnail || '/images/chill_vibes.jpg',
-        badge: 'AuraSound Mix',
         isFeatured: false,
         isAlbum: true,
         type: 'youtube'
@@ -1380,6 +1574,7 @@ async function getDynamicHomeFeed(options = {}) {
           description: sc.subtitle,
           tracks: []
         };
+        albumEnrichCache.set(sc.albumId, dynamicAlbums[sc.albumId]);
       }
     });
 
@@ -1395,10 +1590,10 @@ async function getDynamicHomeFeed(options = {}) {
         type: 'youtube'
       },
       {
-        id: trendingIndo[0]?.id || 'deck-supermix',
+        id: quickPicks[0]?.id || 'deck-supermix',
         albumId: 'deck-supermix',
         title: 'My Supermix',
-        meta: `${trendingIndo[0]?.artist || 'Trending Music'}, Pop & Lo-Fi`,
+        meta: `${quickPicks[0]?.artist || 'Trending Music'}, Pop & Lo-Fi`,
         thumbnail: '/images/supermix.jpg',
         isAlbum: true,
         type: 'youtube'
@@ -1420,19 +1615,20 @@ async function getDynamicHomeFeed(options = {}) {
     const result = {
       success: true,
       user: {
-        name: 'User',
-        avatar: '/images/avatar.jpg'
+        name: userName,
+        email: userEmail,
+        avatar: userAvatar
       },
       sections: dynamicSections,
       albums: { ...ALBUM_CATALOG, ...dynamicAlbums }
     };
 
-    dynamicHomeCache = result;
-    lastHomeFetchTime = Date.now();
+    setToUserCache(cacheKey, result);
     return result;
   } catch (err) {
     console.error('Dynamic home feed error:', err.message);
-    if (dynamicHomeCache) return dynamicHomeCache;
+    const cached = getFromUserCache(cacheKey);
+    if (cached) return cached;
     return {
       success: true,
       user: { name: 'User', avatar: '/images/avatar.jpg' },
@@ -1443,13 +1639,17 @@ async function getDynamicHomeFeed(options = {}) {
 }
 
 async function getHomeFeed(mood = 'all', options = {}) {
+  const userKey = (options.userKey || (options.user && (options.user.email || options.user.id)) || 'guest').toLowerCase().trim();
+
   if (!mood || mood === 'all') {
     return await getDynamicHomeFeed(options);
   }
 
-  // Check cache for mood
-  if (moodCache.has(mood)) {
-    return moodCache.get(mood);
+  // Check cache for this specific user & mood
+  const moodCacheKey = `${userKey}_${mood}`;
+  if (!options.refresh) {
+    const cached = getFromUserCache(moodCacheKey);
+    if (cached) return cached;
   }
 
   const query = MOOD_QUERIES[mood] || `${mood} music hits`;
@@ -1457,20 +1657,25 @@ async function getHomeFeed(mood = 'all', options = {}) {
     const results = await ytSearch(query);
     const videos = (results.videos || []).slice(0, 18).map(v => ({
       id: v.videoId,
-      title: v.title,
-      artist: v.author?.name || 'Artist',
+      title: cleanHomeTitle(v.title),
+      artist: cleanHomeArtist(v.author?.name || 'Artist'),
       duration: v.timestamp || '0:00',
-      views: v.views ? `${(v.views / 1000000).toFixed(1)}M views` : '',
+      views: formatHomeViews(v.views),
       thumbnail: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
       type: 'youtube'
     }));
+
+    const userName = (options.user && options.user.name && options.user.name !== 'User')
+      ? options.user.name
+      : (options.user?.email ? options.user.email.split('@')[0] : 'User');
 
     const response = {
       success: true,
       mood,
       user: {
-        name: 'User',
-        avatar: '/images/avatar.jpg'
+        name: userName,
+        email: options.user?.email || '',
+        avatar: options.user?.avatar || '/images/avatar.jpg'
       },
       moodData: {
         title: mood.replace('-', ' ').toUpperCase(),
@@ -1480,7 +1685,7 @@ async function getHomeFeed(mood = 'all', options = {}) {
       }
     };
 
-    moodCache.set(mood, response);
+    setToUserCache(moodCacheKey, response);
     return response;
   } catch (err) {
     console.error('Mood fetch error:', err.message);
