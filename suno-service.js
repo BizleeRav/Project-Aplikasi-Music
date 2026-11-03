@@ -93,101 +93,9 @@ function saveCreations(list) {
 
 let isSyncingFeed = false;
 async function syncOfficialFeed(rawToken, deviceId = null) {
-  if (isSyncingFeed) return;
-  isSyncingFeed = true;
-  try {
-    let cleanJwt = (rawToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
-
-    let clips = [];
-    const fetchWithToken = async (token) => {
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Cookie': `__session=${token}`,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      };
-      let allClips = [];
-      try {
-        const r1 = await axios.get('https://studio-api.prod.suno.com/api/feed/v2?page=1', { headers, timeout: 12000 });
-        const c1 = r1.data?.clips || r1.data || [];
-        if (Array.isArray(c1)) allClips.push(...c1);
-      } catch(e) {}
-      try {
-        const r2 = await axios.get('https://studio-api.prod.suno.com/api/feed/v2?page=2', { headers, timeout: 12000 });
-        const c2 = r2.data?.clips || r2.data || [];
-        if (Array.isArray(c2)) allClips.push(...c2);
-      } catch(e) {}
-      return allClips;
-    };
-
-    if (cleanJwt && cleanJwt.length > 20) {
-      try {
-        clips = await fetchWithToken(cleanJwt);
-      } catch (err) {
-        if (err.response?.status === 401) {
-          cleanJwt = null; // Token expired, refresh below
-        }
-      }
-    }
-
-    // If token was expired or missing, try refreshing from local browser profile
-    if (!cleanJwt || clips.length === 0) {
-      try {
-        const helper = require('./suno-login-helper');
-        const os = require('os');
-        const profileDir = path.join(os.homedir(), 'AppData', 'Roaming', 'AuraSound', 'suno_browser_profile');
-        const sess = await helper.extractSunoSessionFromProfile(profileDir);
-        if (sess && sess.token) {
-          cleanJwt = sess.token;
-          saveConfig({ suno_api_key: cleanJwt, suno_provider: 'suno_official' });
-          clips = await fetchWithToken(cleanJwt);
-        }
-      } catch (e) {}
-    }
-
-    if (Array.isArray(clips) && clips.length > 0) {
-      const validClips = clips.filter(c => c && c.id && c.status === 'complete');
-      const officialMap = new Map();
-
-      for (const c of validClips) {
-        const dur = Math.round(Number(c.metadata?.duration || c.duration) || 180);
-        const durStr = `${Math.floor(dur / 60)}:${Math.floor(dur % 60).toString().padStart(2, '0')}`;
-        const audioUrl = (c.media_urls && c.media_urls[0]?.url) ||
-          (c.audio_url && !c.audio_url.includes('forbidden') ? c.audio_url : `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${c.id}.m4a`);
-
-        officialMap.set(c.id, {
-          id: c.id,
-          title: c.title || 'Lagu Suno AI',
-          artist: `Suno AI Official (${c.major_model_version || 'v6-mini'})`,
-          tags: c.metadata?.tags || c.tags || '',
-          prompt: c.metadata?.gpt_description_prompt || c.metadata?.prompt || c.prompt || '',
-          lyrics: c.metadata?.prompt || c.prompt || '',
-          status: 'complete',
-          model: c.major_model_version || 'v6-mini',
-          thumbnail: c.image_large_url || c.image_url || `https://cdn2.suno.ai/image_${c.id}.jpeg`,
-          audio_url: audioUrl,
-          duration: durStr,
-          seconds: dur,
-          type: 'suno',
-          created_at: c.created_at ? new Date(c.created_at).toLocaleDateString('id-ID') : 'Hari ini',
-          deviceId: deviceId || undefined
-        });
-      }
-
-      // Preserve any local user creations that aren't on Suno official feed (filter out hardcoded dummy placeholders)
-      const currentList = getCreations();
-      const nonOfficial = currentList.filter(t => t.id && !officialMap.has(t.id) && !t.is_auto && !t.id.startsWith('suno-mvzc'));
-
-      // Clean list: official clips on top, followed by any custom local additions
-      const merged = [...Array.from(officialMap.values()), ...nonOfficial];
-      saveCreations(merged);
-      console.log(`[Suno Sync] Synchronized ${officialMap.size} live songs directly from official Suno account!`);
-      return merged;
-    }
-  } catch (err) {
-    // Non-fatal background sync
-  } finally {
-    isSyncingFeed = false;
-  }
+  // User requested: Do NOT sync external library from Suno.com
+  // Only songs generated inside AuraSound are stored in the library.
+  return [];
 }
 
 function addCreation(track, deviceId = null) {
@@ -931,7 +839,7 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
         providerCode: 'suno_official',
         credits: '50 Kredit Harian Suno',
         maskedKey: `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}`,
-        statusText: `🟢 Akun Resmi Suno.com Terhubung (${userId}) • Koleksi Tersinkron`,
+        statusText: `🟢 Akun Resmi Suno.com Terhubung (${userId}) • Siap Membuat Lagu`,
         totalCreations: getCreations().length
       };
     }
