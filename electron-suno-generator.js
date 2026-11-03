@@ -6,21 +6,23 @@ const CHROME_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit
 /**
  * Executes authentic song generation inside Electron's authenticated Suno session.
  * Connects directly to the user's official Suno account (ravenstars), handles
- * modern Lexical and Simple mode inputs, and presents a non-intrusive challenge window
- * if Cloudflare Turnstile human verification is required.
+ * modern Lexical and Simple mode inputs, and presents a clean, visible window so
+ * Cloudflare Turnstile bot verification passes naturally and the user can solve it if prompted.
  */
 async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instrumental, model }) {
   console.log('[Suno Generator] Initializing authentic in-app generation on suno.com...');
   const sunoSession = session.fromPartition('persist:suno_auth_session');
 
+  // Show a visible, focused window so Cloudflare Turnstile treats it as a genuine user session.
+  // When visible, Turnstile usually passes automatically, or the user can click "Verify you are human" directly.
   const genWin = new BrowserWindow({
-    width: 580,
-    height: 720,
-    show: false, // Hidden by default, only shown if Cloudflare verification is required
+    width: 600,
+    height: 740,
+    show: true,
     center: true,
-    title: 'Suno AI Studio - Pembuatan Lagu',
+    title: 'Suno AI Studio - Pembuatan Lagu Sedang Berlangsung...',
     autoHideMenuBar: true,
-    alwaysOnTop: false,
+    alwaysOnTop: true,
     webPreferences: {
       session: sunoSession,
       nodeIntegration: false,
@@ -33,61 +35,93 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
   let capturedAuth = null;
   let capturedClips = null;
   let serverErrorMessage = null;
-  let turnstileShown = false;
+  const pendingRequests = new Map();
+
+  // Pre-seed capturedAuth with existing token if valid
+  try {
+    const sunoService = require('./suno-service');
+    const existingKey = (sunoService.getConfig().suno_api_key || '').trim();
+    if (existingKey.length > 20 && existingKey.startsWith('eyJ')) {
+      capturedAuth = `Bearer ${existingKey}`;
+    }
+  } catch (e) {}
 
   try {
-    // 1. Attach CDP to capture the network responses and auth tokens
+    // 1. Attach CDP to capture network responses and auth tokens
     try {
       genWin.webContents.debugger.attach('1.3');
       genWin.webContents.debugger.sendCommand('Network.enable');
+
       genWin.webContents.debugger.on('message', async (event, method, params) => {
         if (method === 'Network.requestWillBeSent') {
           const headers = params.request?.headers || {};
           if (headers.authorization && headers.authorization.startsWith('Bearer eyJ')) {
             capturedAuth = headers.authorization;
           }
+          const url = params.request?.url || '';
+          if (url.includes('/a/api/c/check') || url.includes('generate') || url.includes('/a/api/feed/v3')) {
+            pendingRequests.set(params.requestId, url);
+          }
         }
 
         if (method === 'Network.responseReceived') {
           const url = params.response?.url || '';
+          if (url.includes('/a/api/c/check') || url.includes('generate') || url.includes('/a/api/feed/v3')) {
+            pendingRequests.set(params.requestId, url);
+          }
+        }
 
-          // A. Cloudflare Challenge Check
-          if (url.includes('/a/api/c/check')) {
+        // Process response body once request has completely finished loading
+        if (method === 'Network.loadingFinished') {
+          const url = pendingRequests.get(params.requestId);
+          if (url) {
+            pendingRequests.delete(params.requestId);
             try {
               const bodyRes = await genWin.webContents.debugger.sendCommand('Network.getResponseBody', {
                 requestId: params.requestId
               });
               if (bodyRes && bodyRes.body) {
-                if (bodyRes.body.includes('"required": true') || bodyRes.body.includes('"required":true')) {
-                  console.log('[Suno Generator] Cloudflare verification required! Presenting window to user...');
-                  turnstileShown = true;
-                  genWin.show();
-                  genWin.focus();
+                // A. Generate Endpoint Response
+                if (url.includes('generate')) {
+                  console.log('[Suno Generator] Captured generate network response body!');
+                  try {
+                    const parsed = JSON.parse(bodyRes.body);
+                    if (parsed.clips && Array.isArray(parsed.clips) && parsed.clips.length > 0) {
+                      capturedClips = parsed.clips;
+                      console.log(`[Suno Generator] Successfully captured ${capturedClips.length} clips directly from generate response!`);
+                      genWin.hide();
+                    } else if (parsed.detail || parsed.detail_fallback || parsed.message) {
+                      serverErrorMessage = parsed.detail || parsed.detail_fallback || parsed.message;
+                      console.warn('[Suno Generator] Suno API returned message:', serverErrorMessage);
+                    }
+                  } catch (pe) {}
                 }
-              }
-            } catch (e) {}
-          }
 
-          // B. Generate Endpoint Response
-          if (url.includes('generate')) {
-            console.log('[Suno Generator] Detected generate endpoint response:', params.response.status, url);
-            try {
-              const bodyRes = await genWin.webContents.debugger.sendCommand('Network.getResponseBody', {
-                requestId: params.requestId
-              });
-              if (bodyRes && bodyRes.body) {
-                const parsed = JSON.parse(bodyRes.body);
-                if (parsed.clips && Array.isArray(parsed.clips) && parsed.clips.length > 0) {
-                  capturedClips = parsed.clips;
-                  console.log(`[Suno Generator] Successfully captured ${capturedClips.length} clips directly from generate response!`);
-                  if (turnstileShown) genWin.hide();
-                } else if (parsed.detail || parsed.detail_fallback || parsed.message) {
-                  serverErrorMessage = parsed.detail || parsed.detail_fallback || parsed.message;
-                  console.warn('[Suno Generator] Suno API returned message:', serverErrorMessage);
+                // B. Feed Endpoint Response
+                if (url.includes('/a/api/feed/v3')) {
+                  try {
+                    const parsed = JSON.parse(bodyRes.body);
+                    if (parsed.clips && Array.isArray(parsed.clips) && parsed.clips.length > 0) {
+                      const now = Date.now();
+                      const recent = parsed.clips.filter(c => {
+                        const t = new Date(c.created_at).getTime();
+                        return (now - t) < 60000;
+                      });
+                      if (recent.length > 0) {
+                        capturedClips = recent;
+                        console.log(`[Suno Generator] Feed listener captured ${recent.length} recent clips!`);
+                        genWin.hide();
+                      }
+                    }
+                  } catch (fe) {}
                 }
               }
             } catch (e) {}
           }
+        }
+
+        if (method === 'Network.loadingFailed') {
+          pendingRequests.delete(params.requestId);
         }
       });
     } catch (dbgErr) {
@@ -95,7 +129,7 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     }
 
     // 2. Load https://suno.com/create
-    console.log('[Suno Generator] Loading https://suno.com/create...');
+    console.log('[Suno Generator] Loading https://suno.com/create in foreground...');
     await genWin.loadURL('https://suno.com/create');
 
     // Check if redirected to sign-in page
@@ -104,9 +138,9 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
       throw new Error('Akun Suno Anda belum login di aplikasi atau sesi telah berakhir. Silakan klik tombol "Sign In ke Suno AI" di AuraSound dan login kembali.');
     }
 
-    // 3. Wait for DOM to mount
+    // 3. Wait for DOM and React components to mount
     let pageReady = false;
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 30; i++) {
       pageReady = await genWin.webContents.executeJavaScript(`
         Boolean(document.querySelector('textarea') || document.querySelector('.lyrics-editor-content') || document.querySelector('button'))
       `).catch(() => false);
@@ -118,7 +152,7 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
       throw new Error('Halaman Suno tidak merespons. Pastikan laptop terhubung ke internet.');
     }
 
-    // Wait 2 seconds for initial session handshake & experiment configurations
+    // Wait 2 seconds for initial session cookies & page hydration
     await new Promise(r => setTimeout(r, 2000));
 
     // Determine input mode: Custom lyrics vs Theme prompt
@@ -194,7 +228,7 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
         })()
       `);
 
-      // Use Chromium's native text insertion for Lexical rich-text lyrics editor!
+      // Use Chromium's native text insertion for Lexical rich-text lyrics editor
       if (actualLyrics) {
         await genWin.webContents.insertText(actualLyrics);
         await new Promise(r => setTimeout(r, 500));
@@ -275,16 +309,36 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
       throw new Error(clickResult.error);
     }
 
-    // 6. Poll for newly created clips in Suno's active feed (up to 40s)
+    // 6. Poll for newly created clips in Suno's active feed (up to 60s)
     const startTimeMs = Date.now();
     console.log('[Suno Generator] Awaiting newly created song clips from Suno...');
 
-    for (let wait = 0; wait < 20; wait++) {
+    for (let wait = 0; wait < 30; wait++) {
       if (capturedClips && capturedClips.length > 0) break;
       if (serverErrorMessage) throw new Error(`Suno Error: ${serverErrorMessage}`);
 
       await new Promise(r => setTimeout(r, 2000));
 
+      // If user resolved Turnstile challenge and Create button is active again, re-click Create
+      if (wait >= 3 && wait % 3 === 0 && !capturedClips) {
+        await genWin.webContents.executeJavaScript(`
+          (() => {
+            const hasTurnstile = Boolean(document.querySelector('iframe[src*="cloudflare"], iframe[src*="turnstile"], div[class*="turnstile"]'));
+            if (!hasTurnstile) {
+              const btns = Array.from(document.querySelectorAll('button'));
+              const createBtn = btns.find(b => {
+                const txt = (b.innerText || b.textContent || '').trim();
+                return txt === 'Create' || txt.startsWith('Create');
+              });
+              if (createBtn && !createBtn.disabled) {
+                createBtn.click();
+              }
+            }
+          })()
+        `).catch(() => {});
+      }
+
+      // Query page feed v3 directly via in-page fetch
       if (capturedAuth) {
         try {
           const pageFeed = await genWin.webContents.executeJavaScript(`
@@ -309,13 +363,13 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
           if (pageFeed && Array.isArray(pageFeed.clips) && pageFeed.clips.length > 0) {
             const recent = pageFeed.clips.filter(c => {
               const t = new Date(c.created_at).getTime();
-              return t >= (startTimeMs - 45000); // Created right during this generation
+              return t >= (startTimeMs - 50000); // Created right during this generation session
             });
 
             if (recent.length > 0) {
               capturedClips = recent;
               console.log(`[Suno Generator] Successfully retrieved ${recent.length} newly submitted clips from Suno feed!`);
-              if (turnstileShown) genWin.hide();
+              genWin.hide();
               break;
             }
           }
@@ -324,7 +378,7 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     }
 
     if (!capturedClips || capturedClips.length === 0) {
-      throw new Error('Suno membutuhkan verifikasi keamanan. Silakan coba klik Generate kembali dan selesaikan verifikasi jika jendela muncul.');
+      throw new Error('Suno membutuhkan verifikasi keamanan. Silakan klik Generate kembali dan selesaikan verifikasi centang di jendela yang muncul.');
     }
 
     // Sync token to persistent config
