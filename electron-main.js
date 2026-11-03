@@ -3,6 +3,15 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
+if (process.env.RUN_SCRIPT) {
+  try {
+    require(process.env.RUN_SCRIPT);
+    return;
+  } catch (err) {
+    console.error('Failed to run RUN_SCRIPT:', err);
+  }
+}
+
 // CRITICAL: Ensure app name is unified to PascalCase 'AuraSound' so userData is consistently C:\Users\<User>\AppData\Roaming\AuraSound
 try {
   app.setName('AuraSound');
@@ -13,6 +22,14 @@ try {
   process.env.AURASOUND_DATA_DIR = userDataDir;
 } catch (e) {
   console.warn('Could not set AURASOUND_DATA_DIR in electron:', e);
+}
+
+// Load authentic in-app Suno generator globally before server starts
+try {
+  require('./electron-suno-generator');
+  console.log('[Electron Main] Loaded electron-suno-generator successfully!');
+} catch (e) {
+  console.warn('[Electron Main] Could not load electron-suno-generator:', e);
 }
 
 let mainWindow = null;
@@ -138,6 +155,10 @@ async function createMainWindow() {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
 
+    autoUpdater.on('error', (err) => {
+      console.warn('[AutoUpdater] Update check ignored:', err?.message || err);
+    });
+
     autoUpdater.on('update-available', (info) => {
       if (mainWindow) mainWindow.webContents.send('update-available', info);
     });
@@ -155,22 +176,253 @@ async function createMainWindow() {
   }
 }
 
-const CHROME_CLEAN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+const FIREFOX_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
+const CHROME_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 try {
-  app.userAgentFallback = CHROME_CLEAN_UA;
   app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 } catch (e) {}
 
-// IPC: Automatic Suno Login Window & Token Extraction via Genuine Browser Extension Bridge
+// IPC: Automatic Suno Login Window & Token Extraction (In-App Google OAuth Anti-Block!)
 ipcMain.handle('open-suno-login', async () => {
-  try {
-    const sunoLoginHelper = require('./suno-login-helper');
-    const result = await sunoLoginHelper.launchAutomaticSunoLogin();
-    return result;
-  } catch (err) {
-    console.error('Error opening Suno login via helper:', err);
-    return { status: 'error', error: err.message };
+  if (sunoLoginWin && !sunoLoginWin.isDestroyed()) {
+    sunoLoginWin.focus();
+    return { status: 'already_open' };
   }
+
+  const sunoSession = session.fromPartition('persist:suno_auth_session');
+  sunoSession.setUserAgent(CHROME_DESKTOP_UA);
+
+  // Disguise as Firefox on Google domains to completely bypass Google's embedded browser block!
+  sunoSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const u = (details.url || '').toLowerCase();
+    const isGoogle = u.includes('google.com') || u.includes('googleusercontent.com');
+    if (isGoogle) {
+      details.requestHeaders['User-Agent'] = FIREFOX_DESKTOP_UA;
+      delete details.requestHeaders['Sec-CH-UA'];
+      delete details.requestHeaders['Sec-CH-UA-Mobile'];
+      delete details.requestHeaders['Sec-CH-UA-Platform'];
+      delete details.requestHeaders['sec-ch-ua'];
+      delete details.requestHeaders['sec-ch-ua-mobile'];
+      delete details.requestHeaders['sec-ch-ua-platform'];
+    } else {
+      details.requestHeaders['User-Agent'] = CHROME_DESKTOP_UA;
+    }
+    callback({ cancel: false, requestHeaders: details.requestHeaders });
+  });
+
+  sunoLoginWin = new BrowserWindow({
+    width: 960,
+    height: 740,
+    title: 'Login ke Akun Resmi Suno.com',
+    parent: mainWindow,
+    modal: true,
+    backgroundColor: '#0a0d14',
+    webPreferences: {
+      session: sunoSession,
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  sunoLoginWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
+
+  sunoLoginWin.setMenuBarVisibility(false);
+  if (typeof sunoLoginWin.removeMenu === 'function') {
+    sunoLoginWin.removeMenu();
+  }
+
+  // Allow Google OAuth popup windows to function naturally without breaking window.opener
+  const childWindows = new Set();
+  sunoLoginWin.webContents.setWindowOpenHandler(({ url }) => {
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        parent: sunoLoginWin,
+        modal: false,
+        backgroundColor: '#ffffff',
+        autoHideMenuBar: true,
+        webPreferences: {
+          session: sunoSession,
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      }
+    };
+  });
+
+  sunoLoginWin.webContents.on('did-create-window', (childWin) => {
+    childWindows.add(childWin);
+    childWin.setMenuBarVisibility(false);
+    if (typeof childWin.removeMenu === 'function') {
+      childWin.removeMenu();
+    }
+    childWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
+    childWin.webContents.on('will-navigate', (event, navUrl) => {
+      const u = (navUrl || '').toLowerCase();
+      if (u.includes('google.com') || u.includes('googleusercontent.com')) {
+        childWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
+      } else {
+        childWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
+      }
+    });
+    childWin.webContents.on('dom-ready', () => {
+      childWin.webContents.executeJavaScript(`
+        try {
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        } catch (e) {}
+      `).catch(() => {});
+    });
+    childWin.on('closed', () => {
+      childWindows.delete(childWin);
+    });
+  });
+
+  // Inject navigator overrides on any navigation/frame
+  sunoLoginWin.webContents.on('dom-ready', () => {
+    sunoLoginWin.webContents.executeJavaScript(`
+      try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      } catch (e) {}
+    `).catch(() => {});
+  });
+
+  sunoLoginWin.loadURL('https://suno.com/me');
+
+  let tokenPoller = null;
+  let tokenCaptured = false;
+
+  tokenPoller = setInterval(async () => {
+    if ((!sunoLoginWin || sunoLoginWin.isDestroyed()) && childWindows.size === 0) {
+      clearInterval(tokenPoller);
+      return;
+    }
+
+    try {
+      let token = null;
+
+      // 1. Directly query Electron in-memory cookies (instant & 100% reliable)
+      try {
+        const cookies = await sunoSession.cookies.get({});
+        const sessCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__session'));
+        if (sessCookie && sessCookie.value && sessCookie.value.length > 20) {
+          token = sessCookie.value;
+        }
+
+        // 1b. If no direct __session, look for __client to exchange with Clerk auth endpoint
+        if (!token) {
+          const clientCookie = cookies.find(c => c.name === '__client' || c.name.startsWith('__client'));
+          if (clientCookie && clientCookie.value && clientCookie.value.length > 20) {
+            try {
+              const axios = require('axios');
+              for (const host of ['auth.suno.com', 'clerk.suno.com']) {
+                try {
+                  const res = await axios.get(`https://${host}/v1/client`, {
+                    headers: {
+                      'Cookie': `__client=${clientCookie.value}`,
+                      'Origin': 'https://suno.com'
+                    },
+                    timeout: 3000
+                  });
+                  const session = res.data?.response?.sessions?.[0];
+                  const jwt = session?.last_active_token?.jwt;
+                  if (jwt && jwt.length > 20) {
+                    token = jwt;
+                    break;
+                  }
+                } catch (e) {}
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+
+      // 2. Also check defaultSession cookies as fallback
+      if (!token) {
+        try {
+          const cookies = await session.defaultSession.cookies.get({});
+          const sessCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__session'));
+          if (sessCookie && sessCookie.value && sessCookie.value.length > 20) {
+            token = sessCookie.value;
+          }
+        } catch (e) {}
+      }
+
+      // 3. Fallback: Execute within Suno.com context on sunoLoginWin AND any child window
+      if (!token) {
+        const allTargets = [];
+        if (sunoLoginWin && !sunoLoginWin.isDestroyed()) allTargets.push(sunoLoginWin);
+        for (const cw of childWindows) {
+          if (cw && !cw.isDestroyed()) allTargets.push(cw);
+        }
+
+        for (const win of allTargets) {
+          try {
+            const t = await win.webContents.executeJavaScript(`
+              (async () => {
+                try {
+                  if (window.Clerk && window.Clerk.session) {
+                    const tok = await window.Clerk.session.getToken();
+                    if (tok && typeof tok === 'string' && tok.length > 20) {
+                      return tok;
+                    }
+                  }
+                  const match = document.cookie.match(/__session=([^;]+)/);
+                  if (match && match[1] && match[1].length > 20) return match[1];
+                } catch (e) {}
+                return null;
+              })()
+            `);
+            if (t && typeof t === 'string' && t.length > 20 && t.startsWith('eyJ')) {
+              token = t;
+              break;
+            }
+          } catch (e) {}
+        }
+      }
+
+      if (token && !tokenCaptured) {
+        tokenCaptured = true;
+        clearInterval(tokenPoller);
+
+        // Also save to sunoService config directly
+        try {
+          const sunoService = require('./suno-service');
+          sunoService.saveConfig({
+            suno_api_key: token,
+            suno_provider: 'suno_official'
+          });
+          await sunoSession.cookies.flushStore().catch(() => {});
+          // syncOfficialFeed removed
+        } catch (e) {}
+
+        // Send token to mainWindow to store in client state & server config
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('suno-token-captured', token);
+        }
+
+        // Close all child popup windows & login window automatically!
+        for (const cw of childWindows) {
+          try {
+            if (cw && !cw.isDestroyed()) cw.close();
+          } catch (e) {}
+        }
+        childWindows.clear();
+
+        if (sunoLoginWin && !sunoLoginWin.isDestroyed()) {
+          sunoLoginWin.close();
+        }
+      }
+    } catch (err) {
+      // Ignore cross-origin transition errors while page loads
+    }
+  }, 1000);
+
+    sunoLoginWin.on('closed', () => {
+    if (tokenPoller) clearInterval(tokenPoller);
+    sunoLoginWin = null;
+  });
+
+  return { status: 'opened' };
 });
 
 ipcMain.on('restart-app', () => {
@@ -183,7 +435,85 @@ ipcMain.on('restart-app', () => {
   }
 });
 
+
+async function checkSunoSessionCookies() {
+  try {
+    const sunoSession = session.fromPartition('persist:suno_auth_session');
+    const cookies = await sunoSession.cookies.get({});
+    let token = null;
+
+    const sessCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__session'));
+    if (sessCookie && sessCookie.value && sessCookie.value.length > 20) {
+      try {
+        const parts = sessCookie.value.split('.');
+        if (parts.length >= 2) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+          if (payload?.exp && Date.now() < (payload.exp - 60) * 1000) {
+            token = sessCookie.value;
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (!token) {
+      const clientCookies = cookies.filter(c => c.name.startsWith('__client'));
+      if (clientCookies.length > 0) {
+        try {
+          const axios = require('axios');
+          const cookieHeader = clientCookies.map(c => `${c.name}=${c.value}`).join('; ');
+          for (const host of ['auth.suno.com', 'clerk.suno.com']) {
+            try {
+              const res = await axios.get(`https://${host}/v1/client`, {
+                headers: {
+                  'Cookie': cookieHeader,
+                  'Origin': 'https://suno.com'
+                },
+                timeout: 5000
+              });
+              const sess = res.data?.response?.sessions?.[0];
+              const jwt = sess?.last_active_token?.jwt;
+              if (jwt && jwt.length > 20) {
+                token = jwt;
+                await sunoSession.cookies.set({
+                  url: 'https://suno.com',
+                  name: '__session',
+                  value: jwt,
+                  domain: '.suno.com',
+                  path: '/',
+                  secure: true,
+                  httpOnly: false,
+                  sameSite: 'lax'
+                });
+                await sunoSession.cookies.flushStore().catch(() => {});
+                break;
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (token) {
+      const sunoService = require('./suno-service');
+      const cfg = sunoService.getConfig();
+      if (!cfg.suno_api_key || cfg.suno_api_key !== token) {
+        sunoService.saveConfig({
+          suno_api_key: token,
+          suno_provider: 'suno_official'
+        });
+        // syncOfficialFeed removed
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('suno-token-captured', token);
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 app.whenReady().then(() => {
+  setTimeout(checkSunoSessionCookies, 2000);
+  setInterval(checkSunoSessionCookies, 10000);
+
   try {
     if (session && session.defaultSession) {
       const defaultUa = session.defaultSession.getUserAgent();

@@ -8,6 +8,10 @@
   },
   "author": "",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BizleeRav/Project-Aplikasi-Music.git"
+  },
   "type": "commonjs",
   "dependencies": {
     "@braccato/core": "^1.16.13",
@@ -29,5 +33,54 @@
     "youtubei.js": "^18.2.0",
     "yt-search": "^2.13.1",
     "ytpl": "^2.3.0"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "6b30c8dc-bf3b-56dd-9dfd-90f36a49d254",
+    "productName": "AuraSound",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "BizleeRav",
+        "repo": "Project-Aplikasi-Music"
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "dist/.icon-ico/icon.ico",
+      "artifactName": "AuraSound Setup ${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false
+    },
+    "files": [
+      "**/*",
+      "!**/.env*",
+      "!**/*.log",
+      "!data/**",
+      "!scratch/**",
+      "!.git/**",
+      "!.vercel/**",
+      "!dist/**",
+      "!release/**",
+      "!android-build/**",
+      "!android-keystore/**",
+      "!**/*.bak"
+    ]
   }
 }

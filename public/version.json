@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "desktop": {
+    "version": "1.0.0",
+    "githubRepo": "https://github.com/BizleeRav/Project-Aplikasi-Music"
+  },
+  "android": {
+    "versionCode": 3,
+    "versionName": "1.2.0",
+    "apkUrl": "https://project-aplikasi-music.vercel.app/download/AuraSound.apk",
+    "notes": "Pembaruan stabilitas, pemutaran audio di latar belakang, dan integrasi Suno AI resmi."
+  }
+}
+

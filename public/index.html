@@ -479,8 +479,8 @@
                     <div style="display: flex; align-items: center; gap: 10px;">
                       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#10b981" stroke-width="2"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
                       <div>
-                        <div style="font-size: 0.83rem; font-weight: 600; color: #10b981;">Mesin Otomatis: Suno v6-mini</div>
-                        <div style="font-size: 0.72rem; color: #94a3b8;">Model generasi terbaru resmi • Kualitas jernih & selalu gratis</div>
+                        <div id="suno-engine-label" style="font-size: 0.83rem; font-weight: 600; color: #10b981;">Suno AI Music Generator</div>
+                        <div id="suno-engine-sublabel" style="font-size: 0.72rem; color: #94a3b8;">Generasi musik AI resmi • Mengubah lirik & style menjadi lagu baru</div>
                       </div>
                     </div>
                     <span style="font-size: 0.68rem; padding: 3px 8px; border-radius: 999px; background: rgba(16, 185, 129, 0.2); color: #34d399; font-weight: 700; text-transform: uppercase;">Aktif</span>
@@ -1298,126 +1298,95 @@
     </div>
   </div>
 
-  <!-- Modal Suno Connection Setup (Official Account & API Key) -->
+  <!-- Modal Desktop Update Ready -->
+  <div id="modal-desktop-update" class="modal-overlay" style="z-index: 2147483647 !important; background: rgba(0, 0, 0, 0.85); display: none;">
+    <div class="modal-card" style="max-width: 420px; text-align: center; border: 2px solid #38bdf8; background: #0c1220; box-shadow: 0 16px 40px rgba(0,0,0,0.95); z-index: 2147483647; position: relative;">
+      <button class="modal-close-btn" onclick="document.getElementById('modal-desktop-update').classList.remove('active'); document.getElementById('modal-desktop-update').style.display='none';">✕</button>
+      <div style="font-size: 42px; margin-bottom: 8px;">🎉</div>
+      <div class="modal-title" id="desktop-update-title" style="font-size: 1.25rem; color: #38bdf8; margin-bottom: 6px; font-weight: bold;">Pembaruan AuraSound Siap Dipasang!</div>
+      <div class="modal-desc" id="desktop-update-desc" style="color: #cbd5e1; font-size: 0.88rem; line-height: 1.5; margin-bottom: 18px;">
+        Versi terbaru telah berhasil diunduh. Restart aplikasi untuk langsung menerapkan pembaruan.
+      </div>
+      <button type="button" id="btn-desktop-restart-update" onclick="if(window.electronAPI) window.electronAPI.restartAndInstallUpdate();" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; font-weight: 700; font-size: 0.95rem; padding: 14px; border-radius: 10px; border: none; cursor: pointer; box-shadow: 0 4px 18px rgba(2,132,199,0.35);">
+        🔄 Restart & Pasang Sekarang
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal Suno Connection Setup (Ultra Simple & Clean Sign In) -->
   <div id="modal-token" class="modal-overlay">
-    <div class="modal-card" style="max-width: 500px;">
+    <div class="modal-card" style="max-width: 420px; text-align: center; padding: 28px 22px; border-radius: 20px;">
       <button class="modal-close-btn" onclick="document.getElementById('modal-token').classList.remove('active')">✕</button>
-      <div class="modal-title">Hubungkan Suno AI</div>
-      <div class="modal-desc">
-        Pilih metode koneksi ke Suno AI untuk membuat musik neural berkualitas studio:
+
+      <div style="width: 60px; height: 60px; margin: 0 auto 14px; border-radius: 18px; background: linear-gradient(135deg, #4f46e5, #06b6d4); display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.4);">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="white">
+          <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+        </svg>
       </div>
 
-      <!-- Segmented Tab Switcher -->
-      <div class="suno-modal-tabs">
-        <button type="button" class="suno-modal-tab active" id="btn-tab-suno-official" onclick="window.sunoStudio.switchModalMode('official')">
-          Akun Suno.com Pribadi
-        </button>
-        <button type="button" class="suno-modal-tab" id="btn-tab-suno-api" onclick="window.sunoStudio.switchModalMode('api')">
-          API Key (Kie.ai)
-        </button>
+      <div class="modal-title" style="font-size: 1.3rem; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">Sign In ke Suno AI</div>
+      <div class="modal-desc" style="font-size: 0.84rem; color: #94a3b8; line-height: 1.5; margin-bottom: 22px; max-width: 320px; margin-left: auto; margin-right: auto;">
+        Masuk dengan akun Suno resmi Anda untuk sinkronisasi lagu otomatis & kuota <b>50 kredit gratis setiap hari</b>.
       </div>
 
-      <!-- Section A: Official Suno.com Account -->
-      <div id="section-suno-official" class="suno-modal-section">
-        <div class="suno-connect-card" style="margin-bottom: 14px; background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.25); text-align: center; padding: 18px 16px;">
-          <div style="font-size: 0.95rem; font-weight: 700; color: #a5b4fc; margin-bottom: 6px;">
-            Login dengan Akun Google (Resmi Suno.com)
-          </div>
-          <div style="font-size: 0.8rem; color: #cbd5e1; line-height: 1.5; margin-bottom: 16px;">
-            Login dengan Akun Google Anda untuk menghubungkan akun resmi Suno.com pribadi Anda. Setiap akun otomatis mendapatkan kuota <b>50 kredit gratis setiap hari</b>!
-          </div>
+      <!-- Disconnected State: Clean Single Sign In Button -->
+      <div id="box-suno-signin-action" style="display: block;">
+        <button type="button" id="btn-start-auto-login" class="btn-generate-ai" onclick="window.sunoStudio.startAutoLoginFlow()" style="width: 100%; padding: 14px 20px; font-size: 0.95rem; justify-content: center; gap: 10px; font-weight: 700; border-radius: 12px; background: linear-gradient(135deg, #4f46e5, #06b6d4); box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4); cursor: pointer; border: none; color: white; display: flex; align-items: center;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+          Sign In dengan Akun Suno
+        </button>
 
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            <button type="button" id="btn-start-auto-login" class="btn-generate-ai" onclick="window.sunoStudio.startAutoLoginFlow()" style="width: 100%; padding: 12px 18px; font-size: 0.88rem; justify-content: center; gap: 8px; font-weight: bold; background: linear-gradient(135deg, #4f46e5, #06b6d4);">
-              🚀 Hubungkan Akun Suno (Login Google)
+        <div id="auto-login-loading" style="display: none; margin-top: 14px; padding: 14px; background: rgba(99, 102, 241, 0.12); border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.25);">
+          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #38bdf8; font-size: 0.84rem; font-weight: 600;">
+            <span class="pulse-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#38bdf8;"></span>
+            <span id="auto-login-status-text">Membuka jendela login... Silakan pilih akun Anda</span>
+          </div>
+          <div style="margin-top: 10px;">
+            <button type="button" onclick="window.sunoStudio.cancelAutoLogin()" style="background: none; border: none; color: #f87171; font-size: 0.76rem; cursor: pointer; text-decoration: underline;">
+              Batalkan
             </button>
           </div>
+        </div>
+      </div>
 
-          <div id="auto-login-loading" style="display: none; margin-top: 14px; padding: 12px; background: rgba(99, 102, 241, 0.15); border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.3);">
-            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #38bdf8; font-size: 0.82rem; font-weight: 600;">
-              <span class="pulse-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#38bdf8;"></span>
-              <span id="auto-login-status-text">Menunggu Anda login di jendela Suno...</span>
+      <!-- Connected State: Shows Profile & Disconnect -->
+      <div id="box-suno-connected-info" style="display: none; padding: 16px; background: rgba(16, 185, 129, 0.1); border-radius: 14px; border: 1px solid rgba(16, 185, 129, 0.3); margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #34d399; font-weight: 700; font-size: 1rem; margin-bottom: 4px;">
+          <span>🟢 Terhubung:</span>
+          <span id="suno-connected-username">Suno Official</span>
+        </div>
+        <div style="font-size: 0.82rem; color: #94a3b8;" id="suno-connected-credits">50 Kredit Harian Aktif</div>
+        <div style="margin-top: 14px;">
+          <button id="btn-disconnect-suno" onclick="window.sunoStudio.disconnectAccount()" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); padding: 8px 18px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
+            Putuskan & Keluar Akun
+          </button>
+        </div>
+      </div>
+
+      <div id="modal-suno-status" style="display: none; margin-top: 10px;"></div>
+
+      <!-- Advanced / Manual Key (Collapsed link for power users) -->
+      <div style="margin-top: 18px; text-align: center;">
+        <a href="javascript:void(0)" onclick="const f = document.getElementById('section-advanced-key'); f.style.display = f.style.display === 'none' ? 'block' : 'none';" style="font-size: 0.72rem; color: #64748b; text-decoration: none;">
+          ⚙️ Pengaturan Lanjutan (API Key / Manual)
+        </a>
+        <div id="section-advanced-key" style="display: none; margin-top: 12px; padding: 14px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); text-align: left;">
+          <div style="margin-bottom: 12px; text-align: center;">
+            <button type="button" class="btn-generate-ai" onclick="window.sunoStudio.copyClerkScript()" style="width: 100%; padding: 10px 14px; font-size: 0.8rem; font-weight: 700; background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(14, 165, 233, 0.4); color: #38bdf8; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              📋 Salin Kode 1-Klik Chrome Console
+            </button>
+            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 6px; line-height: 1.4;">
+              Jika tab Suno sudah terbuka di Google Chrome: salin kode di atas, buka F12 &gt; Console di tab Suno.com, lalu tekan Ctrl+V &amp; Enter!
             </div>
-            <div style="display: flex; justify-content: center; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap;">
-              <button type="button" onclick="window.open('https://suno.com/me', '_blank')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #38bdf8; padding: 5px 12px; border-radius: 6px; font-size: 0.74rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                Buka Tab Baru
-              </button>
-              <button type="button" onclick="window.sunoStudio.cancelAutoLogin()" style="background: none; border: none; color: #f87171; font-size: 0.74rem; cursor: pointer; text-decoration: underline;">
-                Batalkan
-              </button>
-            </div>
           </div>
+          <div class="form-group" style="margin-bottom: 10px;">
+            <label class="form-label" for="input-suno-api-key" style="font-size: 0.74rem;">Atau Tempel Token Suno Manual:</label>
+            <input type="password" id="input-suno-api-key" class="form-input" placeholder="Tempel token Suno (eyJ... atau Cookie)" style="font-family: monospace; font-size: 0.78rem;">
+          </div>
+          <button id="btn-save-suno-token" class="btn-generate-ai" onclick="window.sunoStudio.saveApiKey()" style="width: 100%; padding: 8px; font-size: 0.78rem; border-radius: 8px;">
+            Simpan Key Manual
+          </button>
         </div>
-
-        <!-- 6-Digit Pair Code Card (Sync between Laptop & HP) -->
-        <div class="suno-connect-card" style="margin-bottom: 14px; background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.25); text-align: center; padding: 16px 14px;">
-          <div style="font-size: 0.85rem; font-weight: 700; color: #34d399; margin-bottom: 4px;">
-            ⚡ Atau Sambungkan via Kode 6-Digit dari Laptop
-          </div>
-          <div style="font-size: 0.76rem; color: #94a3b8; margin-bottom: 12px; line-height: 1.4;">
-            Jika sudah login Suno di Laptop, Anda cukup masukkan 6-digit kode sambung di bawah ini:
-          </div>
-          <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
-            <input type="text" id="input-suno-pair-code" class="form-input" placeholder="Contoh: 529814" maxlength="6" style="text-align: center; font-size: 1.1rem; letter-spacing: 4px; font-weight: bold; width: 150px; font-family: monospace; padding: 8px;">
-            <button type="button" class="btn-generate-ai" onclick="window.sunoStudio.claimPairCode()" style="padding: 9px 16px; font-size: 0.82rem; font-weight: 700; background: #10b981; border: none; border-radius: 8px; cursor: pointer;">
-              Sambungkan
-            </button>
-          </div>
-          <div id="box-laptop-pair-display" style="display: none; margin-top: 12px; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; border: 1px dashed rgba(251, 191, 36, 0.4);">
-            <span style="font-size: 0.74rem; color: #94a3b8;">Kode Sambung HP Anda: </span>
-            <span id="suno-pair-code-display" style="font-weight: bold; font-family: monospace; font-size: 1.1rem; color: #fbbf24; letter-spacing: 2px;">...</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Section B: API Key (Kie.ai) -->
-      <div id="section-suno-api" class="suno-modal-section" style="display: none;">
-        <div class="suno-connect-card" style="margin-bottom: 14px;">
-          <div style="font-size: 0.82rem; font-weight: 700; color: #34d399; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-            <span>Mode API Key Kie.ai:</span>
-            <span style="font-size: 0.72rem; color: #38bdf8; font-weight: 600;">Aktif & Bebas CAPTCHA</span>
-          </div>
-          <div style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.5;">
-            Metode ini langsung memanggil model Suno AI tanpa login atau CAPTCHA. Akun Kie.ai Anda saat ini memiliki saldo kredit aktif.
-          </div>
-          <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
-            <button type="button" class="btn-sidebar-action" onclick="window.open('https://kie.ai', '_blank')" style="padding: 4px 10px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;">
-              Buka Kie.ai (Dapat 80 Kredit)
-            </button>
-          </div>
-        </div>
-
-        <div class="form-group" style="text-align: left; margin-bottom: 12px;">
-          <label class="form-label" for="input-suno-provider">Pilihan Provider API:</label>
-          <select id="input-suno-provider" class="form-input" onchange="window.sunoStudio.onProviderChange(this.value)" style="cursor: pointer;">
-            <option value="kie">Kie.ai Suno (Sangat Stabil & Cepat)</option>
-            <option value="goapi">GoAPI Suno Music</option>
-            <option value="custom">Custom Server Suno (Self-Hosted)</option>
-          </select>
-        </div>
-
-        <div id="group-custom-api-url" class="form-group" style="text-align: left; margin-bottom: 12px; display: none;">
-          <label class="form-label" for="input-suno-custom-url">Custom API Base URL:</label>
-          <input type="text" id="input-suno-custom-url" class="form-input" placeholder="https://api.domain-anda.com">
-        </div>
-
-        <div class="form-group" style="text-align: left; margin-bottom: 14px;">
-          <label class="form-label" for="input-suno-api-key">Suno API Key:</label>
-          <input type="password" id="input-suno-api-key" class="form-input" placeholder="Masukkan API Key Kie.ai atau GoAPI" style="font-family: monospace; font-size: 0.82rem;">
-        </div>
-
-        <button id="btn-save-suno-token" class="btn-generate-ai" onclick="window.sunoStudio.saveApiKey()" style="width: 100%; margin-bottom: 10px;">
-          Simpan & Aktifkan API Key
-        </button>
-      </div>
-
-      <div id="modal-suno-status" style="display: none; margin-bottom: 10px;"></div>
-
-      <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 0.74rem; color: #64748b;">Hapus koneksi akun aktif?</span>
-        <button id="btn-disconnect-suno" class="btn-disconnect-suno" onclick="window.sunoStudio.disconnectAccount()" title="Putuskan koneksi dan hapus data akun" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35);">
-          Hapus & Putuskan Koneksi
-        </button>
       </div>
     </div>
   </div>

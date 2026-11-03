@@ -24,3 +24,7 @@ data/avatars/
 
 .vercel
 .env*
+
+release/
+*.bak
+

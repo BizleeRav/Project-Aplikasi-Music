@@ -9209,42 +9209,87 @@ class App {
 }
 
 function initAppUpdateCheck() {
-  function check() {
-    const isAndroid = !!window.AuraSoundAndroid || /Android/i.test(navigator.userAgent);
-    const isLatest = window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openSunoLogin === 'function';
+  // 1. Desktop Auto-Update IPC Listeners (Windows / Electron)
+  if (window.electronAPI) {
+    if (typeof window.electronAPI.onUpdateAvailable === 'function') {
+      window.electronAPI.onUpdateAvailable((info) => {
+        if (window.app && window.app.showToast) {
+          const v = info && info.version ? ('v' + info.version) : '';
+          window.app.showToast('Pembaruan AuraSound ' + v + ' tersedia. Mengunduh di background... 🚀', 'info', 6000);
+        }
+      });
+    }
 
-    if (isAndroid && !isLatest) {
+    if (typeof window.electronAPI.onUpdateDownloaded === 'function') {
+      window.electronAPI.onUpdateDownloaded((info) => {
+        const modal = document.getElementById('modal-desktop-update');
+        if (modal) {
+          if (info && info.version) {
+            const titleEl = document.getElementById('desktop-update-title');
+            if (titleEl) titleEl.textContent = 'Pembaruan AuraSound v' + info.version + ' Siap Dipasang!';
+          }
+          modal.style.display = 'flex';
+          modal.style.zIndex = '2147483647';
+          modal.classList.add('active');
+        } else if (window.app && window.app.showToast) {
+          window.app.showToast('Pembaruan AuraSound selesai diunduh! Silakan restart aplikasi.', 'success', 8000);
+        }
+      });
+    }
+  }
+
+  // 2. Mobile (Android APK) Version Check & In-App Installer
+  async function checkAndroidUpdate() {
+    const isAndroid = !!window.AuraSoundAndroid || /Android/i.test(navigator.userAgent);
+    if (!isAndroid) return;
+
+    try {
+      const curCode = (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.getAppVersionCode === 'function')
+        ? window.AuraSoundAndroid.getAppVersionCode()
+        : 1;
+
+      const res = await fetch('/version.json?_t=' + Date.now());
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.android && data.android.versionCode > curCode) {
+          window.openAppUpdateModal(data.android);
+          return;
+        }
+      }
+    } catch (err) {}
+
+    // Fallback: older APKs missing openSunoLogin bridge
+    const isLegacy = window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openSunoLogin !== 'function';
+    if (isLegacy) {
       window.openAppUpdateModal();
     }
   }
 
-  setTimeout(check, 600);
-  setTimeout(check, 1800);
+  setTimeout(checkAndroidUpdate, 1500);
 
   const btnInstall = document.getElementById('btn-modal-install-update');
   const guideBox = document.getElementById('update-copied-guide');
-  const apkUrl = 'https://project-aplikasi-music.vercel.app/download/AuraSound.apk';
 
   if (btnInstall) {
     btnInstall.addEventListener('click', (e) => {
       e.preventDefault();
+      const targetApkUrl = window.pendingApkUpdateUrl || 'https://project-aplikasi-music.vercel.app/download/AuraSound.apk';
 
       // Auto copy link to clipboard on touch/click
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(apkUrl);
+          navigator.clipboard.writeText(targetApkUrl);
         }
       } catch (err) {}
 
       if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.downloadAndInstallUpdate === 'function') {
-        window.AuraSoundAndroid.downloadAndInstallUpdate(apkUrl);
+        window.AuraSoundAndroid.downloadAndInstallUpdate(targetApkUrl);
         return;
       } else if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openExternalBrowser === 'function') {
-        window.AuraSoundAndroid.openExternalBrowser(apkUrl);
+        window.AuraSoundAndroid.openExternalBrowser(targetApkUrl);
         return;
       }
 
-      // Old APK fallback: NEVER navigate WebView to avoid ERR_UNKNOWN_URL_SCHEME
       btnInstall.style.background = '#2563eb';
       btnInstall.innerHTML = '✅ Link Disalin! Buka Chrome HP';
       if (guideBox) {
@@ -9257,9 +9302,20 @@ function initAppUpdateCheck() {
   }
 }
 
-window.openAppUpdateModal = function() {
+window.openAppUpdateModal = function(androidInfo) {
   const modal = document.getElementById('modal-app-update');
   if (modal) {
+    if (androidInfo) {
+      if (androidInfo.apkUrl) window.pendingApkUpdateUrl = androidInfo.apkUrl;
+      const titleEl = modal.querySelector('.modal-title');
+      if (titleEl && androidInfo.versionName) {
+        titleEl.textContent = 'Pembaruan AuraSound v' + androidInfo.versionName;
+      }
+      const descEl = modal.querySelector('.modal-desc');
+      if (descEl && androidInfo.notes) {
+        descEl.textContent = androidInfo.notes;
+      }
+    }
     modal.style.display = 'flex';
     modal.style.zIndex = '2147483647';
     modal.classList.add('active');
