@@ -960,7 +960,7 @@ app.get('/api/trending', async (req, res) => {
 
 // 4. Suno AI Music Studio & User Creations API (Built-in Auto-Engine & Custom API)
 // Helper to extract client-provided key & protect server's private key from remote devices
-function getEffectiveSunoCredentials(req, userEmail = null) {
+function getEffectiveSunoCredentials(req) {
   const clientKey = (req.headers['x-suno-api-key'] || req.query.api_key || req.body?.api_key || '').trim();
   const clientProvider = (req.headers['x-suno-provider'] || req.query.provider || req.body?.provider || '').trim();
 
@@ -969,26 +969,10 @@ function getEffectiveSunoCredentials(req, userEmail = null) {
     return { key: clientKey, provider: clientProvider || 'suno_official', isClientKey: true };
   }
 
-  const cleanEmail = (userEmail || req.headers['x-user-email'] || req.query.user_email || req.body?.user_email || '').trim().toLowerCase();
-
   // System-wide Default
   const cfg = sunoService.getConfig();
-  const defaultKey = (cfg.suno_api_key || '').trim();
-  const defaultOwnerEmail = 'bizlee3012@gmail.com';
-
-  // If a different registered user is logged in and didn't provide their own key,
-  // do NOT leak bizlee3012's private Suno API token to them!
-  if (cleanEmail && cleanEmail !== defaultOwnerEmail) {
-    return {
-      key: '',
-      provider: 'auto',
-      isClientKey: false,
-      isOtherUser: true
-    };
-  }
-
   return {
-    key: defaultKey,
+    key: (cfg.suno_api_key || '').trim(),
     provider: cfg.suno_provider || 'suno_official',
     isClientKey: false
   };
@@ -996,12 +980,13 @@ function getEffectiveSunoCredentials(req, userEmail = null) {
 
 app.get('/api/suno/account', async (req, res) => {
   try {
-    const userEmail = (req.headers['x-user-email'] || req.query.user_email || '').trim().toLowerCase();
+    const creds = getEffectiveSunoCredentials(req);
     const deviceId = (req.headers['x-device-id'] || req.query.device_id || '').trim() || 'guest_default';
-    const creds = getEffectiveSunoCredentials(req, userEmail);
+    const ip = req.ip || req.connection?.remoteAddress || '';
+    const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
 
     // Return real account info from configured key or unconfigured state
-    const info = await sunoService.getApiKeyInfo(creds.key, creds.provider, userEmail, deviceId);
+    const info = await sunoService.getApiKeyInfo(creds.key, creds.provider);
     return res.json(info);
   } catch (error) {
     res.status(500).json({ configured: false, is_auto: false, error: error.message });
@@ -1009,8 +994,7 @@ app.get('/api/suno/account', async (req, res) => {
 });
 
 app.get('/api/suno/config', (req, res) => {
-  const userEmail = (req.headers['x-user-email'] || req.query.user_email || '').trim().toLowerCase();
-  const creds = getEffectiveSunoCredentials(req, userEmail);
+  const creds = getEffectiveSunoCredentials(req);
   res.json({
     hasKey: Boolean(creds.key),
     provider: creds.provider || 'kie',
@@ -1057,27 +1041,16 @@ app.get('/api/suno/creations', async (req, res) => {
   try {
     const { page = 1, pageSize = 12, q = '', sync = '' } = req.query;
     const deviceId = (req.headers['x-device-id'] || req.query.device_id || '').trim();
-    const userEmail = (req.headers['x-user-email'] || req.query.user_email || '').trim().toLowerCase();
-    const creds = getEffectiveSunoCredentials(req, userEmail);
+    const creds = getEffectiveSunoCredentials(req);
 
-    // Live sync from Suno official account ONLY if client provided their own key OR it's the default owner (bizlee3012@gmail.com)
-    if (creds.key && (creds.isClientKey || !userEmail || userEmail === 'bizlee3012@gmail.com')) {
-      if (sync === '1' || sync === 'true') {
-        await sunoService.syncOfficialFeed(creds.key, deviceId, userEmail);
-      } else {
-        sunoService.syncOfficialFeed(creds.key, deviceId, userEmail).catch(() => {});
-      }
+    // Live sync from Suno official account
+    if (sync === '1' || sync === 'true') {
+      await sunoService.syncOfficialFeed(creds.key, deviceId);
+    } else {
+      sunoService.syncOfficialFeed(creds.key, deviceId).catch(() => {});
     }
 
-    const result = sunoService.getCreationsPaginated({
-      page,
-      pageSize,
-      query: q,
-      deviceId,
-      userEmail,
-      apiKey: creds.key,
-      isClientKey: creds.isClientKey
-    });
+    const result = sunoService.getCreationsPaginated({ page, pageSize, query: q, deviceId, apiKey: creds.key });
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -1087,12 +1060,8 @@ app.get('/api/suno/creations', async (req, res) => {
 app.post('/api/suno/sync', async (req, res) => {
   try {
     const deviceId = (req.headers['x-device-id'] || req.body?.device_id || '').trim();
-    const userEmail = (req.headers['x-user-email'] || req.body?.user_email || '').trim().toLowerCase();
-    const creds = getEffectiveSunoCredentials(req, userEmail);
-    if (!creds.key) {
-      return res.json({ success: true, count: 0 });
-    }
-    const synced = await sunoService.syncOfficialFeed(creds.key, deviceId, userEmail);
+    const creds = getEffectiveSunoCredentials(req);
+    const synced = await sunoService.syncOfficialFeed(creds.key, deviceId);
     res.json({ success: true, count: synced ? synced.length : 0 });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -1102,13 +1071,12 @@ app.post('/api/suno/sync', async (req, res) => {
 app.get('/api/suno/aligned-lyrics/:id', async (req, res) => {
   try {
     const clipId = req.params.id;
-    const userEmail = (req.headers['x-user-email'] || req.query.user_email || '').trim().toLowerCase();
-    const creds = getEffectiveSunoCredentials(req, userEmail);
+    const creds = getEffectiveSunoCredentials(req);
     const result = await sunoService.getAlignedLyrics(clipId, creds.key);
     if (result && result.found && Array.isArray(result.parsedLyrics)) {
       // Run Multi-Lingual Romanizer (Japanese Romaji, Chinese Pinyin, Korean Romaja)
       const romanizer = getLyricsRomanizer();
-      const allCreations = sunoService.getAllCreationsRaw ? sunoService.getAllCreationsRaw() : sunoService.getCreations();
+      const allCreations = sunoService.getCreations();
       const trackMeta = allCreations.find(t => t.id === clipId);
 
       const romanized = await romanizer.romanizeLyricsList(result.parsedLyrics, {
@@ -1140,9 +1108,8 @@ app.post('/api/suno/creations', (req, res) => {
   try {
     const { track } = req.body;
     const deviceId = (req.headers['x-device-id'] || req.body?.device_id || '').trim();
-    const userEmail = (req.headers['x-user-email'] || req.body?.user_email || '').trim().toLowerCase();
     if (!track || !track.id) return res.status(400).json({ success: false, error: 'Track tidak valid' });
-    const saved = sunoService.addCreation(track, deviceId, userEmail);
+    const saved = sunoService.addCreation(track, deviceId);
     res.json({ success: true, track: saved });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -1151,9 +1118,7 @@ app.post('/api/suno/creations', (req, res) => {
 
 app.delete('/api/suno/creations/:id', (req, res) => {
   try {
-    const userEmail = (req.headers['x-user-email'] || req.query.user_email || '').trim().toLowerCase();
-    const deviceId = (req.headers['x-device-id'] || req.query.device_id || '').trim();
-    const result = sunoService.deleteCreation(req.params.id, userEmail, deviceId);
+    const result = sunoService.deleteCreation(req.params.id);
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -1163,8 +1128,7 @@ app.delete('/api/suno/creations/:id', (req, res) => {
 app.post('/api/suno/generate', async (req, res) => {
   try {
     const { prompt, tags, title, make_instrumental, lyrics, model } = req.body;
-    const userEmail = (req.headers['x-user-email'] || req.body?.user_email || '').trim().toLowerCase();
-    const creds = getEffectiveSunoCredentials(req, userEmail);
+    const creds = getEffectiveSunoCredentials(req);
     const deviceId = (req.headers['x-device-id'] || req.body?.device_id || '').trim() || 'guest_default';
     const ip = req.ip || req.connection?.remoteAddress || '';
     const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
@@ -1191,8 +1155,7 @@ app.post('/api/suno/generate', async (req, res) => {
       model: model || 'v6-mini',
       apiKey: hasCustomKey ? creds.key : null,
       provider: hasCustomKey ? creds.provider : 'auto',
-      deviceId: deviceId,
-      userEmail: userEmail
+      deviceId: deviceId
     });
 
     // Deduct isolated credits for this device upon generation start
@@ -1212,10 +1175,9 @@ app.post('/api/suno/generate', async (req, res) => {
 app.get('/api/suno/status', async (req, res) => {
   try {
     const ids = req.query.ids ? req.query.ids.split(',') : [];
-    const userEmail = (req.headers['x-user-email'] || req.query.user_email || '').trim().toLowerCase();
-    const creds = getEffectiveSunoCredentials(req, userEmail);
+    const creds = getEffectiveSunoCredentials(req);
     const deviceId = (req.headers['x-device-id'] || req.query.device_id || '').trim();
-    const result = await sunoService.checkSunoStatus(ids, creds.key, creds.provider, deviceId, userEmail);
+    const result = await sunoService.checkSunoStatus(ids, creds.key, creds.provider, deviceId);
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
