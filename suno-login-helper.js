@@ -135,7 +135,7 @@ async function extractSunoSessionFromProfile(profileDir) {
           for (let len = 30; len <= 1200; len++) {
             const cand = slice.slice(v10Pos, v10Pos + len);
             const dec = decryptCookieValue(cand, masterKey);
-            if (dec && dec.includes('eyJhbGciOiJSUzI1NiIsImtpZCI6InN1bm8tYXBpLXJzMjU2LWtleS0xIiwidHlwIjoiSldUIn0')) {
+            if (dec && (dec.includes('eyJhbGci') || dec.includes('__client') || dec.includes('suno') || dec.includes('clerk'))) {
               const match = dec.match(/eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/);
               if (match) {
                 clientJwt = match[0];
@@ -153,23 +153,32 @@ async function extractSunoSessionFromProfile(profileDir) {
     if (!clientJwt) return null;
 
     // Exchange client JWT for fresh Suno session access token via official auth endpoint
-    const res = await axios.get('https://auth.suno.com/v1/client', {
-      headers: {
-        'Cookie': `__client=${clientJwt}`,
-        'Origin': 'https://suno.com'
-      },
-      timeout: 10000
-    });
+    let jwt = null;
+    let username = 'Suno User';
+    let sessionId = null;
 
-    const clientData = res.data?.response;
-    const session = clientData?.sessions?.[0];
-    const jwt = session?.last_active_token?.jwt;
-    const username = session?.user?.username || session?.user?.first_name || 'ravenstars';
+    for (const host of ['clerk.suno.com', 'auth.suno.com']) {
+      try {
+        const res = await axios.get(`https://${host}/v1/client`, {
+          headers: {
+            'Cookie': `__client=${clientJwt}`,
+            'Origin': 'https://suno.com'
+          },
+          timeout: 8000
+        });
+        const clientData = res.data?.response;
+        const session = clientData?.sessions?.[0];
+        jwt = session?.last_active_token?.jwt;
+        username = session?.user?.username || session?.user?.first_name || 'Suno User';
+        sessionId = session?.id;
+        if (jwt) break;
+      } catch (e) {}
+    }
 
     return {
       token: jwt || clientJwt,
       username,
-      sessionId: session?.id
+      sessionId
     };
   } catch (err) {
     try { fs.unlinkSync(tempCopy); } catch (e) {}

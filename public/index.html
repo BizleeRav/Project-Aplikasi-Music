@@ -1349,6 +1349,29 @@
           </div>
         </div>
 
+        <!-- Direct Token & 1-Click Connect Card -->
+        <div class="suno-connect-card" style="margin-bottom: 14px; background: rgba(14, 165, 233, 0.08); border-color: rgba(14, 165, 233, 0.25); padding: 16px 14px; text-align: left;">
+          <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+            <span>⚡ Sambungkan Instan (Anti-Gagal)</span>
+            <span style="font-size: 0.72rem; color: #34d399; font-weight: 600;">100% Berhasil</span>
+          </div>
+          <div style="font-size: 0.76rem; color: #94a3b8; margin-bottom: 10px; line-height: 1.4;">
+            Jika login Google terhalang proteksi browser, tempel Token / Cookie Suno Anda langsung di sini:
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="password" id="input-suno-official-token" class="form-input" placeholder="Tempel token Suno (eyJ... atau Cookie)" style="font-family: monospace; font-size: 0.8rem; flex: 1;">
+            <button type="button" class="btn-generate-ai" onclick="window.sunoStudio.connectOfficialTokenDirect()" style="padding: 8px 16px; font-size: 0.82rem; font-weight: 700; background: #0284c7; white-space: nowrap; border: none; border-radius: 8px; cursor: pointer;">
+              Sambungkan
+            </button>
+          </div>
+          <div style="margin-top: 10px; padding: 8px 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-size: 0.74rem; color: #cbd5e1; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <span>Cara dapatkan token otomatis di Chrome:</span>
+            <button type="button" class="btn-sidebar-action" onclick="window.sunoStudio.copyClerkScript()" style="font-size: 0.72rem; padding: 4px 10px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; cursor: pointer;">
+              📋 Salin Kode 1-Klik Console
+            </button>
+          </div>
+        </div>
+
         <!-- 6-Digit Pair Code Card (Sync between Laptop & HP) -->
         <div class="suno-connect-card" style="margin-bottom: 14px; background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.25); text-align: center; padding: 16px 14px;">
           <div style="font-size: 0.85rem; font-weight: 700; color: #34d399; margin-bottom: 4px;">

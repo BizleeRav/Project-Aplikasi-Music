@@ -263,14 +263,52 @@ class SunoStudio {
   }
 
   copyClerkScript() {
-    const code = "fetch('http://localhost:3000/api/suno/connect-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:await window.Clerk.session.getToken()})}).then(r=>r.json()).then(d=>alert(d.message));";
+    const origin = window.location.origin || 'http://localhost:3000';
+    const code = "(async()=>{try{const t=await window.Clerk.session.getToken();await navigator.clipboard.writeText(t);try{const r=await fetch('" + origin + "/api/suno/connect-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});const d=await r.json();if(d.success){alert('🎉 '+d.message);return;}}catch(e){}alert('✅ Token Suno berhasil disalin ke clipboard! Buka AuraSound lalu tempel di kotak input dan klik Sambungkan.');}catch(err){alert('Gagal mengambil token: '+err.message);}})();";
     navigator.clipboard.writeText(code).then(() => {
       if (window.app && window.app.showToast) {
         window.app.showToast('Perintah otomatis disalin! Buka F12 -> Console di tab Suno.com Chrome Anda, tempel (Ctrl+V) & tekan Enter!', 'success');
       }
     }).catch(() => {
-      prompt('Salin perintah ini dan jalankan di Console (F12) tab Suno.com Chrome Anda:', code);
+      prompt('Salin perintah ini dan jalankan di Console (F12) tab Suno.com:', code);
     });
+  }
+
+  async connectOfficialTokenDirect(customToken = null) {
+    const input = document.getElementById('input-suno-official-token');
+    const token = (customToken || input?.value || '').trim();
+
+    if (!token || token.length < 20) {
+      if (window.app && window.app.showToast) {
+        window.app.showToast('Masukkan Token atau Cookie Suno yang valid!', 'error');
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/suno/connect-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (window.app && window.app.showToast) {
+          window.app.showToast(data.message || 'Akun Suno berhasil terhubung! 🎉', 'success');
+        }
+        const modal = document.getElementById('modal-token');
+        if (modal) modal.classList.remove('active');
+        if (input) input.value = '';
+        await this.checkAccountStatus();
+        await this.fetchCreations(1, true);
+      } else {
+        throw new Error(data.error || 'Gagal menghubungkan token');
+      }
+    } catch (err) {
+      if (window.app && window.app.showToast) {
+        window.app.showToast('Error: ' + err.message, 'error');
+      }
+    }
   }
 
   async startAutoLoginFlow() {

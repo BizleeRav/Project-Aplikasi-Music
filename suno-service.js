@@ -829,9 +829,12 @@ async function verifyApiKey(apiKey, provider = 'kie', customUrl = '') {
   }
 
   if (provider === 'suno_official') {
+    let cleanJwt = cleanKey;
+    const sessionMatch = cleanKey.match(/__session=([^;]+)/);
+    if (sessionMatch) cleanJwt = sessionMatch[1].trim();
     let payload = null;
     try {
-      const parts = cleanKey.split('.');
+      const parts = cleanJwt.split('.');
       if (parts.length >= 2) {
         const decoded = Buffer.from(parts[1], 'base64').toString('utf8');
         payload = JSON.parse(decoded);

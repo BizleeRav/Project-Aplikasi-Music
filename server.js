@@ -1005,19 +1005,17 @@ app.get('/api/suno/config', (req, res) => {
 app.post('/api/suno/config', async (req, res) => {
   try {
     const { suno_api_key, suno_provider = 'kie', suno_custom_url = '' } = req.body;
+    const ip = req.ip || req.connection?.remoteAddress || '';
+    const isLocal = !process.env.VERCEL || ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost' || ip.includes('10.') || ip.includes('192.168.') || ip.includes('172.');
     if (!suno_api_key || suno_api_key.trim().length === 0) {
-      const ip = req.ip || req.connection?.remoteAddress || '';
-      const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
-      if (isLocalhost) {
+      if (isLocal) {
         sunoService.saveConfig({ suno_api_key: '', suno_provider, suno_custom_url });
       }
       return res.json({ success: true, message: 'Kembali ke Suno Auto-Engine (Built-in)' });
     }
 
     const testResult = await sunoService.verifyApiKey(suno_api_key, suno_provider, suno_custom_url);
-    const ip = req.ip || req.connection?.remoteAddress || '';
-    const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
-    if (isLocalhost) {
+    if (isLocal) {
       sunoService.saveConfig({
         suno_api_key: suno_api_key.trim(),
         suno_provider,
@@ -1222,10 +1220,12 @@ app.post('/api/suno/connect-token', (req, res) => {
   if (!token || token.trim().length < 20) {
     return res.status(400).json({ success: false, error: 'Token tidak valid' });
   }
-  const cleanToken = token.trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '');
+  let cleanToken = token.trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '');
+  const sessionMatch = cleanToken.match(/__session=([^;]+)/);
+  if (sessionMatch) cleanToken = sessionMatch[1].trim();
   const ip = req.ip || req.connection?.remoteAddress || '';
-  const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
-  if (isLocalhost) {
+  const isLocal = !process.env.VERCEL || ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost' || ip.includes('10.') || ip.includes('192.168.') || ip.includes('172.');
+  if (isLocal) {
     sunoService.saveConfig({
       suno_api_key: cleanToken,
       suno_provider: 'suno_official'
