@@ -2102,28 +2102,6 @@ app.post('/api/user/taste', (req, res) => {
   }
 });
 
-// 10. System Clean-Slate Reset (Reset all songs, playlists, histories, creations & caches)
-app.post(['/api/system/reset-all-songs', '/api/reset-all-songs'], (req, res) => {
-  try {
-    playlistDb.resetAllPlaylists();
-    userDb.resetAllUserSongs();
-    sunoService.resetAllCreations();
-    homeData.clearHomeCaches();
-
-    // Reset playback.json
-    try {
-      const pPath = path.join(DATA_DIR, 'playback.json');
-      fs.writeFileSync(pPath, JSON.stringify({ currentTrack: null, queue: [], isPlaying: false, position: 0 }, null, 2), 'utf8');
-    } catch (e) {}
-
-    console.log('[System] Reset all songs executed successfully: playlists, history, favorites, suno creations, and caches cleared.');
-    res.json({ success: true, message: 'Semua lagu, riwayat, playlist, dan kreasi berhasil di-reset bersih.' });
-  } catch (err) {
-    console.error('[System] Reset error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 
 
 // ==========================================

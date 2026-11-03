@@ -280,20 +280,6 @@ function saveUserTaste(rawKey, tasteProfile) {
   return updateUserProfile(rawKey, { tasteProfile });
 }
 
-function resetAllUserSongs() {
-  const all = getAllUsers();
-  for (const u of Object.values(all)) {
-    if (u) {
-      u.favorites = [];
-      u.playHistory = [];
-      u.tasteProfile = null;
-    }
-  }
-  persistToDisk();
-  const repoFile = path.join(__dirname, 'data', 'users.json');
-  try { fs.writeFileSync(repoFile, JSON.stringify(all, null, 2), 'utf8'); } catch (e) {}
-}
-
 module.exports = {
   getUser,
   loginOrRegisterUser,
@@ -308,6 +294,5 @@ module.exports = {
   getActiveSession,
   setActiveSession,
   clearActiveSession,
-  normalizeUserKey,
-  resetAllUserSongs
+  normalizeUserKey
 };
