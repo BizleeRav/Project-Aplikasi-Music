@@ -656,26 +656,9 @@ class App {
             localStorage.setItem(this.getFavsStorageKey(), JSON.stringify(this.favorites));
           } catch (e) {}
         }
-        if (Array.isArray(data.user.playHistory)) {
-          try {
-            localStorage.setItem(this.getHistoryStorageKey(), JSON.stringify(data.user.playHistory));
-          } catch (e) {}
-        }
-        if (data.user.tasteProfile) {
-          try {
-            localStorage.setItem(this.getTasteStorageKey(), JSON.stringify(data.user.tasteProfile));
-          } catch (e) {}
-        }
       }
     } catch (err) {
       console.warn('Sync login to server DB error:', err);
-    }
-
-    // Refresh dynamic Home feed for this newly logged-in account
-    this.cachedSections = null;
-    this.cachedMoodData = null;
-    if (this.activeTab === 'home' || !this.activeTab) {
-      this.loadYTMHome('all');
     }
 
     // Reload user-isolated playlists from server
@@ -757,13 +740,6 @@ class App {
     if (window.sunoStudio) {
       window.sunoStudio.checkApiStatus();
       window.sunoStudio.fetchCreations(1, false);
-    }
-
-    // Invalidate cached home sections and reload Home for guest
-    this.cachedSections = null;
-    this.cachedMoodData = null;
-    if (this.activeTab === 'home' || !this.activeTab) {
-      this.loadYTMHome('all');
     }
 
     this.showToast(isEn ? 'Logged out from Google account' : 'Berhasil keluar dari akun Google', 'info');
@@ -4258,31 +4234,12 @@ class App {
   }
 
   // ==========================================
-  // PLAY HISTORY & TASTE HELPERS (MULTI-ACCOUNT ISOLATION)
+  // PLAY HISTORY & TASTE HELPERS
   // ==========================================
-  getHistoryStorageKey() {
-    if (this.currentUser && this.currentUser.email) {
-      return 'aurasound_play_history_usr_' + this.currentUser.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
-    }
-    return 'aurasound_play_history_guest';
-  }
-
-  getTasteStorageKey() {
-    if (this.currentUser && this.currentUser.email) {
-      return 'aurasound_chosen_taste_usr_' + this.currentUser.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
-    }
-    return 'aurasound_chosen_taste_guest';
-  }
-
   getPlayHistory() {
     try {
-      const scopedKey = this.getHistoryStorageKey();
-      const saved = localStorage.getItem(scopedKey);
+      const saved = localStorage.getItem('aurasound_play_history');
       if (saved) return JSON.parse(saved);
-      if (!this.currentUser) {
-        const legacy = localStorage.getItem('aurasound_play_history');
-        if (legacy) return JSON.parse(legacy);
-      }
     } catch (e) {}
     return [];
   }
@@ -4304,7 +4261,7 @@ class App {
         playedAt: Date.now()
       });
       if (history.length > 50) history = history.slice(0, 50);
-      localStorage.setItem(this.getHistoryStorageKey(), JSON.stringify(history));
+      localStorage.setItem('aurasound_play_history', JSON.stringify(history));
 
       // Persist to Server Database asynchronously
       try {
@@ -4348,16 +4305,14 @@ class App {
   hasChosenTaste() {
     let saved = null;
     try {
-      const scopedKey = this.getTasteStorageKey();
-      saved = JSON.parse(localStorage.getItem(scopedKey) || (!this.currentUser ? (localStorage.getItem('aurasound_chosen_taste') || localStorage.getItem('aurasound_taste_profile')) : null) || 'null');
+      saved = JSON.parse(localStorage.getItem('aurasound_chosen_taste') || localStorage.getItem('aurasound_taste_profile') || 'null');
     } catch (e) {}
     return !!(saved && Array.isArray(saved.genres) && saved.genres.length > 0);
   }
 
   getChosenTaste() {
     try {
-      const scopedKey = this.getTasteStorageKey();
-      return JSON.parse(localStorage.getItem(scopedKey) || (!this.currentUser ? (localStorage.getItem('aurasound_chosen_taste') || localStorage.getItem('aurasound_taste_profile')) : null) || 'null');
+      return JSON.parse(localStorage.getItem('aurasound_chosen_taste') || localStorage.getItem('aurasound_taste_profile') || 'null');
     } catch (e) {
       return null;
     }
@@ -4582,15 +4537,8 @@ class App {
         }
       }
 
-      // 2. Load live dynamic YouTube Music Home Feed (Strictly Isolated per User)
-      const userEmail = this.currentUser?.email || '';
-      const deviceId = this.getDeviceId();
-      const res = await fetch(`/api/home?mood=${encodeURIComponent(mood)}&user_email=${encodeURIComponent(userEmail)}&device_id=${encodeURIComponent(deviceId)}`, {
-        headers: {
-          'x-user-email': userEmail,
-          'x-device-id': deviceId
-        }
-      });
+      // 2. Load live dynamic YouTube Music Home Feed
+      const res = await fetch(`/api/home?mood=${encodeURIComponent(mood)}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to load home feed');
 
@@ -6040,55 +5988,6 @@ class App {
         </div>
       </section>
     `;
-
-    // =========================================================================
-    // 2.5 PUTAR LAGI / LISTEN AGAIN (16:9 Cinema Widescreen Cards - User Real History)
-    // =========================================================================
-    if (sections.listenAgain && sections.listenAgain.length > 0) {
-      html += `
-        <section class="aura-section-wrap">
-          <div class="aura-section-header-wrap">
-            <div class="aura-section-title-box">
-              <span class="aura-kicker-tag">${isEn ? 'PERSONAL REPLAY' : 'PUTAR LAGI'}</span>
-              <h2 class="aura-modern-section-title">${isEn ? 'Listen Again' : 'Putar Lagi'}</h2>
-            </div>
-            <div class="ytm-section-actions">
-              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-listen-again', 0)">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                ${isEn ? 'Play All' : 'Putar Semua'}
-              </button>
-              <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('listen-again', -1)" title="${isEn ? 'Previous' : 'Sebelumnya'}">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-              </button>
-              <button class="ytm-carousel-btn" onclick="window.app.scrollCarousel('listen-again', 1)" title="${isEn ? 'Next' : 'Berikutnya'}">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-              </button>
-            </div>
-          </div>
-
-          <div class="aura-cinema-carousel" id="carousel-listen-again">
-            ${sections.listenAgain.map((track, idx) => {
-              const isCurrent = this.currentTrack?.id === track.id;
-              return `
-                <div class="aura-cinema-card ${isCurrent ? 'is-playing' : ''}" onclick="window.app.playFromRegistry('ytm-listen-again', ${idx})">
-                  <div class="aura-cinema-thumb-wrap">
-                    <img src="${track.thumbnail}" alt="${track.title}" class="aura-cinema-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
-                    <div class="aura-cinema-overlay-play">
-                      <svg viewBox="0 0 24 24" width="32" height="32" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
-                    </div>
-                    <span class="aura-cinema-badge">${track.views || (isEn ? 'Recently Played' : 'Baru Saja Diputar')}</span>
-                  </div>
-                  <div class="aura-cinema-meta">
-                    <div class="aura-cinema-title" title="${track.title}">${track.title}</div>
-                    <div class="aura-cinema-artist">${this.renderArtistLinks(track.artist)}</div>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </section>
-      `;
-    }
 
     // =========================================================================
     // 3. RESONANSI MUSIK CEPAT (Elevated Glass Quick-Picks Grid)
