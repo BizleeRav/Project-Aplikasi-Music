@@ -7834,13 +7834,27 @@ class App {
       if (playPromise !== undefined) {
         playPromise.then(() => {
           this.updatePlayState(true);
+          if (window.audioEngine) window.audioEngine.resume();
         }).catch(e => {
-          console.warn('Native audio proxy play error, trying direct stream:', e);
-          this.nativeAudio.src = targetUrl;
-          this.nativeAudio.play().then(() => this.updatePlayState(true)).catch(err => {
-            console.error('Audio direct play error:', err);
+          console.warn('Native audio play error:', e.name, e.message);
+          if (e.name === 'NotAllowedError') {
+            this.showToast('Klik tombol Play untuk memulai pemutaran audio 🎵', 'info');
             this.updatePlayState(false);
-          });
+          } else {
+            // Retry with refreshed stream proxy once
+            setTimeout(() => {
+              if (this.currentTrack && this.currentTrack.id === track.id) {
+                this.nativeAudio.src = `${streamUrl}&_retry=${Date.now()}`;
+                this.nativeAudio.play().then(() => {
+                  this.updatePlayState(true);
+                  if (window.audioEngine) window.audioEngine.resume();
+                }).catch(err2 => {
+                  console.error('Retry play failed:', err2);
+                  this.updatePlayState(false);
+                });
+              }
+            }, 300);
+          }
         });
       }
 

@@ -753,7 +753,7 @@ class SunoStudio {
             </div>
           </div>
 
-          <div class="suno-card-body">
+          <div class="suno-card-body" onclick="window.sunoStudio.playClip('${track.id}')" style="cursor: pointer;">
             <h4 class="suno-card-title" title="${safeTitle}">${safeTitle}</h4>
             <div class="suno-card-tags" title="${this.escapeHtml(rawTags)}">
               ${safeTags}
@@ -903,6 +903,14 @@ class SunoStudio {
       track = this.formatTrackObject(clipIdOrTrack);
     }
     if (track && window.app && window.app.playTrack) {
+      if (Array.isArray(this.creations) && this.creations.length > 0) {
+        const fullQueue = this.creations.map(c => this.formatTrackObject(c.id));
+        const idx = fullQueue.findIndex(t => t.id === track.id);
+        if (idx !== -1) {
+          window.app.queue = fullQueue;
+          window.app.queueIndex = idx;
+        }
+      }
       window.app.playTrack(track);
       setTimeout(() => {
         if (typeof window.app.openStudioCinema === 'function') {
