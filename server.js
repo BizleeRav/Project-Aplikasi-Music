@@ -1073,8 +1073,30 @@ app.get('/api/suno/aligned-lyrics/:id', async (req, res) => {
     const clipId = req.params.id;
     const creds = getEffectiveSunoCredentials(req);
     const result = await sunoService.getAlignedLyrics(clipId, creds.key);
-    if (result && result.found) {
-      return res.json(result);
+    if (result && result.found && Array.isArray(result.parsedLyrics)) {
+      // Run Multi-Lingual Romanizer (Japanese Romaji, Chinese Pinyin, Korean Romaja)
+      const romanizer = getLyricsRomanizer();
+      const allCreations = sunoService.getCreations();
+      const trackMeta = allCreations.find(t => t.id === clipId);
+
+      const romanized = await romanizer.romanizeLyricsList(result.parsedLyrics, {
+        tags: trackMeta?.tags || '',
+        prompt: trackMeta?.prompt || '',
+        title: trackMeta?.title || ''
+      });
+
+      const hasRomaji = Boolean(
+        romanized.lines && romanized.lines.some(l => l.romaji || (Array.isArray(l.romajiWords) && l.romajiWords.length > 0))
+      );
+
+      return res.json({
+        found: true,
+        hasWordSync: result.hasWordSync,
+        hasRomaji,
+        detectedLang: romanized.detectedLang || null,
+        parsedLyrics: romanized.lines,
+        totalWords: result.totalWords
+      });
     }
     res.json({ found: false });
   } catch (err) {

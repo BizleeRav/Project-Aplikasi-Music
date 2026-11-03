@@ -2921,13 +2921,17 @@ class App {
 
             this.currentLyricsData = alignData.parsedLyrics;
             this.hasWordSync = Boolean(alignData.hasWordSync);
+            this.currentLyricsLang = alignData.detectedLang || null;
+            this.currentHasRomaji = Boolean(alignData.hasRomaji);
             track._parsedLyrics = alignData.parsedLyrics;
             track._lyricsType = 'synced';
             track._hasWordSync = this.hasWordSync;
+            track._lyricsLang = this.currentLyricsLang;
+            track._hasRomaji = this.currentHasRomaji;
             track._lyricsEngineVersion = 'v79';
             track._cachedForTrackId = trackId;
 
-            this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
+            this.displayLyricsList(this.currentLyricsData, 'synced', this.currentLyricsLang, this.currentHasRomaji, this.hasWordSync);
             const curTime = this.getCurrentPlaybackTime();
             this.updateActiveLyricsLine(curTime);
             return;
@@ -3227,10 +3231,21 @@ class App {
       this.cinemaLyricsBadge.style.display = 'inline-flex';
       if (type === 'synced') {
         if (this.currentTrack && this.currentTrack.type === 'suno') {
-          this.cinemaLyricsBadge.className = 'cinema-lyrics-badge suno';
-          this.cinemaLyricsBadge.innerHTML = this.hasWordSync
-            ? `<span class="badge-dot pulse"></span> ⚡ SUNO REALTIME WORD SYNC`
-            : `<span class="badge-dot pulse"></span> ⚡ SUNO MASTER SYNC`;
+          if (this.currentLyricsLang === 'ja') {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇯🇵 SUNO ROMAJI REALTIME SYNC`;
+          } else if (this.currentLyricsLang === 'ko') {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ko';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇰🇷 SUNO ROMAJA REALTIME SYNC`;
+          } else if (this.currentLyricsLang === 'zh') {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-zh';
+            this.cinemaLyricsBadge.innerHTML = `<span class="badge-dot pulse"></span> 🇨🇳 SUNO PINYIN REALTIME SYNC`;
+          } else {
+            this.cinemaLyricsBadge.className = 'cinema-lyrics-badge suno';
+            this.cinemaLyricsBadge.innerHTML = this.hasWordSync
+              ? `<span class="badge-dot pulse"></span> ⚡ SUNO REALTIME WORD SYNC`
+              : `<span class="badge-dot pulse"></span> ⚡ SUNO MASTER SYNC`;
+          }
         } else if (this.hasWordSync) {
           if (this.currentLyricsLang === 'ja') {
             this.cinemaLyricsBadge.className = 'cinema-lyrics-badge romaji-ja';

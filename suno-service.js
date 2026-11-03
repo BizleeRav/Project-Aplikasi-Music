@@ -94,15 +94,23 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
 
     let clips = [];
     const fetchWithToken = async (token) => {
-      const res = await axios.get('https://studio-api.prod.suno.com/api/feed/v2', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Cookie': `__session=${token}`,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        },
-        timeout: 12000
-      });
-      return res.data?.clips || res.data || [];
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Cookie': `__session=${token}`,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      };
+      let allClips = [];
+      try {
+        const r1 = await axios.get('https://studio-api.prod.suno.com/api/feed/v2?page=1', { headers, timeout: 12000 });
+        const c1 = r1.data?.clips || r1.data || [];
+        if (Array.isArray(c1)) allClips.push(...c1);
+      } catch(e) {}
+      try {
+        const r2 = await axios.get('https://studio-api.prod.suno.com/api/feed/v2?page=2', { headers, timeout: 12000 });
+        const c2 = r2.data?.clips || r2.data || [];
+        if (Array.isArray(c2)) allClips.push(...c2);
+      } catch(e) {}
+      return allClips;
     };
 
     if (cleanJwt && cleanJwt.length > 20) {
@@ -1646,6 +1654,34 @@ function parseAlignedLyricsFallback(rawLines) {
 }
 
 /**
+ * Parse CJK (Chinese / Japanese / Korean) native characters into character-by-character real-time synced lines
+ */
+function parseCjkAlignedLyrics(rawLines) {
+  if (!Array.isArray(rawLines) || rawLines.length === 0) return [];
+
+  return rawLines.map(l => {
+    const rawWords = l.words || [];
+    const words = rawWords.map(w => {
+      const txt = (w.text || '').trim();
+      return {
+        text: txt,
+        begin: Math.round(w.start_s * 1000) / 1000,
+        end: Math.round(w.end_s * 1000) / 1000,
+        trailingSpace: false
+      };
+    }).filter(w => w.text.length > 0);
+
+    return {
+      time: Math.round(l.start_s * 100) / 100,
+      endTime: Math.round(l.end_s * 100) / 100,
+      text: (l.text || '').trim(),
+      section: l.section || '',
+      words: words.length > 0 ? words : undefined
+    };
+  }).filter(l => l.text.length > 0 && !/^\s*\[(instrumental|solo|humming|guitar)[^\]]*\]\s*$/i.test(l.text) && !/^\s*\(instrumental[^)]*\)\s*$/i.test(l.text));
+}
+
+/**
  * Fetch Neural Word-by-Word Aligned Lyrics from Official Suno Feed
  */
 async function getAlignedLyrics(clipId, userToken = null) {
@@ -1682,12 +1718,31 @@ async function getAlignedLyrics(clipId, userToken = null) {
 
   try {
     const res = await axios.get(url, { headers, timeout: 10000 });
+    const rawLyrics = res.data?.aligned_lyrics || [];
+    const fullTextSample = rawLyrics.slice(0, 10).map(l => l.text || '').join(' ');
+    const isCjkScript = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(fullTextSample);
+
     let parsedLyrics = [];
-    if (Array.isArray(res.data?.aligned_words) && res.data.aligned_words.length > 0) {
-      parsedLyrics = parseAlignedWords(res.data.aligned_words);
+
+    if (isCjkScript && rawLyrics.length > 0) {
+      // For Chinese Hanzi & Japanese Kanji/Kana: aligned_lyrics gives character-by-character real-time karaoke!
+      parsedLyrics = parseCjkAlignedLyrics(rawLyrics);
+    } else {
+      // For Latin/Romaji/Pinyin/English: aligned_words gives clean, whole-word alignment without BPE fragmentation
+      if (Array.isArray(res.data?.aligned_words) && res.data.aligned_words.length > 0) {
+        parsedLyrics = parseAlignedWords(res.data.aligned_words);
+      }
+      if ((!parsedLyrics || parsedLyrics.length === 0) && rawLyrics.length > 0) {
+        parsedLyrics = parseAlignedLyricsFallback(rawLyrics);
+      }
     }
-    if ((!parsedLyrics || parsedLyrics.length === 0) && Array.isArray(res.data?.aligned_lyrics) && res.data.aligned_lyrics.length > 0) {
-      parsedLyrics = parseAlignedLyricsFallback(res.data.aligned_lyrics);
+
+    // Filter out meta instrumental prompt instructions that aren't real sung lyrics
+    if (Array.isArray(parsedLyrics)) {
+      parsedLyrics = parsedLyrics.filter(l =>
+        !/^\s*\[(instrumental|guitar solo|solo|humming|interlude|outro|intro)[^\]]*\]\s*$/i.test(l.text) &&
+        !/^\s*\(instrumental[^)]*\)\s*$/i.test(l.text)
+      );
     }
 
     if (Array.isArray(parsedLyrics) && parsedLyrics.length > 0) {
