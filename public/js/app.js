@@ -9311,17 +9311,13 @@ function initAppUpdateCheck() {
       if (res.ok) {
         const data = await res.json();
         if (data && data.android && data.android.versionCode > curCode) {
-          window.openAppUpdateModal(data.android);
+          if (window.app && typeof window.app.showToast === 'function') {
+            window.app.showToast('Pembaruan AuraSound v' + data.android.versionName + ' tersedia di Pengaturan.', 'info', 5000);
+          }
           return;
         }
       }
     } catch (err) {}
-
-    // Fallback: older APKs missing openSunoLogin bridge
-    const isLegacy = window.AuraSoundAndroid && typeof window.AuraSoundAndroid.openSunoLogin !== 'function';
-    if (isLegacy) {
-      window.openAppUpdateModal();
-    }
   }
 
   setTimeout(checkAndroidUpdate, 1500);

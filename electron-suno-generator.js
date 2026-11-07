@@ -166,13 +166,16 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
   console.log('[Suno Generator] Initializing authentic in-app generation on suno.com...');
   const sunoSession = session.fromPartition('persist:suno_auth_session');
 
-  // Silent in-background window: no window popups on user's screen during generation!
-  // backgroundThrottling: false ensures Chromium executes timers and DOM without freezing.
+  // Silent in-background window: positioned offscreen at -30000,-30000 with showInactive.
+  // 100% invisible to user, no taskbar item, no focus steal, full GPU compositor execution.
   const genWin = new BrowserWindow({
-    width: 600,
-    height: 740,
+    width: 1000,
+    height: 800,
+    x: -30000,
+    y: -30000,
     show: false,
     skipTaskbar: true,
+    focusable: false,
     title: 'Suno AI Studio Engine',
     autoHideMenuBar: true,
     webPreferences: {
@@ -184,20 +187,16 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
   });
 
   genWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
+  try {
+    genWin.showInactive();
+  } catch(e) {}
 
   let capturedAuth = null;
   let capturedClips = null;
   let serverErrorMessage = null;
-  let challengeShown = false;
-  let webRequestCaptchaRequired = false;
   const existingClipIds = new Set();
 
   try {
-    try {
-      sunoSession.webRequest.onCompleted({ urls: ['*://suno.com/a/api/c/check*'] }, () => {
-        webRequestCaptchaRequired = true;
-      });
-    } catch (e) {}
     // 1. Silent web navigation to https://suno.com/create without invasive CDP debuggers
     console.log('[Suno Generator] Loading https://suno.com/create silently in background...');
 
@@ -599,49 +598,13 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
         if (interceptRes?.clips && Array.isArray(interceptRes.clips) && interceptRes.clips.length > 0) {
           capturedClips = interceptRes.clips;
           console.log(`[Suno Generator] Captured ${capturedClips.length} clips directly from generate response!`);
-          if (challengeShown) genWin.hide();
           break;
         }
       } catch (ie) {
         if (ie.message && ie.message.includes('Suno Error:')) throw ie;
       }
 
-      // B. Check frame tree and DOM for Cloudflare Turnstile challenge
-      let turnstileDetected = false;
-      try {
-        const frames = genWin.webContents.mainFrame.frames;
-        if (frames.some(f => f.url && f.url.includes('challenges.cloudflare.com'))) {
-          turnstileDetected = true;
-        }
-      } catch (e) {}
-
-      if (webRequestCaptchaRequired) {
-        turnstileDetected = true;
-      }
-
-      if (!turnstileDetected) {
-        try {
-          turnstileDetected = await genWin.webContents.executeJavaScript(`
-            Boolean(window.__sunoCaptchaRequired === true || document.querySelector('iframe[src*="cloudflare"], iframe[src*="turnstile"]'))
-          `).catch(() => false);
-        } catch (e) {}
-      }
-
-      if (turnstileDetected && !challengeShown) {
-        challengeShown = true;
-        console.log('[Suno Generator] Cloudflare Turnstile challenge detected. Showing verification window for user...');
-        genWin.setTitle('AuraSound - Verifikasi Keamanan Suno AI');
-        genWin.setSize(520, 680);
-        genWin.center();
-        genWin.setAlwaysOnTop(true, 'floating');
-        genWin.show();
-        genWin.focus();
-        setTimeout(() => {
-          try { if (genWin && !genWin.isDestroyed()) genWin.setAlwaysOnTop(false); } catch(e) {}
-        }, 1000);
-      }
-
-      // C. Dynamically extract fresh token from in-page Clerk session if needed
+      // B. Dynamically extract fresh token from in-page Clerk session if needed
       try {
         const freshJwt = await genWin.webContents.executeJavaScript(`
           (async () => {
@@ -693,7 +656,6 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             if (newClips.length > 0) {
               capturedClips = newClips;
               console.log(`[Suno Generator] Successfully retrieved ${newClips.length} NEW clips from Suno feed!`);
-              if (challengeShown) genWin.hide();
               break;
             }
           }
@@ -704,9 +666,6 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     if (!capturedClips || capturedClips.length === 0) {
       if (serverErrorMessage) {
         throw new Error(`Suno: ${serverErrorMessage}`);
-      }
-      if (challengeShown) {
-        throw new Error('Verifikasi keamanan Suno belum selesai atau waktu tunggu habis. Silakan klik Generate kembali dan selesaikan verifikasi di jendela pop-up.');
       }
       throw new Error('Suno belum mengembalikan lagu baru. Pastikan akun Suno Anda masih memiliki kuota kredit (credits) yang mencukupi.');
     }

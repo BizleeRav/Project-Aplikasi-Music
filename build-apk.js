@@ -1145,41 +1145,7 @@ public class MainActivity extends Activity {
     }
 
     public void showSunoChallenge() {
-        runOnUiThread(() -> {
-            try {
-                if (sunoGenDialog == null || !sunoGenDialog.isShowing()) {
-                    sunoGenDialog = new Dialog(MainActivity.this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-                    LinearLayout challengeLayout = new LinearLayout(MainActivity.this);
-                    challengeLayout.setOrientation(LinearLayout.VERTICAL);
-                    challengeLayout.setBackgroundColor(Color.parseColor("#070a12"));
-
-                    Button btnCancel = new Button(MainActivity.this);
-                    btnCancel.setText("✕ Batal");
-                    btnCancel.setTextColor(Color.parseColor("#ef4444"));
-                    btnCancel.setBackgroundColor(Color.TRANSPARENT);
-                    btnCancel.setOnClickListener(v -> {
-                        if (sunoGenDialog != null) sunoGenDialog.dismiss();
-                        if (webView != null) {
-                            webView.evaluateJavascript("if (window.sunoStudio && window.sunoStudio.onAndroidGenerationError) { window.sunoStudio.onAndroidGenerationError('Verifikasi dibatalkan.'); }", null);
-                        }
-                    });
-                    challengeLayout.addView(btnCancel);
-
-                    if (genWebView != null) {
-                        if (genWebView.getParent() != null) {
-                            ((ViewGroup) genWebView.getParent()).removeView(genWebView);
-                        }
-                        genWebView.setAlpha(1.0f);
-                        genWebView.setVisibility(View.VISIBLE);
-                        challengeLayout.addView(genWebView, new LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                    }
-
-                    sunoGenDialog.setContentView(challengeLayout);
-                    sunoGenDialog.show();
-                }
-            } catch(Exception e) {}
-        });
+        // Silent background generation: no UI popup or dialog
     }
 
     public void generateSunoSongFlow(final String payloadJson) {
@@ -1322,13 +1288,6 @@ public class MainActivity extends Activity {
 
                     @Override
                     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                        if (request != null && request.getUrl() != null) {
-                            String reqUrl = request.getUrl().toString();
-                            if ((reqUrl.contains("challenges.cloudflare.com") || reqUrl.contains("/turnstile/"))
-                                    && !reqUrl.endsWith("api.js") && !reqUrl.contains("render=explicit")) {
-                                showSunoChallenge();
-                            }
-                        }
                         return super.shouldInterceptRequest(view, request);
                     }
 

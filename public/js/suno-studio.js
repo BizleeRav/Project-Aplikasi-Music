@@ -1327,15 +1327,10 @@ class SunoStudio {
       this.renderRecentPreview();
       await this.checkApiStatus();
 
-      // Automatically play newly generated song right inside the app & open Studio Cinema!
+      // Automatically play newly generated song right inside the app
       const createdTrack = clips[0];
       if (createdTrack && createdTrack.id) {
         this.playClip(createdTrack);
-        setTimeout(() => {
-          if (window.app && typeof window.app.openStudioCinema === 'function') {
-            window.app.openStudioCinema();
-          }
-        }, 300);
       }
     } catch (err) {
       clearTimeout(timer1);
