@@ -166,17 +166,17 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
   console.log('[Suno Generator] Initializing authentic in-app generation on suno.com...');
   const sunoSession = session.fromPartition('persist:suno_auth_session');
 
-  // Silent in-background window: positioned offscreen at -30000,-30000 with showInactive.
-  // 100% invisible to user, no taskbar item, no focus steal, full GPU compositor execution.
+  // Silent in-background window: positioned offscreen by default.
+  // Only displayed if Suno actively requires interactive human verification.
   const genWin = new BrowserWindow({
-    width: 1000,
-    height: 800,
+    width: 480,
+    height: 520,
     x: -30000,
     y: -30000,
     show: false,
     skipTaskbar: true,
-    focusable: false,
-    title: 'Suno AI Studio Engine',
+    focusable: true,
+    title: 'Verifikasi Suno AI (Verify you are human)',
     autoHideMenuBar: true,
     webPreferences: {
       session: sunoSession,
@@ -572,13 +572,17 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     // Record submission timestamp
     const clickTimeMs = Date.now();
 
-    // 6. Poll for newly created clips in Suno's active feed (up to 60s)
+    // 6. Poll for newly created clips in Suno's active feed (fast, responsive)
     console.log('[Suno Generator] Awaiting newly created song clips from Suno...');
 
-    for (let wait = 0; wait < 30; wait++) {
-      if (capturedClips && capturedClips.length > 0) break;
+    let challengeShown = false;
+    for (let wait = 0; wait < 18; wait++) {
+      if (capturedClips && capturedClips.length > 0) {
+        try { genWin.hide(); } catch(e) {}
+        break;
+      }
 
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 1400));
 
       // A. Check in-page intercepted generate response or error
       try {
@@ -587,18 +591,32 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             return {
               clips: window.__sunoGenClips,
               error: window.__sunoGenError,
-              captchaRequired: window.__sunoCaptchaRequired
+              captchaRequired: window.__sunoCaptchaRequired,
+              hasTurnstileIframe: Boolean(document.querySelector('iframe[src*="cloudflare"], iframe[src*="turnstile"], div[id*="turnstile"]'))
             };
           })()
         `);
         if (interceptRes?.error) {
           serverErrorMessage = interceptRes.error;
+          try { genWin.hide(); } catch(e) {}
           throw new Error(`Suno Error: ${interceptRes.error}`);
         }
         if (interceptRes?.clips && Array.isArray(interceptRes.clips) && interceptRes.clips.length > 0) {
           capturedClips = interceptRes.clips;
           console.log(`[Suno Generator] Captured ${capturedClips.length} clips directly from generate response!`);
+          try { genWin.hide(); } catch(e) {}
           break;
+        }
+
+        // Show verification window only if interactive challenge is actively required
+        if ((interceptRes?.captchaRequired === true || interceptRes?.hasTurnstileIframe) && !challengeShown) {
+          challengeShown = true;
+          console.log('[Suno Generator] Human verification required by Suno. Displaying verification window to user...');
+          genWin.setSize(480, 520);
+          genWin.center();
+          genWin.setAlwaysOnTop(true);
+          genWin.show();
+          genWin.focus();
         }
       } catch (ie) {
         if (ie.message && ie.message.includes('Suno Error:')) throw ie;
@@ -664,6 +682,9 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     }
 
     if (!capturedClips || capturedClips.length === 0) {
+      if (challengeShown) {
+        throw new Error('Verifikasi Suno AI ("Verify you are human") belum selesai atau waktu habis.');
+      }
       if (serverErrorMessage) {
         throw new Error(`Suno: ${serverErrorMessage}`);
       }

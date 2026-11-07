@@ -741,6 +741,9 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.view.Window;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 
 public class MainActivity extends Activity {
     public static MainActivity instance;
@@ -1145,7 +1148,66 @@ public class MainActivity extends Activity {
     }
 
     public void showSunoChallenge() {
-        // Silent background generation: no UI popup or dialog
+        runOnUiThread(() -> {
+            try {
+                if (sunoGenDialog == null || !sunoGenDialog.isShowing()) {
+                    sunoGenDialog = new Dialog(MainActivity.this);
+                    sunoGenDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+                    if (sunoGenDialog.getWindow() != null) {
+                        sunoGenDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                    }
+
+                    LinearLayout root = new LinearLayout(MainActivity.this);
+                    root.setOrientation(LinearLayout.VERTICAL);
+                    root.setPadding(40, 32, 40, 32);
+                    GradientDrawable bg = new GradientDrawable();
+                    bg.setColor(Color.parseColor("#121826"));
+                    bg.setCornerRadius(36f);
+                    bg.setStroke(2, Color.parseColor("#2a354d"));
+                    root.setBackground(bg);
+
+                    TextView titleTv = new TextView(MainActivity.this);
+                    titleTv.setText("Verifikasi Suno AI");
+                    titleTv.setTextColor(Color.WHITE);
+                    titleTv.setTextSize(16f);
+                    titleTv.setTypeface(null, Typeface.BOLD);
+                    titleTv.setPadding(0, 0, 0, 8);
+                    root.addView(titleTv);
+
+                    TextView subTv = new TextView(MainActivity.this);
+                    subTv.setText("Centang 'Verify you are human' untuk membuat lagu:");
+                    subTv.setTextColor(Color.parseColor("#94a3b8"));
+                    subTv.setTextSize(13f);
+                    subTv.setPadding(0, 0, 0, 20);
+                    root.addView(subTv);
+
+                    if (genWebView != null) {
+                        if (genWebView.getParent() != null) {
+                            ((ViewGroup) genWebView.getParent()).removeView(genWebView);
+                        }
+                        genWebView.setAlpha(1.0f);
+                        genWebView.setVisibility(View.VISIBLE);
+                        root.addView(genWebView, new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, 550));
+                    }
+
+                    Button btnCancel = new Button(MainActivity.this);
+                    btnCancel.setText("✕ Batal");
+                    btnCancel.setTextColor(Color.parseColor("#ef4444"));
+                    btnCancel.setBackgroundColor(Color.TRANSPARENT);
+                    btnCancel.setOnClickListener(v -> {
+                        if (sunoGenDialog != null) sunoGenDialog.dismiss();
+                        if (webView != null) {
+                            webView.evaluateJavascript("if (window.sunoStudio && window.sunoStudio.onAndroidGenerationError) { window.sunoStudio.onAndroidGenerationError('Verifikasi dibatalkan.'); }", null);
+                        }
+                    });
+                    root.addView(btnCancel);
+
+                    sunoGenDialog.setContentView(root);
+                    sunoGenDialog.show();
+                }
+            } catch(Exception e) {}
+        });
     }
 
     public void generateSunoSongFlow(final String payloadJson) {
@@ -1478,13 +1540,13 @@ public class MainActivity extends Activity {
             + "    createBtn.click();"
             + "    var clickTimeMs = Date.now();"
             + "    var captured = null;"
-            + "    for (var w = 0; w < 32; w++) {"
-            + "      await new Promise(function(r) { setTimeout(r, 2500); });"
+            + "    for (var w = 0; w < 18; w++) {"
+            + "      await new Promise(function(r) { setTimeout(r, 1400); });"
             + "      if (window.__androidCapturedClips && window.__androidCapturedClips.length > 0) {"
             + "        captured = window.__androidCapturedClips;"
             + "        break;"
             + "      }"
-            + "      var turnstile = document.querySelector('iframe[src*=cloudflare], iframe[src*=turnstile]');"
+            + "      var turnstile = document.querySelector('iframe[src*=cloudflare], iframe[src*=turnstile], div[id*=turnstile]');"
             + "      if (turnstile && window.AndroidSunoHost && typeof window.AndroidSunoHost.onChallengeRequired === 'function') {"
             + "        window.AndroidSunoHost.onChallengeRequired();"
             + "      }"
