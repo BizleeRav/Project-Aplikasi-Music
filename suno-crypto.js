@@ -162,11 +162,15 @@ async function streamDecryptedSunoAudio(req, res, clipId, targetUrl) {
   }
 
   const rangeHeader = req.headers.range;
+  const isDownload = req.query && (req.query.download === '1' || req.query.download === 'true');
+
+  res.setHeader('Content-Type', 'audio/mp4');
+  res.setHeader('Accept-Ranges', 'bytes');
 
   let start = 0;
   let end = totalLength > 0 ? totalLength - 1 : 4638890;
 
-  if (rangeHeader) {
+  if (rangeHeader && !isDownload) {
     const parts = rangeHeader.replace(/bytes=/, '').split('-');
     start = parseInt(parts[0], 10) || 0;
     if (parts[1]) {
@@ -189,6 +193,29 @@ async function streamDecryptedSunoAudio(req, res, clipId, targetUrl) {
 
     const decryptedChunk = await decryptAudioRange(clipId, start, end, fetchUrl);
     return res.end(decryptedChunk);
+  }
+
+  if (rangeHeader && isDownload) {
+    const parts = rangeHeader.replace(/bytes=/, '').split('-');
+    start = parseInt(parts[0], 10) || 0;
+    if (parts[1]) {
+      end = Math.min(totalLength - 1, parseInt(parts[1], 10));
+    }
+    const totalRangeLen = end - start + 1;
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${totalLength}`);
+    res.setHeader('Content-Length', totalRangeLen);
+
+    let current = start;
+    const chunkSize = 512 * 1024;
+    while (current <= end) {
+      if (res.writableEnded || res.destroyed) break;
+      const chunkEnd = Math.min(end, current + chunkSize - 1);
+      const chunk = await decryptAudioRange(clipId, current, chunkEnd, fetchUrl);
+      res.write(chunk);
+      current = chunkEnd + 1;
+    }
+    return res.end();
   }
 
   // Full file stream (e.g. for fetch() or direct download)

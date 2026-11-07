@@ -150,6 +150,9 @@ async function createMainWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    if (typeof global.destroyWarmSunoEngine === 'function') {
+      global.destroyWarmSunoEngine();
+    }
     app.quit();
   });
 
@@ -404,6 +407,13 @@ ipcMain.handle('open-suno-login', async () => {
           mainWindow.webContents.send('suno-token-captured', token);
         }
 
+        // Pre-warm Suno engine with newly authenticated session
+        if (typeof global.initWarmSunoEngine === 'function') {
+          setTimeout(() => {
+            global.initWarmSunoEngine({ forceReload: true }).catch(() => {});
+          }, 800);
+        }
+
         // Close all child popup windows & login window automatically!
         for (const cw of childWindows) {
           try {
@@ -442,6 +452,9 @@ ipcMain.on('restart-app', () => {
 
 global.clearSunoElectronSession = async () => {
   try {
+    if (typeof global.destroyWarmSunoEngine === 'function') {
+      global.destroyWarmSunoEngine();
+    }
     const sunoSession = session.fromPartition('persist:suno_auth_session');
     await sunoSession.clearStorageData({
       storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage', 'serviceworkers']
@@ -539,9 +552,23 @@ global.getFreshSunoToken = async () => {
   }
 };
 
+let warmEngineBootstrapped = false;
+
 async function checkSunoSessionCookies() {
-  await global.getFreshSunoToken();
+  const tok = await global.getFreshSunoToken();
+  if (tok && !warmEngineBootstrapped && typeof global.initWarmSunoEngine === 'function') {
+    warmEngineBootstrapped = true;
+    setTimeout(() => {
+      global.initWarmSunoEngine().catch(() => {});
+    }, 1500);
+  }
 }
+
+app.on('before-quit', () => {
+  if (typeof global.destroyWarmSunoEngine === 'function') {
+    global.destroyWarmSunoEngine();
+  }
+});
 
 app.whenReady().then(() => {
   setTimeout(checkSunoSessionCookies, 2000);

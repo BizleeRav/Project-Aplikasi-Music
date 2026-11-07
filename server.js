@@ -1059,7 +1059,12 @@ app.post('/api/suno/config', async (req, res) => {
             secure: true,
             httpOnly: false,
             sameSite: 'lax'
-          }).then(() => sunoSession.cookies.flushStore()).catch(() => {});
+          }).then(() => {
+            sunoSession.cookies.flushStore().catch(() => {});
+            if (typeof global.initWarmSunoEngine === 'function') {
+              setTimeout(() => global.initWarmSunoEngine({ forceReload: true }).catch(() => {}), 800);
+            }
+          }).catch(() => {});
         } catch (e) {}
       }
     }
@@ -1167,10 +1172,10 @@ app.post('/api/suno/generate', async (req, res) => {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
 
-    const hasCustomKey = Boolean(creds.key && creds.key.length >= 20);
+    const hasCustomKey = Boolean(creds.key && creds.key.length >= 6);
 
-    // Check device-isolated credits if using built-in system engine
-    if (!hasCustomKey) {
+    // Check device-isolated credits if using built-in system engine without an active Electron session
+    if (!hasCustomKey && !(isLocalhost && typeof global.generateWithSunoBrowser === 'function')) {
       const quota = deviceCredits.getDeviceCredits(deviceId, isLocalhost);
       if (quota.credits < deviceCredits.COST_PER_SONG) {
         return res.status(403).json({
@@ -1188,7 +1193,7 @@ app.post('/api/suno/generate', async (req, res) => {
       lyrics,
       model: model || 'v6-mini',
       apiKey: hasCustomKey ? creds.key : null,
-      provider: hasCustomKey ? creds.provider : 'auto',
+      provider: hasCustomKey ? creds.provider : (isLocalhost ? 'suno_official' : 'auto'),
       deviceId: deviceId
     });
 
@@ -1285,7 +1290,12 @@ app.post('/api/suno/connect-token', (req, res) => {
         secure: true,
         httpOnly: false,
         sameSite: 'lax'
-      }).then(() => sunoSession.cookies.flushStore()).catch(() => {});
+      }).then(() => {
+        sunoSession.cookies.flushStore().catch(() => {});
+        if (typeof global.initWarmSunoEngine === 'function') {
+          setTimeout(() => global.initWarmSunoEngine({ forceReload: true }).catch(() => {}), 800);
+        }
+      }).catch(() => {});
     } catch (e) {}
     if (typeof sunoLoginHelper.notifyTokenCaptured === 'function') {
       sunoLoginHelper.notifyTokenCaptured(cleanToken);
@@ -1376,6 +1386,17 @@ app.get('/api/proxy-audio', async (req, res) => {
   // Security Suite: SSRF Firewall verification
   if (!security.isSafeAudioUrl(targetUrl)) {
     return res.status(403).send('Akses audio ditolak oleh Security Firewall (Invalid Origin / SSRF Protection).');
+  }
+
+  const isDownload = req.query.download === '1' || req.query.download === 'true';
+  if (isDownload) {
+    const rawTitle = String(req.query.title || 'AuraSound_Song').trim();
+    const cleanTitle = (rawTitle.replace(/[<>:"/\\|?*\x00-\x1F]/g, '').replace(/\s+/g, ' ').trim() || 'AuraSound_Song').slice(0, 100);
+    const asciiTitle = (cleanTitle.replace(/[^\x20-\x7E]/g, '').replace(/["\\]/g, '').trim() || 'AuraSound_Song');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${asciiTitle}.m4a"; filename*=UTF-8''${encodeURIComponent(cleanTitle)}.m4a`
+    );
   }
 
   // Suno AI Audio Auto-Decryption Engine (Genuine Hi-Fi Decryption with HTTP 206 Range seeking)
