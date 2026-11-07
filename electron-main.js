@@ -436,7 +436,26 @@ ipcMain.on('restart-app', () => {
 });
 
 
-async function checkSunoSessionCookies() {
+global.clearSunoElectronSession = async () => {
+  try {
+    const sunoSession = session.fromPartition('persist:suno_auth_session');
+    await sunoSession.clearStorageData({
+      storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage', 'serviceworkers']
+    });
+    await sunoSession.cookies.flushStore().catch(() => {});
+    console.log('[Electron Main] Suno electron session cleared successfully.');
+    return { success: true };
+  } catch (err) {
+    console.warn('[Electron Main] Error clearing Suno session:', err?.message || err);
+    return { success: false, error: err?.message || err };
+  }
+};
+
+ipcMain.handle('clear-suno-session', async () => {
+  return await global.clearSunoElectronSession();
+});
+
+global.getFreshSunoToken = async () => {
   try {
     const sunoSession = session.fromPartition('persist:suno_auth_session');
     const cookies = await sunoSession.cookies.get({});
@@ -448,7 +467,7 @@ async function checkSunoSessionCookies() {
         const parts = sessCookie.value.split('.');
         if (parts.length >= 2) {
           const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-          if (payload?.exp && Date.now() < (payload.exp - 60) * 1000) {
+          if (payload?.exp && (payload.exp - 30) > Date.now() / 1000) {
             token = sessCookie.value;
           }
         }
@@ -494,20 +513,30 @@ async function checkSunoSessionCookies() {
     }
 
     if (token) {
-      const sunoService = require('./suno-service');
-      const cfg = sunoService.getConfig();
-      if (!cfg.suno_api_key || cfg.suno_api_key !== token) {
-        sunoService.saveConfig({
-          suno_api_key: token,
-          suno_provider: 'suno_official'
-        });
-        // syncOfficialFeed removed
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('suno-token-captured', token);
+      try {
+        const sunoService = require('./suno-service');
+        const cfg = sunoService.getConfig();
+        if (!cfg.suno_api_key || cfg.suno_api_key !== token) {
+          sunoService.saveConfig({
+            suno_api_key: token,
+            suno_provider: 'suno_official'
+          });
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('suno-token-captured', token);
+          }
         }
-      }
+      } catch (e) {}
+      return token;
     }
-  } catch (e) {}
+    return null;
+  } catch (err) {
+    console.warn('[Electron Main] Error in getFreshSunoToken:', err?.message || err);
+    return null;
+  }
+};
+
+async function checkSunoSessionCookies() {
+  await global.getFreshSunoToken();
 }
 
 app.whenReady().then(() => {

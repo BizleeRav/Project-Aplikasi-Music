@@ -4,17 +4,168 @@ const axios = require('axios');
 const CHROME_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
 /**
- * Executes authentic song generation inside Electron's authenticated Suno session.
- * Connects directly to the user's official Suno account (ravenstars), handles
- * modern Lexical and Simple mode inputs, and presents a clean, visible window so
- * Cloudflare Turnstile bot verification passes naturally and the user can solve it if prompted.
+ * Detect whether input text is a musical prompt instruction / style description
+ * rather than actual singable lyrics
  */
-async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instrumental, model }) {
+function isPromptInstruction(text) {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.toLowerCase();
+
+  const signals = [
+    'vocal arrangement', 'instruments:', 'instrument:', 'begin with', 'gradually introduce',
+    'create a magical atmosphere', 'melodic progression', 'no rock', 'no rap',
+    'no electronic', 'high-quality', 'must remain', 'soundtrack', 'orchestral choir',
+    'female lead vocalist', 'male and female choir', 'french horns', 'woodwinds',
+    'percussion', 'timpani', 'cinematic drums', 'tempo', 'bpm', 'acoustic guitar, warm',
+    '140 bpm', '125 bpm', 'mastering', 'production', 'symphonic metal', 'duet chorus',
+    'folk ensemble', 'section 1', 'section 2', 'vocal structure', 'female solo', 'male solo',
+    'lead vocal', 'lead vocalist', 'acoustic guitar and accordion', 'whimsical', 'european folk',
+    'folk dance', 'only one female', 'structure:'
+  ];
+
+  let matches = 0;
+  for (const s of signals) {
+    if (t.includes(s)) matches++;
+  }
+  if (matches >= 2) return true;
+  if (t.includes('vocal arrangement:') || t.includes('instruments:') || t.includes('vocal arrangement') || t.includes('vocal structure')) return true;
+  if (/section \d+/i.test(t) && (t.includes('solo') || t.includes('instruments') || t.includes('ensemble') || t.includes('tempo') || t.includes('vocal'))) return true;
+
+  const hasLyricMarkers = /\[(verse|chorus|intro|bridge|outro|pre-chorus|hook)/i.test(text);
+  if (!hasLyricMarkers) {
+    if (t.includes('lagu ') || t.includes('tentang ') || t.includes('bertemakan ') || t.includes('gaya musik ') || t.includes('soundtrack')) {
+      return true;
+    }
+    if (t.includes('cinematic') && (t.includes('vocals') || t.includes('soundtrack') || t.includes('orchestral') || t.includes('choir'))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Transforms complex musical/vocal arrangement instructions (>450 chars)
+ * into rich Style of Music tags (<950 chars) and clean Suno vocal meta-tags
+ * so Suno NEVER sings instruction text word-for-word!
+ */
+function processArrangementInstruction(promptText, tags, title) {
+  const lines = (promptText || '').split('\n');
+  const styleLines = [];
+  const lyricStructure = [];
+  let currentSection = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    // Detect section headers (e.g. "Section 1 — FEMALE SOLO: ...", "[Chorus: Full Choir]")
+    const sectionMatch = line.match(/^(?:\[?(?:section\s*\d+|verse\s*\d*|chorus\s*\d*|intro|outro|bridge|hook|solo|pre-chorus)[^\]\n:]*\]?)(?:\s*[:—\-]\s*(.*))?$/i);
+    if (sectionMatch) {
+      let tag = line.replace(/^[\[\s]+|[\]\s]+$/g, '').trim();
+      tag = tag.replace(/—|\-/g, ':').replace(/\s+/g, ' ');
+      currentSection = `[${tag}]`;
+      lyricStructure.push(currentSection);
+      if (sectionMatch[1]) {
+        const remainder = sectionMatch[1].trim();
+        if (isPromptInstruction(remainder)) {
+          styleLines.push(remainder);
+        } else {
+          lyricStructure.push(remainder);
+        }
+      }
+      continue;
+    }
+
+    if (isPromptInstruction(line) || /^(instruments?|vocal|tempo|bpm|mood|production|arrangement|style):/i.test(line)) {
+      styleLines.push(line.replace(/^(instruments?|vocal arrangement|style|mood):/i, '').trim());
+    } else {
+      if (currentSection) {
+        lyricStructure.push(line);
+      } else {
+        styleLines.push(line);
+      }
+    }
+  }
+
+  const combinedStyle = [tags, ...styleLines].filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 950);
+  let lyricText = lyricStructure.join('\n');
+  if (!lyricText || lyricText.trim().length === 0) {
+    lyricText = `[Intro: Instrumental Hook]\n\n[Section 1: Lead Solo]\n\n[Section 2: Dynamic Ensemble]\n\n[Chorus: Full Harmony]\n\n[Outro: Melodic Fade]`;
+  }
+
+  return {
+    style: combinedStyle,
+    lyrics: lyricText
+  };
+}
+
+/**
+ * Fetch Suno clips by IDs directly using Electron authenticated session
+ */
+global.fetchSunoClipsByIds = async (ids) => {
+  try {
+    const sunoSession = session.fromPartition('persist:suno_auth_session');
+    const idArray = Array.isArray(ids) ? ids : (typeof ids === 'string' ? ids.split(',').map(s => s.trim()).filter(Boolean) : []);
+    if (idArray.length === 0) return [];
+
+    let token = null;
+    if (typeof global.getFreshSunoToken === 'function') {
+      token = await global.getFreshSunoToken();
+    }
+    if (!token) {
+      const cookies = await sunoSession.cookies.get({ name: '__session' });
+      token = cookies?.[0]?.value;
+    }
+    if (!token) return [];
+
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Cookie': `__session=${token}`,
+      'Content-Type': 'application/json',
+      'Origin': 'https://suno.com',
+      'Referer': 'https://suno.com/',
+      'User-Agent': CHROME_DESKTOP_UA
+    };
+
+    try {
+      const res = await axios.get(`https://studio-api.prod.suno.com/api/feed/v2?ids=${idArray.join(',')}`, {
+        headers,
+        timeout: 8000
+      });
+      const clips = Array.isArray(res.data) ? res.data : (res.data?.clips || res.data?.data?.clips || []);
+      if (clips.length > 0) return clips;
+    } catch (e) {}
+
+    try {
+      const feedRes = await axios.post('https://suno.com/a/api/feed/v3', {
+        cursor: null,
+        limit: 20
+      }, {
+        headers,
+        timeout: 8000
+      });
+      const allClips = feedRes.data?.clips || [];
+      const idSet = new Set(idArray);
+      const matched = allClips.filter(c => idSet.has(c.id));
+      if (matched.length > 0) return matched;
+    } catch (e2) {}
+
+    return [];
+  } catch (err) {
+    console.warn('[fetchSunoClipsByIds] Error:', err.message);
+    return [];
+  }
+};
+
+/**
+ * Executes authentic song generation inside Electron's authenticated Suno session.
+ * Handles Simple, Custom Lyrics, and Arrangement modes accurately on suno.com/create.
+ */
+async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instrumental, model, isArrangementInstruction, rawPrompt, rawLyrics }) {
   console.log('[Suno Generator] Initializing authentic in-app generation on suno.com...');
   const sunoSession = session.fromPartition('persist:suno_auth_session');
 
-  // Show a visible, focused window so Cloudflare Turnstile treats it as a genuine user session.
-  // When visible, Turnstile usually passes automatically, or the user can click "Verify you are human" directly.
   const genWin = new BrowserWindow({
     width: 600,
     height: 740,
@@ -35,6 +186,7 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
   let capturedAuth = null;
   let capturedClips = null;
   let serverErrorMessage = null;
+  const existingClipIds = new Set();
   const pendingRequests = new Map();
 
   // Pre-seed capturedAuth with existing token if valid
@@ -87,9 +239,12 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
                   try {
                     const parsed = JSON.parse(bodyRes.body);
                     if (parsed.clips && Array.isArray(parsed.clips) && parsed.clips.length > 0) {
-                      capturedClips = parsed.clips;
-                      console.log(`[Suno Generator] Successfully captured ${capturedClips.length} clips directly from generate response!`);
-                      genWin.hide();
+                      const newClips = parsed.clips.filter(c => !existingClipIds.has(c.id));
+                      if (newClips.length > 0) {
+                        capturedClips = newClips;
+                        console.log(`[Suno Generator] Successfully captured ${capturedClips.length} NEW clips directly from generate response!`);
+                        genWin.hide();
+                      }
                     } else if (parsed.detail || parsed.detail_fallback || parsed.message) {
                       serverErrorMessage = parsed.detail || parsed.detail_fallback || parsed.message;
                       console.warn('[Suno Generator] Suno API returned message:', serverErrorMessage);
@@ -102,14 +257,10 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
                   try {
                     const parsed = JSON.parse(bodyRes.body);
                     if (parsed.clips && Array.isArray(parsed.clips) && parsed.clips.length > 0) {
-                      const now = Date.now();
-                      const recent = parsed.clips.filter(c => {
-                        const t = new Date(c.created_at).getTime();
-                        return (now - t) < 60000;
-                      });
-                      if (recent.length > 0) {
-                        capturedClips = recent;
-                        console.log(`[Suno Generator] Feed listener captured ${recent.length} recent clips!`);
+                      const newClips = parsed.clips.filter(c => !existingClipIds.has(c.id));
+                      if (newClips.length > 0) {
+                        capturedClips = newClips;
+                        console.log(`[Suno Generator] Feed listener captured ${newClips.length} NEW clips!`);
                         genWin.hide();
                       }
                     }
@@ -155,86 +306,50 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     // Wait 2 seconds for initial session cookies & page hydration
     await new Promise(r => setTimeout(r, 2000));
 
-    // Determine input mode: Custom lyrics vs Theme prompt
-    const rawText = (lyrics || prompt || '').trim();
-    const hasVerseMarkers = /\[(verse|chorus|intro|bridge|outro|hook|pre-chorus)/i.test(rawText);
-    const isCustomLyrics = Boolean(hasVerseMarkers || (lyrics && lyrics.trim().length > 25 && lyrics.includes('\n')));
-
-    let actualLyrics = (lyrics || '').trim();
-    if (!actualLyrics && !make_instrumental && isCustomLyrics) {
-      actualLyrics = rawText;
-    }
-
-    const genPayload = {
-      isCustomLyrics: Boolean(actualLyrics),
-      title: (title || '').trim(),
-      lyrics: actualLyrics,
-      prompt: rawText,
-      tags: (tags || '').trim(),
-      make_instrumental: Boolean(make_instrumental)
-    };
-
-    console.log('[Suno Generator] Filling form mode:', genPayload.isCustomLyrics ? 'Advanced' : 'Simple');
-
-    // 4. Fill form inputs
-    if (genPayload.isCustomLyrics) {
-      // ADVANCED MODE: Set Lyrics, Styles, and Title
-      await genWin.webContents.executeJavaScript(`
+    // Pre-record existing clip IDs to strictly avoid false positive captures
+    try {
+      const initClips = await genWin.webContents.executeJavaScript(`
         (async () => {
-          function setNativeValue(el, val) {
-            if (!el) return;
-            el.focus();
-            const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-            if (setter) setter.call(el, val);
-            else el.value = val;
-            el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-          }
-
-          // Switch to Advanced tab if not active
-          const btns = Array.from(document.querySelectorAll('button, [role="tab"]'));
-          const advBtn = btns.find(b => (b.innerText || '').trim() === 'Advanced');
-          if (advBtn) {
-            advBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-            advBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-            advBtn.click();
-            await new Promise(r => setTimeout(r, 600));
-          }
-
-          // Focus lyrics editor
-          const lyricsBox = document.querySelector('.lyrics-editor-content, div[aria-label="Lyrics editor"]');
-          if (lyricsBox) lyricsBox.focus();
-
-          // Set Styles
-          const tas = Array.from(document.querySelectorAll('textarea'));
-          const styleBox = tas.find(t => {
-            const ph = (t.placeholder || '').toLowerCase();
-            return ph.includes('battle rap') || ph.includes('electro dance') || ph.includes('darkwave') || ph.includes('style');
-          }) || tas[1] || tas[0];
-          if (styleBox && ${JSON.stringify(genPayload.tags || genPayload.prompt)}) {
-            setNativeValue(styleBox, ${JSON.stringify(genPayload.tags || genPayload.prompt)});
-          }
-
-          // Set Title
-          const inputs = Array.from(document.querySelectorAll('input'));
-          const titleInput = inputs.find(i => {
-            const ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase();
-            return ph.includes('title') || ph.includes('judul');
-          });
-          if (titleInput && ${JSON.stringify(genPayload.title)}) {
-            setNativeValue(titleInput, ${JSON.stringify(genPayload.title)});
+          try {
+            const res = await fetch('https://suno.com/a/api/feed/v3', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cursor: null, limit: 30 })
+            });
+            const d = await res.json();
+            return (d.clips || []).map(c => c.id);
+          } catch (e) {
+            return [];
           }
         })()
-      `);
-
-      // Use Chromium's native text insertion for Lexical rich-text lyrics editor
-      if (actualLyrics) {
-        await genWin.webContents.insertText(actualLyrics);
-        await new Promise(r => setTimeout(r, 500));
+      `).catch(() => []);
+      if (Array.isArray(initClips)) {
+        initClips.forEach(id => existingClipIds.add(id));
+        console.log(`[Suno Generator] Recorded ${existingClipIds.size} existing clips in Suno account before generation.`);
       }
+    } catch (e) {}
+
+    // Determine generation mode:
+    // 1. Simple Mode: Short prompt < 450 chars, no explicit lyrics, not arrangement instruction
+    // 2. Custom Lyrics Mode: Singable lyrics provided
+    // 3. Arrangement Mode: > 450 chars or musical/vocal arrangement instructions
+    const promptInput = (prompt || rawPrompt || '').trim();
+    const lyricsInput = (lyrics || rawLyrics || '').trim();
+
+    let targetMode = 'simple';
+    if (lyricsInput.length > 0 && !isArrangementInstruction) {
+      targetMode = 'custom_lyrics';
+    } else if (isArrangementInstruction || promptInput.length > 450) {
+      targetMode = 'arrangement';
     } else {
-      // SIMPLE MODE: Single prompt textarea
+      targetMode = 'simple';
+    }
+
+    console.log(`[Suno Generator] Selected input mode: ${targetMode}`);
+
+    if (targetMode === 'simple') {
+      // MODE 1: SIMPLE MODE
+      const simplePrompt = [promptInput, tags].filter(Boolean).join('. ').slice(0, 450);
       await genWin.webContents.executeJavaScript(`
         (async () => {
           function setNativeValue(el, val) {
@@ -249,8 +364,8 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
           }
 
           // Switch to Simple tab
-          const btns = Array.from(document.querySelectorAll('button, [role="tab"]'));
-          const simpleBtn = btns.find(b => (b.innerText || '').trim() === 'Simple');
+          const btns = Array.from(document.querySelectorAll('button, [role="tab"], div[role="button"]'));
+          const simpleBtn = btns.find(b => (b.innerText || '').trim().toLowerCase() === 'simple');
           if (simpleBtn) {
             simpleBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
             simpleBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
@@ -260,11 +375,139 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
 
           const tas = Array.from(document.querySelectorAll('textarea'));
           if (tas[0]) {
-            const promptVal = [${JSON.stringify(genPayload.prompt)}, ${JSON.stringify(genPayload.tags)}].filter(Boolean).join('. ');
-            setNativeValue(tas[0], promptVal);
+            setNativeValue(tas[0], ${JSON.stringify(simplePrompt)});
           }
         })()
       `);
+    } else if (targetMode === 'custom_lyrics') {
+      // MODE 2: CUSTOM LYRICS MODE
+      await genWin.webContents.executeJavaScript(`
+        (async () => {
+          function setNativeValue(el, val) {
+            if (!el) return;
+            el.focus();
+            const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) setter.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          }
+
+          // Switch to Advanced / Custom tab
+          const btns = Array.from(document.querySelectorAll('button, [role="tab"], div[role="button"]'));
+          const advBtn = btns.find(b => {
+            const txt = (b.innerText || '').trim().toLowerCase();
+            return txt === 'advanced' || txt === 'custom';
+          });
+          if (advBtn) {
+            advBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            advBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            advBtn.click();
+            await new Promise(r => setTimeout(r, 600));
+          }
+
+          // Clean lyrics editor content
+          const lyricsBox = document.querySelector('.lyrics-editor-content, div[aria-label="Lyrics editor"], div[contenteditable="true"]');
+          if (lyricsBox) {
+            lyricsBox.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+          }
+
+          // Set Style
+          const tas = Array.from(document.querySelectorAll('textarea'));
+          const styleBox = tas.find(t => {
+            const ph = (t.placeholder || '').toLowerCase();
+            return ph.includes('style') || ph.includes('battle rap') || ph.includes('electro dance') || ph.includes('darkwave') || ph.includes('genre');
+          }) || tas[1] || tas[0];
+          if (styleBox && ${JSON.stringify(tags || promptInput)}) {
+            setNativeValue(styleBox, ${JSON.stringify((tags || promptInput).slice(0, 950))});
+          }
+
+          // Set Title
+          const inputs = Array.from(document.querySelectorAll('input'));
+          const titleInput = inputs.find(i => {
+            const ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase();
+            return ph.includes('title') || ph.includes('judul');
+          });
+          if (titleInput && ${JSON.stringify(title)}) {
+            setNativeValue(titleInput, ${JSON.stringify(title)});
+          }
+        })()
+      `);
+
+      // Insert actual singable lyrics via Chromium native input
+      if (lyricsInput) {
+        await genWin.webContents.insertText(lyricsInput);
+        await new Promise(r => setTimeout(r, 500));
+      }
+    } else {
+      // MODE 3: LONG ARRANGEMENT PROMPT (>450 chars or vocal arrangement instructions)
+      const { style: arrangementStyle, lyrics: arrangementLyrics } = processArrangementInstruction(promptInput, tags, title);
+      console.log(`[Suno Generator] Mode 3 Style parsed (${arrangementStyle.length} chars), Lyrics structure created (${arrangementLyrics.length} chars)`);
+
+      await genWin.webContents.executeJavaScript(`
+        (async () => {
+          function setNativeValue(el, val) {
+            if (!el) return;
+            el.focus();
+            const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) setter.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          }
+
+          // Switch to Advanced / Custom tab
+          const btns = Array.from(document.querySelectorAll('button, [role="tab"], div[role="button"]'));
+          const advBtn = btns.find(b => {
+            const txt = (b.innerText || '').trim().toLowerCase();
+            return txt === 'advanced' || txt === 'custom';
+          });
+          if (advBtn) {
+            advBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            advBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            advBtn.click();
+            await new Promise(r => setTimeout(r, 600));
+          }
+
+          // Clean lyrics editor content
+          const lyricsBox = document.querySelector('.lyrics-editor-content, div[aria-label="Lyrics editor"], div[contenteditable="true"]');
+          if (lyricsBox) {
+            lyricsBox.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+          }
+
+          // Set Style (instrumentation, tempo, mood, genre up to 950 chars)
+          const tas = Array.from(document.querySelectorAll('textarea'));
+          const styleBox = tas.find(t => {
+            const ph = (t.placeholder || '').toLowerCase();
+            return ph.includes('style') || ph.includes('battle rap') || ph.includes('electro dance') || ph.includes('darkwave') || ph.includes('genre');
+          }) || tas[1] || tas[0];
+          if (styleBox && ${JSON.stringify(arrangementStyle)}) {
+            setNativeValue(styleBox, ${JSON.stringify(arrangementStyle)});
+          }
+
+          // Set Title
+          const inputs = Array.from(document.querySelectorAll('input'));
+          const titleInput = inputs.find(i => {
+            const ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase();
+            return ph.includes('title') || ph.includes('judul');
+          });
+          if (titleInput && ${JSON.stringify(title)}) {
+            setNativeValue(titleInput, ${JSON.stringify(title)});
+          }
+        })()
+      `);
+
+      // Insert clean structural vocal meta-tags
+      if (arrangementLyrics) {
+        await genWin.webContents.insertText(arrangementLyrics);
+        await new Promise(r => setTimeout(r, 500));
+      }
     }
 
     // Handle Instrumental toggle if requested
@@ -350,7 +593,7 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
                     'Content-Type': 'application/json',
                     'Authorization': ${JSON.stringify(capturedAuth)}
                   },
-                  body: JSON.stringify({ cursor: null, limit: 10 })
+                  body: JSON.stringify({ cursor: null, limit: 15 })
                 });
                 const d = await res.json();
                 return { clips: d.clips || [], ok: res.ok };
@@ -361,14 +604,10 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
           `);
 
           if (pageFeed && Array.isArray(pageFeed.clips) && pageFeed.clips.length > 0) {
-            const recent = pageFeed.clips.filter(c => {
-              const t = new Date(c.created_at).getTime();
-              return t >= (startTimeMs - 50000); // Created right during this generation session
-            });
-
-            if (recent.length > 0) {
-              capturedClips = recent;
-              console.log(`[Suno Generator] Successfully retrieved ${recent.length} newly submitted clips from Suno feed!`);
+            const newClips = pageFeed.clips.filter(c => !existingClipIds.has(c.id));
+            if (newClips.length > 0) {
+              capturedClips = newClips;
+              console.log(`[Suno Generator] Successfully retrieved ${newClips.length} NEW clips from Suno feed!`);
               genWin.hide();
               break;
             }
@@ -393,7 +632,7 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     return {
       success: true,
       clips: capturedClips,
-      isCustomLyrics
+      targetMode
     };
   } finally {
     try {
@@ -407,5 +646,6 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
 global.generateWithSunoBrowser = generateWithSunoBrowser;
 
 module.exports = {
-  generateWithSunoBrowser
+  generateWithSunoBrowser,
+  fetchSunoClipsByIds: global.fetchSunoClipsByIds
 };

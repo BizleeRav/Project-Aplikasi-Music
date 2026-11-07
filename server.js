@@ -982,11 +982,23 @@ function getEffectiveSunoCredentials(req) {
     return { key: clientKey, provider: clientProvider || 'suno_official', isClientKey: true };
   }
 
-  // System-wide Default
-  const cfg = sunoService.getConfig();
+  const ip = req.ip || req.connection?.remoteAddress || '';
+  const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
+
+  // Only fallback to system-wide configured key if request is from local machine
+  if (isLocalhost) {
+    const cfg = sunoService.getConfig();
+    return {
+      key: (cfg.suno_api_key || '').trim(),
+      provider: cfg.suno_provider || 'suno_official',
+      isClientKey: false
+    };
+  }
+
+  // Remote clients without their own key are unconfigured (strict stand-alone per device)
   return {
-    key: (cfg.suno_api_key || '').trim(),
-    provider: cfg.suno_provider || 'suno_official',
+    key: '',
+    provider: 'suno_official',
     isClientKey: false
   };
 }
@@ -1226,7 +1238,14 @@ app.post('/api/suno/login-cancel', (req, res) => {
   res.json({ success: true, message: 'Login dibatalkan' });
 });
 
-app.post('/api/suno/disconnect', (req, res) => {
+app.post('/api/suno/disconnect', async (req, res) => {
+  try {
+    if (typeof global.clearSunoElectronSession === 'function') {
+      await global.clearSunoElectronSession();
+    }
+  } catch (e) {
+    console.warn('[Disconnect] Error clearing electron suno session:', e.message);
+  }
   try {
     sunoLoginHelper.clearLoginSessionProfile();
   } catch (e) {}

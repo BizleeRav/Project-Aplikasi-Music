@@ -122,7 +122,7 @@ class SunoStudio {
       const localProvider = localStorage.getItem('aurasound_suno_provider') || 'suno_official';
       const keyInput = document.getElementById('input-suno-api-key');
       const providerSel = document.getElementById('input-suno-provider');
-      if (keyInput && !keyInput.value) keyInput.value = localKey || '368b953dba13bca4791b6ee34b3c1c7a';
+      if (keyInput && !keyInput.value) keyInput.value = localKey || '';
       if (providerSel) providerSel.value = localProvider === 'suno_official' ? 'kie' : localProvider;
       if (this.hasApiKey && !window.AuraSoundAndroid) {
         this.loadPairCode();
@@ -180,8 +180,9 @@ class SunoStudio {
       if (disconnectBtn) {
         disconnectBtn.style.display = 'inline-flex';
       }
-      if (formEngineLabel) formEngineLabel.textContent = isOfficial ? 'Suno AI Official Engine (@ravenstars)' : 'Suno AI Music Engine';
-      if (formEngineSublabel) formEngineSublabel.textContent = isOfficial ? 'Generasi lagu AI resmi Suno • 50 kredit harian aktif' : 'Generasi audio AI resmi • Sesuai prompt & lirik Anda';
+      const accountLabel = info.userHandle || info.accountName || (isOfficial ? 'Akun Resmi' : 'Suno AI');
+      if (formEngineLabel) formEngineLabel.textContent = isOfficial ? `Suno AI Official Engine (${accountLabel})` : 'Suno AI Music Engine';
+      if (formEngineSublabel) formEngineSublabel.textContent = isOfficial ? `Generasi lagu AI resmi Suno • ${info.credits || '50 kredit'} aktif` : 'Generasi audio AI resmi • Sesuai prompt & lirik Anda';
     } else if (isAuto) {
       card.classList.add('connected');
       card.classList.remove('disconnected');
@@ -706,9 +707,19 @@ class SunoStudio {
       const data = await res.json();
 
       if (data.success && Array.isArray(data.clips)) {
-        this.creations = data.clips;
+        const stored = localStorage.getItem('aurasound_local_creations');
+        let localList = stored ? JSON.parse(stored) : [];
+        if (Array.isArray(localList) && localList.length > 0) {
+          const map = new Map();
+          data.clips.forEach(c => map.set(c.id, c));
+          localList.forEach(c => { if (!map.has(c.id)) map.set(c.id, c); });
+          this.creations = Array.from(map.values());
+        } else {
+          this.creations = data.clips;
+        }
+        this.saveLocalCreationsBackup(this.creations);
         this.totalPages = data.totalPages || 1;
-        this.totalCreations = data.totalCount || 0;
+        this.totalCreations = Math.max(data.totalCount || 0, this.creations.length);
         this.hasMore = Boolean(data.hasMore);
 
         if (nextBtn) nextBtn.disabled = !this.hasMore;
@@ -1103,6 +1114,126 @@ class SunoStudio {
     return this.disconnectAccount();
   }
 
+  isPromptInstruction(text) {
+    if (!text || typeof text !== 'string') return false;
+    const t = text.toLowerCase();
+    const signals = [
+      'vocal arrangement', 'instruments:', 'instrument:', 'begin with', 'gradually introduce',
+      'create a magical atmosphere', 'melodic progression', 'no rock', 'no rap',
+      'no electronic', 'high-quality', 'must remain', 'soundtrack', 'orchestral choir',
+      'female lead vocalist', 'male and female choir', 'french horns', 'woodwinds',
+      'percussion', 'timpani', 'cinematic drums', 'tempo', 'bpm', 'acoustic guitar, warm',
+      '140 bpm', '125 bpm', 'mastering', 'production', 'symphonic metal', 'duet chorus',
+      'folk ensemble', 'section 1', 'section 2', 'vocal structure', 'female solo', 'male solo',
+      'lead vocal', 'lead vocalist', 'acoustic guitar and accordion', 'whimsical', 'european folk',
+      'folk dance', 'only one female', 'structure:'
+    ];
+    let matches = 0;
+    for (const s of signals) { if (t.includes(s)) matches++; }
+    if (matches >= 2) return true;
+    if (t.includes('vocal arrangement:') || t.includes('instruments:') || t.includes('vocal arrangement') || t.includes('vocal structure')) return true;
+    if (/section \d+/i.test(t) && (t.includes('solo') || t.includes('instruments') || t.includes('ensemble') || t.includes('tempo') || t.includes('vocal'))) return true;
+    return false;
+  }
+
+  saveLocalCreationsBackup(newClips) {
+    try {
+      const stored = localStorage.getItem('aurasound_local_creations');
+      let list = stored ? JSON.parse(stored) : [];
+      if (!Array.isArray(list)) list = [];
+      const set = new Set(list.map(c => c.id));
+      for (const nc of newClips) {
+        if (!set.has(nc.id)) {
+          list.unshift(nc);
+          set.add(nc.id);
+        } else {
+          const idx = list.findIndex(c => c.id === nc.id);
+          if (idx !== -1) list[idx] = Object.assign({}, list[idx], nc);
+        }
+      }
+      localStorage.setItem('aurasound_local_creations', JSON.stringify(list.slice(0, 100)));
+    } catch (e) {}
+  }
+
+  onAndroidGenerationComplete(clipsJson, freshToken) {
+    try {
+      if (freshToken) {
+        localStorage.setItem('aurasound_suno_key', freshToken);
+        localStorage.setItem('aurasound_suno_provider', 'suno_official');
+      }
+      const rawClips = typeof clipsJson === 'string' ? JSON.parse(clipsJson) : clipsJson;
+      if (!Array.isArray(rawClips) || rawClips.length === 0) {
+        throw new Error('Tidak ada klip lagu yang dihasilkan dari Suno.');
+      }
+      const formattedClips = rawClips.map(c => {
+        const audioUrl = c.audio_url || (c.id ? `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${c.id}.m4a` : '');
+        const thumb = c.image_url || c.image_large_url || (c.id ? `https://cdn2.suno.ai/image_${c.id}.jpeg` : '/icons/icon.svg');
+        const durationSec = Math.round(Number(c.duration) || 120);
+        const durationStr = `${Math.floor(durationSec / 60)}:${Math.floor(durationSec % 60).toString().padStart(2, '0')}`;
+        const genuineLyrics = (c.metadata?.prompt || c.prompt || '').trim();
+        return {
+          id: c.id,
+          title: c.title || 'Lagu Baru',
+          artist: 'Suno Official (Akun Resmi)',
+          tags: c.metadata?.tags || c.tags || '',
+          prompt: c.metadata?.prompt || '',
+          lyrics: genuineLyrics,
+          status: c.status || 'submitted',
+          thumbnail: thumb,
+          audio_url: audioUrl,
+          duration: durationStr,
+          seconds: durationSec,
+          type: 'suno',
+          created_at: 'Hari ini'
+        };
+      });
+      this.saveLocalCreationsBackup(formattedClips);
+      formattedClips.forEach(track => {
+        fetch('/api/suno/creations', {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, this.getAuthHeaders()),
+          body: JSON.stringify(track)
+        }).catch(() => {});
+      });
+      if (!this.creations) this.creations = [];
+      formattedClips.forEach(c => this.creations.unshift(c));
+      this.renderCreations();
+      this.renderRecentPreview();
+      const clipIds = formattedClips.map(c => c.id);
+      this.pollClips(clipIds);
+      const first = formattedClips[0];
+      if (first) {
+        this.playClip(first);
+        setTimeout(() => {
+          if (window.app && typeof window.app.openStudioCinema === 'function') {
+            window.app.openStudioCinema();
+          }
+        }, 400);
+      }
+      if (this._androidGenResolve) {
+        this._androidGenResolve({ success: true, data: formattedClips });
+        this._androidGenResolve = null;
+        this._androidGenReject = null;
+      }
+    } catch (e) {
+      if (this._androidGenReject) {
+        this._androidGenReject(e);
+        this._androidGenResolve = null;
+        this._androidGenReject = null;
+      }
+    }
+  }
+
+  onAndroidGenerationError(errorMsg) {
+    if (window.app && window.app.showToast) {
+      window.app.showToast(errorMsg || 'Gagal membuat lagu via Suno.', 'error');
+    }
+    if (this._androidGenReject) {
+      this._androidGenReject(new Error(errorMsg));
+      this._androidGenResolve = null;
+      this._androidGenReject = null;
+    }
+  }
   async generateSong({ title, tags, prompt, make_instrumental, model = 'v6-mini' }) {
     if (this.isGenerating) return;
     this.isGenerating = true;
@@ -1124,19 +1255,38 @@ class SunoStudio {
     }, 2400);
 
     try {
-      const response = await fetch('/api/suno/generate', {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify({
-          title,
-          tags,
-          prompt,
-          make_instrumental,
-          model: model || 'v6-mini'
-        })
-      });
-
-      const result = await response.json();
+      let result;
+      if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.generateSunoSong === 'function') {
+        const isArrangement = this.isPromptInstruction(prompt) || this.isPromptInstruction(tags);
+        const androidPayload = {
+          title: title || '',
+          tags: tags || '',
+          prompt: prompt || '',
+          lyrics: '',
+          make_instrumental: Boolean(make_instrumental),
+          model: model || 'chirp-v3-5',
+          isCustomLyrics: false,
+          isArrangementInstruction: isArrangement
+        };
+        result = await new Promise((resolve, reject) => {
+          this._androidGenResolve = resolve;
+          this._androidGenReject = reject;
+          window.AuraSoundAndroid.generateSunoSong(JSON.stringify(androidPayload));
+        });
+      } else {
+        const response = await fetch('/api/suno/generate', {
+          method: 'POST',
+          headers: this.getAuthHeaders(),
+          body: JSON.stringify({
+            title,
+            tags,
+            prompt,
+            make_instrumental,
+            model: model || 'v6-mini'
+          })
+        });
+        result = await response.json();
+      }
 
       clearTimeout(timer1);
       clearTimeout(timer2);
@@ -1192,13 +1342,13 @@ class SunoStudio {
   async pollClips(clipIds) {
     const statusText = document.getElementById('suno-status-text');
     let attempts = 0;
-    const maxAttempts = 30; // 2.5 minutes
+    const maxAttempts = 40; // ~2.6 minutes at 4s intervals
 
     return new Promise((resolve) => {
       const interval = setInterval(async () => {
         attempts++;
         if (statusText) {
-          statusText.textContent = `Rendering audio AI (${attempts * 5}s)...`;
+          statusText.textContent = `Rendering audio AI (${attempts * 4}s)...`;
         }
 
         try {
@@ -1208,8 +1358,42 @@ class SunoStudio {
           const data = await res.json();
 
           if (data.success && data.clips && data.clips.length > 0) {
-            const completed = data.clips.filter(c => c.status === 'complete');
-            if (completed.length > 0 || attempts >= maxAttempts) {
+            // 1. Update this.creations memory list
+            for (const clip of data.clips) {
+              if (!this.creations) this.creations = [];
+              const idx = this.creations.findIndex(c => c.id === clip.id);
+              if (idx !== -1) {
+                this.creations[idx] = Object.assign({}, this.creations[idx], clip);
+              } else {
+                this.creations.unshift(clip);
+              }
+            }
+
+            // 2. Real-time Cinema & currentTrack update with authentic lyrics
+            if (window.app && window.app.currentTrack) {
+              const matchedClip = data.clips.find(c => c.id === window.app.currentTrack.id);
+              if (matchedClip) {
+                if (matchedClip.lyrics && matchedClip.lyrics.trim()) {
+                  window.app.currentTrack.lyrics = matchedClip.lyrics.trim();
+                }
+                if (matchedClip.duration) {
+                  window.app.currentTrack.duration = matchedClip.duration;
+                }
+                if (matchedClip.seconds) {
+                  window.app.currentTrack.seconds = matchedClip.seconds;
+                }
+                if (matchedClip.audio_url && window.app.currentTrack.audio_url !== matchedClip.audio_url) {
+                  window.app.currentTrack.audio_url = matchedClip.audio_url;
+                }
+                if (typeof window.app.renderCinemaLyrics === 'function') {
+                  window.app.renderCinemaLyrics(window.app.currentTrack, window.app.currentTrack.seconds, true);
+                }
+              }
+            }
+
+            // 3. Check completion
+            const allReady = data.clips.every(c => (c.status === 'complete' || c.status === 'streaming') && c.audio_url);
+            if (allReady || attempts >= maxAttempts) {
               clearInterval(interval);
               if (window.app && window.app.showToast) {
                 window.app.showToast('Lagu AI Anda siap diputar dan tersimpan di koleksi! 🎵', 'success');
@@ -1225,7 +1409,7 @@ class SunoStudio {
           clearInterval(interval);
           resolve();
         }
-      }, 5000);
+      }, 4000);
     });
   }
 

@@ -2889,6 +2889,10 @@ class App {
     }
 
     const trackId = track.id || track.videoId || track.title;
+    if (this.sunoAlignRetryTimer) {
+      clearInterval(this.sunoAlignRetryTimer);
+      this.sunoAlignRetryTimer = null;
+    }
     this.currentLyricsTrackId = trackId;
 
     // 1. If lyrics already cached in track instance (and not forcing refresh unless it's neural word-sync which is already exact)
@@ -2912,13 +2916,22 @@ class App {
         this.cinemaLyricsBadge.textContent = 'MENSINKRONKAN LIRIK REALTIME...';
       }
 
+      const authHeaders = window.sunoStudio && typeof window.sunoStudio.getAuthHeaders === 'function'
+        ? window.sunoStudio.getAuthHeaders()
+        : {};
+
+      let wordSyncFound = false;
+
       try {
-        const alignRes = await fetch(`/api/suno/aligned-lyrics/${encodeURIComponent(track.id)}`);
+        const alignRes = await fetch(`/api/suno/aligned-lyrics/${encodeURIComponent(track.id)}`, {
+          headers: authHeaders
+        });
         if (alignRes.ok) {
           const alignData = await alignRes.json();
           if (alignData.found && Array.isArray(alignData.parsedLyrics) && alignData.parsedLyrics.length > 0) {
             if (this.currentLyricsTrackId !== trackId) return;
 
+            wordSyncFound = true;
             this.currentLyricsData = alignData.parsedLyrics;
             this.hasWordSync = Boolean(alignData.hasWordSync);
             track._parsedLyrics = alignData.parsedLyrics;
@@ -2959,11 +2972,57 @@ class App {
           this.currentLyricsData = parsed;
           track._parsedLyrics = parsed;
           track._lyricsType = candidateSynced ? 'synced' : 'suno_ai';
+          track._hasWordSync = false; // Do NOT permanently lock word-sync cache
           track._lyricsEngineVersion = 'v79';
           track._cachedForTrackId = trackId;
-          this.displayLyricsList(this.currentLyricsData, track._lyricsType);
+          this.displayLyricsList(this.currentLyricsData, track._lyricsType, null, false, false);
           const curTime = this.getCurrentPlaybackTime();
           this.updateActiveLyricsLine(curTime);
+
+          // Schedule background retry timer every 6 seconds (up to 8 attempts while playing this track)
+          if (!wordSyncFound && !this.sunoAlignRetryTimer) {
+            let retryAttempts = 0;
+            this.sunoAlignRetryTimer = setInterval(async () => {
+              retryAttempts++;
+              if (retryAttempts > 8 || this.currentLyricsTrackId !== trackId) {
+                clearInterval(this.sunoAlignRetryTimer);
+                this.sunoAlignRetryTimer = null;
+                return;
+              }
+              try {
+                const retryHeaders = window.sunoStudio && typeof window.sunoStudio.getAuthHeaders === 'function'
+                  ? window.sunoStudio.getAuthHeaders()
+                  : {};
+                const retryRes = await fetch(`/api/suno/aligned-lyrics/${encodeURIComponent(track.id)}`, {
+                  headers: retryHeaders
+                });
+                if (retryRes.ok) {
+                  const retryData = await retryRes.json();
+                  if (retryData.found && Array.isArray(retryData.parsedLyrics) && retryData.parsedLyrics.length > 0) {
+                    if (this.currentLyricsTrackId !== trackId) {
+                      clearInterval(this.sunoAlignRetryTimer);
+                      this.sunoAlignRetryTimer = null;
+                      return;
+                    }
+                    clearInterval(this.sunoAlignRetryTimer);
+                    this.sunoAlignRetryTimer = null;
+
+                    this.currentLyricsData = retryData.parsedLyrics;
+                    this.hasWordSync = Boolean(retryData.hasWordSync);
+                    track._parsedLyrics = retryData.parsedLyrics;
+                    track._lyricsType = 'synced';
+                    track._hasWordSync = this.hasWordSync;
+                    track._lyricsEngineVersion = 'v79';
+                    track._cachedForTrackId = trackId;
+
+                    this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
+                    const ct = this.getCurrentPlaybackTime();
+                    this.updateActiveLyricsLine(ct);
+                  }
+                }
+              } catch (e) {}
+            }, 6000);
+          }
           return;
         }
       }
