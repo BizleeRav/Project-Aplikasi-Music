@@ -301,14 +301,14 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
       if (!sunoEngineWin || sunoEngineWin.isDestroyed()) {
         isDestroyingEngine = false;
         sunoEngineWin = new BrowserWindow({
-          width: 1050,
-          height: 680,
+          width: 1280,
+          height: 900,
           minWidth: 1024,
-          minHeight: 600,
+          minHeight: 700,
           show: false,
           skipTaskbar: true,
-          focusable: true,
-          title: 'Verifikasi Akun Suno AI — Klik Centang 1x',
+          focusable: false,
+          title: 'AuraSound Background Engine',
           autoHideMenuBar: true,
           backgroundColor: '#0b0f19',
           webPreferences: {
@@ -442,15 +442,30 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
             const tok = (m && m[1]) ? m[1] : ${JSON.stringify(liveJwt || '')};
             const headers = { 'Content-Type': 'application/json' };
             if (tok) headers['Authorization'] = 'Bearer ' + tok;
-            const r = await fetch('/a/api/feed/v3', {
+
+            // Try feed/v2 (GET) first
+            try {
+              const r2 = await fetch('/a/api/feed/v2', {
+                method: 'GET',
+                credentials: 'include',
+                headers
+              });
+              if (r2.ok) {
+                const d2 = await r2.json();
+                if (Array.isArray(d2?.clips) && d2.clips.length > 0) return d2.clips;
+              }
+            } catch (e2) {}
+
+            // Fallback to feed/v3 (POST)
+            const r3 = await fetch('/a/api/feed/v3', {
               method: 'POST',
               credentials: 'include',
               headers,
               body: JSON.stringify({ cursor: null, limit: 12 })
             });
-            if (!r.ok) return null;
-            const d = await r.json();
-            return Array.isArray(d?.clips) ? d.clips : null;
+            if (!r3.ok) return null;
+            const d3 = await r3.json();
+            return Array.isArray(d3?.clips) ? d3.clips : null;
           } catch (e) {
             return null;
           }
@@ -818,53 +833,40 @@ async function generateWithSunoBrowser({
     genNetworkState.generateStatusCode = 0;
     genNetworkState.active = true;
 
-    // 1. Dispatch trusted native Chromium mouse events (isTrusted = true)
-    if (btnInfo.x > 0 && btnInfo.y > 0 && btnInfo.width > 0 && btnInfo.height > 0) {
-      genWin.webContents.sendInputEvent({ type: 'mouseMove', x: btnInfo.x, y: btnInfo.y });
-      await new Promise(r => setTimeout(r, 35));
-      genWin.webContents.sendInputEvent({ type: 'mouseDown', x: btnInfo.x, y: btnInfo.y, button: 'left', clickCount: 1 });
-      await new Promise(r => setTimeout(r, 45));
-      genWin.webContents.sendInputEvent({ type: 'mouseUp', x: btnInfo.x, y: btnInfo.y, button: 'left', clickCount: 1 });
+    // Trigger Create click directly via DOM event chain (100% background compatible)
+    const clickedOk = await genWin.webContents.executeJavaScript(`
+      (() => {
+        const createBtn = document.querySelector('button[aria-label="Create song"]') ||
+          Array.from(document.querySelectorAll('button')).find(b => {
+            const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+            return !b.closest('nav') && !b.closest('aside') && (t === 'create' || t.startsWith('create ') || t.startsWith('create('));
+          });
+        if (!createBtn) return { error: 'Tombol Create tidak ditemukan.' };
+        if (createBtn.disabled) return { error: 'Tombol Create saat ini nonaktif (cek kuota kredit Suno Anda).' };
+        createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+        createBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        createBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        createBtn.click();
+        return { ok: true };
+      })()
+    `);
+
+    if (clickedOk && clickedOk.error) {
+      throw new Error(clickedOk.error);
     }
 
-    await new Promise(r => setTimeout(r, 450));
+    console.log('[Suno Warm Engine] Create triggered 100% silently in background. Polling for newly created clips...');
 
-    // 2. Fallback synthetic click ONLY if sendInputEvent while hidden did not trigger /api/c/check or /api/generate
-    if (!genNetworkState.cCheckStartedAt && !genNetworkState.generateStartedAt) {
-      await genWin.webContents.executeJavaScript(`
-        (() => {
-          const btn = document.querySelector('button[aria-label="Create song"]');
-          if (btn && !btn.disabled) {
-            btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
-            btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-            btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
-            btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-            btn.click();
-          }
-        })()
-      `).catch(() => {});
-    }
-
-    console.log('[Suno Warm Engine] Create triggered silently in background. Waiting for silent Turnstile or /api/generate...');
-
-    let challengeShown = false;
     let capturedClips = null;
     let lastJwt = null;
     let lastFeedPollMs = 0;
-
-    // Phase 1 & 2 Unified Loop:
-    // - First 4.5s: 100% silent in background!
-    // - After 4.5s: ONLY show window if /api/generate hasn't fired AND z-[1000] Turnstile modal is genuinely open!
-    // - Once shown: check every 250ms and hide IMMEDIATELY when modal closes or /api/generate fires!
-    // - Once /api/generate fires: poll up to 45s for Simple Mode's LLM + clip creation to return new clips!
-    const maxTotalWaitMs = 110000;
-    const silentGraceMs = 4500;
+    const maxTotalWaitMs = 60000;
 
     while ((Date.now() - clickTimeMs) < maxTotalWaitMs) {
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 200));
 
       if (userCancelledCurrentRun) {
-        throw new Error('Verifikasi Suno dibatalkan.');
+        throw new Error('Pembuatan lagu Suno dibatalkan.');
       }
 
       if (genNetworkState.generateStatusCode === 402) {
@@ -878,61 +880,40 @@ async function generateWithSunoBrowser({
       }
 
       const elapsedMs = Date.now() - clickTimeMs;
-      const modalState = await checkInteractiveTurnstileModal(genWin);
 
-      if (modalState.pageError) {
-        throw new Error(modalState.pageError);
-      }
-
-      // Auto-hide within 250ms the instant Turnstile modal closes or /api/generate starts!
-      if (genWin.isVisible() && (!modalState.hasModal || genNetworkState.generateStartedAt > 0)) {
-        hideEngineWindow();
-      }
-
-      // Surface clean verification window ONLY if genuinely gated by interactive Turnstile after silent grace period
-      if (!challengeShown && !genNetworkState.generateStartedAt && elapsedMs >= silentGraceMs && modalState.hasModal) {
-        challengeShown = true;
-        console.log('[Suno Warm Engine] Interactive Turnstile modal detected after silent wait. Showing clean verification window...');
-        genWin.setSkipTaskbar(false);
-        genWin.center();
-        genWin.setAlwaysOnTop(true);
-        genWin.show();
-        genWin.focus();
-      }
-
-      // Poll feed/v3 for newly created clips:
-      // - Every 1.4s once /api/generate has started (or completed)
-      // - Or every 3.0s as a safety fallback if network hook missed anything
-      const pollIntervalMs = genNetworkState.generateStartedAt > 0 ? 1400 : 3000;
-      if ((Date.now() - lastFeedPollMs) >= pollIntervalMs && (genNetworkState.generateStartedAt > 0 || !modalState.hasModal)) {
+      // Poll feed every 1.2s starting right after click
+      if ((Date.now() - lastFeedPollMs) >= 1200) {
         lastFeedPollMs = Date.now();
         const pollRes = await pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, cleanUa);
         if (pollRes.jwt) lastJwt = pollRes.jwt;
         if (Array.isArray(pollRes.clips) && pollRes.clips.length > 0) {
-          // Suno creates 2 clips per generation; wait 1 extra beat if only 1 appeared right as it's inserting
-          if (pollRes.clips.length >= 2 || (genNetworkState.generateCompletedAt > 0 && (Date.now() - genNetworkState.generateCompletedAt) > 2000)) {
+          if (pollRes.clips.length >= 2 || elapsedMs > 3500) {
             capturedClips = pollRes.clips;
-            console.log(`[Suno Warm Engine] Captured ${capturedClips.length} authentic new Suno clips!`);
+            console.log(`[Suno Warm Engine] Captured ${capturedClips.length} authentic new Suno clips silently!`);
             break;
           }
         }
       }
 
-      // Timeout conditions:
-      // 1. If /api/generate started > 45s ago and still no clips, stop waiting
-      if (genNetworkState.generateStartedAt > 0 && (Date.now() - genNetworkState.generateStartedAt) > 45000) {
-        break;
-      }
-      // 2. If no modal is open AND /api/generate never started after 22s, stop waiting
-      if (!challengeShown && !modalState.hasModal && !genNetworkState.generateStartedAt && elapsedMs > 22000) {
-        break;
+      // Check for explicit error banners on the page
+      if (elapsedMs % 1500 < 250) {
+        const pageError = await genWin.webContents.executeJavaScript(`
+          (() => {
+            const alerts = Array.from(document.querySelectorAll('[role="status"], [role="alert"], [data-sonner-toast]'));
+            for (const a of alerts) {
+              const txt = (a.innerText || a.textContent || '').trim();
+              if (/insufficient credits|out of credits|not enough credits|upgrade your plan|daily limit/i.test(txt)) {
+                return 'Kuota kredit akun Suno Anda tidak mencukupi untuk membuat lagu.';
+              }
+            }
+            return null;
+          })()
+        `).catch(() => null);
+        if (pageError) throw new Error(pageError);
       }
     }
 
     if (!capturedClips || capturedClips.length === 0) {
-      if (challengeShown && !genNetworkState.generateStartedAt) {
-        throw new Error('Verifikasi Suno AI ("Verify you are human") belum diselesaikan atau waktu tunggu habis.');
-      }
       throw new Error('Suno belum mengembalikan lagu baru. Pastikan akun Suno Anda masih memiliki kuota kredit yang mencukupi.');
     }
 
