@@ -1196,7 +1196,7 @@ class SunoStudio {
         }).catch(() => {});
       });
       if (!this.creations) this.creations = [];
-      formattedClips.forEach(c => this.creations.unshift(c));
+      [...formattedClips].reverse().forEach(c => this.creations.unshift(c));
       this.renderCreations();
       this.renderRecentPreview();
       const clipIds = formattedClips.map(c => c.id);
@@ -1258,14 +1258,26 @@ class SunoStudio {
       let result;
       if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.generateSunoSong === 'function') {
         const isArrangement = this.isPromptInstruction(prompt) || this.isPromptInstruction(tags);
+        const pTrimmed = (prompt || '').trim();
+        const hasLyricMarkers = /\[(verse|chorus|intro|bridge|outro|hook|pre-chorus|solo|ensemble|female|male|section)/i.test(pTrimmed) ||
+          /section \d+/i.test(pTrimmed) ||
+          /vocal structure/i.test(pTrimmed);
+
+        let finalLyrics = '';
+        let isCustomLyrics = false;
+        if (!make_instrumental && !isArrangement && (hasLyricMarkers || pTrimmed.length > 450)) {
+          finalLyrics = pTrimmed;
+          isCustomLyrics = true;
+        }
+
         const androidPayload = {
           title: title || '',
           tags: tags || '',
-          prompt: prompt || '',
-          lyrics: '',
+          prompt: pTrimmed,
+          lyrics: finalLyrics,
           make_instrumental: Boolean(make_instrumental),
           model: model || 'chirp-v3-5',
-          isCustomLyrics: false,
+          isCustomLyrics: isCustomLyrics,
           isArrangementInstruction: isArrangement
         };
         result = await new Promise((resolve, reject) => {

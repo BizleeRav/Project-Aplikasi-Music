@@ -189,14 +189,20 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
   let capturedClips = null;
   let serverErrorMessage = null;
   let challengeShown = false;
+  let webRequestCaptchaRequired = false;
   const existingClipIds = new Set();
 
   try {
+    try {
+      sunoSession.webRequest.onCompleted({ urls: ['*://suno.com/a/api/c/check*'] }, () => {
+        webRequestCaptchaRequired = true;
+      });
+    } catch (e) {}
     // 1. Silent web navigation to https://suno.com/create without invasive CDP debuggers
     console.log('[Suno Generator] Loading https://suno.com/create silently in background...');
 
     // Inject anti-occlusion & in-page fetch interceptor as early as possible
-    genWin.webContents.on('did-finish-load', () => {
+    const injectInterceptors = () => {
       genWin.webContents.executeJavaScript(`
         try {
           Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
@@ -205,27 +211,37 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             window.__sunoIntercepted = true;
             window.__sunoGenClips = null;
             window.__sunoGenError = null;
+            window.__sunoCaptchaRequired = null;
             const originalFetch = window.fetch;
             window.fetch = async function(...args) {
               const url = (args[0] && typeof args[0] === 'string') ? args[0] : (args[0]?.url || '');
               const res = await originalFetch.apply(this, args);
-              if (url.includes('/generate') || url.includes('/api/generate')) {
-                try {
+              try {
+                if (url.includes('/generate') || url.includes('/api/generate')) {
                   const clone = res.clone();
                   const data = await clone.json();
                   if (data && data.clips && Array.isArray(data.clips) && data.clips.length > 0) {
                     window.__sunoGenClips = data.clips;
-                  } else if (data && (data.detail || data.error_type || data.message)) {
+                  } else if (data && (data.detail || data.detail_fallback || data.error_type || data.message)) {
                     window.__sunoGenError = data.detail || data.detail_fallback || data.error_type || data.message;
                   }
-                } catch(e) {}
-              }
+                } else if (url.includes('/api/c/check') || url.includes('/c/check')) {
+                  const clone = res.clone();
+                  const data = await clone.json();
+                  if (data && typeof data.required === 'boolean') {
+                    window.__sunoCaptchaRequired = data.required;
+                  }
+                }
+              } catch(e) {}
               return res;
             };
           }
         } catch(e) {}
       `).catch(() => {});
-    });
+    };
+
+    genWin.webContents.on('dom-ready', injectInterceptors);
+    genWin.webContents.on('did-finish-load', injectInterceptors);
 
     await genWin.loadURL('https://suno.com/create');
 
@@ -352,19 +368,26 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
           }
 
-          // Switch to Simple tab
-          const btns = Array.from(document.querySelectorAll('button, [role="tab"], div[role="button"]'));
-          const simpleBtn = btns.find(b => (b.innerText || '').trim().toLowerCase() === 'simple');
-          if (simpleBtn) {
-            simpleBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-            simpleBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-            simpleBtn.click();
+          // Switch to Simple tab using pointerdown for Radix UI tabs
+          const tabs = Array.from(document.querySelectorAll('[role="tab"], button, div[role="button"]'));
+          const simpleTab = tabs.find(b => (b.innerText || b.textContent || '').trim().toLowerCase() === 'simple');
+          if (simpleTab && simpleTab.getAttribute('aria-selected') !== 'true') {
+            simpleTab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+            simpleTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            simpleTab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+            simpleTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            simpleTab.click();
             await new Promise(r => setTimeout(r, 600));
           }
 
-          const tas = Array.from(document.querySelectorAll('textarea'));
-          if (tas[0]) {
-            setNativeValue(tas[0], ${JSON.stringify(simplePrompt)});
+          // In Simple tab, select the primary prompt textarea (exclude cowriter/sound/script/tone)
+          const tas = Array.from(document.querySelectorAll('textarea')).filter(t => {
+            const al = (t.getAttribute('aria-label') || '').toLowerCase();
+            return !al.includes('cowriter') && !al.includes('sound') && !al.includes('script') && !al.includes('tone');
+          });
+          const promptBox = tas[0] || document.querySelector('textarea');
+          if (promptBox) {
+            setNativeValue(promptBox, ${JSON.stringify(simplePrompt)});
           }
         })()
       `);
@@ -384,41 +407,40 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
           }
 
-          // Switch to Advanced / Custom tab
-          const btns = Array.from(document.querySelectorAll('button, [role="tab"], div[role="button"]'));
-          const advBtn = btns.find(b => {
-            const txt = (b.innerText || '').trim().toLowerCase();
+          // Switch to Advanced / Custom tab using pointerdown for Radix UI tabs
+          const tabs = Array.from(document.querySelectorAll('[role="tab"], button, div[role="button"]'));
+          const advTab = tabs.find(b => {
+            const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
             return txt === 'advanced' || txt === 'custom';
           });
-          if (advBtn) {
-            advBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-            advBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-            advBtn.click();
+          if (advTab && advTab.getAttribute('aria-selected') !== 'true') {
+            advTab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+            advTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            advTab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+            advTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            advTab.click();
             await new Promise(r => setTimeout(r, 600));
           }
 
-          // 1. Set Style
-          const tas = Array.from(document.querySelectorAll('textarea'));
-          const styleBox = tas.find(t => {
-            const ph = (t.placeholder || '').toLowerCase();
-            return ph.includes('style') || ph.includes('battle rap') || ph.includes('electro dance') || ph.includes('darkwave') || ph.includes('genre');
-          }) || tas[1] || tas[0];
+          // 1. Set Style (exact aria-label="Styles" in Suno 2026)
+          const styleBox = document.querySelector('textarea[aria-label="Styles"]') ||
+            Array.from(document.querySelectorAll('textarea')).find(t => {
+              const al = (t.getAttribute('aria-label') || '').toLowerCase();
+              const ph = (t.placeholder || '').toLowerCase();
+              return al === 'styles' || ph.includes('style') || ph.includes('battle rap') || ph.includes('genre') || ph.includes('románticas');
+            });
           if (styleBox && ${JSON.stringify(tags || promptInput)}) {
             setNativeValue(styleBox, ${JSON.stringify((tags || promptInput).slice(0, 950))});
           }
 
           // 2. Set Title
-          const inputs = Array.from(document.querySelectorAll('input'));
-          const titleInput = inputs.find(i => {
-            const ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase();
-            return ph.includes('title') || ph.includes('judul');
-          });
+          const titleInput = document.querySelector('input[placeholder*="Song Title" i], input[placeholder*="Title" i], input[aria-label*="Title" i]');
           if (titleInput && ${JSON.stringify(title)}) {
             setNativeValue(titleInput, ${JSON.stringify(title)});
           }
 
           // 3. Clear and focus Lyrics Box LAST so input focus stays on lyrics!
-          const lyricsBox = document.querySelector('.lyrics-editor-content, div[aria-label="Lyrics editor"], div[contenteditable="true"]');
+          const lyricsBox = document.querySelector('div[aria-label="Lyrics editor"], .lyrics-editor-content, div[role="textbox"][contenteditable="true"]');
           if (lyricsBox) {
             lyricsBox.focus();
             document.execCommand('selectAll', false, null);
@@ -451,41 +473,40 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
           }
 
-          // Switch to Advanced / Custom tab
-          const btns = Array.from(document.querySelectorAll('button, [role="tab"], div[role="button"]'));
-          const advBtn = btns.find(b => {
-            const txt = (b.innerText || '').trim().toLowerCase();
+          // Switch to Advanced / Custom tab using pointerdown for Radix UI tabs
+          const tabs = Array.from(document.querySelectorAll('[role="tab"], button, div[role="button"]'));
+          const advTab = tabs.find(b => {
+            const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
             return txt === 'advanced' || txt === 'custom';
           });
-          if (advBtn) {
-            advBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-            advBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-            advBtn.click();
+          if (advTab && advTab.getAttribute('aria-selected') !== 'true') {
+            advTab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+            advTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            advTab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+            advTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            advTab.click();
             await new Promise(r => setTimeout(r, 600));
           }
 
           // 1. Set Style (instrumentation, tempo, mood, genre up to 950 chars)
-          const tas = Array.from(document.querySelectorAll('textarea'));
-          const styleBox = tas.find(t => {
-            const ph = (t.placeholder || '').toLowerCase();
-            return ph.includes('style') || ph.includes('battle rap') || ph.includes('electro dance') || ph.includes('darkwave') || ph.includes('genre');
-          }) || tas[1] || tas[0];
+          const styleBox = document.querySelector('textarea[aria-label="Styles"]') ||
+            Array.from(document.querySelectorAll('textarea')).find(t => {
+              const al = (t.getAttribute('aria-label') || '').toLowerCase();
+              const ph = (t.placeholder || '').toLowerCase();
+              return al === 'styles' || ph.includes('style') || ph.includes('battle rap') || ph.includes('genre') || ph.includes('románticas');
+            });
           if (styleBox && ${JSON.stringify(arrangementStyle)}) {
             setNativeValue(styleBox, ${JSON.stringify(arrangementStyle)});
           }
 
           // 2. Set Title
-          const inputs = Array.from(document.querySelectorAll('input'));
-          const titleInput = inputs.find(i => {
-            const ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase();
-            return ph.includes('title') || ph.includes('judul');
-          });
+          const titleInput = document.querySelector('input[placeholder*="Song Title" i], input[placeholder*="Title" i], input[aria-label*="Title" i]');
           if (titleInput && ${JSON.stringify(title)}) {
             setNativeValue(titleInput, ${JSON.stringify(title)});
           }
 
           // 3. Clear and focus Lyrics Box LAST so input focus stays on lyrics!
-          const lyricsBox = document.querySelector('.lyrics-editor-content, div[aria-label="Lyrics editor"], div[contenteditable="true"]');
+          const lyricsBox = document.querySelector('div[aria-label="Lyrics editor"], .lyrics-editor-content, div[role="textbox"][contenteditable="true"]');
           if (lyricsBox) {
             lyricsBox.focus();
             document.execCommand('selectAll', false, null);
@@ -522,28 +543,25 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     // 5. Click the genuine form Create button (ignoring sidebar navigation links)
     const clickResult = await genWin.webContents.executeJavaScript(`
       (() => {
-        const allBtns = Array.from(document.querySelectorAll('button'));
-        // Exclude sidebar navigation items
-        const validBtns = allBtns.filter(b => {
-          if (b.closest('nav') || b.closest('aside')) return false;
-          const txt = (b.innerText || b.textContent || '').trim();
-          return /^Create(\s*\(.*\))?$/i.test(txt) || txt.toLowerCase() === 'create';
-        });
-
-        const createBtn = validBtns[validBtns.length - 1] || allBtns.find(b => {
-          if (b.closest('nav') || b.closest('aside')) return false;
-          const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-          return t === 'create' || t.startsWith('create (');
-        });
+        let createBtn = document.querySelector('button[aria-label="Create song"]');
+        if (!createBtn) {
+          const allBtns = Array.from(document.querySelectorAll('button')).filter(b => !b.closest('nav') && !b.closest('aside'));
+          createBtn = allBtns.find(b => {
+            const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+            return t === 'create' || t.startsWith('create (');
+          });
+        }
 
         if (!createBtn) return { error: 'Tombol Create tidak ditemukan di Suno.' };
         if (createBtn.disabled) return { error: 'Tombol Create Suno saat ini nonaktif (kuota kredit habis atau input belum lengkap).' };
 
         createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+        createBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
         createBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        createBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
         createBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
         createBtn.click();
-        return { success: true, text: createBtn.innerText };
+        return { success: true, text: (createBtn.innerText || createBtn.textContent || '').trim() };
       })()
     `);
 
@@ -569,23 +587,61 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
           (() => {
             return {
               clips: window.__sunoGenClips,
-              error: window.__sunoGenError
+              error: window.__sunoGenError,
+              captchaRequired: window.__sunoCaptchaRequired
             };
           })()
         `);
         if (interceptRes?.error) {
+          serverErrorMessage = interceptRes.error;
           throw new Error(`Suno Error: ${interceptRes.error}`);
         }
         if (interceptRes?.clips && Array.isArray(interceptRes.clips) && interceptRes.clips.length > 0) {
           capturedClips = interceptRes.clips;
           console.log(`[Suno Generator] Captured ${capturedClips.length} clips directly from generate response!`);
+          if (challengeShown) genWin.hide();
           break;
         }
       } catch (ie) {
         if (ie.message && ie.message.includes('Suno Error:')) throw ie;
       }
 
-      // B. Dynamically extract fresh token from in-page Clerk session if needed
+      // B. Check frame tree and DOM for Cloudflare Turnstile challenge
+      let turnstileDetected = false;
+      try {
+        const frames = genWin.webContents.mainFrame.frames;
+        if (frames.some(f => f.url && f.url.includes('challenges.cloudflare.com'))) {
+          turnstileDetected = true;
+        }
+      } catch (e) {}
+
+      if (webRequestCaptchaRequired) {
+        turnstileDetected = true;
+      }
+
+      if (!turnstileDetected) {
+        try {
+          turnstileDetected = await genWin.webContents.executeJavaScript(`
+            Boolean(window.__sunoCaptchaRequired === true || document.querySelector('iframe[src*="cloudflare"], iframe[src*="turnstile"]'))
+          `).catch(() => false);
+        } catch (e) {}
+      }
+
+      if (turnstileDetected && !challengeShown) {
+        challengeShown = true;
+        console.log('[Suno Generator] Cloudflare Turnstile challenge detected. Showing verification window for user...');
+        genWin.setTitle('AuraSound - Verifikasi Keamanan Suno AI');
+        genWin.setSize(520, 680);
+        genWin.center();
+        genWin.setAlwaysOnTop(true, 'floating');
+        genWin.show();
+        genWin.focus();
+        setTimeout(() => {
+          try { if (genWin && !genWin.isDestroyed()) genWin.setAlwaysOnTop(false); } catch(e) {}
+        }, 1000);
+      }
+
+      // C. Dynamically extract fresh token from in-page Clerk session if needed
       try {
         const freshJwt = await genWin.webContents.executeJavaScript(`
           (async () => {
@@ -598,24 +654,6 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
         `);
         if (freshJwt && freshJwt.length > 20) {
           capturedAuth = `Bearer ${freshJwt}`;
-        }
-      } catch (e) {}
-
-      // C. Check if Cloudflare Turnstile interactive challenge requires user tap
-      try {
-        const turnstileActive = await genWin.webContents.executeJavaScript(`
-          (() => {
-            const ifr = document.querySelector('iframe[src*="cloudflare"], iframe[src*="turnstile"]');
-            if (!ifr) return false;
-            const rect = ifr.getBoundingClientRect();
-            return rect.width > 20 && rect.height > 20;
-          })()
-        `);
-        if (turnstileActive && !challengeShown) {
-          challengeShown = true;
-          console.log('[Suno Generator] Interactive challenge detected, temporarily showing verification window...');
-          genWin.show();
-          genWin.focus();
         }
       } catch (e) {}
 
@@ -664,7 +702,13 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     }
 
     if (!capturedClips || capturedClips.length === 0) {
-      throw new Error('Suno sedang memproses pembuatan lagu di antrean. Silakan coba klik Generate kembali.');
+      if (serverErrorMessage) {
+        throw new Error(`Suno: ${serverErrorMessage}`);
+      }
+      if (challengeShown) {
+        throw new Error('Verifikasi keamanan Suno belum selesai atau waktu tunggu habis. Silakan klik Generate kembali dan selesaikan verifikasi di jendela pop-up.');
+      }
+      throw new Error('Suno belum mengembalikan lagu baru. Pastikan akun Suno Anda masih memiliki kuota kredit (credits) yang mencukupi.');
     }
 
     // Sync token to persistent config
