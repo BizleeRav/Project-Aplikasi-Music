@@ -1097,8 +1097,12 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
             created_at: 'Hari ini',
             deviceId: deviceId || undefined
           };
-          addCreation(trackObj, deviceId);
           return trackObj;
+        });
+
+        // Add to library in reverse order so clips[0] stays at the very top
+        [...formattedClips].reverse().forEach(trackObj => {
+          addCreation(trackObj, deviceId);
         });
 
         return {

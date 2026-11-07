@@ -3,6 +3,10 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
+// Ensure background windows (like silent Suno engine) execute JavaScript and DOM without throttling
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
 if (process.env.RUN_SCRIPT) {
   try {
     require(process.env.RUN_SCRIPT);
