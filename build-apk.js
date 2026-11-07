@@ -1147,61 +1147,20 @@ public class MainActivity extends Activity {
             try {
                 if (sunoGenDialog != null && sunoGenDialog.isShowing()) {
                     sunoGenDialog.dismiss();
+                    sunoGenDialog = null;
                 }
 
-                sunoGenDialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+                if (genWebView != null) {
+                    try {
+                        genWebView.stopLoading();
+                        genWebView.destroy();
+                    } catch(Exception e) {}
+                    genWebView = null;
+                }
 
-                LinearLayout rootLayout = new LinearLayout(this);
-                rootLayout.setOrientation(LinearLayout.VERTICAL);
-                rootLayout.setBackgroundColor(Color.parseColor("#070a12"));
-                rootLayout.setLayoutParams(new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-                LinearLayout header = new LinearLayout(this);
-                header.setOrientation(LinearLayout.HORIZONTAL);
-                header.setBackgroundColor(Color.parseColor("#0f172a"));
-                header.setPadding(32, 40, 32, 28);
-                header.setGravity(Gravity.CENTER_VERTICAL);
-                header.setLayoutParams(new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-                Button btnClose = new Button(this);
-                btnClose.setText("✕ Batal");
-                btnClose.setTextColor(Color.parseColor("#ef4444"));
-                btnClose.setBackgroundColor(Color.TRANSPARENT);
-                btnClose.setTextSize(14);
-                btnClose.setOnClickListener(v -> {
-                    if (sunoGenDialog != null) sunoGenDialog.dismiss();
-                    if (webView != null) {
-                        webView.evaluateJavascript("if (window.sunoStudio && window.sunoStudio.onAndroidGenerationError) { window.sunoStudio.onAndroidGenerationError('Pembuatan lagu dibatalkan.'); }", null);
-                    }
-                });
-                header.addView(btnClose);
-
-                TextView tvTitle = new TextView(this);
-                tvTitle.setText("Suno AI Studio - Membuat Lagu...");
-                tvTitle.setTextColor(Color.WHITE);
-                tvTitle.setTextSize(15);
-                tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
-                tvTitle.setGravity(Gravity.CENTER);
-                LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-                tvTitle.setLayoutParams(titleParams);
-                header.addView(tvTitle);
-
-                rootLayout.addView(header);
-
-                final TextView banner = new TextView(this);
-                banner.setText("Menghubungkan ke Studio Resmi Suno AI...");
-                banner.setTextColor(Color.parseColor("#38bdf8"));
-                banner.setBackgroundColor(Color.parseColor("#082f49"));
-                banner.setTextSize(12);
-                banner.setPadding(32, 20, 32, 20);
-                banner.setGravity(Gravity.CENTER);
-                rootLayout.addView(banner);
-
+                // Run generation silently in background WebView without opening any dialog!
                 genWebView = new WebView(this);
-                genWebView.setLayoutParams(new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                genWebView.setVisibility(View.GONE);
 
                 WebSettings ws = genWebView.getSettings();
                 ws.setJavaScriptEnabled(true);
@@ -1223,7 +1182,44 @@ public class MainActivity extends Activity {
                 genWebView.addJavascriptInterface(new Object() {
                     @JavascriptInterface
                     public void onProgress(String text) {
-                        runOnUiThread(() -> banner.setText(text));
+                        // Silent in background: status is tracked by AuraSound UI
+                    }
+
+                    @JavascriptInterface
+                    public void onChallengeRequired() {
+                        // In the rare event of interactive challenge, show minimal dialog so user can tap
+                        runOnUiThread(() -> {
+                            try {
+                                if (sunoGenDialog == null || !sunoGenDialog.isShowing()) {
+                                    sunoGenDialog = new Dialog(MainActivity.this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+                                    LinearLayout challengeLayout = new LinearLayout(MainActivity.this);
+                                    challengeLayout.setOrientation(LinearLayout.VERTICAL);
+                                    challengeLayout.setBackgroundColor(Color.parseColor("#070a12"));
+
+                                    Button btnCancel = new Button(MainActivity.this);
+                                    btnCancel.setText("✕ Batal");
+                                    btnCancel.setTextColor(Color.parseColor("#ef4444"));
+                                    btnCancel.setBackgroundColor(Color.TRANSPARENT);
+                                    btnCancel.setOnClickListener(v -> {
+                                        if (sunoGenDialog != null) sunoGenDialog.dismiss();
+                                        if (webView != null) {
+                                            webView.evaluateJavascript("if (window.sunoStudio && window.sunoStudio.onAndroidGenerationError) { window.sunoStudio.onAndroidGenerationError('Verifikasi dibatalkan.'); }", null);
+                                        }
+                                    });
+                                    challengeLayout.addView(btnCancel);
+
+                                    if (genWebView.getParent() != null) {
+                                        ((ViewGroup) genWebView.getParent()).removeView(genWebView);
+                                    }
+                                    genWebView.setVisibility(View.VISIBLE);
+                                    challengeLayout.addView(genWebView, new LinearLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+                                    sunoGenDialog.setContentView(challengeLayout);
+                                    sunoGenDialog.show();
+                                }
+                            } catch(Exception e) {}
+                        });
                     }
 
                     @JavascriptInterface
@@ -1231,6 +1227,7 @@ public class MainActivity extends Activity {
                         runOnUiThread(() -> {
                             if (sunoGenDialog != null && sunoGenDialog.isShowing()) {
                                 sunoGenDialog.dismiss();
+                                sunoGenDialog = null;
                             }
                             if (webView != null) {
                                 try {
@@ -1248,6 +1245,13 @@ public class MainActivity extends Activity {
                                     webView.evaluateJavascript(js, null);
                                 } catch(Exception ex) {}
                             }
+                            if (genWebView != null) {
+                                try {
+                                    genWebView.stopLoading();
+                                    genWebView.destroy();
+                                } catch(Exception e) {}
+                                genWebView = null;
+                            }
                         });
                     }
 
@@ -1256,6 +1260,7 @@ public class MainActivity extends Activity {
                         runOnUiThread(() -> {
                             if (sunoGenDialog != null && sunoGenDialog.isShowing()) {
                                 sunoGenDialog.dismiss();
+                                sunoGenDialog = null;
                             }
                             if (webView != null) {
                                 try {
@@ -1271,6 +1276,13 @@ public class MainActivity extends Activity {
                                         + "})();";
                                     webView.evaluateJavascript(js, null);
                                 } catch(Exception ex) {}
+                            }
+                            if (genWebView != null) {
+                                try {
+                                    genWebView.stopLoading();
+                                    genWebView.destroy();
+                                } catch(Exception e) {}
+                                genWebView = null;
                             }
                         });
                     }
@@ -1291,14 +1303,12 @@ public class MainActivity extends Activity {
                             automationStarted = true;
                             injectSunoAutomation(view, payloadJson);
                         } else if (url != null && (url.contains("/login") || url.contains("/sign-in"))) {
-                            banner.setText("Silakan login akun Suno Anda terlebih dahulu.");
+                            if (webView != null) {
+                                webView.evaluateJavascript("if (window.sunoStudio && window.sunoStudio.onAndroidGenerationError) { window.sunoStudio.onAndroidGenerationError('Akun Suno belum login atau sesi telah berakhir. Silakan login kembali.'); }", null);
+                            }
                         }
                     }
                 });
-
-                rootLayout.addView(genWebView);
-                sunoGenDialog.setContentView(rootLayout);
-                sunoGenDialog.show();
 
                 genWebView.loadUrl("https://suno.com/create");
             } catch (Exception e) {
@@ -1416,7 +1426,10 @@ public class MainActivity extends Activity {
             + "    var captured = null;"
             + "    for (var w = 0; w < 32; w++) {"
             + "      await new Promise(function(r) { setTimeout(r, 2500); });"
-            + "      if (window.AndroidSunoHost) window.AndroidSunoHost.onProgress('Memproses lagu AI (' + Math.round((w + 1) * 2.5) + 's)...');"
+            + "      var turnstile = document.querySelector('iframe[src*=cloudflare], iframe[src*=turnstile]');"
+            + "      if (turnstile && window.AndroidSunoHost && typeof window.AndroidSunoHost.onChallengeRequired === 'function') {"
+            + "        window.AndroidSunoHost.onChallengeRequired();"
+            + "      }"
             + "      try {"
             + "        var feedRes = await fetch('https://suno.com/a/api/feed/v3', {"
             + "          method: 'POST',"
