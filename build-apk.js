@@ -122,8 +122,8 @@ public class BackgroundAudioWebView extends WebView {
 fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurasound.musichub"
-    android:versionCode="6"
-    android:versionName="1.3.2">
+    android:versionCode="7"
+    android:versionName="1.3.3">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -270,7 +270,7 @@ public class AndroidMediaBridge {
 
     @JavascriptInterface
     public int getAppVersionCode() {
-        return 6;
+        return 7;
     }
 }
 `);
@@ -755,13 +755,29 @@ public class MainActivity extends Activity {
     private Dialog sunoLoginDialog;
     private WebView loginWebView;
     private boolean isCapturingSunoToken = false;
-    private Dialog sunoGenDialog;
     private WebView genWebView;
     private FrameLayout warmWebViewContainer;
+    private LinearLayout warmWebViewCard;
+    private volatile long lastAndroidGenStartedMs = 0L;
+    private volatile boolean androidUserCancelled = false;
     private String pendingSunoPayloadJson = null;
     private boolean isGenWebViewReady = false;
     private boolean isGenWebViewLoading = false;
     private Runnable sunoTokenRefreshRunnable;
+
+    private String getCleanWebViewUserAgent() {
+        try {
+            String defUa = WebSettings.getDefaultUserAgent(this);
+            if (defUa != null && !defUa.isEmpty()) {
+                return defUa
+                    .replace("; wv)", ")")
+                    .replace("; wv;", ";")
+                    .replace("Version/4.0 ", "")
+                    .trim();
+            }
+        } catch (Exception e) {}
+        return "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -821,8 +837,8 @@ public class MainActivity extends Activity {
         settings.setOffscreenPreRaster(true);
         settings.setEnableSmoothTransition(true);
 
-        // Genuine Mobile Chrome User-Agent
-        settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.102 Mobile Safari/537.36");
+        // Genuine native Mobile Chrome User-Agent matching Android System WebView Sec-CH-UA
+        settings.setUserAgentString(getCleanWebViewUserAgent());
 
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
@@ -997,8 +1013,9 @@ public class MainActivity extends Activity {
                 ws.setJavaScriptCanOpenWindowsAutomatically(true);
                 ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-                // Genuine Chrome Mobile User-Agent to avoid Google OAuth blocking
-                ws.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.102 Mobile Safari/537.36");
+                // Genuine native Chrome Mobile User-Agent matching Sec-CH-UA
+                final String nativeMobileUa = getCleanWebViewUserAgent();
+                ws.setUserAgentString(nativeMobileUa);
 
                 CookieManager cm = CookieManager.getInstance();
                 cm.setAcceptCookie(true);
@@ -1020,10 +1037,10 @@ public class MainActivity extends Activity {
                     private void applyUa(WebView view, String url) {
                         if (url == null || view == null) return;
                         String u = url.toLowerCase();
-                        if (u.contains("google.com") || u.contains("googleusercontent.com")) {
-                            view.getSettings().setUserAgentString("Mozilla/5.0 (Android 14; Mobile; rv:130.0) Gecko/130.0 Firefox/130.0");
+                        if (u.contains("accounts.google.com") || u.contains("google.com/o/oauth2") || u.contains("googleusercontent.com")) {
+                            view.getSettings().setUserAgentString("Mozilla/5.0 (Android 14; Mobile; rv:134.0) Gecko/134.0 Firefox/134.0");
                         } else {
-                            view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.102 Mobile Safari/537.36");
+                            view.getSettings().setUserAgentString(nativeMobileUa);
                         }
                     }
 
@@ -1159,39 +1176,147 @@ public class MainActivity extends Activity {
         ensureWarmSunoWebView(true);
     }
 
-    private void parkGenWebViewInBackground() {
+    private String extractSessionCookieFromManager() {
         try {
-            if (sunoGenDialog != null) {
-                try {
-                    if (sunoGenDialog.isShowing()) sunoGenDialog.dismiss();
-                } catch (Exception e) {}
-                sunoGenDialog = null;
+            CookieManager cm = CookieManager.getInstance();
+            String cookieStr = cm.getCookie("https://suno.com");
+            if (cookieStr == null || !cookieStr.contains("__session=")) {
+                cookieStr = cm.getCookie("https://auth.suno.com");
             }
+            if (cookieStr != null && cookieStr.contains("__session=")) {
+                String[] parts = cookieStr.split(";");
+                for (String p : parts) {
+                    String trimmed = p.trim();
+                    if (trimmed.startsWith("__session=")) {
+                        String tok = trimmed.substring("__session=".length()).trim();
+                        if (tok.length() > 20 && tok.startsWith("eyJ")) {
+                            return tok;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {}
+        return "";
+    }
+
+    private void ensureWarmContainerMounted() {
+        try {
             if (warmWebViewContainer == null) {
                 warmWebViewContainer = new FrameLayout(this);
-                addContentView(warmWebViewContainer, new FrameLayout.LayoutParams(1, 1));
+                warmWebViewContainer.setBackgroundColor(Color.parseColor("#D9070A12"));
+                warmWebViewContainer.setPadding(32, 64, 32, 64);
+
+                warmWebViewCard = new LinearLayout(this);
+                warmWebViewCard.setOrientation(LinearLayout.VERTICAL);
+                warmWebViewCard.setPadding(32, 28, 32, 28);
+                GradientDrawable bg = new GradientDrawable();
+                bg.setColor(Color.parseColor("#121826"));
+                bg.setCornerRadius(36f);
+                bg.setStroke(2, Color.parseColor("#2a354d"));
+                warmWebViewCard.setBackground(bg);
+
+                LinearLayout headerRow = new LinearLayout(this);
+                headerRow.setOrientation(LinearLayout.HORIZONTAL);
+                headerRow.setGravity(Gravity.CENTER_VERTICAL);
+                headerRow.setPadding(0, 0, 0, 16);
+
+                LinearLayout titleCol = new LinearLayout(this);
+                titleCol.setOrientation(LinearLayout.VERTICAL);
+                titleCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+                TextView titleTv = new TextView(this);
+                titleTv.setText("Verifikasi Suno AI");
+                titleTv.setTextColor(Color.WHITE);
+                titleTv.setTextSize(15f);
+                titleTv.setTypeface(null, Typeface.BOLD);
+                titleCol.addView(titleTv);
+
+                TextView subTv = new TextView(this);
+                subTv.setText("Centang 1x untuk melanjutkan pembuatan lagu:");
+                subTv.setTextColor(Color.parseColor("#94a3b8"));
+                subTv.setTextSize(12f);
+                titleCol.addView(subTv);
+
+                headerRow.addView(titleCol);
+
+                Button btnCancel = new Button(this);
+                btnCancel.setText("✕ Batal");
+                btnCancel.setTextColor(Color.parseColor("#f87171"));
+                btnCancel.setBackgroundColor(Color.TRANSPARENT);
+                btnCancel.setTextSize(13f);
+                btnCancel.setOnClickListener(v -> {
+                    androidUserCancelled = true;
+                    parkGenWebViewInBackground();
+                    if (webView != null) {
+                        webView.evaluateJavascript("if (window.sunoStudio && window.sunoStudio.onAndroidGenerationError) { window.sunoStudio.onAndroidGenerationError('Verifikasi dibatalkan.'); }", null);
+                    }
+                });
+                headerRow.addView(btnCancel);
+
+                warmWebViewCard.addView(headerRow, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                warmWebViewContainer.addView(warmWebViewCard, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+                warmWebViewContainer.setTranslationX(10000f);
+                warmWebViewContainer.setAlpha(0.01f);
+                warmWebViewContainer.setClickable(false);
+
+                addContentView(warmWebViewContainer, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             }
-            if (genWebView != null) {
-                if (genWebView.getParent() != null && genWebView.getParent() != warmWebViewContainer) {
-                    ((ViewGroup) genWebView.getParent()).removeView(genWebView);
-                }
-                genWebView.setAlpha(0.01f);
+            if (genWebView != null && warmWebViewCard != null && genWebView.getParent() == null) {
                 genWebView.setVisibility(View.VISIBLE);
-                if (genWebView.getParent() == null) {
-                    warmWebViewContainer.addView(genWebView, new FrameLayout.LayoutParams(1, 1));
-                }
+                warmWebViewCard.addView(genWebView, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
             }
         } catch (Exception e) {}
     }
 
+    private void parkGenWebViewInBackground() {
+        try {
+            ensureWarmContainerMounted();
+            if (warmWebViewContainer != null) {
+                warmWebViewContainer.setTranslationX(10000f);
+                warmWebViewContainer.setAlpha(0.01f);
+                warmWebViewContainer.setClickable(false);
+            }
+            if (genWebView != null) {
+                genWebView.setVisibility(View.VISIBLE);
+            }
+        } catch (Exception e) {}
+    }
+
+    public void showSunoChallenge() {
+        runOnUiThread(() -> {
+            try {
+                ensureWarmContainerMounted();
+                if (warmWebViewContainer != null) {
+                    warmWebViewContainer.setTranslationX(0f);
+                    warmWebViewContainer.setAlpha(1.0f);
+                    warmWebViewContainer.setClickable(true);
+                    warmWebViewContainer.bringToFront();
+                }
+            } catch (Exception e) {}
+        });
+    }
+
+    public void hideSunoChallenge() {
+        runOnUiThread(() -> {
+            try {
+                if (warmWebViewContainer != null) {
+                    warmWebViewContainer.setTranslationX(10000f);
+                    warmWebViewContainer.setAlpha(0.01f);
+                    warmWebViewContainer.setClickable(false);
+                }
+            } catch (Exception e) {}
+        });
+    }
+
     private void destroyWarmSunoWebView() {
         try {
-            if (sunoGenDialog != null) {
-                try {
-                    if (sunoGenDialog.isShowing()) sunoGenDialog.dismiss();
-                } catch (Exception e) {}
-                sunoGenDialog = null;
-            }
+            hideSunoChallenge();
             if (genWebView != null) {
                 if (genWebView.getParent() != null) {
                     ((ViewGroup) genWebView.getParent()).removeView(genWebView);
@@ -1219,122 +1344,6 @@ public class MainActivity extends Activity {
         } catch (Exception e) {}
     }
 
-    private void injectWarmFetchHook(WebView view) {
-        if (view == null) return;
-        String hookJs = "(function() {"
-            + "  try {"
-            + "    if (!window.__androidFetchHooked) {"
-            + "      window.__androidFetchHooked = true;"
-            + "      window.__androidCapturedClips = null;"
-            + "      window.__androidGenError = null;"
-            + "      window.__androidCaptchaRequired = null;"
-            + "      window.__androidUserCancelled = false;"
-            + "      var origFetch = window.fetch;"
-            + "      window.fetch = async function() {"
-            + "        var args = Array.prototype.slice.call(arguments);"
-            + "        var u = (args[0] && typeof args[0] === 'string') ? args[0] : (args[0] && args[0].url ? args[0].url : '');"
-            + "        var res = await origFetch.apply(this, args);"
-            + "        try {"
-            + "          if (u.indexOf('/api/c/check') !== -1 || u.indexOf('/c/check') !== -1) {"
-            + "            var cl = res.clone();"
-            + "            var cd = await cl.json();"
-            + "            if (cd && typeof cd.required === 'boolean') {"
-            + "              window.__androidCaptchaRequired = cd.required;"
-            + "            }"
-            + "          } else if (u.indexOf('/generate') !== -1 || u.indexOf('/api/generate') !== -1) {"
-            + "            var clg = res.clone();"
-            + "            var gd = await clg.json();"
-            + "            if (gd && gd.clips && Array.isArray(gd.clips) && gd.clips.length > 0) {"
-            + "              window.__androidCapturedClips = gd.clips;"
-            + "            } else if (gd && (gd.detail || gd.detail_fallback || gd.error_type || gd.message)) {"
-            + "              window.__androidGenError = gd.detail || gd.detail_fallback || gd.error_type || gd.message;"
-            + "            }"
-            + "          }"
-            + "        } catch(e) {}"
-            + "        return res;"
-            + "      };"
-            + "    }"
-            + "  } catch(e) {}"
-            + "})();";
-        view.evaluateJavascript(hookJs, null);
-    }
-
-    public void showSunoChallenge() {
-        runOnUiThread(() -> {
-            try {
-                if (sunoGenDialog == null || !sunoGenDialog.isShowing()) {
-                    sunoGenDialog = new Dialog(MainActivity.this);
-                    sunoGenDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-                    if (sunoGenDialog.getWindow() != null) {
-                        sunoGenDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-                    }
-
-                    LinearLayout root = new LinearLayout(MainActivity.this);
-                    root.setOrientation(LinearLayout.VERTICAL);
-                    root.setPadding(40, 32, 40, 32);
-                    GradientDrawable bg = new GradientDrawable();
-                    bg.setColor(Color.parseColor("#121826"));
-                    bg.setCornerRadius(36f);
-                    bg.setStroke(2, Color.parseColor("#2a354d"));
-                    root.setBackground(bg);
-
-                    TextView titleTv = new TextView(MainActivity.this);
-                    titleTv.setText("Verifikasi Suno AI");
-                    titleTv.setTextColor(Color.WHITE);
-                    titleTv.setTextSize(16f);
-                    titleTv.setTypeface(null, Typeface.BOLD);
-                    titleTv.setPadding(0, 0, 0, 8);
-                    root.addView(titleTv);
-
-                    TextView subTv = new TextView(MainActivity.this);
-                    subTv.setText("Centang 'Verify you are human' 1x untuk melanjutkan:");
-                    subTv.setTextColor(Color.parseColor("#94a3b8"));
-                    subTv.setTextSize(13f);
-                    subTv.setPadding(0, 0, 0, 20);
-                    root.addView(subTv);
-
-                    if (genWebView != null) {
-                        if (genWebView.getParent() != null) {
-                            ((ViewGroup) genWebView.getParent()).removeView(genWebView);
-                        }
-                        genWebView.setAlpha(1.0f);
-                        genWebView.setVisibility(View.VISIBLE);
-                        root.addView(genWebView, new LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, 550));
-                    }
-
-                    Button btnCancel = new Button(MainActivity.this);
-                    btnCancel.setText("✕ Batal");
-                    btnCancel.setTextColor(Color.parseColor("#ef4444"));
-                    btnCancel.setBackgroundColor(Color.TRANSPARENT);
-                    btnCancel.setOnClickListener(v -> {
-                        if (genWebView != null) {
-                            genWebView.evaluateJavascript("window.__androidUserCancelled = true;", null);
-                        }
-                        parkGenWebViewInBackground();
-                        if (webView != null) {
-                            webView.evaluateJavascript("if (window.sunoStudio && window.sunoStudio.onAndroidGenerationError) { window.sunoStudio.onAndroidGenerationError('Verifikasi dibatalkan.'); }", null);
-                        }
-                    });
-                    root.addView(btnCancel);
-
-                    sunoGenDialog.setOnCancelListener(d -> {
-                        if (genWebView != null) {
-                            genWebView.evaluateJavascript("window.__androidUserCancelled = true;", null);
-                        }
-                        parkGenWebViewInBackground();
-                        if (webView != null) {
-                            webView.evaluateJavascript("if (window.sunoStudio && window.sunoStudio.onAndroidGenerationError) { window.sunoStudio.onAndroidGenerationError('Verifikasi dibatalkan.'); }", null);
-                        }
-                    });
-
-                    sunoGenDialog.setContentView(root);
-                    sunoGenDialog.show();
-                }
-            } catch(Exception e) {}
-        });
-    }
-
     public void ensureWarmSunoWebView(final boolean forceReload) {
         runOnUiThread(() -> {
             try {
@@ -1349,7 +1358,8 @@ public class MainActivity extends Activity {
                     ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                     ws.setLoadWithOverviewMode(true);
                     ws.setUseWideViewPort(true);
-                    ws.setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
+                    // Native Android Chrome WebView UA matching Sec-CH-UA (never forge Windows Chrome/128!)
+                    ws.setUserAgentString(getCleanWebViewUserAgent());
 
                     CookieManager cm = CookieManager.getInstance();
                     cm.setAcceptCookie(true);
@@ -1366,6 +1376,41 @@ public class MainActivity extends Activity {
                         @JavascriptInterface
                         public void onChallengeRequired() {
                             showSunoChallenge();
+                        }
+
+                        @JavascriptInterface
+                        public void onChallengeDismissed() {
+                            hideSunoChallenge();
+                        }
+
+                        @JavascriptInterface
+                        public boolean hasGenerateStarted(long sinceMs) {
+                            return lastAndroidGenStartedMs >= sinceMs;
+                        }
+
+                        @JavascriptInterface
+                        public boolean isUserCancelled() {
+                            return androidUserCancelled;
+                        }
+
+                        @JavascriptInterface
+                        public String getFreshCookieToken() {
+                            String cookieTok = extractSessionCookieFromManager();
+                            if (cookieTok != null && cookieTok.length() > 20) {
+                                return cookieTok;
+                            }
+                            return MainActivity.this.getSunoToken();
+                        }
+
+                        @JavascriptInterface
+                        public void reloadAndRun(String b64Payload) {
+                            runOnUiThread(() -> {
+                                try {
+                                    byte[] decoded = Base64.decode(b64Payload, Base64.DEFAULT);
+                                    pendingSunoPayloadJson = new String(decoded, "UTF-8");
+                                    ensureWarmSunoWebView(true);
+                                } catch (Exception e) {}
+                            });
                         }
 
                         @JavascriptInterface
@@ -1388,16 +1433,19 @@ public class MainActivity extends Activity {
                         @JavascriptInterface
                         public void onComplete(String clipsJson, String token) {
                             runOnUiThread(() -> {
-                                if (token != null && token.length() > 20 && token.startsWith("eyJ")) {
-                                    saveSunoToken(token.trim());
+                                String finalTok = token;
+                                if (finalTok == null || finalTok.length() < 20) {
+                                    finalTok = extractSessionCookieFromManager();
                                 }
-                                // Keep genWebView warm in background (no reload needed for next song!)
+                                if (finalTok != null && finalTok.length() > 20 && finalTok.startsWith("eyJ")) {
+                                    saveSunoToken(finalTok.trim());
+                                }
                                 parkGenWebViewInBackground();
                                 if (webView != null) {
                                     try {
                                         byte[] data = (clipsJson != null ? clipsJson : "[]").getBytes("UTF-8");
                                         String b64 = Base64.encodeToString(data, Base64.NO_WRAP);
-                                        String tokVal = token != null ? token.replace("'", "").trim() : "";
+                                        String tokVal = finalTok != null ? finalTok.replace("'", "").trim() : "";
                                         String js = "(function() {"
                                             + "  try {"
                                             + "    var raw = decodeURIComponent(escape(window.atob('" + b64 + "')));"
@@ -1442,10 +1490,23 @@ public class MainActivity extends Activity {
                         }
 
                         @Override
+                        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                            try {
+                                if (request != null && request.getUrl() != null && "POST".equalsIgnoreCase(request.getMethod())) {
+                                    String reqUrl = request.getUrl().toString();
+                                    if (reqUrl.contains("/api/generate")) {
+                                        lastAndroidGenStartedMs = System.currentTimeMillis();
+                                        hideSunoChallenge();
+                                    }
+                                }
+                            } catch (Exception e) {}
+                            return super.shouldInterceptRequest(view, request);
+                        }
+
+                        @Override
                         public void onPageFinished(WebView view, String url) {
                             super.onPageFinished(view, url);
-                            injectWarmFetchHook(view);
-                            if (url != null && url.contains("suno.com/create") && !url.contains("/login") && !url.contains("/sign-in")) {
+                            if (url != null && url.contains("suno.com") && !url.contains("/login") && !url.contains("/sign-in")) {
                                 isGenWebViewReady = true;
                                 isGenWebViewLoading = false;
                                 refreshSunoTokenSilently();
@@ -1472,8 +1533,9 @@ public class MainActivity extends Activity {
                     isGenWebViewReady = false;
                     genWebView.loadUrl("https://suno.com/create");
                 } else {
+                    parkGenWebViewInBackground();
                     String curUrl = genWebView.getUrl();
-                    if (forceReload || curUrl == null || !curUrl.contains("suno.com/create") || curUrl.contains("/login") || curUrl.contains("/sign-in")) {
+                    if (forceReload || curUrl == null || !curUrl.contains("suno.com") || curUrl.contains("/login") || curUrl.contains("/sign-in")) {
                         isGenWebViewLoading = true;
                         isGenWebViewReady = false;
                         genWebView.loadUrl("https://suno.com/create");
@@ -1488,11 +1550,12 @@ public class MainActivity extends Activity {
     public void generateSunoSongFlow(final String payloadJson) {
         runOnUiThread(() -> {
             try {
+                androidUserCancelled = false;
+                lastAndroidGenStartedMs = 0L;
                 parkGenWebViewInBackground();
                 String curUrl = (genWebView != null) ? genWebView.getUrl() : null;
-                if (genWebView != null && isGenWebViewReady && curUrl != null && curUrl.contains("suno.com/create") && !curUrl.contains("/login") && !curUrl.contains("/sign-in")) {
+                if (genWebView != null && isGenWebViewReady && curUrl != null && curUrl.contains("suno.com") && !curUrl.contains("/login") && !curUrl.contains("/sign-in")) {
                     pendingSunoPayloadJson = null;
-                    injectWarmFetchHook(genWebView);
                     injectSunoAutomation(genWebView, payloadJson);
                 } else {
                     pendingSunoPayloadJson = payloadJson;
@@ -1516,52 +1579,68 @@ public class MainActivity extends Activity {
         } catch(Exception e) {}
         String js = "(async function() {"
             + "  try {"
-            + "    window.__androidCapturedClips = null;"
-            + "    window.__androidGenError = null;"
-            + "    window.__androidCaptchaRequired = null;"
-            + "    window.__androidUserCancelled = false;"
+            + "    var b64In = '" + b64Payload + "';"
+            + "    var NL = String.fromCharCode(10);"
             + "    var payload = {};"
-            + "    try { payload = JSON.parse(decodeURIComponent(escape(window.atob('" + b64Payload + "')))); } catch(e) {}"
-            + "    var freshToken = null;"
-            + "    try {"
-            + "      if (window.Clerk && window.Clerk.session) {"
-            + "        freshToken = await window.Clerk.session.getToken();"
+            + "    try { payload = JSON.parse(decodeURIComponent(escape(window.atob(b64In)))); } catch(e) {}"
+            + "    function getLiveTok() {"
+            + "      if (window.AndroidSunoHost && typeof window.AndroidSunoHost.getFreshCookieToken === 'function') {"
+            + "        var ht = window.AndroidSunoHost.getFreshCookieToken();"
+            + "        if (ht && ht.length > 20) return ht;"
             + "      }"
-            + "    } catch(e) {}"
-            + "    if (!freshToken) {"
-            + "      var m = document.cookie.match(/__session=([^;]+)/);"
-            + "      if (m && m[1]) freshToken = m[1];"
+            + "      var parts = (document.cookie || '').split(';');"
+            + "      for (var k = 0; k < parts.length; k++) {"
+            + "        var pt = parts[k].trim();"
+            + "        if (pt.indexOf('__session=') === 0) return pt.substring(10).trim();"
+            + "      }"
+            + "      return '';"
             + "    }"
-            + "    if (!freshToken && window.AndroidSunoHost && typeof window.AndroidSunoHost.getSunoToken === 'function') {"
-            + "      try {"
-            + "        var hostTok = window.AndroidSunoHost.getSunoToken();"
-            + "        if (hostTok && hostTok.length > 20) freshToken = hostTok;"
-            + "      } catch(e) {}"
-            + "    }"
+            + "    var freshToken = getLiveTok();"
             + "    if (freshToken && window.AndroidSunoHost && typeof window.AndroidSunoHost.onTokenRefreshed === 'function') {"
             + "      try { window.AndroidSunoHost.onTokenRefreshed(freshToken); } catch(e) {}"
             + "    }"
-            + "    var waitTicks = 0;"
-            + "    for (var i = 0; i < 25; i++) {"
-            + "      var ready = Boolean(document.querySelector('textarea') || document.querySelector('.lyrics-editor-content') || document.querySelector('button[aria-label]'));"
-            + "      if (ready) break;"
-            + "      waitTicks++;"
-            + "      await new Promise(function(r) { setTimeout(r, 350); });"
+            + "    function hasCreateControls() {"
+            + "      return Boolean(document.querySelector('textarea') || Array.from(document.querySelectorAll('button')).some(function(b) { return (b.getAttribute('aria-label') || '').toLowerCase().includes('create song'); }));"
             + "    }"
-            + "    await new Promise(function(r) { setTimeout(r, waitTicks > 0 ? 900 : 150); });"
+            + "    if (!hasCreateControls()) {"
+            + "      var navItems = Array.from(document.querySelectorAll('a, button, [role=tab]'));"
+            + "      var createNav = navItems.find(function(el) {"
+            + "        var tx = (el.textContent || '').trim().toLowerCase();"
+            + "        var hr = (el.getAttribute('href') || '').toLowerCase();"
+            + "        return tx === 'create' || hr === '/create' || hr.indexOf('/create?') === 0;"
+            + "      });"
+            + "      if (createNav) { createNav.click(); }"
+            + "    }"
+            + "    for (var i = 0; i < 20; i++) {"
+            + "      if (hasCreateControls()) break;"
+            + "      await new Promise(function(r) { setTimeout(r, 300); });"
+            + "    }"
+            + "    if (!hasCreateControls()) {"
+            + "      if (window.AndroidSunoHost && typeof window.AndroidSunoHost.reloadAndRun === 'function') {"
+            + "        window.AndroidSunoHost.reloadAndRun(b64In);"
+            + "        return;"
+            + "      }"
+            + "      throw new Error('Halaman Create Suno belum siap.');"
+            + "    }"
+            + "    var oldOverlay = Array.from(document.querySelectorAll('div.fixed.inset-0')).find(function(el) {"
+            + "      return String(el.className || '').indexOf('z-[1000]') !== -1;"
+            + "    });"
+            + "    if (oldOverlay) { try { oldOverlay.click(); } catch(e) {} }"
             + "    var existingIds = new Set();"
             + "    var existingPromise = (async function() {"
             + "      try {"
-            + "        var initHeaders = { 'Content-Type': 'application/json' };"
-            + "        if (freshToken) initHeaders['Authorization'] = 'Bearer ' + freshToken;"
-            + "        var feedInit = await fetch('https://studio-api.prod.suno.com/api/feed/v3', {"
+            + "        var tok0 = getLiveTok();"
+            + "        var h0 = { 'Content-Type': 'application/json' };"
+            + "        if (tok0) h0['Authorization'] = 'Bearer ' + tok0;"
+            + "        var r0 = await fetch('/a/api/feed/v3', {"
             + "          method: 'POST',"
-            + "          headers: initHeaders,"
+            + "          credentials: 'include',"
+            + "          headers: h0,"
             + "          body: JSON.stringify({ cursor: null, limit: 30 })"
             + "        });"
-            + "        var fd = await feedInit.json();"
-            + "        if (fd.clips && Array.isArray(fd.clips)) {"
-            + "          fd.clips.forEach(function(c) { if (c && c.id) existingIds.add(c.id); });"
+            + "        var fd0 = await r0.json();"
+            + "        if (fd0 && Array.isArray(fd0.clips)) {"
+            + "          fd0.clips.forEach(function(c) { if (c && c.id) existingIds.add(c.id); });"
             + "        }"
             + "      } catch(fe) {}"
             + "    })();"
@@ -1596,29 +1675,31 @@ public class MainActivity extends Activity {
             + "    var lyricsText = (payload.lyrics || '').trim();"
             + "    var tagsText = (payload.tags || '').trim();"
             + "    var titleText = (payload.title || '').trim();"
-            + "    var isArrangement = Boolean(payload.isArrangementInstruction || promptText.length > 450);"
-            + "    var isCustomLyrics = Boolean(lyricsText.length > 0 && !isArrangement);"
-            + "    if (!isCustomLyrics && !isArrangement) {"
-            + "      if (switchTab('simple')) await new Promise(function(r) { setTimeout(r, 350); });"
+            + "    var wantInstr = Boolean(payload.make_instrumental);"
+            + "    var isCustomLyrics = Boolean(payload.isCustomLyrics && lyricsText.length > 0 && !wantInstr);"
+            + "    if (!isCustomLyrics) {"
+            + "      if (switchTab('simple')) await new Promise(function(r) { setTimeout(r, 320); });"
             + "      var tas = Array.from(document.querySelectorAll('textarea')).filter(function(t) {"
             + "        var al = (t.getAttribute('aria-label') || '').toLowerCase();"
-            + "        return !al.includes('cowriter') && !al.includes('sound') && !al.includes('script') && !al.includes('tone');"
+            + "        return !al.includes('cowriter') && !al.includes('sound') && !al.includes('script') && !al.includes('tone') && al !== 'styles';"
             + "      });"
             + "      var pBox = tas[0] || document.querySelector('textarea');"
             + "      if (pBox) {"
-            + "        var sVal = [promptText, tagsText].filter(Boolean).join('. ').slice(0, 450);"
-            + "        setNativeVal(pBox, sVal);"
+            + "        var sParts = [];"
+            + "        if (wantInstr) sParts.push('Instrumental only, no vocals.');"
+            + "        if (promptText) sParts.push(promptText);"
+            + "        if (tagsText) sParts.push('Style: ' + tagsText);"
+            + "        setNativeVal(pBox, sParts.join(NL).slice(0, 2950));"
             + "      }"
             + "    } else {"
-            + "      if (switchTab('advanced')) await new Promise(function(r) { setTimeout(r, 350); });"
+            + "      if (switchTab('advanced')) await new Promise(function(r) { setTimeout(r, 320); });"
             + "      var styleBox = document.querySelector('textarea[aria-label=Styles]') || Array.from(document.querySelectorAll('textarea')).find(function(t) {"
             + "        var al = (t.getAttribute('aria-label') || '').toLowerCase();"
             + "        var ph = (t.placeholder || '').toLowerCase();"
-            + "        return al === 'styles' || ph.includes('style') || ph.includes('battle rap') || ph.includes('electro') || ph.includes('genre') || ph.includes('románticas');"
+            + "        return al === 'styles' || ph.includes('style') || ph.includes('genre');"
             + "      });"
             + "      if (styleBox) {"
-            + "        var styleVal = isArrangement ? [tagsText, promptText].filter(Boolean).join(', ').slice(0, 950) : (tagsText || promptText).slice(0, 950);"
-            + "        setNativeVal(styleBox, styleVal);"
+            + "        setNativeVal(styleBox, tagsText.slice(0, 950));"
             + "      }"
             + "      var titleInput = Array.from(document.querySelectorAll('input')).find(function(i) { var ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase(); return ph.includes('title') || ph.includes('judul'); });"
             + "      if (titleInput) {"
@@ -1629,19 +1710,15 @@ public class MainActivity extends Activity {
             + "        lyricsBox.focus();"
             + "        document.execCommand('selectAll', false, null);"
             + "        document.execCommand('delete', false, null);"
-            + "        if (!payload.make_instrumental) {"
-            + "          var toInsert = isCustomLyrics ? lyricsText : decodeURIComponent(escape(window.atob('W0ludHJvOiBJbnN0cnVtZW50YWwgSG9va10KCltTZWN0aW9uIDE6IExlYWQgU29sb10KCltTZWN0aW9uIDI6IER5bmFtaWMgRW5zZW1ibGVdCgpbQ2hvcnVzOiBGdWxsIEhhcm1vbnldCgpbT3V0cm86IE1lbG9kaWMgRmFkZV0=')));"
-            + "          document.execCommand('insertText', false, toInsert);"
-            + "        }"
+            + "        document.execCommand('insertText', false, lyricsText);"
             + "      }"
             + "    }"
-            + "    var wantInstr = Boolean(payload.make_instrumental);"
-            + "    var instr = Array.from(document.querySelectorAll('button, [role=switch], input[type=checkbox]')).find(function(b) { return (b.textContent || b.getAttribute('aria-label') || b.name || '').toLowerCase().includes('instrumental'); });"
+            + "    var instr = Array.from(document.querySelectorAll('[role=switch], input[type=checkbox]')).find(function(b) { return (b.textContent || b.getAttribute('aria-label') || b.name || '').toLowerCase().includes('instrumental'); });"
             + "    if (instr) {"
             + "      var isChecked = instr.getAttribute('aria-checked') === 'true' || instr.checked === true || instr.getAttribute('data-state') === 'checked';"
             + "      if (isChecked !== wantInstr) instr.click();"
             + "    }"
-            + "    await Promise.all([existingPromise, new Promise(function(r) { setTimeout(r, 350); })]);"
+            + "    await Promise.all([existingPromise, new Promise(function(r) { setTimeout(r, 320); })]);"
             + "    var refreshedBtns = Array.from(document.querySelectorAll('button'));"
             + "    var createBtn = refreshedBtns.find(function(b) { var al = (b.getAttribute('aria-label') || '').toLowerCase(); var t = (b.textContent || '').trim().toLowerCase(); return al.includes('create song') || (!b.closest('nav') && !b.closest('aside') && (t === 'create' || t.startsWith('create ') || t.startsWith('create('))); });"
             + "    if (!createBtn) throw new Error('Tombol Create tidak ditemukan.');"
@@ -1649,68 +1726,93 @@ public class MainActivity extends Activity {
             + "      await new Promise(function(r) { setTimeout(r, 500); });"
             + "      if (createBtn.disabled) throw new Error('Tombol Create saat ini nonaktif (cek kuota kredit Suno Anda).');"
             + "    }"
+            + "    var clickTimeMs = Date.now();"
             + "    try {"
+            + "      createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });"
             + "      createBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));"
             + "      createBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));"
             + "      createBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));"
             + "      createBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));"
             + "    } catch(e) {}"
             + "    createBtn.click();"
-            + "    var clickTimeMs = Date.now();"
+            + "    function hasTurnstileModal() {"
+            + "      var overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role=dialog]'));"
+            + "      return overlays.some(function(el) {"
+            + "        var cls = String(el.className || '');"
+            + "        var st = window.getComputedStyle(el);"
+            + "        if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;"
+            + "        if (el.offsetWidth < 100 || el.offsetHeight < 100) return false;"
+            + "        if (cls.indexOf('z-[1000]') !== -1) return true;"
+            + "        return Boolean(el.querySelector('iframe[src*=cloudflare], iframe[src*=turnstile], [data-sitekey]'));"
+            + "      });"
+            + "    }"
             + "    var captured = null;"
             + "    var challengeShown = false;"
-            + "    for (var w = 0; w < 30; w++) {"
-            + "      await new Promise(function(r) { setTimeout(r, 1000); });"
-            + "      if (window.__androidUserCancelled) return;"
-            + "      if (window.__androidGenError) {"
-            + "        throw new Error(String(window.__androidGenError));"
+            + "    var challengeVisibleNow = false;"
+            + "    var lastPollMs = 0;"
+            + "    var genStartedAtMs = 0;"
+            + "    while ((Date.now() - clickTimeMs) < 110000) {"
+            + "      await new Promise(function(r) { setTimeout(r, 250); });"
+            + "      if (window.AndroidSunoHost && window.AndroidSunoHost.isUserCancelled()) return;"
+            + "      var elapsedMs = Date.now() - clickTimeMs;"
+            + "      var genStarted = Boolean(window.AndroidSunoHost && window.AndroidSunoHost.hasGenerateStarted(clickTimeMs));"
+            + "      if (genStarted && !genStartedAtMs) genStartedAtMs = Date.now();"
+            + "      var modalOpen = hasTurnstileModal();"
+            + "      if (challengeVisibleNow && (!modalOpen || genStarted)) {"
+            + "        challengeVisibleNow = false;"
+            + "        if (window.AndroidSunoHost && window.AndroidSunoHost.onChallengeDismissed) {"
+            + "          window.AndroidSunoHost.onChallengeDismissed();"
+            + "        }"
             + "      }"
-            + "      if (window.__androidCapturedClips && window.__androidCapturedClips.length > 0) {"
-            + "        captured = window.__androidCapturedClips;"
-            + "        break;"
-            + "      }"
-            + "      var visibleTurnstile = Array.from(document.querySelectorAll('iframe[src*=cloudflare], iframe[src*=turnstile]')).find(function(f) { return f.offsetWidth > 10 && f.offsetHeight > 10; });"
-            + "      if (!challengeShown && w >= 1 && (window.__androidCaptchaRequired === true || Boolean(visibleTurnstile))) {"
+            + "      if (!challengeShown && !genStarted && elapsedMs >= 4500 && modalOpen) {"
             + "        challengeShown = true;"
-            + "        if (window.AndroidSunoHost && typeof window.AndroidSunoHost.onChallengeRequired === 'function') {"
+            + "        challengeVisibleNow = true;"
+            + "        if (window.AndroidSunoHost && window.AndroidSunoHost.onChallengeRequired) {"
             + "          window.AndroidSunoHost.onChallengeRequired();"
             + "        }"
             + "      }"
-            + "      if (w % 2 === 1) {"
+            + "      var pollGap = genStarted ? 1500 : 3000;"
+            + "      if ((Date.now() - lastPollMs) >= pollGap && (genStarted || !modalOpen)) {"
+            + "        lastPollMs = Date.now();"
             + "        try {"
+            + "          var liveTok = getLiveTok();"
+            + "          if (liveTok) freshToken = liveTok;"
             + "          var pollHeaders = { 'Content-Type': 'application/json' };"
             + "          if (freshToken) pollHeaders['Authorization'] = 'Bearer ' + freshToken;"
-            + "          var feedRes = await fetch('https://studio-api.prod.suno.com/api/feed/v3', {"
+            + "          var feedRes = await fetch('/a/api/feed/v3', {"
             + "            method: 'POST',"
+            + "            credentials: 'include',"
             + "            headers: pollHeaders,"
             + "            body: JSON.stringify({ cursor: null, limit: 12 })"
             + "          });"
             + "          var fd2 = await feedRes.json();"
-            + "          if (fd2.clips && Array.isArray(fd2.clips)) {"
+            + "          if (fd2 && Array.isArray(fd2.clips)) {"
             + "            var newly = fd2.clips.filter(function(c) {"
             + "              if (!c || !c.id || existingIds.has(c.id)) return false;"
             + "              if (c.created_at) {"
             + "                var t = new Date(c.created_at).getTime();"
-            + "                if (t < (clickTimeMs - 20000)) return false;"
+            + "                if (t < (clickTimeMs - 45000)) return false;"
             + "              }"
             + "              return true;"
             + "            });"
-            + "            if (newly.length > 0) {"
+            + "            if (newly.length >= 2 || (newly.length >= 1 && genStartedAtMs > 0 && (Date.now() - genStartedAtMs) > 6000)) {"
             + "              captured = newly;"
             + "              break;"
             + "            }"
             + "          }"
             + "        } catch(pe) {}"
             + "      }"
+            + "      if (genStartedAtMs > 0 && (Date.now() - genStartedAtMs) > 45000) break;"
+            + "      if (!challengeShown && !modalOpen && !genStarted && elapsedMs > 22000) break;"
             + "    }"
-            + "    if (window.__androidUserCancelled) return;"
+            + "    if (window.AndroidSunoHost && window.AndroidSunoHost.isUserCancelled()) return;"
             + "    if (captured && captured.length > 0) {"
-            + "      if (window.AndroidSunoHost) window.AndroidSunoHost.onComplete(JSON.stringify(captured), freshToken);"
+            + "      if (window.AndroidSunoHost) window.AndroidSunoHost.onComplete(JSON.stringify(captured), getLiveTok() || freshToken);"
             + "    } else {"
             + "      if (window.AndroidSunoHost) window.AndroidSunoHost.onError(challengeShown ? 'Verifikasi Suno belum selesai atau waktu habis.' : 'Waktu tunggu habis atau kuota kredit Suno tidak mencukupi.');"
             + "    }"
             + "  } catch(err) {"
-            + "    if (!window.__androidUserCancelled && window.AndroidSunoHost) {"
+            + "    if (window.AndroidSunoHost && !window.AndroidSunoHost.isUserCancelled()) {"
             + "      window.AndroidSunoHost.onError(err.message || 'Gagal membuat lagu di Suno.');"
             + "    }"
             + "  }"
@@ -1721,34 +1823,10 @@ public class MainActivity extends Activity {
     private void refreshSunoTokenSilently() {
         runOnUiThread(() -> {
             try {
-                CookieManager cm = CookieManager.getInstance();
-                String cookieStr = cm.getCookie("https://suno.com");
-                if (cookieStr != null && cookieStr.contains("__session=")) {
-                    String[] parts = cookieStr.split(";");
-                    for (String p : parts) {
-                        String trimmed = p.trim();
-                        if (trimmed.startsWith("__session=")) {
-                            String tok = trimmed.substring("__session=".length()).trim();
-                            if (tok.length() > 20 && tok.startsWith("eyJ") && !tok.equals(getSunoToken())) {
-                                saveSunoToken(tok);
-                                restoreSavedSunoToken();
-                            }
-                            break;
-                        }
-                    }
-                }
-                if (genWebView != null && isGenWebViewReady) {
-                    String refreshJs = "(async function() {"
-                        + "  try {"
-                        + "    if (window.Clerk && window.Clerk.session) {"
-                        + "      var t = await window.Clerk.session.getToken();"
-                        + "      if (t && t.length > 20 && window.AndroidSunoHost && window.AndroidSunoHost.onTokenRefreshed) {"
-                        + "        window.AndroidSunoHost.onTokenRefreshed(t);"
-                        + "      }"
-                        + "    }"
-                        + "  } catch(e) {}"
-                        + "})();";
-                    genWebView.evaluateJavascript(refreshJs, null);
+                String tok = extractSessionCookieFromManager();
+                if (tok != null && tok.length() > 20 && !tok.equals(getSunoToken())) {
+                    saveSunoToken(tok);
+                    restoreSavedSunoToken();
                 }
             } catch (Exception e) {}
         });
@@ -1759,11 +1837,11 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 refreshSunoTokenSilently();
-                // Clerk __session JWT expires every 60m -> refresh silently every 10 minutes
-                bridgeHandler.postDelayed(this, 10 * 60 * 1000L);
+                // Clerk __session JWT rolls over every ~60s while warm engine is active -> sync every 45s
+                bridgeHandler.postDelayed(this, 45 * 1000L);
             }
         };
-        bridgeHandler.postDelayed(sunoTokenRefreshRunnable, 8000L);
+        bridgeHandler.postDelayed(sunoTokenRefreshRunnable, 6000L);
     }
 
     public void saveSunoToken(String token) {
@@ -2104,6 +2182,14 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BACK && warmWebViewContainer != null && warmWebViewContainer.getTranslationX() == 0f) {
+            androidUserCancelled = true;
+            parkGenWebViewInBackground();
+            if (webView != null) {
+                webView.evaluateJavascript("if (window.sunoStudio && window.sunoStudio.onAndroidGenerationError) { window.sunoStudio.onAndroidGenerationError('Verifikasi dibatalkan.'); }", null);
+            }
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK && webView.canGoBack()) {
             webView.goBack();
             return true;

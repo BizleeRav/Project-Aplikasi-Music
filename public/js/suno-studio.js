@@ -1098,7 +1098,29 @@ class SunoStudio {
     if (matches >= 2) return true;
     if (t.includes('vocal arrangement:') || t.includes('instruments:') || t.includes('vocal arrangement') || t.includes('vocal structure')) return true;
     if (/section \d+/i.test(t) && (t.includes('solo') || t.includes('instruments') || t.includes('ensemble') || t.includes('tempo') || t.includes('vocal'))) return true;
+
+    const hasLyricMarkers = /\[(verse|chorus|intro|bridge|outro|pre-chorus|hook|bait|reff)/i.test(text);
+    if (!hasLyricMarkers) {
+      if (t.includes('lagu ') || t.includes('tentang ') || t.includes('bertemakan ') || t.includes('gaya musik ') || t.includes('soundtrack') || t.includes('create a ') || t.includes('create an ') || t.includes('buatkan ') || t.includes('buat lagu')) {
+        return true;
+      }
+      if (t.includes('cinematic') && (t.includes('vocals') || t.includes('soundtrack') || t.includes('orchestral') || t.includes('choir'))) {
+        return true;
+      }
+    }
     return false;
+  }
+
+  isGenuineCustomLyrics(text) {
+    if (!text || typeof text !== 'string') return false;
+    const trimmed = text.trim();
+    if (trimmed.length < 25) return false;
+    if (this.isPromptInstruction(trimmed)) return false;
+    const lines = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length < 4) return false;
+    return lines.some(l =>
+      /^\[(verse|chorus|pre-chorus|post-chorus|bridge|intro|outro|hook|refrain|bait|reff|pra-reff|interlude|solo|coda)(\s*\d+|\s*[:\-].*)?\]$/i.test(l)
+    );
   }
 
   saveLocalCreationsBackup(newClips) {
@@ -1130,6 +1152,10 @@ class SunoStudio {
       if (!Array.isArray(rawClips) || rawClips.length === 0) {
         throw new Error('Tidak ada klip lagu yang dihasilkan dari Suno.');
       }
+      const reqTitle = (this._lastRequestedTitle || '').trim();
+      const reqTags = (this._lastRequestedTags || '').trim();
+      const reqPrompt = (this._lastRequestedPrompt || '').trim();
+
       const formattedClips = rawClips.map(c => {
         let audioUrl = '';
         if (Array.isArray(c.media_urls) && c.media_urls.length > 0) {
@@ -1150,14 +1176,14 @@ class SunoStudio {
         const durationStr = hasRealDur
           ? `${Math.floor(durationSec / 60)}:${Math.floor(durationSec % 60).toString().padStart(2, '0')}`
           : 'Sedang dibuat...';
-        const genuineLyrics = (c.metadata?.prompt || c.prompt || '').trim();
+        const genuineLyrics = (c.metadata?.prompt || '').trim();
 
         return {
           id: c.id,
-          title: c.title || 'Lagu Baru',
+          title: (c.title && c.title.trim()) || reqTitle || 'Membuat Judul & Lirik...',
           artist: 'Suno v6-mini (Akun Resmi)',
-          tags: c.metadata?.tags || c.tags || '',
-          prompt: c.metadata?.gpt_description_prompt || c.metadata?.prompt || '',
+          tags: (c.metadata?.tags && c.metadata.tags.trim()) || c.tags || reqTags || 'Suno AI',
+          prompt: c.metadata?.gpt_description_prompt || reqPrompt || '',
           lyrics: genuineLyrics,
           model: 'v6-mini',
           status: c.status || 'submitted',
@@ -1216,6 +1242,10 @@ class SunoStudio {
     if (this.isGenerating) return;
     this.isGenerating = true;
 
+    this._lastRequestedTitle = (title || '').trim();
+    this._lastRequestedTags = (tags || '').trim();
+    this._lastRequestedPrompt = (prompt || '').trim();
+
     const generateBtn = document.getElementById('suno-generate-btn');
     const statusBox = document.getElementById('suno-status-box');
     const statusText = document.getElementById('suno-status-text');
@@ -1261,28 +1291,17 @@ class SunoStudio {
         }
 
         if (!result) {
-          const isArrangement = this.isPromptInstruction(prompt) || this.isPromptInstruction(tags);
           const pTrimmed = (prompt || '').trim();
-          const hasLyricMarkers = /\[(verse|chorus|intro|bridge|outro|hook|pre-chorus|solo|ensemble|female|male|section)/i.test(pTrimmed) ||
-            /section \d+/i.test(pTrimmed) ||
-            /vocal structure/i.test(pTrimmed);
-
-          let finalLyrics = '';
-          let isCustomLyrics = false;
-          if (!make_instrumental && !isArrangement && (hasLyricMarkers || pTrimmed.length > 450)) {
-            finalLyrics = pTrimmed;
-            isCustomLyrics = true;
-          }
+          const isCustomLyrics = !make_instrumental && this.isGenuineCustomLyrics(pTrimmed);
 
           const androidPayload = {
-            title: title || '',
-            tags: tags || '',
+            title: (title || '').trim(),
+            tags: (tags || '').trim(),
             prompt: pTrimmed,
-            lyrics: finalLyrics,
+            lyrics: isCustomLyrics ? pTrimmed : '',
             make_instrumental: Boolean(make_instrumental),
             model: model || 'v6-mini',
-            isCustomLyrics: isCustomLyrics,
-            isArrangementInstruction: isArrangement
+            isCustomLyrics: Boolean(isCustomLyrics)
           };
           result = await new Promise((resolve, reject) => {
             this._androidGenResolve = resolve;
@@ -1352,6 +1371,79 @@ class SunoStudio {
     }
   }
 
+  applyUpdatedClipsToState(clips) {
+    if (!Array.isArray(clips) || clips.length === 0) return;
+
+    for (const clip of clips) {
+      if (!this.creations) this.creations = [];
+      const idx = this.creations.findIndex(c => c.id === clip.id);
+      if (idx !== -1) {
+        this.creations[idx] = Object.assign({}, this.creations[idx], clip);
+      } else {
+        this.creations.unshift(clip);
+      }
+    }
+    this.saveLocalCreationsBackup(clips);
+    this.renderCreations();
+    this.renderRecentPreview();
+
+    if (window.app && window.app.currentTrack) {
+      const matchedClip = clips.find(c => c.id === window.app.currentTrack.id);
+      if (matchedClip) {
+        if (matchedClip.title && matchedClip.title !== 'Membuat Judul & Lirik...') {
+          window.app.currentTrack.title = matchedClip.title;
+          const playerTitleEl = document.getElementById('player-title');
+          if (playerTitleEl) playerTitleEl.textContent = matchedClip.title;
+        }
+        if (matchedClip.tags) {
+          window.app.currentTrack.tags = matchedClip.tags;
+        }
+        if (matchedClip.thumbnail) {
+          window.app.currentTrack.thumbnail = matchedClip.thumbnail;
+        }
+        if (matchedClip.lyrics && matchedClip.lyrics.trim()) {
+          window.app.currentTrack.lyrics = matchedClip.lyrics.trim();
+        }
+        if (matchedClip.duration) {
+          window.app.currentTrack.duration = matchedClip.duration;
+        }
+        if (matchedClip.seconds) {
+          window.app.currentTrack.seconds = matchedClip.seconds;
+        }
+        if (matchedClip.audio_url && window.app.currentTrack.audio_url !== matchedClip.audio_url) {
+          window.app.currentTrack.audio_url = matchedClip.audio_url;
+        }
+        if (typeof window.app.renderCinemaLyrics === 'function') {
+          window.app.renderCinemaLyrics(window.app.currentTrack, window.app.currentTrack.seconds, true);
+        }
+      }
+    }
+  }
+
+  finalizeClipsInBackground(clipIds) {
+    let checks = 0;
+    const maxChecks = 24; // up to 2 min in background until status === 'complete' with true mastered duration
+    const bgTimer = setInterval(async () => {
+      checks++;
+      try {
+        const res = await fetch(`/api/suno/status?ids=${clipIds.join(',')}`, {
+          headers: this.getAuthHeaders()
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.clips) && data.clips.length > 0) {
+          this.applyUpdatedClipsToState(data.clips);
+          if (data.clips.every(c => c.status === 'complete')) {
+            clearInterval(bgTimer);
+            return;
+          }
+        }
+      } catch (e) {}
+      if (checks >= maxChecks) {
+        clearInterval(bgTimer);
+      }
+    }, 5000);
+  }
+
   async pollClips(clipIds) {
     const statusText = document.getElementById('suno-status-text');
     let attempts = 0;
@@ -1372,46 +1464,16 @@ class SunoStudio {
           const data = await res.json();
 
           if (data.success && data.clips && data.clips.length > 0) {
-            // 1. Update this.creations memory list + local backup
-            for (const clip of data.clips) {
-              if (!this.creations) this.creations = [];
-              const idx = this.creations.findIndex(c => c.id === clip.id);
-              if (idx !== -1) {
-                this.creations[idx] = Object.assign({}, this.creations[idx], clip);
-              } else {
-                this.creations.unshift(clip);
-              }
-            }
-            this.saveLocalCreationsBackup(data.clips);
-            this.renderCreations();
-            this.renderRecentPreview();
+            this.applyUpdatedClipsToState(data.clips);
 
-            // 2. Real-time Cinema & currentTrack update with authentic lyrics
-            if (window.app && window.app.currentTrack) {
-              const matchedClip = data.clips.find(c => c.id === window.app.currentTrack.id);
-              if (matchedClip) {
-                if (matchedClip.lyrics && matchedClip.lyrics.trim()) {
-                  window.app.currentTrack.lyrics = matchedClip.lyrics.trim();
-                }
-                if (matchedClip.duration) {
-                  window.app.currentTrack.duration = matchedClip.duration;
-                }
-                if (matchedClip.seconds) {
-                  window.app.currentTrack.seconds = matchedClip.seconds;
-                }
-                if (matchedClip.audio_url && window.app.currentTrack.audio_url !== matchedClip.audio_url) {
-                  window.app.currentTrack.audio_url = matchedClip.audio_url;
-                }
-                if (typeof window.app.renderCinemaLyrics === 'function') {
-                  window.app.renderCinemaLyrics(window.app.currentTrack, window.app.currentTrack.seconds, true);
-                }
-              }
-            }
+            const allStreamReady = data.clips.every(c => (c.status === 'complete' || c.status === 'streaming') && c.audio_url);
+            const allFullyComplete = data.clips.every(c => c.status === 'complete');
 
-            // 3. Check completion
-            const allReady = data.clips.every(c => (c.status === 'complete' || c.status === 'streaming') && c.audio_url);
-            if (allReady || attempts >= maxAttempts) {
+            if (allStreamReady || attempts >= maxAttempts) {
               clearInterval(interval);
+              if (!allFullyComplete) {
+                this.finalizeClipsInBackground(clipIds);
+              }
               if (window.app && window.app.showToast) {
                 window.app.showToast('Lagu AI Anda siap diputar dan tersimpan di koleksi! 🎵', 'success');
               }

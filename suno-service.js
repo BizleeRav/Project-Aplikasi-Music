@@ -100,13 +100,32 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
 
 function addCreation(track, deviceId = null) {
   if (!track || !track.id) return;
+  const list = getCreations(); // load all
+  const existingIdx = list.findIndex(t => t.id === track.id);
+  if (existingIdx !== -1) {
+    const prev = list[existingIdx];
+    const merged = {
+      ...prev,
+      ...track,
+      title: (track.title && track.title !== 'Membuat Judul & Lirik...' && track.title !== 'Lagu Baru')
+        ? track.title
+        : (prev.title && prev.title !== 'Membuat Judul & Lirik...' ? prev.title : (track.title || prev.title || 'Lagu Baru')),
+      tags: (track.tags && track.tags !== 'Suno AI') ? track.tags : (prev.tags || track.tags || 'Suno AI'),
+      prompt: track.prompt || prev.prompt || '',
+      lyrics: (track.lyrics && track.lyrics.trim()) ? track.lyrics : (prev.lyrics || ''),
+      deviceId: track.deviceId || prev.deviceId || deviceId || undefined,
+      created_at: prev.created_at || track.created_at || 'Hari ini'
+    };
+    list[existingIdx] = merged;
+    saveCreations(list);
+    return merged;
+  }
+
   if (deviceId && !track.deviceId) {
     track.deviceId = deviceId;
   }
-  const list = getCreations(); // load all
-  const filtered = list.filter(t => t.id !== track.id);
-  filtered.unshift(track);
-  saveCreations(filtered);
+  list.unshift(track);
+  saveCreations(list);
   return track;
 }
 
@@ -288,9 +307,9 @@ function isPromptInstruction(text) {
   if (t.includes('vocal arrangement:') || t.includes('instruments:') || t.includes('vocal arrangement') || t.includes('vocal structure')) return true;
   if (/section \d+/i.test(t) && (t.includes('solo') || t.includes('instruments') || t.includes('ensemble') || t.includes('tempo') || t.includes('vocal'))) return true;
 
-  const hasLyricMarkers = /\[(verse|chorus|intro|bridge|outro|pre-chorus|hook)/i.test(text);
+  const hasLyricMarkers = /\[(verse|chorus|intro|bridge|outro|pre-chorus|hook|bait|reff)/i.test(text);
   if (!hasLyricMarkers) {
-    if (t.includes('lagu ') || t.includes('tentang ') || t.includes('bertemakan ') || t.includes('gaya musik ') || t.includes('soundtrack')) {
+    if (t.includes('lagu ') || t.includes('tentang ') || t.includes('bertemakan ') || t.includes('gaya musik ') || t.includes('soundtrack') || t.includes('create a ') || t.includes('create an ') || t.includes('buatkan ') || t.includes('buat lagu')) {
       return true;
     }
     if (t.includes('cinematic') && (t.includes('vocals') || t.includes('soundtrack') || t.includes('orchestral') || t.includes('choir'))) {
@@ -299,6 +318,22 @@ function isPromptInstruction(text) {
   }
 
   return false;
+}
+
+/**
+ * Returns true ONLY when the user explicitly wrote genuine multiline singable lyrics
+ * with standalone section headers like [Verse 1], [Chorus], [Bait 1], [Reff].
+ */
+function isGenuineCustomLyrics(text) {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 25) return false;
+  if (isPromptInstruction(trimmed)) return false;
+  const lines = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 4) return false;
+  return lines.some(l =>
+    /^\[(verse|chorus|pre-chorus|post-chorus|bridge|intro|outro|hook|refrain|bait|reff|pra-reff|interlude|solo|coda)(\s*\d+|\s*[:\-].*)?\]$/i.test(l)
+  );
 }
 
 /**
@@ -1022,6 +1057,9 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
 
 function buildSunoOfficialHeaders(rawToken) {
   const cleanJwt = (rawToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+  const cleanUa = typeof global.getCleanNativeUserAgent === 'function'
+    ? global.getCleanNativeUserAgent()
+    : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
   return {
     'Authorization': `Bearer ${cleanJwt}`,
     'Cookie': `__session=${cleanJwt}`,
@@ -1029,7 +1067,7 @@ function buildSunoOfficialHeaders(rawToken) {
     'Accept': '*/*',
     'Referer': 'https://suno.com/',
     'Origin': 'https://suno.com',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+    'User-Agent': cleanUa
   };
 }
 
@@ -1067,11 +1105,11 @@ function formatDurationSec(sec) {
   return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
 }
 
-function formatOfficialClipTrack(c, { finalTitle, finalTags, finalPrompt, finalLyrics, officialMv, deviceId }) {
+function formatOfficialClipTrack(c, { rawTitle, rawTags, rawPrompt, customLyricsText, officialMv, deviceId }) {
   const clipId = c.id;
   const audioUrl = extractAudioUrl(c);
   const thumb = c.image_url || c.image_large_url || (clipId ? `https://cdn2.suno.ai/image_${clipId}.jpeg` : '/icons/icon.svg');
-  const genuineLyrics = (c.metadata?.prompt || c.prompt || c.lyrics || '').trim();
+  const genuineLyrics = (c.metadata?.prompt || c.lyrics || '').trim();
   const rawDur = Number(c?.metadata?.duration ?? c?.duration);
   const hasRealDur = Number.isFinite(rawDur) && rawDur > 0;
   const durationSec = hasRealDur ? Math.round(rawDur) : 120;
@@ -1079,14 +1117,16 @@ function formatOfficialClipTrack(c, { finalTitle, finalTags, finalPrompt, finalL
     ? formatDurationSec(durationSec)
     : ((c.status === 'complete' || c.status === 'streaming') ? '2:00' : 'Sedang dibuat...');
   const verLabel = formatSunoModelLabel(c.major_model_version || c.model_name || officialMv);
+  const resolvedTitle = (c.title && c.title.trim()) || rawTitle || 'Membuat Judul & Lirik...';
+  const resolvedTags = (c.metadata?.tags && c.metadata.tags.trim()) || c.tags || rawTags || 'Suno AI';
 
   return {
     id: clipId,
-    title: c.title || finalTitle,
+    title: resolvedTitle,
     artist: `Suno ${verLabel} (Akun Resmi)`,
-    tags: c.metadata?.tags || c.tags || finalTags,
-    prompt: c.metadata?.gpt_description_prompt || finalPrompt,
-    lyrics: genuineLyrics || finalLyrics || finalPrompt,
+    tags: resolvedTags,
+    prompt: c.metadata?.gpt_description_prompt || rawPrompt || '',
+    lyrics: genuineLyrics || customLyricsText || '',
     model: verLabel === 'v3.5' ? 'chirp-v3-5' : verLabel,
     status: c.status || 'submitted',
     thumbnail: thumb,
@@ -1115,16 +1155,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
   const isV35 = model === 'chirp-v3-5' || model === 'v3.5';
   const modelLabel = isV35 ? 'Suno v3.5' : 'Suno v6-mini';
 
-  // Normalize inputs: cleanly separate singable song lyrics from musical instructions/prompts
-  const {
-    finalTitle,
-    finalTags,
-    finalLyrics,
-    finalPrompt,
-    isArrangementInstruction
-  } = prepareLyricsAndPrompt({ prompt, lyrics, tags, title, make_instrumental });
-
-  // 1. SUNO OFFICIAL ENGINE (Hybrid Direct HTTP First -> Pre-Warmed Persistent Session)
+  // 1. SUNO OFFICIAL ENGINE (Authentic Simple Mode by default; Custom Lyrics ONLY when genuine [Verse]/[Chorus] written)
   if (provider === 'suno_official') {
     const officialMv = resolveOfficialSunoModel(model);
     let officialToken = apiKey;
@@ -1135,6 +1166,18 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
         if (fresh) officialToken = fresh;
       } catch (e) {}
     }
+
+    const rawPrompt = (prompt || '').trim();
+    const rawLyrics = (lyrics || '').trim();
+    const rawTags = (tags || '').trim();
+    const rawTitle = (title || '').trim();
+    const wantInstrumental = Boolean(make_instrumental);
+
+    const hasCustomLyrics = !wantInstrumental && (
+      (rawLyrics.length > 0 && !isPromptInstruction(rawLyrics)) ||
+      (rawLyrics.length === 0 && isGenuineCustomLyrics(rawPrompt))
+    );
+    const customLyricsText = hasCustomLyrics ? (rawLyrics || rawPrompt) : '';
 
     // Step 1A: Fast /api/c/check (~250ms) -> if required === false, generate via pure HTTP in ~1s (0 UI!)
     if (officialToken && officialToken.length > 20) {
@@ -1161,35 +1204,27 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
       if (!challengeRequired) {
         try {
           let genPayload;
-          if (!finalLyrics && !isArrangementInstruction) {
-            // Simple Mode (Suno 2026 Official Schema)
-            const simpleDesc = [finalPrompt || prompt, finalTags].filter(Boolean).join('. ').slice(0, 450);
+          if (!hasCustomLyrics) {
+            // Authentic Suno Simple Mode (supports up to 3,000 chars!)
+            const simpleParts = [];
+            if (wantInstrumental) simpleParts.push('Instrumental only, no vocals.');
+            if (rawPrompt) simpleParts.push(rawPrompt);
+            if (rawTags) simpleParts.push(`Style: ${rawTags}`);
+            const simpleDesc = simpleParts.join('\n').slice(0, 2950);
             genPayload = {
               gpt_description_prompt: simpleDesc,
               mv: officialMv,
               prompt: '',
-              make_instrumental: Boolean(make_instrumental)
-            };
-          } else if (isArrangementInstruction) {
-            const arrStyle = [finalTags, finalPrompt].filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 950);
-            const arrLyrics = Boolean(make_instrumental)
-              ? ''
-              : '[Intro: Instrumental Hook]\n\n[Section 1: Lead Solo]\n\n[Section 2: Dynamic Ensemble]\n\n[Chorus: Full Harmony]\n\n[Outro: Melodic Fade]';
-            genPayload = {
-              prompt: arrLyrics,
-              tags: arrStyle,
-              title: finalTitle,
-              mv: officialMv,
-              make_instrumental: Boolean(make_instrumental)
+              make_instrumental: wantInstrumental
             };
           } else {
-            // Custom Lyrics Mode
+            // Authentic Suno Advanced / Custom Lyrics Mode
             genPayload = {
-              prompt: Boolean(make_instrumental) ? '' : finalLyrics,
-              tags: (finalTags || finalPrompt).slice(0, 950),
-              title: finalTitle,
+              prompt: customLyricsText,
+              tags: rawTags.slice(0, 950),
+              title: rawTitle,
               mv: officialMv,
-              make_instrumental: Boolean(make_instrumental)
+              make_instrumental: false
             };
           }
 
@@ -1199,14 +1234,14 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
             genPayload,
             {
               headers: buildSunoOfficialHeaders(officialToken),
-              timeout: 20000
+              timeout: 25000
             }
           );
 
           const clips = sunoRes.data?.clips || sunoRes.data?.data?.clips || [];
           if (clips.length > 0) {
             const formattedClips = clips.map(c =>
-              formatOfficialClipTrack(c, { finalTitle, finalTags, finalPrompt, finalLyrics, officialMv, deviceId })
+              formatOfficialClipTrack(c, { rawTitle, rawTags, rawPrompt, customLyricsText, officialMv, deviceId })
             );
             [...formattedClips].reverse().forEach(trackObj => {
               addCreation(trackObj, deviceId);
@@ -1232,20 +1267,22 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
     if (typeof global.generateWithSunoBrowser === 'function') {
       console.log('[Suno Generate] Delegating to Pre-Warmed Suno Engine...');
       const genRes = await global.generateWithSunoBrowser({
-        prompt: finalPrompt || prompt,
-        lyrics: finalLyrics,
-        tags: finalTags,
-        title: finalTitle,
-        make_instrumental: Boolean(make_instrumental),
+        prompt: rawPrompt,
+        lyrics: customLyricsText,
+        tags: rawTags,
+        title: rawTitle,
+        make_instrumental: wantInstrumental,
         model: officialMv,
-        isArrangementInstruction: Boolean(isArrangementInstruction),
-        rawPrompt: prompt || '',
-        rawLyrics: lyrics || ''
+        rawPrompt,
+        rawLyrics: customLyricsText,
+        rawTags,
+        rawTitle,
+        hasCustomLyrics
       });
 
       if (genRes && genRes.success && genRes.clips && genRes.clips.length > 0) {
         const formattedClips = genRes.clips.map(c =>
-          formatOfficialClipTrack(c, { finalTitle, finalTags, finalPrompt, finalLyrics, officialMv, deviceId })
+          formatOfficialClipTrack(c, { rawTitle, rawTags, rawPrompt, customLyricsText, officialMv, deviceId })
         );
         [...formattedClips].reverse().forEach(trackObj => {
           addCreation(trackObj, deviceId);
@@ -1270,6 +1307,14 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
 
     throw new Error('Silakan Sign In ke akun Suno Anda terlebih dahulu untuk membuat lagu.');
   }
+
+  // Normalize inputs for 3rd-party API providers (Kie.ai, GoAPI, Custom)
+  const {
+    finalTitle,
+    finalTags,
+    finalLyrics,
+    finalPrompt
+  } = prepareLyricsAndPrompt({ prompt, lyrics, tags, title, make_instrumental });
 
   // 2. Third-party API providers (Kie.ai, GoAPI, Custom Server)
   if (apiKey && apiKey.length > 5) {
@@ -1523,34 +1568,32 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
           }
         }
 
+        const existingList = getCreations();
         const formatted = (rawClips || []).map(c => {
+          const existing = existingList.find(x => x.id === c.id);
           const audioUrl = extractAudioUrl(c);
-          const thumb = c.image_url || c.image_large_url || (c.id ? `https://cdn2.suno.ai/image_${c.id}.jpeg` : '/icons/icon.svg');
+          const thumb = c.image_url || c.image_large_url || existing?.thumbnail || (c.id ? `https://cdn2.suno.ai/image_${c.id}.jpeg` : '/icons/icon.svg');
           const rawDur = Number(c?.metadata?.duration ?? c?.duration);
           const hasRealDur = Number.isFinite(rawDur) && rawDur > 0;
-          const durationSec = hasRealDur ? Math.round(rawDur) : 120;
+          const durationSec = hasRealDur ? Math.round(rawDur) : (existing?.seconds || 120);
           const durationStr = hasRealDur
             ? formatDurationSec(durationSec)
-            : ((c.status === 'complete' || c.status === 'streaming') ? '2:00' : 'Sedang dibuat...');
+            : ((c.status === 'complete' || c.status === 'streaming') ? (existing?.duration && existing.duration !== 'Sedang dibuat...' ? existing.duration : '2:00') : 'Sedang dibuat...');
           const verLabel = formatSunoModelLabel(c);
           const genuineLyrics = (c.metadata?.prompt || '').trim();
-          const genuinePrompt = (c.metadata?.gpt_description_prompt || c.metadata?.tags || c.prompt || '').trim();
-
-          // Preserve existing lyrics if genuineLyrics is temporarily empty
-          let finalLyricValue = genuineLyrics;
-          if (!finalLyricValue) {
-            const existing = getCreations().find(x => x.id === c.id);
-            if (existing && existing.lyrics) {
-              finalLyricValue = existing.lyrics;
-            }
-          }
+          const genuinePrompt = (c.metadata?.gpt_description_prompt || existing?.prompt || '').trim();
+          const resolvedTitle = (c.title && c.title.trim()) ||
+            (existing?.title && existing.title !== 'Membuat Judul & Lirik...' ? existing.title : '') ||
+            'Membuat Judul & Lirik...';
+          const resolvedTags = (c.metadata?.tags && c.metadata.tags.trim()) || c.tags || existing?.tags || 'Suno AI';
+          const finalLyricValue = genuineLyrics || existing?.lyrics || '';
 
           const trackObj = {
             id: c.id,
-            title: c.title || 'Lagu Baru',
+            title: resolvedTitle,
             artist: `Suno ${verLabel} (Akun Resmi)`,
-            tags: c.metadata?.tags || c.tags || '',
-            prompt: genuinePrompt || c.metadata?.prompt || '',
+            tags: resolvedTags,
+            prompt: genuinePrompt,
             lyrics: finalLyricValue,
             status: c.status || 'complete',
             model: verLabel === 'v3.5' ? 'chirp-v3-5' : verLabel,
@@ -1559,9 +1602,9 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
             duration: durationStr,
             seconds: durationSec,
             type: 'suno',
-            created_at: 'Hari ini'
+            created_at: existing?.created_at || 'Hari ini'
           };
-          if ((c.status === 'complete' || c.status === 'streaming') && audioUrl) {
+          if (existing || c.title || genuineLyrics || ((c.status === 'complete' || c.status === 'streaming') && audioUrl)) {
             addCreation(trackObj, deviceId);
           }
           return trackObj;

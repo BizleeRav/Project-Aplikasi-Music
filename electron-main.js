@@ -10,10 +10,10 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 if (process.env.RUN_SCRIPT) {
   try {
     require(process.env.RUN_SCRIPT);
-    return;
   } catch (err) {
     console.error('Failed to run RUN_SCRIPT:', err);
   }
+  return;
 }
 
 // CRITICAL: Ensure app name is unified to PascalCase 'AuraSound' so userData is consistently C:\Users\<User>\AppData\Roaming\AuraSound
@@ -183,11 +183,23 @@ async function createMainWindow() {
   }
 }
 
-const FIREFOX_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
-const CHROME_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
-try {
-  app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-} catch (e) {}
+const FIREFOX_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0';
+
+function getCleanNativeUserAgent() {
+  try {
+    if (session && session.defaultSession) {
+      const rawUa = session.defaultSession.getUserAgent() || '';
+      const cleaned = rawUa
+        .replace(/\s*Electron\/[^\s]+/gi, '')
+        .replace(/\s*AuraSound\/[^\s]+/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      if (cleaned) return cleaned;
+    }
+  } catch (e) {}
+  return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome || '134.0.0.0'} Safari/537.36`;
+}
+global.getCleanNativeUserAgent = getCleanNativeUserAgent;
 
 // IPC: Automatic Suno Login Window & Token Extraction (In-App Google OAuth Anti-Block!)
 ipcMain.handle('open-suno-login', async () => {
@@ -196,13 +208,14 @@ ipcMain.handle('open-suno-login', async () => {
     return { status: 'already_open' };
   }
 
+  const cleanNativeUa = getCleanNativeUserAgent();
   const sunoSession = session.fromPartition('persist:suno_auth_session');
-  sunoSession.setUserAgent(CHROME_DESKTOP_UA);
+  sunoSession.setUserAgent(cleanNativeUa);
 
-  // Disguise as Firefox on Google domains to completely bypass Google's embedded browser block!
+  // Only disguise User-Agent on Google OAuth domains; keep Suno & Cloudflare 100% native so Sec-CH-UA matches!
   sunoSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const u = (details.url || '').toLowerCase();
-    const isGoogle = u.includes('google.com') || u.includes('googleusercontent.com');
+    const isGoogle = u.includes('accounts.google.com') || u.includes('google.com/o/oauth2') || u.includes('googleusercontent.com');
     if (isGoogle) {
       details.requestHeaders['User-Agent'] = FIREFOX_DESKTOP_UA;
       delete details.requestHeaders['Sec-CH-UA'];
@@ -211,8 +224,6 @@ ipcMain.handle('open-suno-login', async () => {
       delete details.requestHeaders['sec-ch-ua'];
       delete details.requestHeaders['sec-ch-ua-mobile'];
       delete details.requestHeaders['sec-ch-ua-platform'];
-    } else {
-      details.requestHeaders['User-Agent'] = CHROME_DESKTOP_UA;
     }
     callback({ cancel: false, requestHeaders: details.requestHeaders });
   });
@@ -231,7 +242,7 @@ ipcMain.handle('open-suno-login', async () => {
     }
   });
 
-  sunoLoginWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
+  sunoLoginWin.webContents.setUserAgent(cleanNativeUa);
 
   sunoLoginWin.setMenuBarVisibility(false);
   if (typeof sunoLoginWin.removeMenu === 'function') {
@@ -269,31 +280,15 @@ ipcMain.handle('open-suno-login', async () => {
       if (u.includes('google.com') || u.includes('googleusercontent.com')) {
         childWin.webContents.setUserAgent(FIREFOX_DESKTOP_UA);
       } else {
-        childWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
+        childWin.webContents.setUserAgent(cleanNativeUa);
       }
-    });
-    childWin.webContents.on('dom-ready', () => {
-      childWin.webContents.executeJavaScript(`
-        try {
-          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        } catch (e) {}
-      `).catch(() => {});
     });
     childWin.on('closed', () => {
       childWindows.delete(childWin);
     });
   });
 
-  // Inject navigator overrides on any navigation/frame
-  sunoLoginWin.webContents.on('dom-ready', () => {
-    sunoLoginWin.webContents.executeJavaScript(`
-      try {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      } catch (e) {}
-    `).catch(() => {});
-  });
-
-  sunoLoginWin.loadURL('https://suno.com/me');
+  sunoLoginWin.loadURL('https://suno.com/me').catch(() => {});
 
   let tokenPoller = null;
   let tokenCaptured = false;
@@ -478,55 +473,76 @@ global.getFreshSunoToken = async () => {
     const cookies = await sunoSession.cookies.get({});
     let token = null;
 
-    const sessCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__session'));
-    if (sessCookie && sessCookie.value && sessCookie.value.length > 20) {
-      try {
-        const parts = sessCookie.value.split('.');
-        if (parts.length >= 2) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-          if (payload?.exp && (payload.exp - 30) > Date.now() / 1000) {
-            token = sessCookie.value;
+    const findValidSessionJwt = (cookieList) => {
+      const candidates = cookieList
+        .filter(c => c && (c.name === '__session' || c.name.startsWith('__session')) && c.value && c.value.length > 20)
+        .sort((a, b) => (a.name === '__session' ? -1 : b.name === '__session' ? 1 : 0));
+      for (const sc of candidates) {
+        try {
+          const parts = sc.value.split('.');
+          if (parts.length >= 2) {
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+            if (payload?.exp && (payload.exp - 10) > Date.now() / 1000) {
+              return sc.value;
+            }
           }
+        } catch (e) {}
+      }
+      return null;
+    };
+
+    token = findValidSessionJwt(cookies);
+
+    const clientCookies = cookies.filter(c => c.name.startsWith('__client'));
+    const hasClerkClient = clientCookies.some(c => c.name === '__client' && c.value && c.value.length > 20) ||
+      clientCookies.some(c => c.name.startsWith('__client_uat') && c.value && c.value !== '0');
+
+    if (!token && clientCookies.length > 0) {
+      try {
+        const axios = require('axios');
+        const cookieHeader = clientCookies.map(c => `${c.name}=${c.value}`).join('; ');
+        const cleanUa = getCleanNativeUserAgent();
+        for (const host of ['auth.suno.com', 'clerk.suno.com']) {
+          try {
+            const res = await axios.get(`https://${host}/v1/client`, {
+              headers: {
+                'Cookie': cookieHeader,
+                'Origin': 'https://suno.com',
+                'Referer': 'https://suno.com/',
+                'User-Agent': cleanUa
+              },
+              timeout: 4500
+            });
+            const sess = res.data?.response?.sessions?.[0];
+            const jwt = sess?.last_active_token?.jwt;
+            if (jwt && jwt.length > 20) {
+              token = jwt;
+              await sunoSession.cookies.set({
+                url: 'https://suno.com',
+                name: '__session',
+                value: jwt,
+                domain: '.suno.com',
+                path: '/',
+                secure: true,
+                httpOnly: false,
+                sameSite: 'lax'
+              });
+              await sunoSession.cookies.flushStore().catch(() => {});
+              break;
+            }
+          } catch (e) {}
         }
       } catch (e) {}
     }
 
-    if (!token) {
-      const clientCookies = cookies.filter(c => c.name.startsWith('__client'));
-      if (clientCookies.length > 0) {
-        try {
-          const axios = require('axios');
-          const cookieHeader = clientCookies.map(c => `${c.name}=${c.value}`).join('; ');
-          for (const host of ['auth.suno.com', 'clerk.suno.com']) {
-            try {
-              const res = await axios.get(`https://${host}/v1/client`, {
-                headers: {
-                  'Cookie': cookieHeader,
-                  'Origin': 'https://suno.com'
-                },
-                timeout: 5000
-              });
-              const sess = res.data?.response?.sessions?.[0];
-              const jwt = sess?.last_active_token?.jwt;
-              if (jwt && jwt.length > 20) {
-                token = jwt;
-                await sunoSession.cookies.set({
-                  url: 'https://suno.com',
-                  name: '__session',
-                  value: jwt,
-                  domain: '.suno.com',
-                  path: '/',
-                  secure: true,
-                  httpOnly: false,
-                  sameSite: 'lax'
-                });
-                await sunoSession.cookies.flushStore().catch(() => {});
-                break;
-              }
-            } catch (e) {}
-          }
-        } catch (e) {}
-      }
+    // If Clerk client cookies exist (user is logged in) but 60s __session JWT expired while app was closed,
+    // wake the silent warm engine so Clerk refreshes __session automatically in background!
+    if (!token && hasClerkClient && typeof global.initWarmSunoEngine === 'function') {
+      try {
+        await global.initWarmSunoEngine();
+        const refreshedCookies = await sunoSession.cookies.get({});
+        token = findValidSessionJwt(refreshedCookies);
+      } catch (e) {}
     }
 
     if (token) {
@@ -560,7 +576,7 @@ async function checkSunoSessionCookies() {
     warmEngineBootstrapped = true;
     setTimeout(() => {
       global.initWarmSunoEngine().catch(() => {});
-    }, 1500);
+    }, 1000);
   }
 }
 

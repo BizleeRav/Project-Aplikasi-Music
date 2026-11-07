@@ -1,13 +1,96 @@
 const { BrowserWindow, session } = require('electron');
 const axios = require('axios');
 
-const CHROME_DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
-
 // Singleton Pre-Warmed Persistent Suno Engine state
 let sunoEngineWin = null;
 let engineInitPromise = null;
 let isDestroyingEngine = false;
 let isGeneratingBusy = false;
+let userCancelledCurrentRun = false;
+let networkObserverAttached = false;
+
+const genNetworkState = {
+  active: false,
+  runStartMs: 0,
+  cCheckStartedAt: 0,
+  generateStartedAt: 0,
+  generateCompletedAt: 0,
+  generateStatusCode: 0
+};
+
+function getCleanUserAgent() {
+  if (typeof global.getCleanNativeUserAgent === 'function') {
+    const ua = global.getCleanNativeUserAgent();
+    if (ua) return ua;
+  }
+  try {
+    if (session && session.defaultSession) {
+      const raw = session.defaultSession.getUserAgent() || '';
+      const cleaned = raw
+        .replace(/\s*Electron\/[^\s]+/gi, '')
+        .replace(/\s*AuraSound\/[^\s]+/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      if (cleaned) return cleaned;
+    }
+  } catch (e) {}
+  return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome || '134.0.0.0'} Safari/537.36`;
+}
+
+function hideEngineWindow() {
+  try {
+    if (sunoEngineWin && !sunoEngineWin.isDestroyed()) {
+      sunoEngineWin.setAlwaysOnTop(false);
+      if (sunoEngineWin.isVisible()) {
+        sunoEngineWin.hide();
+      }
+      sunoEngineWin.setSkipTaskbar(true);
+    }
+  } catch (e) {}
+}
+
+/**
+ * Observe Suno generation requests from Electron's main process without touching
+ * window.fetch or any renderer JavaScript globals on suno.com!
+ */
+function attachSessionNetworkObserver(sunoSession) {
+  if (networkObserverAttached || !sunoSession) return;
+  networkObserverAttached = true;
+
+  sunoSession.webRequest.onBeforeRequest((details, callback) => {
+    try {
+      if (genNetworkState.active && details.method === 'POST') {
+        const u = details.url || '';
+        if (u.includes('/api/c/check') || u.includes('/c/check')) {
+          if (!genNetworkState.cCheckStartedAt) {
+            genNetworkState.cCheckStartedAt = Date.now();
+          }
+        } else if (/\/api\/generate\b/i.test(u)) {
+          if (!genNetworkState.generateStartedAt) {
+            genNetworkState.generateStartedAt = Date.now();
+            console.log('[Suno Warm Engine] POST /api/generate detected! Hiding window immediately if shown.');
+          }
+          // Instant 0ms auto-hide the moment generation request fires!
+          hideEngineWindow();
+        }
+      }
+    } catch (e) {}
+    callback({ cancel: false });
+  });
+
+  sunoSession.webRequest.onCompleted((details) => {
+    try {
+      if (genNetworkState.active && details.method === 'POST') {
+        const u = details.url || '';
+        if (/\/api\/generate\b/i.test(u)) {
+          genNetworkState.generateCompletedAt = Date.now();
+          genNetworkState.generateStatusCode = details.statusCode || 200;
+          console.log(`[Suno Warm Engine] POST /api/generate completed (HTTP ${genNetworkState.generateStatusCode}).`);
+        }
+      }
+    } catch (e) {}
+  });
+}
 
 /**
  * Detect whether input text is a musical prompt instruction / style description
@@ -37,9 +120,9 @@ function isPromptInstruction(text) {
   if (t.includes('vocal arrangement:') || t.includes('instruments:') || t.includes('vocal arrangement') || t.includes('vocal structure')) return true;
   if (/section \d+/i.test(t) && (t.includes('solo') || t.includes('instruments') || t.includes('ensemble') || t.includes('tempo') || t.includes('vocal'))) return true;
 
-  const hasLyricMarkers = /\[(verse|chorus|intro|bridge|outro|pre-chorus|hook)/i.test(text);
+  const hasLyricMarkers = /\[(verse|chorus|intro|bridge|outro|pre-chorus|hook|bait|reff)/i.test(text);
   if (!hasLyricMarkers) {
-    if (t.includes('lagu ') || t.includes('tentang ') || t.includes('bertemakan ') || t.includes('gaya musik ') || t.includes('soundtrack')) {
+    if (t.includes('lagu ') || t.includes('tentang ') || t.includes('bertemakan ') || t.includes('gaya musik ') || t.includes('soundtrack') || t.includes('create a ') || t.includes('create an ') || t.includes('buatkan ') || t.includes('buat lagu')) {
       return true;
     }
     if (t.includes('cinematic') && (t.includes('vocals') || t.includes('soundtrack') || t.includes('orchestral') || t.includes('choir'))) {
@@ -51,63 +134,57 @@ function isPromptInstruction(text) {
 }
 
 /**
- * Transforms complex musical/vocal arrangement instructions (>450 chars)
- * into rich Style of Music tags (<950 chars) and clean Suno vocal meta-tags
- * so Suno NEVER sings instruction text word-for-word!
+ * Returns true ONLY when the user explicitly wrote genuine multiline singable lyrics
+ * with standalone section headers like [Verse 1], [Chorus], [Bait 1], [Reff].
  */
-function processArrangementInstruction(promptText, tags, title) {
-  const lines = (promptText || '').split('\n');
-  const styleLines = [];
-  const lyricStructure = [];
-  let currentSection = null;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
-
-    // Detect section headers (e.g. "Section 1 — FEMALE SOLO: ...", "[Chorus: Full Choir]")
-    const sectionMatch = line.match(/^(?:\[?(?:section\s*\d+|verse\s*\d*|chorus\s*\d*|intro|outro|bridge|hook|solo|pre-chorus)[^\]\n:]*\]?)(?:\s*[:—\-]\s*(.*))?$/i);
-    if (sectionMatch) {
-      let tag = line.replace(/^[\[\s]+|[\]\s]+$/g, '').trim();
-      tag = tag.replace(/—|\-/g, ':').replace(/\s+/g, ' ');
-      currentSection = `[${tag}]`;
-      lyricStructure.push(currentSection);
-      if (sectionMatch[1]) {
-        const remainder = sectionMatch[1].trim();
-        if (isPromptInstruction(remainder)) {
-          styleLines.push(remainder);
-        } else {
-          lyricStructure.push(remainder);
-        }
-      }
-      continue;
-    }
-
-    if (isPromptInstruction(line) || /^(instruments?|vocal|tempo|bpm|mood|production|arrangement|style):/i.test(line)) {
-      styleLines.push(line.replace(/^(instruments?|vocal arrangement|style|mood):/i, '').trim());
-    } else {
-      if (currentSection) {
-        lyricStructure.push(line);
-      } else {
-        styleLines.push(line);
-      }
-    }
-  }
-
-  const combinedStyle = [tags, ...styleLines].filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 950);
-  let lyricText = lyricStructure.join('\n');
-  if (!lyricText || lyricText.trim().length === 0) {
-    lyricText = `[Intro: Instrumental Hook]\n\n[Section 1: Lead Solo]\n\n[Section 2: Dynamic Ensemble]\n\n[Chorus: Full Harmony]\n\n[Outro: Melodic Fade]`;
-  }
-
-  return {
-    style: combinedStyle,
-    lyrics: lyricText
-  };
+function isGenuineCustomLyrics(text) {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 25) return false;
+  if (isPromptInstruction(trimmed)) return false;
+  const lines = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 4) return false;
+  return lines.some(l =>
+    /^\[(verse|chorus|pre-chorus|post-chorus|bridge|intro|outro|hook|refrain|bait|reff|pra-reff|interlude|solo|coda)(\s*\d+|\s*[:\-].*)?\]$/i.test(l)
+  );
 }
 
 /**
- * Fetch Suno clips by IDs directly using Electron authenticated session
+ * Read the freshest live __session JWT directly from persist:suno_auth_session cookies
+ */
+async function readLiveSessionJwt(sunoSession) {
+  try {
+    const cookies = await sunoSession.cookies.get({});
+    const candidates = cookies
+      .filter(c => c && (c.name === '__session' || c.name.startsWith('__session')) && c.value && c.value.length > 20)
+      .sort((a, b) => (a.name === '__session' ? -1 : b.name === '__session' ? 1 : 0));
+
+    const nowSec = Date.now() / 1000;
+    for (const sc of candidates) {
+      try {
+        const parts = sc.value.split('.');
+        if (parts.length >= 2) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+          if (!payload?.exp || payload.exp > (nowSec + 3)) {
+            return sc.value;
+          }
+        }
+      } catch (e) {}
+    }
+    if (candidates[0]?.value) return candidates[0].value;
+  } catch (e) {}
+
+  if (typeof global.getFreshSunoToken === 'function') {
+    try {
+      const tok = await global.getFreshSunoToken();
+      if (tok) return tok;
+    } catch (e) {}
+  }
+  return null;
+}
+
+/**
+ * Fetch Suno clips by IDs directly using Electron authenticated session & in-page same-origin fallback
  */
 global.fetchSunoClipsByIds = async (ids) => {
   try {
@@ -115,14 +192,40 @@ global.fetchSunoClipsByIds = async (ids) => {
     const idArray = Array.isArray(ids) ? ids : (typeof ids === 'string' ? ids.split(',').map(s => s.trim()).filter(Boolean) : []);
     if (idArray.length === 0) return [];
 
-    let token = null;
-    if (typeof global.getFreshSunoToken === 'function') {
-      token = await global.getFreshSunoToken();
+    const token = await readLiveSessionJwt(sunoSession);
+    const cleanUa = getCleanUserAgent();
+
+    // 1. Fast same-origin fetch via warm engine if ready (uses live Clerk browser cookies automatically!)
+    if (sunoEngineWin && !sunoEngineWin.isDestroyed()) {
+      const curUrl = sunoEngineWin.webContents.getURL() || '';
+      if (curUrl.includes('suno.com') && !curUrl.includes('/sign-in') && !curUrl.includes('/login')) {
+        try {
+          const inPageClips = await sunoEngineWin.webContents.executeJavaScript(`
+            (async () => {
+              try {
+                const m = document.cookie.match(/(?:^|;\\s*)__session=([^;]+)/);
+                const tok = (m && m[1]) ? m[1] : ${JSON.stringify(token || '')};
+                const headers = { 'Accept': 'application/json' };
+                if (tok) headers['Authorization'] = 'Bearer ' + tok;
+                const r = await fetch('/a/api/feed/v2?ids=' + encodeURIComponent(${JSON.stringify(idArray.join(','))}), {
+                  method: 'GET',
+                  credentials: 'include',
+                  headers
+                });
+                if (!r.ok) return null;
+                const d = await r.json();
+                const arr = Array.isArray(d) ? d : (d?.clips || d?.data?.clips || []);
+                return Array.isArray(arr) && arr.length > 0 ? arr : null;
+              } catch (e) { return null; }
+            })()
+          `);
+          if (Array.isArray(inPageClips) && inPageClips.length > 0) {
+            return inPageClips;
+          }
+        } catch (e) {}
+      }
     }
-    if (!token) {
-      const cookies = await sunoSession.cookies.get({ name: '__session' });
-      token = cookies?.[0]?.value;
-    }
+
     if (!token) return [];
 
     const headers = {
@@ -131,7 +234,7 @@ global.fetchSunoClipsByIds = async (ids) => {
       'Content-Type': 'application/json',
       'Origin': 'https://suno.com',
       'Referer': 'https://suno.com/',
-      'User-Agent': CHROME_DESKTOP_UA
+      'User-Agent': cleanUa
     };
 
     try {
@@ -167,62 +270,23 @@ global.fetchSunoClipsByIds = async (ids) => {
 };
 
 /**
- * Attach response observer once per page load (clean, without visibility spoofing)
- */
-function injectPageFetchHook(win) {
-  if (!win || win.isDestroyed()) return;
-  win.webContents.executeJavaScript(`
-    try {
-      if (!window.__sunoIntercepted) {
-        window.__sunoIntercepted = true;
-        window.__sunoGenClips = null;
-        window.__sunoGenError = null;
-        window.__sunoCaptchaRequired = null;
-        window.__sunoUserCancelled = false;
-        const originalFetch = window.fetch;
-        window.fetch = async function(...args) {
-          const url = (args[0] && typeof args[0] === 'string') ? args[0] : (args[0]?.url || '');
-          const res = await originalFetch.apply(this, args);
-          try {
-            if (url.includes('/generate') || url.includes('/api/generate')) {
-              const clone = res.clone();
-              const data = await clone.json();
-              if (data && data.clips && Array.isArray(data.clips) && data.clips.length > 0) {
-                window.__sunoGenClips = data.clips;
-              } else if (data && (data.detail || data.detail_fallback || data.error_type || data.message)) {
-                window.__sunoGenError = data.detail || data.detail_fallback || data.error_type || data.message;
-              }
-            } else if (url.includes('/api/c/check') || url.includes('/c/check')) {
-              const clone = res.clone();
-              const data = await clone.json();
-              if (data && typeof data.required === 'boolean') {
-                window.__sunoCaptchaRequired = data.required;
-              }
-            }
-          } catch (e) {}
-          return res;
-        };
-      }
-    } catch (e) {}
-  `).catch(() => {});
-}
-
-/**
  * Initialize or reuse the Singleton Pre-Warmed Persistent Suno Engine window.
- * Keeps https://suno.com/create ready in memory so consecutive song generations
- * skip the 8-14s cold-start page reload completely.
+ * Uses Desktop Studio dimensions (1050x680, >= 1024px) so Suno's Create split-pane
+ * stays permanently mounted and never collapses into mobile My Workspace view!
  */
 async function initWarmSunoEngine({ forceReload = false } = {}) {
   const sunoSession = session.fromPartition('persist:suno_auth_session');
+  const cleanUa = getCleanUserAgent();
+  sunoSession.setUserAgent(cleanUa);
+  attachSessionNetworkObserver(sunoSession);
 
   if (sunoEngineWin && !sunoEngineWin.isDestroyed() && !forceReload) {
     const currentUrl = sunoEngineWin.webContents.getURL() || '';
     if (currentUrl.includes('suno.com/create') && !currentUrl.includes('/sign-in') && !currentUrl.includes('/login')) {
       const mounted = await sunoEngineWin.webContents.executeJavaScript(`
-        Boolean(document.querySelector('textarea') || document.querySelector('.lyrics-editor-content') || document.querySelector('button[aria-label="Create song"]'))
+        Boolean(document.querySelector('textarea') || document.querySelector('button[aria-label="Create song"]'))
       `).catch(() => false);
       if (mounted) {
-        injectPageFetchHook(sunoEngineWin);
         return sunoEngineWin;
       }
     }
@@ -237,12 +301,14 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
       if (!sunoEngineWin || sunoEngineWin.isDestroyed()) {
         isDestroyingEngine = false;
         sunoEngineWin = new BrowserWindow({
-          width: 480,
-          height: 540,
+          width: 1050,
+          height: 680,
+          minWidth: 1024,
+          minHeight: 600,
           show: false,
           skipTaskbar: true,
           focusable: true,
-          title: 'Verifikasi Suno AI',
+          title: 'Verifikasi Akun Suno AI — Klik Centang 1x',
           autoHideMenuBar: true,
           backgroundColor: '#0b0f19',
           webPreferences: {
@@ -257,20 +323,14 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
         if (typeof sunoEngineWin.removeMenu === 'function') {
           sunoEngineWin.removeMenu();
         }
-        sunoEngineWin.webContents.setUserAgent(CHROME_DESKTOP_UA);
+        sunoEngineWin.webContents.setUserAgent(cleanUa);
 
-        sunoEngineWin.webContents.on('dom-ready', () => injectPageFetchHook(sunoEngineWin));
-        sunoEngineWin.webContents.on('did-finish-load', () => injectPageFetchHook(sunoEngineWin));
-
-        // Preserve warm engine if user manually closes the verification dialog
+        // Preserve warm engine if user manually closes the verification window
         sunoEngineWin.on('close', (e) => {
           if (!isDestroyingEngine && sunoEngineWin && !sunoEngineWin.isDestroyed()) {
             e.preventDefault();
-            try {
-              sunoEngineWin.setAlwaysOnTop(false);
-              sunoEngineWin.hide();
-              sunoEngineWin.webContents.executeJavaScript('window.__sunoUserCancelled = true;').catch(() => {});
-            } catch (err) {}
+            userCancelledCurrentRun = true;
+            hideEngineWindow();
           }
         });
 
@@ -280,19 +340,26 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
       }
 
       console.log('[Suno Warm Engine] Pre-warming https://suno.com/create in background...');
-      await sunoEngineWin.loadURL('https://suno.com/create');
+      try {
+        await sunoEngineWin.loadURL('https://suno.com/create');
+      } catch (loadErr) {
+        // Clerk 60s cookie refresh on initial load can trigger a harmless redirect/ERR_FAILED (-2)
+        console.log('[Suno Warm Engine] Navigation transition:', loadErr?.message || loadErr);
+      }
 
-      const finalUrl = sunoEngineWin.webContents.getURL() || '';
-      if (!finalUrl.includes('/sign-in') && !finalUrl.includes('/login')) {
-        for (let i = 0; i < 28; i++) {
-          const ready = await sunoEngineWin.webContents.executeJavaScript(`
-            Boolean(document.querySelector('textarea') || document.querySelector('.lyrics-editor-content') || document.querySelector('button[aria-label="Create song"]'))
-          `).catch(() => false);
-          if (ready) break;
-          await new Promise(r => setTimeout(r, 350));
+      for (let i = 0; i < 36; i++) {
+        const curUrl = sunoEngineWin.webContents.getURL() || '';
+        if (curUrl.includes('/sign-in') || curUrl.includes('/login')) {
+          break;
         }
-        injectPageFetchHook(sunoEngineWin);
-        console.log('[Suno Warm Engine] Standby ready on suno.com/create!');
+        const ready = await sunoEngineWin.webContents.executeJavaScript(`
+          Boolean(document.querySelector('textarea') || document.querySelector('button[aria-label="Create song"]'))
+        `).catch(() => false);
+        if (ready) {
+          console.log('[Suno Warm Engine] Standby ready on suno.com/create!');
+          break;
+        }
+        await new Promise(r => setTimeout(r, 350));
       }
 
       return sunoEngineWin;
@@ -320,25 +387,163 @@ function destroyWarmSunoEngine() {
 }
 
 /**
- * Executes authentic song generation inside Electron's Pre-Warmed Suno session.
- * Handles Simple, Custom Lyrics, and Arrangement modes accurately on suno.com/create.
+ * Check if Suno's interactive Turnstile verification modal (div.fixed.inset-0.z-[1000]) is open
  */
-async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instrumental, model, isArrangementInstruction, rawPrompt, rawLyrics }) {
+async function checkInteractiveTurnstileModal(genWin) {
+  if (!genWin || genWin.isDestroyed()) return { hasModal: false, pageError: null };
+  try {
+    return await genWin.webContents.executeJavaScript(`
+      (() => {
+        const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role="dialog"]'));
+        const modal = overlays.find(el => {
+          const cls = String(el.className || '');
+          const st = window.getComputedStyle(el);
+          if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+          if (el.offsetWidth < 100 || el.offsetHeight < 100) return false;
+          if (cls.includes('z-[1000]')) return true;
+          return Boolean(el.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], [data-sitekey]'));
+        });
+
+        let pageError = null;
+        const alerts = Array.from(document.querySelectorAll('[role="status"], [role="alert"], [data-sonner-toast]'));
+        for (const a of alerts) {
+          const txt = (a.innerText || a.textContent || '').trim();
+          if (/insufficient credits|out of credits|not enough credits|upgrade your plan|daily limit/i.test(txt)) {
+            pageError = 'Kuota kredit akun Suno Anda tidak mencukupi untuk membuat lagu.';
+            break;
+          }
+        }
+
+        return {
+          hasModal: Boolean(modal),
+          pageError
+        };
+      })()
+    `);
+  } catch (e) {
+    return { hasModal: false, pageError: null };
+  }
+}
+
+/**
+ * Query newly created clips using both same-origin in-page fetch (immune to stale JWT)
+ * and direct studio-api fallback with live session cookie.
+ */
+async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, cleanUa) {
+  const liveJwt = await readLiveSessionJwt(sunoSession);
+
+  // 1. Same-origin in-page fetch on suno.com/create (automatically carries live Clerk session)
+  if (genWin && !genWin.isDestroyed()) {
+    try {
+      const pageClips = await genWin.webContents.executeJavaScript(`
+        (async () => {
+          try {
+            const m = document.cookie.match(/(?:^|;\\s*)__session=([^;]+)/);
+            const tok = (m && m[1]) ? m[1] : ${JSON.stringify(liveJwt || '')};
+            const headers = { 'Content-Type': 'application/json' };
+            if (tok) headers['Authorization'] = 'Bearer ' + tok;
+            const r = await fetch('/a/api/feed/v3', {
+              method: 'POST',
+              credentials: 'include',
+              headers,
+              body: JSON.stringify({ cursor: null, limit: 12 })
+            });
+            if (!r.ok) return null;
+            const d = await r.json();
+            return Array.isArray(d?.clips) ? d.clips : null;
+          } catch (e) {
+            return null;
+          }
+        })()
+      `);
+      if (Array.isArray(pageClips) && pageClips.length > 0) {
+        const fresh = pageClips.filter(c => {
+          if (!c || !c.id || existingClipIds.has(c.id)) return false;
+          if (c.created_at) {
+            const t = new Date(c.created_at).getTime();
+            if (Number.isFinite(t) && t < (clickTimeMs - 45000)) return false;
+          }
+          return true;
+        });
+        if (fresh.length > 0) return { clips: fresh, jwt: liveJwt };
+      }
+    } catch (e) {}
+  }
+
+  // 2. Direct HTTP fallback via studio-api
+  if (liveJwt) {
+    try {
+      const feedRes = await axios.post('https://studio-api.prod.suno.com/api/feed/v3', {
+        cursor: null,
+        limit: 12
+      }, {
+        headers: {
+          'Authorization': `Bearer ${liveJwt}`,
+          'Cookie': `__session=${liveJwt}`,
+          'Content-Type': 'application/json',
+          'Origin': 'https://suno.com',
+          'Referer': 'https://suno.com/',
+          'User-Agent': cleanUa
+        },
+        timeout: 4500
+      });
+      const feedClips = feedRes.data?.clips || [];
+      const fresh = feedClips.filter(c => {
+        if (!c || !c.id || existingClipIds.has(c.id)) return false;
+        if (c.created_at) {
+          const t = new Date(c.created_at).getTime();
+          if (Number.isFinite(t) && t < (clickTimeMs - 45000)) return false;
+        }
+        return true;
+      });
+      if (fresh.length > 0) return { clips: fresh, jwt: liveJwt };
+    } catch (e) {}
+  }
+
+  return { clips: null, jwt: liveJwt };
+}
+
+/**
+ * Executes authentic song generation inside Electron's Pre-Warmed Suno session.
+ * - Default: Suno Simple Mode (verbatim prompt up to 2,950 chars -> Suno writes Title, Tags & Lyrics!)
+ * - Custom Lyrics: Suno Advanced Mode ONLY when genuine [Verse]/[Chorus] lyrics are provided.
+ * - Silent Background First: Never pops up prematurely; only surfaces cleanly if Turnstile modal blocks,
+ *   and auto-hides in <250ms the instant verification completes.
+ */
+async function generateWithSunoBrowser({
+  prompt,
+  lyrics,
+  tags,
+  title,
+  make_instrumental,
+  model,
+  rawPrompt,
+  rawLyrics,
+  rawTags,
+  rawTitle,
+  hasCustomLyrics
+}) {
   if (isGeneratingBusy) {
     throw new Error('Pembuatan lagu sedang diproses. Mohon tunggu beberapa detik.');
   }
   isGeneratingBusy = true;
+  userCancelledCurrentRun = false;
 
-  let capturedAuth = null;
-  let capturedClips = null;
-  let serverErrorMessage = null;
+  const sunoSession = session.fromPartition('persist:suno_auth_session');
+  const cleanUa = getCleanUserAgent();
   const existingClipIds = new Set();
+
+  genNetworkState.active = false;
+  genNetworkState.runStartMs = 0;
+  genNetworkState.cCheckStartedAt = 0;
+  genNetworkState.generateStartedAt = 0;
+  genNetworkState.generateCompletedAt = 0;
+  genNetworkState.generateStatusCode = 0;
 
   try {
     let genWin = await initWarmSunoEngine();
     let currentUrl = genWin.webContents.getURL() || '';
 
-    // If warm engine was loaded before login, reload once to pick up session cookies
     if (currentUrl.includes('/sign-in') || currentUrl.includes('/login') || !currentUrl.includes('suno.com/create')) {
       genWin = await initWarmSunoEngine({ forceReload: true });
       currentUrl = genWin.webContents.getURL() || '';
@@ -348,11 +553,11 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
       throw new Error('Akun Suno Anda belum login di aplikasi atau sesi telah berakhir. Silakan klik tombol "Hubungkan Akun Suno" di AuraSound dan login kembali.');
     }
 
-    // Ensure React workspace inputs are mounted
+    // Ensure React Studio Create workspace is mounted
     let pageReady = false;
     for (let i = 0; i < 20; i++) {
       pageReady = await genWin.webContents.executeJavaScript(`
-        Boolean(document.querySelector('textarea') || document.querySelector('.lyrics-editor-content') || document.querySelector('button[aria-label="Create song"]'))
+        Boolean(document.querySelector('textarea') || document.querySelector('button[aria-label="Create song"]'))
       `).catch(() => false);
       if (pageReady) break;
       await new Promise(r => setTimeout(r, 300));
@@ -361,98 +566,84 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
     if (!pageReady) {
       genWin = await initWarmSunoEngine({ forceReload: true });
       pageReady = await genWin.webContents.executeJavaScript(`
-        Boolean(document.querySelector('textarea') || document.querySelector('.lyrics-editor-content') || document.querySelector('button'))
+        Boolean(document.querySelector('textarea') || document.querySelector('button[aria-label="Create song"]'))
       `).catch(() => false);
       if (!pageReady) {
         throw new Error('Halaman Suno tidak merespons. Pastikan perangkat terhubung ke internet.');
       }
     }
 
-    // Reset capture state for this generation run
-    injectPageFetchHook(genWin);
+    // Dismiss any leftover modal overlay from a previous cancelled attempt
     await genWin.webContents.executeJavaScript(`
-      window.__sunoGenClips = null;
-      window.__sunoGenError = null;
-      window.__sunoCaptchaRequired = null;
-      window.__sunoUserCancelled = false;
+      (() => {
+        const oldModal = Array.from(document.querySelectorAll('div.fixed.inset-0')).find(el => String(el.className || '').includes('z-[1000]'));
+        if (oldModal) {
+          oldModal.click();
+        }
+      })()
     `).catch(() => {});
 
-    // Obtain fresh JWT token (fast path via Electron cookie manager first, fallback to Clerk in-page)
-    let rawToken = null;
-    if (typeof global.getFreshSunoToken === 'function') {
-      rawToken = await global.getFreshSunoToken().catch(() => null);
-    }
-    if (!rawToken) {
-      rawToken = await genWin.webContents.executeJavaScript(`
-        (async () => {
-          try {
-            if (window.Clerk && window.Clerk.session) {
-              const tok = await window.Clerk.session.getToken();
-              if (tok && typeof tok === 'string' && tok.length > 20) return tok;
-            }
-            const m = document.cookie.match(/__session=([^;]+)/);
-            return (m && m[1]) ? m[1] : null;
-          } catch (e) { return null; }
-        })()
-      `).catch(() => null);
-    }
-    if (!rawToken) {
+    // Snapshot existing clip IDs IN PARALLEL while filling the form
+    const existingClipsPromise = (async () => {
       try {
-        const sunoService = require('./suno-service');
-        const existingKey = (sunoService.getConfig().suno_api_key || '').trim();
-        if (existingKey.length > 20 && existingKey.startsWith('eyJ')) {
-          rawToken = existingKey;
+        const snap = await pollNewClips(genWin, sunoSession, new Set(), 0, cleanUa);
+        if (Array.isArray(snap.clips)) {
+          snap.clips.forEach(c => { if (c && c.id) existingClipIds.add(c.id); });
         }
       } catch (e) {}
-    }
-    if (rawToken && rawToken.length > 20) {
-      capturedAuth = `Bearer ${rawToken}`;
-    }
-
-    // Pre-fetch existing clip IDs IN PARALLEL via HTTP while we fill the DOM form!
-    const existingClipsPromise = (async () => {
-      if (!rawToken) return;
-      const headers = {
-        'Authorization': `Bearer ${rawToken}`,
-        'Cookie': `__session=${rawToken}`,
-        'Content-Type': 'application/json',
-        'Origin': 'https://suno.com',
-        'Referer': 'https://suno.com/',
-        'User-Agent': CHROME_DESKTOP_UA
-      };
-      for (const feedUrl of ['https://studio-api.prod.suno.com/api/feed/v3', 'https://suno.com/a/api/feed/v3']) {
+      const tok = await readLiveSessionJwt(sunoSession);
+      if (tok && existingClipIds.size === 0) {
         try {
-          const res = await axios.post(feedUrl, { cursor: null, limit: 30 }, { headers, timeout: 4500 });
-          const clips = res.data?.clips || [];
-          if (Array.isArray(clips) && clips.length > 0) {
-            clips.forEach(c => { if (c && c.id) existingClipIds.add(c.id); });
-            return;
-          }
+          const res = await axios.post('https://studio-api.prod.suno.com/api/feed/v3', { cursor: null, limit: 30 }, {
+            headers: {
+              'Authorization': `Bearer ${tok}`,
+              'Cookie': `__session=${tok}`,
+              'Content-Type': 'application/json',
+              'Origin': 'https://suno.com',
+              'Referer': 'https://suno.com/',
+              'User-Agent': cleanUa
+            },
+            timeout: 4500
+          });
+          (res.data?.clips || []).forEach(c => { if (c && c.id) existingClipIds.add(c.id); });
         } catch (e) {}
       }
     })();
 
-    // Determine generation mode:
-    const promptInput = (prompt || rawPrompt || '').trim();
-    const lyricsInput = (lyrics || rawLyrics || '').trim();
+    // Cleanly resolve clean user inputs without fake tags/titles
+    const cleanPromptText = (rawPrompt !== undefined ? rawPrompt : (prompt || '')).trim();
+    const cleanLyricsText = (rawLyrics !== undefined ? rawLyrics : (lyrics || '')).trim();
+    const cleanTagsText = (rawTags !== undefined ? rawTags : (tags || '')).trim();
+    const cleanTitleText = (rawTitle !== undefined ? rawTitle : (title || '')).trim();
+    const wantInstrumental = Boolean(make_instrumental);
 
-    let targetMode = 'simple';
-    if (lyricsInput.length > 0 && !isArrangementInstruction) {
-      targetMode = 'custom_lyrics';
-    } else if (isArrangementInstruction || promptInput.length > 450) {
-      targetMode = 'arrangement';
-    } else {
-      targetMode = 'simple';
-    }
+    const useCustomLyricsMode = typeof hasCustomLyrics === 'boolean'
+      ? (hasCustomLyrics && !wantInstrumental)
+      : (!wantInstrumental && (
+          (cleanLyricsText.length > 0 && !isPromptInstruction(cleanLyricsText)) ||
+          (cleanLyricsText.length === 0 && isGenuineCustomLyrics(cleanPromptText))
+        ));
 
-    console.log(`[Suno Warm Engine] Filling form instantly (mode: ${targetMode})...`);
+    const targetMode = useCustomLyricsMode ? 'custom_lyrics' : 'simple';
+    console.log(`[Suno Warm Engine] Filling Suno Create form (mode: ${targetMode}, promptLen: ${cleanPromptText.length})...`);
 
     if (targetMode === 'simple') {
-      const simplePrompt = [promptInput, tags].filter(Boolean).join('. ').slice(0, 450);
-      await genWin.webContents.executeJavaScript(`
+      const simpleParts = [];
+      if (wantInstrumental) {
+        simpleParts.push('Instrumental only, no vocals.');
+      }
+      if (cleanPromptText) {
+        simpleParts.push(cleanPromptText);
+      }
+      if (cleanTagsText) {
+        simpleParts.push(`Style: ${cleanTagsText}`);
+      }
+      const simpleDescription = simpleParts.join('\n').slice(0, 2950);
+
+      const filledSimple = await genWin.webContents.executeJavaScript(`
         (async () => {
           function setNativeValue(el, val) {
-            if (!el) return;
+            if (!el) return false;
             el.focus();
             const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
             const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
@@ -460,6 +651,7 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             else el.value = val;
             el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
             el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+            return el.value === val;
           }
 
           const tabs = Array.from(document.querySelectorAll('[role="tab"], button, div[role="button"]'));
@@ -470,24 +662,36 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             simpleTab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
             simpleTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
             simpleTab.click();
-            await new Promise(r => setTimeout(r, 350));
+            await new Promise(r => setTimeout(r, 300));
           }
 
           const tas = Array.from(document.querySelectorAll('textarea')).filter(t => {
             const al = (t.getAttribute('aria-label') || '').toLowerCase();
-            return !al.includes('cowriter') && !al.includes('sound') && !al.includes('script') && !al.includes('tone');
+            return !al.includes('cowriter') && !al.includes('sound') && !al.includes('script') && !al.includes('tone') && al !== 'styles';
           });
           const promptBox = tas[0] || document.querySelector('textarea');
-          if (promptBox) {
-            setNativeValue(promptBox, ${JSON.stringify(simplePrompt)});
-          }
+          if (!promptBox) return { ok: false };
+
+          setNativeValue(promptBox, ${JSON.stringify(simpleDescription)});
+          return { ok: promptBox.value.trim().length > 0, len: promptBox.value.length };
         })()
       `);
+
+      if (!filledSimple || !filledSimple.ok) {
+        await genWin.webContents.executeJavaScript(`
+          (() => {
+            const ta = document.querySelector('textarea');
+            if (ta) {
+              ta.focus();
+              ta.select();
+            }
+          })()
+        `).catch(() => {});
+        await genWin.webContents.insertText(simpleDescription);
+      }
     } else {
-      const isArrangement = targetMode === 'arrangement';
-      const parsed = isArrangement
-        ? processArrangementInstruction(promptInput, tags, title)
-        : { style: (tags || promptInput).slice(0, 950), lyrics: lyricsInput };
+      const lyricsToInsert = cleanLyricsText || cleanPromptText;
+      const styleToInsert = cleanTagsText.slice(0, 950);
 
       await genWin.webContents.executeJavaScript(`
         (async () => {
@@ -513,22 +717,22 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             advTab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
             advTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
             advTab.click();
-            await new Promise(r => setTimeout(r, 350));
+            await new Promise(r => setTimeout(r, 300));
           }
 
           const styleBox = document.querySelector('textarea[aria-label="Styles"]') ||
             Array.from(document.querySelectorAll('textarea')).find(t => {
               const al = (t.getAttribute('aria-label') || '').toLowerCase();
               const ph = (t.placeholder || '').toLowerCase();
-              return al === 'styles' || ph.includes('style') || ph.includes('battle rap') || ph.includes('genre') || ph.includes('románticas');
+              return al === 'styles' || ph.includes('style') || ph.includes('genre');
             });
           if (styleBox) {
-            setNativeValue(styleBox, ${JSON.stringify(parsed.style || '')});
+            setNativeValue(styleBox, ${JSON.stringify(styleToInsert)});
           }
 
           const titleInput = document.querySelector('input[placeholder*="Song Title" i], input[placeholder*="Title" i], input[aria-label*="Title" i]');
           if (titleInput) {
-            setNativeValue(titleInput, ${JSON.stringify(title || '')});
+            setNativeValue(titleInput, ${JSON.stringify(cleanTitleText)});
           }
 
           const lyricsBox = document.querySelector('div[aria-label="Lyrics editor"], .lyrics-editor-content, div[role="textbox"][contenteditable="true"]');
@@ -540,37 +744,36 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
         })()
       `);
 
-      if (!make_instrumental && parsed.lyrics) {
-        await genWin.webContents.insertText(parsed.lyrics);
-        await new Promise(r => setTimeout(r, 200));
+      if (lyricsToInsert) {
+        await genWin.webContents.insertText(lyricsToInsert);
+        await new Promise(r => setTimeout(r, 180));
       }
     }
 
-    // Sync Instrumental toggle accurately in both directions (ON and OFF) for warm session reuse
-    const desiredInstrumental = Boolean(make_instrumental);
+    // If an Instrumental toggle switch exists in the current tab, sync its state
     await genWin.webContents.executeJavaScript(`
       (() => {
-        const instrBtn = Array.from(document.querySelectorAll('button, [role="switch"], input[type="checkbox"]')).find(b => {
+        const instrBtn = Array.from(document.querySelectorAll('[role="switch"], input[type="checkbox"]')).find(b => {
           const txt = (b.innerText || b.getAttribute('aria-label') || b.name || '').toLowerCase();
           return txt.includes('instrumental');
         });
         if (instrBtn) {
           const isChecked = instrBtn.getAttribute('aria-checked') === 'true' || instrBtn.checked === true || instrBtn.getAttribute('data-state') === 'checked';
-          if (isChecked !== ${JSON.stringify(desiredInstrumental)}) {
+          if (isChecked !== ${JSON.stringify(wantInstrumental)}) {
             instrBtn.click();
           }
         }
       })()
     `).catch(() => {});
 
-    // Ensure parallel existingClipIds request has settled + brief React flush
+    // Wait for existingClipIds snapshot & React input state commit
     await Promise.all([
       existingClipsPromise,
-      new Promise(r => setTimeout(r, 350))
+      new Promise(r => setTimeout(r, 300))
     ]);
 
-    // Click the genuine Create button
-    const tryClickCreate = () => genWin.webContents.executeJavaScript(`
+    // Locate Create button coordinates for trusted click activation
+    const locateCreateBtn = () => genWin.webContents.executeJavaScript(`
       (() => {
         let createBtn = document.querySelector('button[aria-label="Create song"]');
         if (!createBtn) {
@@ -580,134 +783,165 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
             return t === 'create' || t.startsWith('create (') || t.startsWith('create ');
           });
         }
-        if (!createBtn) return { error: 'Tombol Create tidak ditemukan di Suno.' };
-        if (createBtn.disabled) return { disabled: true, error: 'Tombol Create Suno saat ini nonaktif (kuota kredit habis atau input belum lengkap).' };
-
+        if (!createBtn) return { error: 'Tombol Create tidak ditemukan di halaman Suno.' };
         createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-        createBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
-        createBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-        createBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
-        createBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-        createBtn.click();
-        return { success: true, text: (createBtn.innerText || createBtn.textContent || '').trim() };
+        const rect = createBtn.getBoundingClientRect();
+        return {
+          disabled: Boolean(createBtn.disabled),
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          text: (createBtn.innerText || createBtn.textContent || '').trim()
+        };
       })()
     `);
 
-    let clickResult = await tryClickCreate();
-    if (clickResult && clickResult.disabled) {
-      await new Promise(r => setTimeout(r, 600));
-      clickResult = await tryClickCreate();
+    let btnInfo = await locateCreateBtn();
+    if (btnInfo && btnInfo.disabled) {
+      await new Promise(r => setTimeout(r, 550));
+      btnInfo = await locateCreateBtn();
     }
 
-    console.log('[Suno Warm Engine] Click Result:', clickResult);
-    if (clickResult.error) {
-      throw new Error(clickResult.error);
+    if (!btnInfo || btnInfo.error) {
+      throw new Error(btnInfo?.error || 'Tombol Create tidak ditemukan di Suno.');
+    }
+    if (btnInfo.disabled) {
+      throw new Error('Tombol Create Suno saat ini nonaktif (pastikan kuota kredit akun Suno masih tersedia).');
     }
 
     const clickTimeMs = Date.now();
+    genNetworkState.runStartMs = clickTimeMs;
+    genNetworkState.cCheckStartedAt = 0;
+    genNetworkState.generateStartedAt = 0;
+    genNetworkState.generateCompletedAt = 0;
+    genNetworkState.generateStatusCode = 0;
+    genNetworkState.active = true;
+
+    // 1. Dispatch trusted native Chromium mouse events (isTrusted = true)
+    if (btnInfo.x > 0 && btnInfo.y > 0 && btnInfo.width > 0 && btnInfo.height > 0) {
+      genWin.webContents.sendInputEvent({ type: 'mouseMove', x: btnInfo.x, y: btnInfo.y });
+      await new Promise(r => setTimeout(r, 35));
+      genWin.webContents.sendInputEvent({ type: 'mouseDown', x: btnInfo.x, y: btnInfo.y, button: 'left', clickCount: 1 });
+      await new Promise(r => setTimeout(r, 45));
+      genWin.webContents.sendInputEvent({ type: 'mouseUp', x: btnInfo.x, y: btnInfo.y, button: 'left', clickCount: 1 });
+    }
+
+    await new Promise(r => setTimeout(r, 450));
+
+    // 2. Fallback synthetic click ONLY if sendInputEvent while hidden did not trigger /api/c/check or /api/generate
+    if (!genNetworkState.cCheckStartedAt && !genNetworkState.generateStartedAt) {
+      await genWin.webContents.executeJavaScript(`
+        (() => {
+          const btn = document.querySelector('button[aria-label="Create song"]');
+          if (btn && !btn.disabled) {
+            btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+            btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+            btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            btn.click();
+          }
+        })()
+      `).catch(() => {});
+    }
+
+    console.log('[Suno Warm Engine] Create triggered silently in background. Waiting for silent Turnstile or /api/generate...');
+
     let challengeShown = false;
+    let capturedClips = null;
+    let lastJwt = null;
+    let lastFeedPollMs = 0;
 
-    for (let wait = 0; wait < 30; wait++) {
-      await new Promise(r => setTimeout(r, 1000));
+    // Phase 1 & 2 Unified Loop:
+    // - First 4.5s: 100% silent in background!
+    // - After 4.5s: ONLY show window if /api/generate hasn't fired AND z-[1000] Turnstile modal is genuinely open!
+    // - Once shown: check every 250ms and hide IMMEDIATELY when modal closes or /api/generate fires!
+    // - Once /api/generate fires: poll up to 45s for Simple Mode's LLM + clip creation to return new clips!
+    const maxTotalWaitMs = 110000;
+    const silentGraceMs = 4500;
 
-      try {
-        const interceptRes = await genWin.webContents.executeJavaScript(`
-          (() => {
-            const turnstileFrame = Array.from(document.querySelectorAll('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]'))
-              .find(f => f.offsetWidth > 10 && f.offsetHeight > 10);
-            return {
-              clips: window.__sunoGenClips,
-              error: window.__sunoGenError,
-              captchaRequired: window.__sunoCaptchaRequired,
-              userCancelled: Boolean(window.__sunoUserCancelled),
-              hasVisibleTurnstile: Boolean(turnstileFrame)
-            };
-          })()
-        `);
+    while ((Date.now() - clickTimeMs) < maxTotalWaitMs) {
+      await new Promise(r => setTimeout(r, 250));
 
-        if (interceptRes?.userCancelled) {
-          throw new Error('Verifikasi Suno dibatalkan.');
-        }
+      if (userCancelledCurrentRun) {
+        throw new Error('Verifikasi Suno dibatalkan.');
+      }
 
-        if (interceptRes?.error) {
-          serverErrorMessage = interceptRes.error;
-          throw new Error(`Suno Error: ${interceptRes.error}`);
-        }
+      if (genNetworkState.generateStatusCode === 402) {
+        throw new Error('Kuota kredit akun Suno Anda untuk hari ini telah habis.');
+      }
+      if (genNetworkState.generateStatusCode === 401 || genNetworkState.generateStatusCode === 403) {
+        throw new Error('Sesi akun Suno kedaluwarsa atau ditolak. Silakan klik Ganti / Kelola Akun untuk login ulang.');
+      }
+      if (genNetworkState.generateStatusCode >= 429 && genNetworkState.generateStatusCode < 500) {
+        throw new Error('Terlalu banyak permintaan ke Suno dalam waktu singkat. Coba lagi beberapa detik.');
+      }
 
-        if (interceptRes?.clips && Array.isArray(interceptRes.clips) && interceptRes.clips.length > 0) {
-          capturedClips = interceptRes.clips;
-          console.log(`[Suno Warm Engine] Captured ${capturedClips.length} clips directly from generate response!`);
-          break;
-        }
+      const elapsedMs = Date.now() - clickTimeMs;
+      const modalState = await checkInteractiveTurnstileModal(genWin);
 
-        // Only surface the already-loaded compact window if interactive human check is still pending after 1 tick
-        if (!challengeShown && wait >= 1 && (interceptRes?.captchaRequired === true || interceptRes?.hasVisibleTurnstile)) {
-          challengeShown = true;
-          console.log('[Suno Warm Engine] Interactive verification requested by Suno. Showing instant warm window...');
-          genWin.setSize(480, 540);
-          genWin.center();
-          genWin.setAlwaysOnTop(true);
-          genWin.show();
-          genWin.focus();
-        }
-      } catch (ie) {
-        if (ie.message && (ie.message.includes('Suno Error:') || ie.message.includes('dibatalkan'))) {
-          throw ie;
+      if (modalState.pageError) {
+        throw new Error(modalState.pageError);
+      }
+
+      // Auto-hide within 250ms the instant Turnstile modal closes or /api/generate starts!
+      if (genWin.isVisible() && (!modalState.hasModal || genNetworkState.generateStartedAt > 0)) {
+        hideEngineWindow();
+      }
+
+      // Surface clean verification window ONLY if genuinely gated by interactive Turnstile after silent grace period
+      if (!challengeShown && !genNetworkState.generateStartedAt && elapsedMs >= silentGraceMs && modalState.hasModal) {
+        challengeShown = true;
+        console.log('[Suno Warm Engine] Interactive Turnstile modal detected after silent wait. Showing clean verification window...');
+        genWin.setSkipTaskbar(false);
+        genWin.center();
+        genWin.setAlwaysOnTop(true);
+        genWin.show();
+        genWin.focus();
+      }
+
+      // Poll feed/v3 for newly created clips:
+      // - Every 1.4s once /api/generate has started (or completed)
+      // - Or every 3.0s as a safety fallback if network hook missed anything
+      const pollIntervalMs = genNetworkState.generateStartedAt > 0 ? 1400 : 3000;
+      if ((Date.now() - lastFeedPollMs) >= pollIntervalMs && (genNetworkState.generateStartedAt > 0 || !modalState.hasModal)) {
+        lastFeedPollMs = Date.now();
+        const pollRes = await pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, cleanUa);
+        if (pollRes.jwt) lastJwt = pollRes.jwt;
+        if (Array.isArray(pollRes.clips) && pollRes.clips.length > 0) {
+          // Suno creates 2 clips per generation; wait 1 extra beat if only 1 appeared right as it's inserting
+          if (pollRes.clips.length >= 2 || (genNetworkState.generateCompletedAt > 0 && (Date.now() - genNetworkState.generateCompletedAt) > 2000)) {
+            capturedClips = pollRes.clips;
+            console.log(`[Suno Warm Engine] Captured ${capturedClips.length} authentic new Suno clips!`);
+            break;
+          }
         }
       }
 
-      // Fallback check via feed/v3 every 2nd tick in case response hook missed clips
-      if (wait % 2 === 1 && capturedAuth) {
-        try {
-          const rawJwt = capturedAuth.replace(/^Bearer\s+/i, '').trim();
-          const feedRes = await axios.post('https://studio-api.prod.suno.com/api/feed/v3', {
-            cursor: null,
-            limit: 12
-          }, {
-            headers: {
-              'Authorization': capturedAuth,
-              'Cookie': `__session=${rawJwt}`,
-              'Content-Type': 'application/json',
-              'Origin': 'https://suno.com',
-              'Referer': 'https://suno.com/',
-              'User-Agent': CHROME_DESKTOP_UA
-            },
-            timeout: 4000
-          });
-          const feedClips = feedRes.data?.clips || [];
-          const newClips = feedClips.filter(c => {
-            if (!c || !c.id || existingClipIds.has(c.id)) return false;
-            if (c.created_at) {
-              const t = new Date(c.created_at).getTime();
-              if (t < (clickTimeMs - 20000)) return false;
-            }
-            return true;
-          });
-          if (newClips.length > 0) {
-            capturedClips = newClips;
-            console.log(`[Suno Warm Engine] Retrieved ${newClips.length} NEW clips via feed/v3!`);
-            break;
-          }
-        } catch (e) {}
+      // Timeout conditions:
+      // 1. If /api/generate started > 45s ago and still no clips, stop waiting
+      if (genNetworkState.generateStartedAt > 0 && (Date.now() - genNetworkState.generateStartedAt) > 45000) {
+        break;
+      }
+      // 2. If no modal is open AND /api/generate never started after 22s, stop waiting
+      if (!challengeShown && !modalState.hasModal && !genNetworkState.generateStartedAt && elapsedMs > 22000) {
+        break;
       }
     }
 
     if (!capturedClips || capturedClips.length === 0) {
-      if (challengeShown) {
-        throw new Error('Verifikasi Suno AI ("Verify you are human") belum selesai atau waktu habis.');
-      }
-      if (serverErrorMessage) {
-        throw new Error(`Suno: ${serverErrorMessage}`);
+      if (challengeShown && !genNetworkState.generateStartedAt) {
+        throw new Error('Verifikasi Suno AI ("Verify you are human") belum diselesaikan atau waktu tunggu habis.');
       }
       throw new Error('Suno belum mengembalikan lagu baru. Pastikan akun Suno Anda masih memiliki kuota kredit yang mencukupi.');
     }
 
-    // Sync refreshed token to persistent config
-    if (capturedAuth) {
+    // Persist refreshed token to AuraSound config
+    const finalJwt = lastJwt || await readLiveSessionJwt(sunoSession);
+    if (finalJwt && finalJwt.length > 20) {
       try {
-        const cleanTok = capturedAuth.replace(/^Bearer\s+/i, '').trim();
         const sunoService = require('./suno-service');
-        sunoService.saveConfig({ suno_api_key: cleanTok, suno_provider: 'suno_official' });
+        sunoService.saveConfig({ suno_api_key: finalJwt, suno_provider: 'suno_official' });
       } catch (e) {}
     }
 
@@ -717,13 +951,9 @@ async function generateWithSunoBrowser({ prompt, lyrics, tags, title, make_instr
       targetMode
     };
   } finally {
+    genNetworkState.active = false;
     isGeneratingBusy = false;
-    try {
-      if (sunoEngineWin && !sunoEngineWin.isDestroyed()) {
-        sunoEngineWin.setAlwaysOnTop(false);
-        sunoEngineWin.hide();
-      }
-    } catch (e) {}
+    hideEngineWindow();
   }
 }
 
@@ -735,6 +965,7 @@ module.exports = {
   generateWithSunoBrowser,
   initWarmSunoEngine,
   destroyWarmSunoEngine,
-  processArrangementInstruction,
+  isPromptInstruction,
+  isGenuineCustomLyrics,
   fetchSunoClipsByIds: global.fetchSunoClipsByIds
 };
