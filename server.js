@@ -331,11 +331,11 @@ async function searchYouTubeMusicSongs(query, limit = 25, page = 1) {
       const seconds = s.duration?.seconds || 0;
 
       // Extract high-res 1:1 square album thumbnail from YouTube Music
-      let thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+      let thumbnail = `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
       if (s.thumbnails && s.thumbnails.length > 0) {
         const rawUrl = s.thumbnails[0].url || '';
         if (rawUrl.includes('googleusercontent.com')) {
-          thumbnail = rawUrl.replace(/=w\d+-h\d+[^"]*/, '=w544-h544-l90-rj');
+          thumbnail = rawUrl.replace(/=w\d+-h\d+[^"]*/, '=w226-h226-l90-rj');
         } else if (rawUrl) {
           thumbnail = rawUrl;
         }
@@ -607,7 +607,7 @@ app.get('/api/search', async (req, res) => {
           artist: v.author?.name || 'Unknown Artist',
           duration: v.timestamp || '0:00',
           seconds: v.seconds || 0,
-          thumbnail: `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+          thumbnail: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
           views: v.views || 0,
           ago: v.ago || '',
           type: 'youtube',
@@ -768,8 +768,8 @@ app.get('/api/artist/:name', async (req, res) => {
                   allOfficialTracks = pl.items.map(item => {
                     const rawItemThumb = item.thumbnails?.[0]?.url || item.thumbnail?.contents?.[0]?.url || artistInfo.avatar || '/images/supermix.jpg';
                     const hiresThumb = rawItemThumb.includes('googleusercontent.com')
-                      ? rawItemThumb.replace(/=w\d+-h\d+[^"]*/, '=w544-h544-l90-rj')
-                      : (rawItemThumb.includes('ytimg.com') ? rawItemThumb.replace(/hqdefault/, 'hq720') : rawItemThumb);
+                      ? rawItemThumb.replace(/=w\d+-h\d+[^"]*/, '=w226-h226-l90-rj')
+                      : (rawItemThumb.includes('ytimg.com') ? rawItemThumb.replace(/hqdefault/, 'mqdefault') : rawItemThumb);
                     const itemArtist = Array.isArray(item.artists)
                       ? item.artists.map(a => a.name).join(', ')
                       : (typeof item.author === 'string' ? item.author : artistInfo.name);
@@ -957,7 +957,7 @@ app.get('/api/trending', async (req, res) => {
         artist: v.author?.name || 'Popular Artist',
         duration: v.timestamp || '0:00',
         seconds: v.seconds || 0,
-        thumbnail: `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+        thumbnail: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
         views: v.views || 0,
         type: 'youtube',
         isOfficial: true,

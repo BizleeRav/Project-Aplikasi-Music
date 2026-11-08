@@ -64,7 +64,7 @@ class YTPlayerManager {
         playsinline: 1,
         rel: 0,
         html5: 1,
-        vq: 'hd1080'
+        vq: 'tiny'
       },
       events: {
         onReady: () => {
@@ -128,10 +128,10 @@ class YTPlayerManager {
     try {
       this.player.loadVideoById({
         videoId: track.id,
-        suggestedQuality: 'hd1080'
+        suggestedQuality: 'tiny'
       });
       if (this.player.setPlaybackQuality) {
-        this.player.setPlaybackQuality('hd1080');
+        this.player.setPlaybackQuality('tiny');
       }
       if (this.player.unMute) {
         this.player.unMute();
@@ -290,11 +290,17 @@ class YTPlayerManager {
     if (playerState === 1) {
       this.isPlaying = true;
       this._isBuffering = false;
+      if (this.player && typeof this.player.setPlaybackQuality === 'function') {
+        try { this.player.setPlaybackQuality('tiny'); } catch (_) {}
+      }
       if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = true;
       if (this.onStateChangeCallback) this.onStateChangeCallback(true);
       this.syncAndroidPlayback(true);
     } else if (playerState === 3) {
       this._isBuffering = true;
+      if (this.player && typeof this.player.setPlaybackQuality === 'function') {
+        try { this.player.setPlaybackQuality('tiny'); } catch (_) {}
+      }
     } else if (playerState === 2 || playerState === 0) {
       this.isPlaying = false;
       this._isBuffering = false;

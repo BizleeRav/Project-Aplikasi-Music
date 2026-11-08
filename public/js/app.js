@@ -1399,6 +1399,7 @@ class App {
   initAudioElement() {
     this.nativeAudio = new Audio();
     this.nativeAudio.crossOrigin = 'anonymous';
+    this.nativeAudio.preload = 'metadata'; // Smart Progressive Buffering
 
     // Hook Web Audio Engine to Native Audio Element for Suno AI & Local audio
     if (window.audioEngine) {
@@ -1415,6 +1416,13 @@ class App {
         const cur = this.nativeAudio.currentTime;
         const dur = this.nativeAudio.duration || 1;
         this.updateProgress(cur, dur);
+
+        // Smart Audio Cache: Cache track after 12s of active listening for 0 KB replays
+        if (cur > 12 && this.currentTrack && !this.currentTrack._cacheTriggered && !this._isPlayingFromCache) {
+          this.currentTrack._cacheTriggered = true;
+          this.cacheCurrentTrackInBackground(this.currentTrack);
+        }
+
         if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackProgress === 'function') {
           if (!this._lastAndroidAudioSync || Date.now() - this._lastAndroidAudioSync > 2500) {
             this._lastAndroidAudioSync = Date.now();
@@ -7842,6 +7850,65 @@ class App {
       }
     });
 
+    // Smart Buffering: Abort previous playback and purge active network buffering immediately
+    if (this.nativeAudio) {
+      this.nativeAudio.pause();
+      if (this._currentBlobUrl) {
+        URL.revokeObjectURL(this._currentBlobUrl);
+        this._currentBlobUrl = null;
+      }
+      this.nativeAudio.removeAttribute('src');
+      this.nativeAudio.load();
+    }
+    this._isPlayingFromCache = false;
+
+    // Smart Audio Cache: Instant playback & 0 KB network consumption on replay
+    let cachedBlob = null;
+    if (window.audioCache && track.id) {
+      try {
+        cachedBlob = await window.audioCache.getAudioBlob(track.id);
+      } catch (cErr) {
+        console.warn('[AudioCache] Read error:', cErr);
+      }
+    }
+
+    if (cachedBlob) {
+      this._isPlayingFromCache = true;
+      console.log(`[AudioCache] ⚡ Playing "${track.title}" from Offline Smart Cache (0 KB used! 🚀)`);
+      this._currentBlobUrl = URL.createObjectURL(cachedBlob);
+      this.currentAudioMode = 'native';
+      if (window.ytPlayer) window.ytPlayer.pause();
+      if (window.audioEngine) window.audioEngine.resume();
+
+      if (!this.queue || this.queue.length === 0) {
+        this.queue = [track];
+        this.queueIndex = 0;
+      } else {
+        const existingIdx = this.queue.findIndex(t => t.id === track.id);
+        if (existingIdx !== -1) {
+          this.queueIndex = existingIdx;
+        } else {
+          this.queue.unshift(track);
+          this.queueIndex = 0;
+        }
+      }
+
+      this.nativeAudio.src = this._currentBlobUrl;
+      const playPromise = this.nativeAudio.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          this.updatePlayState(true);
+        }).catch(err => {
+          if (err.name !== 'AbortError') console.warn('Cache blob playback error:', err);
+        });
+      }
+      this.updateMediaSession(track);
+      this.renderCinemaLyrics(track, null, true);
+      this.updateEqStatusBanner();
+      this.persistPlaybackState();
+      return;
+    }
+
     // Route playback based on type
     if (track.type === 'suno' || track.type === 'local') {
       this.currentAudioMode = 'native';
@@ -7900,7 +7967,10 @@ class App {
 
       const playPromise = this.nativeAudio.play();
       if (playPromise !== undefined) {
-        playPromise.catch(err => {
+        playPromise.then(() => {
+          this.updatePlayState(true);
+        }).catch(err => {
+          if (err.name === 'AbortError') return; // User track switch or pause; do not fallback
           console.warn('Direct audio stream error, falling back to YouTube player:', err);
           this.currentAudioMode = 'yt';
           if (this.nativeAudio) this.nativeAudio.pause();
@@ -7911,6 +7981,7 @@ class App {
       }
 
       this.nativeAudio.onerror = (e) => {
+        if (!this.nativeAudio.src || this.nativeAudio.src === window.location.href) return;
         if (this.currentAudioMode === 'native' && track.type !== 'suno' && track.type !== 'local') {
           console.warn('Native audio error event, falling back to YouTube player:', e);
           this.currentAudioMode = 'yt';
@@ -7977,6 +8048,39 @@ class App {
     this.playTrack(testTrack);
     this.updateEqStatusBanner();
     this.showToast(isEn ? '🎧 DSP Test Mode Active! Switch presets now to hear the difference.' : '🎧 Mode Tes DSP Aktif! Silakan ganti preset sekarang untuk mendengar perbedaannya.', 'success');
+  }
+
+  async cacheCurrentTrackInBackground(track) {
+    if (!window.audioCache || !track || !track.id) return;
+    try {
+      const isAlreadyCached = await window.audioCache.getAudioBlob(track.id);
+      if (isAlreadyCached) return;
+
+      let fetchUrl = '';
+      if (track.type === 'suno' || track.type === 'local') {
+        let targetUrl = track.audio_url;
+        if (!targetUrl || targetUrl.includes('/api/forbidden')) {
+          targetUrl = `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${track.id}.m4a`;
+        }
+        fetchUrl = `/api/proxy-audio?id=${encodeURIComponent(track.id || '')}&url=${encodeURIComponent(targetUrl)}`;
+      } else {
+        fetchUrl = `/api/stream-audio?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}`;
+      }
+
+      console.log(`[AudioCache] 📥 Background caching track: "${track.title}" for 0 KB future replays...`);
+      const resp = await fetch(fetchUrl);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        if (blob && blob.size > 10000) {
+          await window.audioCache.saveAudioBlob(track.id, blob, {
+            title: track.title,
+            artist: track.artist
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[AudioCache] Background caching error:', err.message);
+    }
   }
 
   stopDspTest() {
@@ -9311,8 +9415,10 @@ function initAppUpdateCheck() {
       if (res.ok) {
         const data = await res.json();
         if (data && data.android && data.android.versionCode > curCode) {
-          if (window.app && typeof window.app.showToast === 'function') {
-            window.app.showToast('Pembaruan AuraSound v' + data.android.versionName + ' tersedia di Pengaturan.', 'info', 5000);
+          if (typeof window.openAppUpdateModal === 'function') {
+            window.openAppUpdateModal(data.android);
+          } else if (window.app && typeof window.app.showToast === 'function') {
+            window.app.showToast('Pembaruan AuraSound v' + data.android.versionName + ' tersedia.', 'info', 5000);
           }
           return;
         }

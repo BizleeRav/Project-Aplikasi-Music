@@ -1,6 +1,6 @@
-const CACHE_NAME = 'aurasound-v94';
+const CACHE_NAME = 'aurasound-v95';
 
-const IMAGE_CACHE = 'aurasound-images-v2';
+const IMAGE_CACHE = 'aurasound-images-v3';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -24,8 +24,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Cache images (YouTube thumbnails and local images) using Cache-First strategy for 0ms instant loading
-  if (url.hostname.includes('ytimg.com') || url.pathname.startsWith('/images/') || url.pathname.startsWith('/icons/')) {
+  // Cache images (YouTube thumbnails, google CDN, and local images) using Cache-First strategy for 0ms instant loading
+  if (url.hostname.includes('ytimg.com') || url.hostname.includes('googleusercontent.com') || url.pathname.startsWith('/images/') || url.pathname.startsWith('/icons/')) {
     event.respondWith(
       caches.open(IMAGE_CACHE).then(cache => {
         return cache.match(event.request).then(cachedResponse => {
