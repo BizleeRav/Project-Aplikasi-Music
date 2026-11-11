@@ -127,10 +127,23 @@ class TasteEngine {
     return (this.taste.history || []).slice(0, limit);
   }
 
+  shuffleCopy(arr) {
+    if (!Array.isArray(arr)) return [];
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
   generateSupermixPayload() {
-    const topArtists = this.getTopArtists(5).map(a => a.name);
-    const favorites = (window.app && window.app.favorites) ? window.app.favorites.slice(0, 15) : [];
-    const history = this.getRecentHistory(15);
+    const candidateArtists = this.getTopArtists(12).map(a => a.name);
+    const topArtists = this.shuffleCopy(candidateArtists).slice(0, 5);
+    const favorites = (window.app && window.app.favorites)
+      ? this.shuffleCopy(window.app.favorites).slice(0, 20)
+      : [];
+    const history = this.shuffleCopy(this.taste.history || []).slice(0, 20);
     const importedPlaylists = (window.app && window.app.playlists)
       ? window.app.playlists.filter(p => (p.isImported || p.source === 'spotify' || p.source === 'youtube' || !p.isAiMix) && Array.isArray(p.tracks) && p.tracks.length > 0)
       : [];

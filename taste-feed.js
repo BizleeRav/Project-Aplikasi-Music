@@ -34,6 +34,16 @@ async function getInnertube() {
   return innertubeInitPromise;
 }
 
+function shuffleArray(arr) {
+  if (!Array.isArray(arr) || arr.length <= 1) return Array.isArray(arr) ? [...arr] : [];
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 /**
  * Fetches authentic YouTube Music "Up Next" related tracks based on a video ID.
  * Returns up to 20 algorithmic recommendations from similar artists and vibes.
@@ -47,7 +57,7 @@ async function getUpNextTracks(videoId, max = 15) {
   if (feedCache.has(cacheKey)) {
     const entry = feedCache.get(cacheKey);
     if (Date.now() - entry.timestamp < CACHE_TTL_MS) {
-      return entry.tracks;
+      return shuffleArray(entry.tracks).slice(0, max);
     }
   }
 
@@ -58,7 +68,7 @@ async function getUpNextTracks(videoId, max = 15) {
     const upNext = await yt.music.getUpNext(cleanId);
     const contents = upNext?.contents || [];
     // Skip item 0 which is the song itself
-    const candidateItems = contents.slice(1, max + 8);
+    const candidateItems = contents.slice(1, Math.max(max + 10, 25));
 
     const tracks = candidateItems.map(item => {
       const id = item.id || item.video_id;
@@ -87,10 +97,10 @@ async function getUpNextTracks(videoId, max = 15) {
         isOfficial: true,
         tag: 'RELATED'
       };
-    }).filter(t => t && t.id && t.title).slice(0, max);
+    }).filter(t => t && t.id && t.title);
 
     feedCache.set(cacheKey, { tracks, timestamp: Date.now() });
-    return tracks;
+    return shuffleArray(tracks).slice(0, max);
   } catch (e) {
     console.warn(`UpNext fetch error for ${cleanId}:`, e.message);
     return [];
@@ -274,7 +284,7 @@ async function fetchCategoryTracks(query, max = 10) {
   const cacheKey = `yt_query_${query}`;
   const cached = feedCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
-    return cached.tracks;
+    return shuffleArray(cached.tracks).slice(0, max);
   }
 
   try {
@@ -285,7 +295,8 @@ async function fetchCategoryTracks(query, max = 10) {
     if (singles.length < 5) {
       singles = videos.filter(v => v.seconds <= 900);
     }
-    const tracks = singles.slice(0, max).map(v => ({
+    const poolSize = Math.max(max + 12, 24);
+    const tracks = singles.slice(0, poolSize).map(v => ({
       id: v.videoId,
       title: v.title.replace(/\[[^\]]*\]/g, '').replace(/\([^)]*Official[^)]*\)/gi, '').trim(),
       artist: v.author?.name || 'Artist',
@@ -297,7 +308,7 @@ async function fetchCategoryTracks(query, max = 10) {
     }));
 
     feedCache.set(cacheKey, { tracks, timestamp: Date.now() });
-    return tracks;
+    return shuffleArray(tracks).slice(0, max);
   } catch (err) {
     console.error(`Error querying YouTube for "${query}":`, err.message);
     return [];
@@ -362,8 +373,11 @@ async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-i
     }
   });
 
+  // Shuffle combined tracks so Quick Picks & AI Starter Playlist vary on each open
+  const shuffledMixedTracks = shuffleArray(allMixedTracks);
+
   // Top 9 tracks for Quick Picks
-  const quickPicks = allMixedTracks.slice(0, 9);
+  const quickPicks = shuffledMixedTracks.slice(0, 9);
 
   // Build Genre Shelves
   const genreShelves = genreResults.map((gr, idx) => ({
@@ -389,7 +403,7 @@ async function generatePersonalizedFeed({ name = 'Sobat Musik', genres = ['pop-i
     id: `pl-ai-${Date.now()}`,
     title: `Mix Favorit ${name} 🎵`,
     description: `Diramu spesial oleh AI AuraSound berdasarkan selera pilihanmu: ${topGenreNames}.`,
-    tracks: allMixedTracks.slice(0, 15),
+    tracks: shuffledMixedTracks.slice(0, 15),
     thumbnail: quickPicks[0]?.thumbnail || '/images/supermix.jpg',
     createdAt: new Date().toLocaleDateString('id-ID'),
     isImported: false,
@@ -474,9 +488,9 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
   const artistThumbMap = {};
   const seenIds = new Set();
 
-  // Factor in artists from imported playlists (high weight)
+  // Factor in artists from imported playlists (high weight, sampled randomly across full playlists)
   validImported.forEach(p => {
-    (p.tracks || []).slice(0, 10).forEach(t => {
+    shuffleArray(p.tracks || []).slice(0, 15).forEach(t => {
       const cleanArtist = (t.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
       if (cleanArtist && cleanArtist.length > 1 && !cleanArtist.includes('AuraSound')) {
         artistCounts[cleanArtist] = (artistCounts[cleanArtist] || 0) + 4;
@@ -507,9 +521,10 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
     }
   });
 
-  let sortedArtists = Object.keys(artistCounts)
+  const topCandidateArtists = Object.keys(artistCounts)
     .sort((a, b) => artistCounts[b] - artistCounts[a])
-    .slice(0, 6);
+    .slice(0, 12);
+  let sortedArtists = shuffleArray(topCandidateArtists).slice(0, 6);
 
   // If no artist could be cleanly parsed, fallback to latest song artist or title
   if (sortedArtists.length === 0 && historyTracks.length > 0) {
@@ -519,16 +534,16 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
 
   // Cold start baseline if history, favorites & imported playlists are completely empty
   if (sortedArtists.length === 0) {
-    sortedArtists = ['YOASOBI', 'NewJeans', 'Ado', 'tuki.', 'aespa', 'Stray Kids'];
+    sortedArtists = shuffleArray(['YOASOBI', 'NewJeans', 'Ado', 'tuki.', 'aespa', 'Stray Kids', 'Tulus', 'Mahalini', 'Kenshi Yonezu']);
   }
 
   // 1. Query YouTube Music Up Next recommendations from imported albums, history & favorites
   const recentVideoIds = [];
 
-  // Feed up to 1-2 tracks from EACH imported album for diverse discovery
-  for (const p of validImported) {
+  // Feed up to 1-2 random tracks from EACH imported album for diverse discovery
+  for (const p of shuffleArray(validImported)) {
     let pCount = 0;
-    for (const t of (p.tracks || [])) {
+    for (const t of shuffleArray(p.tracks || [])) {
       const rawId = (t?.id || '').replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
       if (rawId && rawId.length === 11 && !recentVideoIds.includes(rawId)) {
         recentVideoIds.push(rawId);
@@ -539,7 +554,7 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
     if (recentVideoIds.length >= 6) break;
   }
 
-  for (const h of validHistory) {
+  for (const h of shuffleArray(validHistory)) {
     const rawId = (h?.id || '').replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
     if (rawId && rawId.length === 11 && !recentVideoIds.includes(rawId)) {
       recentVideoIds.push(rawId);
@@ -547,7 +562,7 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
     }
   }
   if (recentVideoIds.length < 4) {
-    for (const f of validFavorites) {
+    for (const f of shuffleArray(validFavorites)) {
       const rawId = (f?.id || '').replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
       if (rawId && rawId.length === 11 && !recentVideoIds.includes(rawId)) {
         recentVideoIds.push(rawId);
@@ -627,10 +642,10 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
   const mixTracks = [];
   const addedIds = new Set(seenIds);
 
-  // Interleave tracks from imported albums
+  // Interleave tracks from imported albums (randomly sampled so it's not always the first tracks)
   const importedTracks = [];
   if (validImported.length === 1) {
-    (validImported[0].tracks || []).slice(0, 8).forEach(t => {
+    shuffleArray(validImported[0].tracks || []).slice(0, 8).forEach(t => {
       if (t && t.id && !addedIds.has(t.id)) {
         addedIds.add(t.id);
         importedTracks.push({
@@ -640,10 +655,14 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
       }
     });
   } else if (validImported.length >= 2) {
-    const maxImpLen = Math.max(...validImported.map(p => (p.tracks || []).length));
+    const shuffledPlaylists = validImported.map(p => ({
+      ...p,
+      shuffledTracks: shuffleArray(p.tracks || [])
+    }));
+    const maxImpLen = Math.max(...shuffledPlaylists.map(p => p.shuffledTracks.length));
     for (let i = 0; i < maxImpLen && importedTracks.length < 10; i++) {
-      for (const p of validImported) {
-        const t = p.tracks && p.tracks[i];
+      for (const p of shuffledPlaylists) {
+        const t = p.shuffledTracks[i];
         if (t && t.id && !addedIds.has(t.id)) {
           addedIds.add(t.id);
           importedTracks.push({
@@ -827,7 +846,7 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
     artists: sortedArtists,
     title: mixTitle,
     description: mixDesc,
-    tracks: mixTracks.slice(0, 24),
+    tracks: shuffleArray(mixTracks).slice(0, 24),
     dynamicAlbums: allDynamicAlbums,
     dynamicMixes: dynamicMixes
   };

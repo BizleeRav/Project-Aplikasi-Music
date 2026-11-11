@@ -150,6 +150,41 @@ function isGenuineCustomLyrics(text) {
 }
 
 /**
+ * Intelligent Tags Derivation from Prompt when user left genre/style blank
+ */
+function deriveTagsFromPrompt(prompt, userTags) {
+  if (userTags && userTags.trim().length > 2) return userTags.trim();
+  const p = (prompt || '').toLowerCase();
+  if (p.includes('epic') || p.includes('choir') || p.includes('orchestr') || p.includes('fantasy') || p.includes('symphon') || p.includes('kingdom')) {
+    return 'Epic Fantasy Orchestral Choir, Cinematic Symphony, Female Vocal & Grand Choir, 432Hz Master';
+  }
+  if (p.includes('synthwave') || p.includes('cyber') || p.includes('retro') || p.includes('80s')) {
+    return 'Retro Synthwave, Cyberpunk Arpeggio, 80s Synthesizer, Analog Master';
+  }
+  if (p.includes('rock') || p.includes('metal')) {
+    if (!/\b(no|tanpa|not)\s+rock\b/i.test(prompt)) {
+      return 'Emotional Symphonic Rock, Driving Guitars, Dynamic Live Performance';
+    }
+  }
+  if (p.includes('koplo') || p.includes('dangdut')) {
+    return 'Dangdut Koplo Modern, Kendang Asik, Upbeat Melodic Vocal';
+  }
+  if (p.includes('ballad') || p.includes('romantis') || p.includes('piano')) {
+    return 'Acoustic Piano Ballad, Warm Melodic Vocal, Emotional Studio Mix';
+  }
+  if (p.includes('lofi') || p.includes('chill') || p.includes('senja')) {
+    return 'Lo-Fi Chill Beats, Relaxing Ambient Melodies, Warm Senja Vinyl';
+  }
+  if (p.includes('j-pop') || p.includes('anime') || p.includes('japanese')) {
+    return 'J-Pop Anime Opening, Uplifting Melody, Bright Piano & Strings';
+  }
+  if (p.includes('k-pop') || p.includes('kpop') || p.includes('korean')) {
+    return 'K-Pop Modern Dance Pop, Layered Harmonies, Punchy Bass';
+  }
+  return 'Indonesian Pop, Emotional Vocal, 432Hz Studio Mix';
+}
+
+/**
  * Read the freshest live __session JWT directly from persist:suno_auth_session cookies
  */
 async function readLiveSessionJwt(sunoSession) {
@@ -182,6 +217,33 @@ async function readLiveSessionJwt(sunoSession) {
   }
   return null;
 }
+
+global.getWarmEngineSessionToken = async () => {
+  try {
+    if (sunoEngineWin && !sunoEngineWin.isDestroyed()) {
+      const curUrl = sunoEngineWin.webContents.getURL() || '';
+      if (curUrl.includes('suno.com') && !curUrl.includes('/sign-in') && !curUrl.includes('/login')) {
+        const liveTok = await sunoEngineWin.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              if (window.Clerk && window.Clerk.session) {
+                const t = await window.Clerk.session.getToken({ skipCache: true });
+                if (t && typeof t === 'string' && t.length > 20) return t;
+              }
+              const m = document.cookie.match(/(?:^|;\\s*)__session=([^;]+)/);
+              if (m && m[1]) return m[1];
+              return null;
+            } catch (e) { return null; }
+          })()
+        `).catch(() => null);
+        if (liveTok && typeof liveTok === 'string' && liveTok.length > 20) {
+          return liveTok;
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+};
 
 /**
  * Fetch Suno clips by IDs directly using Electron authenticated session & in-page same-origin fallback
@@ -476,7 +538,7 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
           if (!c || !c.id || existingClipIds.has(c.id)) return false;
           if (c.created_at) {
             const t = new Date(c.created_at).getTime();
-            if (Number.isFinite(t) && t < (clickTimeMs - 45000)) return false;
+            if (Number.isFinite(t) && t < (clickTimeMs - 15 * 60 * 1000)) return false;
           }
           return true;
         });
@@ -507,7 +569,7 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
         if (!c || !c.id || existingClipIds.has(c.id)) return false;
         if (c.created_at) {
           const t = new Date(c.created_at).getTime();
-          if (Number.isFinite(t) && t < (clickTimeMs - 45000)) return false;
+          if (Number.isFinite(t) && t < (clickTimeMs - 15 * 60 * 1000)) return false;
         }
         return true;
       });
@@ -642,8 +704,61 @@ async function generateWithSunoBrowser({
     const targetMode = useCustomLyricsMode ? 'custom_lyrics' : 'simple';
     console.log(`[Suno Warm Engine] Filling Suno Create form (mode: ${targetMode}, promptLen: ${cleanPromptText.length})...`);
 
+    // Reset previous inputs & remove any old drafts from Suno storage so genres/styles never leak
+    await genWin.webContents.executeJavaScript(`
+      (() => {
+        try {
+          localStorage.removeItem('create_draft');
+          sessionStorage.removeItem('create_draft');
+        } catch (e) {}
+
+        const allTextareas = Array.from(document.querySelectorAll('textarea'));
+        for (const ta of allTextareas) {
+          try {
+            ta.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+            const proto = window.HTMLTextAreaElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) setter.call(ta, '');
+            else ta.value = '';
+            ta.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            ta.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          } catch (e) {}
+        }
+
+        const allInputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
+        for (const inp of allInputs) {
+          try {
+            if ((inp.placeholder || '').toLowerCase().includes('search')) continue;
+            inp.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+            const proto = window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) setter.call(inp, '');
+            else inp.value = '';
+            inp.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          } catch (e) {}
+        }
+
+        const lyricsEditors = Array.from(document.querySelectorAll('div[aria-label="Lyrics editor"], .lyrics-editor-content, div[role="textbox"][contenteditable="true"]'));
+        for (const ed of lyricsEditors) {
+          try {
+            ed.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+          } catch (e) {}
+        }
+      })()
+    `).catch(() => {});
+
     if (targetMode === 'simple') {
       const simpleParts = [];
+      if (cleanTitleText) {
+        simpleParts.push(`Title: ${cleanTitleText}`);
+      }
       if (wantInstrumental) {
         simpleParts.push('Instrumental only, no vocals.');
       }
@@ -652,6 +767,11 @@ async function generateWithSunoBrowser({
       }
       if (cleanTagsText) {
         simpleParts.push(`Style: ${cleanTagsText}`);
+      } else {
+        const pLower = cleanPromptText.toLowerCase();
+        if (pLower.includes('fantasy') || pLower.includes('kerajaan') || (pLower.includes('adventure') && !pLower.includes('folk'))) {
+          simpleParts.push('Style: Epic Fantasy Orchestral, Cinematic Symphony, Piano & Strings, No Folk');
+        }
       }
       const simpleDescription = simpleParts.join('\n').slice(0, 2950);
 
@@ -660,6 +780,10 @@ async function generateWithSunoBrowser({
           function setNativeValue(el, val) {
             if (!el) return false;
             el.focus();
+            try {
+              document.execCommand('selectAll', false, null);
+              document.execCommand('delete', false, null);
+            } catch (e) {}
             const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
             const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
             if (setter) setter.call(el, val);
@@ -706,13 +830,18 @@ async function generateWithSunoBrowser({
       }
     } else {
       const lyricsToInsert = cleanLyricsText || cleanPromptText;
-      const styleToInsert = cleanTagsText.slice(0, 950);
+      const effectiveTags = cleanTagsText || deriveTagsFromPrompt(cleanPromptText || cleanLyricsText, '');
+      const styleToInsert = effectiveTags.slice(0, 950);
 
       await genWin.webContents.executeJavaScript(`
         (async () => {
           function setNativeValue(el, val) {
             if (!el) return;
             el.focus();
+            try {
+              document.execCommand('selectAll', false, null);
+              document.execCommand('delete', false, null);
+            } catch (e) {}
             const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
             const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
             if (setter) setter.call(el, val);
@@ -833,6 +962,15 @@ async function generateWithSunoBrowser({
     genNetworkState.generateStatusCode = 0;
     genNetworkState.active = true;
 
+    // First dispatch native mouse events to the button coordinates for trusted click activation
+    if (btnInfo && btnInfo.x > 0 && btnInfo.y > 0) {
+      try {
+        genWin.webContents.sendInputEvent({ type: 'mouseMove', x: btnInfo.x, y: btnInfo.y });
+        genWin.webContents.sendInputEvent({ type: 'mouseDown', x: btnInfo.x, y: btnInfo.y, button: 'left', clickCount: 1 });
+        genWin.webContents.sendInputEvent({ type: 'mouseUp', x: btnInfo.x, y: btnInfo.y, button: 'left', clickCount: 1 });
+      } catch (e) {}
+    }
+
     // Trigger Create click directly via DOM event chain (100% background compatible)
     const clickedOk = await genWin.webContents.executeJavaScript(`
       (() => {
@@ -855,7 +993,7 @@ async function generateWithSunoBrowser({
       throw new Error(clickedOk.error);
     }
 
-    console.log('[Suno Warm Engine] Create triggered 100% silently in background. Polling for newly created clips...');
+    console.log('[Suno Warm Engine] Create triggered in background. Polling for newly created clips...');
 
     let capturedClips = null;
     let lastJwt = null;
@@ -880,6 +1018,24 @@ async function generateWithSunoBrowser({
       }
 
       const elapsedMs = Date.now() - clickTimeMs;
+
+      // Check if Cloudflare Turnstile verification challenge modal is blocking
+      if (elapsedMs > 1800 && elapsedMs % 1000 < 250) {
+        const turnstileShowing = await genWin.webContents.executeJavaScript(`
+          (() => {
+            const modal = Array.from(document.querySelectorAll('div.fixed.inset-0')).find(el => String(el.className || '').includes('z-[1000]'));
+            const cf = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
+            return Boolean(modal || cf);
+          })()
+        `).catch(() => false);
+
+        if (turnstileShowing && !genWin.isVisible()) {
+          console.log('[Suno Warm Engine] Cloudflare verification modal detected! Showing engine window for verification...');
+          genWin.setAlwaysOnTop(true);
+          genWin.show();
+          genWin.focus();
+        }
+      }
 
       // Poll feed every 1.2s starting right after click
       if ((Date.now() - lastFeedPollMs) >= 1200) {

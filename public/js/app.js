@@ -4562,8 +4562,8 @@ class App {
                 name: this.userProfile?.name || savedTaste.name || 'Sobat Musik',
                 genres: savedTaste.genres,
                 mood: savedTaste.mood || 'chill',
-                history: history.slice(0, 10),
-                favorites: (this.favorites || []).slice(0, 10),
+                history: this.shuffleCopy(history).slice(0, 15),
+                favorites: this.shuffleCopy(this.favorites || []).slice(0, 15),
                 deviceId: this.getDeviceId()
               })
             });
@@ -6533,7 +6533,11 @@ class App {
     }
 
     if (!album && this.homeAlbums && this.homeAlbums[albumId]) {
-      album = this.homeAlbums[albumId];
+      const base = this.homeAlbums[albumId];
+      album = {
+        ...base,
+        tracks: this.shuffleCopy(base.tracks || [])
+      };
     }
 
     if (!album && this.playlists) {
@@ -6545,7 +6549,7 @@ class App {
           artist: pl.source === 'spotify' ? 'Spotify Imported Album' : (pl.source === 'youtube' ? 'YouTube Music Imported Album' : (pl.artist || 'AuraSound Album')),
           description: pl.description || `Koleksi ${pl.tracks?.length || 0} lagu yang diimpor ke AuraSound.`,
           thumbnail: pl.thumbnail || '/images/supermix.jpg',
-          tracks: pl.tracks || [],
+          tracks: this.shuffleCopy(pl.tracks || []),
           badge: pl.source === 'spotify' ? 'SPOTIFY' : 'ALBUM',
           year: new Date().getFullYear(),
           genre: 'Imported Album'
@@ -6567,7 +6571,7 @@ class App {
             artist: `Crossover Hybrid Mix (${imp.length} Playlist)`,
             description: `Perpaduan crossover harmonis dari seluruh ${imp.length} playlist Anda (${titles}).`,
             thumbnail: imp[0].thumbnail || '/images/supermix.jpg',
-            tracks: mergedTracks,
+            tracks: this.shuffleCopy(mergedTracks),
             badge: 'FUSION MIX',
             year: '2026',
             genre: 'Crossover Hybrid Mix'
@@ -7258,9 +7262,22 @@ class App {
     if (chips) chips.style.display = 'flex';
   }
 
+  shuffleCopy(arr) {
+    if (!Array.isArray(arr)) return [];
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
   async playHomeAlbum(albumId, shuffle = false) {
     let album = null;
-    if (this.currentAlbumDetail && this.currentAlbumDetail.id === albumId) {
+    const detailView = document.getElementById('home-album-detail-view');
+    const isDetailOpen = detailView && detailView.style.display !== 'none';
+
+    if (isDetailOpen && this.currentAlbumDetail && this.currentAlbumDetail.id === albumId) {
       album = this.currentAlbumDetail;
     } else if (albumId === 'deck-supermix' || albumId === 'showcase-supermix') {
       try {
@@ -7287,8 +7304,6 @@ class App {
       } catch (e) {
         console.warn('Liked radio playback fetch error:', e);
       }
-    } else if (this.homeAlbums && this.homeAlbums[albumId]) {
-      album = this.homeAlbums[albumId];
     } else {
       try {
         const res = await fetch(`/api/home/album/${encodeURIComponent(albumId)}`);
@@ -7301,13 +7316,21 @@ class App {
       }
     }
 
+    if (!album && this.homeAlbums && this.homeAlbums[albumId]) {
+      const base = this.homeAlbums[albumId];
+      album = {
+        ...base,
+        tracks: this.shuffleCopy(base.tracks || [])
+      };
+    }
+
     if (!album && this.playlists) {
       const pl = this.playlists.find(p => p.id === albumId || String(p.id) === String(albumId));
       if (pl) {
         album = {
           id: pl.id,
           title: pl.title,
-          tracks: pl.tracks || []
+          tracks: this.shuffleCopy(pl.tracks || [])
         };
       } else if (albumId.startsWith('mix-fusion-')) {
         const imp = this.playlists.filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
@@ -7321,7 +7344,7 @@ class App {
           album = {
             id: albumId,
             title: `${imp[0].title} × ${imp[1].title} Fusion`,
-            tracks: mergedTracks
+            tracks: this.shuffleCopy(mergedTracks)
           };
         }
       }

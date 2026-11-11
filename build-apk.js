@@ -122,8 +122,8 @@ public class BackgroundAudioWebView extends WebView {
 fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurasound.musichub"
-    android:versionCode="8"
-    android:versionName="1.3.4">
+    android:versionCode="10"
+    android:versionName="1.3.6">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -270,7 +270,7 @@ public class AndroidMediaBridge {
 
     @JavascriptInterface
     public int getAppVersionCode() {
-        return 8;
+        return 9;
     }
 }
 `);
@@ -1647,6 +1647,10 @@ public class MainActivity extends Activity {
             + "    function setNativeVal(el, val) {"
             + "      if (!el) return;"
             + "      el.focus();"
+            + "      try {"
+            + "        document.execCommand('selectAll', false, null);"
+            + "        document.execCommand('delete', false, null);"
+            + "      } catch(e) {}"
             + "      var proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;"
             + "      var setter = Object.getOwnPropertyDescriptor(proto, 'value');"
             + "      if (setter && setter.set) setter.set.call(el, val);"
@@ -1654,6 +1658,15 @@ public class MainActivity extends Activity {
             + "      el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));"
             + "      el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));"
             + "    }"
+            + "    try {"
+            + "      localStorage.removeItem('create_draft');"
+            + "      sessionStorage.removeItem('create_draft');"
+            + "      Array.from(document.querySelectorAll('textarea')).forEach(function(ta) { setNativeVal(ta, ''); });"
+            + "      Array.from(document.querySelectorAll('input[type=text]')).forEach(function(inp) { if (!(inp.placeholder||'').toLowerCase().includes('search')) setNativeVal(inp, ''); });"
+            + "      Array.from(document.querySelectorAll('.lyrics-editor-content, div[contenteditable=true], div[role=textbox]')).forEach(function(ed) {"
+            + "        try { ed.focus(); document.execCommand('selectAll', false, null); document.execCommand('delete', false, null); } catch(e) {}"
+            + "      });"
+            + "    } catch(ce) {}"
             + "    function switchTab(targetName) {"
             + "      var tabs = Array.from(document.querySelectorAll('[role=tab], button, div[role=button]'));"
             + "      var tab = tabs.find(function(t) {"
@@ -1686,9 +1699,13 @@ public class MainActivity extends Activity {
             + "      var pBox = tas[0] || document.querySelector('textarea');"
             + "      if (pBox) {"
             + "        var sParts = [];"
+            + "        if (titleText) sParts.push('Title: ' + titleText);"
             + "        if (wantInstr) sParts.push('Instrumental only, no vocals.');"
             + "        if (promptText) sParts.push(promptText);"
             + "        if (tagsText) sParts.push('Style: ' + tagsText);"
+            + "        else if (promptText.toLowerCase().includes('fantasy') || (promptText.toLowerCase().includes('adventure') && !promptText.toLowerCase().includes('folk'))) {"
+            + "          sParts.push('Style: Epic Fantasy Orchestral, Cinematic Symphony, Piano & Strings, No Folk');"
+            + "        }"
             + "        setNativeVal(pBox, sParts.join(NL).slice(0, 2950));"
             + "      }"
             + "    } else {"
@@ -1698,8 +1715,17 @@ public class MainActivity extends Activity {
             + "        var ph = (t.placeholder || '').toLowerCase();"
             + "        return al === 'styles' || ph.includes('style') || ph.includes('genre');"
             + "      });"
+            + "      var effectiveTags = tagsText || (function() {"
+            + "        var p = (promptText + ' ' + lyricsText).toLowerCase();"
+            + "        if (p.includes('epic') || p.includes('choir') || p.includes('fantasy')) return 'Epic Fantasy Orchestral Choir, Cinematic Symphony';"
+            + "        if (p.includes('rock') || p.includes('metal')) return 'Emotional Symphonic Rock, Driving Guitars';"
+            + "        if (p.includes('koplo') || p.includes('dangdut')) return 'Dangdut Koplo Modern, Kendang Asik';"
+            + "        if (p.includes('ballad') || p.includes('piano')) return 'Acoustic Piano Ballad, Warm Melodic Vocal';"
+            + "        if (p.includes('lofi') || p.includes('chill')) return 'Lo-Fi Chill Beats, Relaxing Ambient Melodies';"
+            + "        return 'Indonesian Pop, Emotional Vocal, Studio Mix';"
+            + "      })();"
             + "      if (styleBox) {"
-            + "        setNativeVal(styleBox, tagsText.slice(0, 950));"
+            + "        setNativeVal(styleBox, effectiveTags.slice(0, 950));"
             + "      }"
             + "      var titleInput = Array.from(document.querySelectorAll('input')).find(function(i) { var ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase(); return ph.includes('title') || ph.includes('judul'); });"
             + "      if (titleInput) {"
@@ -1767,7 +1793,7 @@ public class MainActivity extends Activity {
             + "              if (!c || !c.id || existingIds.has(c.id)) return false;"
             + "              if (c.created_at) {"
             + "                var t = new Date(c.created_at).getTime();"
-            + "                if (t < (clickTimeMs - 45000)) return false;"
+            + "                if (t < (clickTimeMs - 15 * 60 * 1000)) return false;"
             + "              }"
             + "              return true;"
             + "            });"

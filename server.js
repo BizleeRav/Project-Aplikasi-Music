@@ -645,7 +645,7 @@ app.get('/api/home/album/:id', async (req, res) => {
   try {
     let album = await homeData.getAlbumDetail(req.params.id);
 
-    // If not found in default catalog, check user playlists DB
+    // If not found in default catalog, check user playlists DB (shuffle tracks exclusively for Beranda album view)
     if (!album) {
       const allPlaylists = playlistDb.getAllPlaylists();
       const pl = allPlaylists.find(p => p.id === req.params.id || String(p.id) === String(req.params.id));
@@ -656,7 +656,7 @@ app.get('/api/home/album/:id', async (req, res) => {
           artist: pl.source === 'spotify' ? 'Spotify Imported Album' : (pl.source === 'youtube' ? 'YouTube Music Imported Album' : (pl.artist || 'AuraSound Album')),
           description: pl.description || `Koleksi ${pl.tracks?.length || 0} lagu yang diimpor ke AuraSound.`,
           thumbnail: pl.thumbnail || '/images/supermix.jpg',
-          tracks: pl.tracks || [],
+          tracks: homeData.shuffleArray(pl.tracks || []),
           badge: pl.source === 'spotify' ? 'SPOTIFY' : 'ALBUM',
           year: new Date().getFullYear(),
           genre: 'Imported Album'
@@ -664,7 +664,7 @@ app.get('/api/home/album/:id', async (req, res) => {
       }
     }
 
-    // Support dynamic Crossover Fusion mixes (mix-fusion-[id1]-[id2])
+    // Support dynamic Crossover Fusion mixes (mix-fusion-[id1]-[id2] or mix-fusion-all)
     if (!album && req.params.id.startsWith('mix-fusion-')) {
       const allPlaylists = playlistDb.getAllPlaylists().filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
       const pl1 = allPlaylists.find(p => req.params.id.includes(p.id)) || allPlaylists[0];
@@ -682,7 +682,7 @@ app.get('/api/home/album/:id', async (req, res) => {
           artist: `${pl1.title} & ${pl2.title}`,
           description: `Perpaduan crossover harmonis antara album "${pl1.title}" dan "${pl2.title}".`,
           thumbnail: pl1.thumbnail || pl2.thumbnail || '/images/supermix.jpg',
-          tracks: mergedTracks,
+          tracks: homeData.shuffleArray(mergedTracks),
           badge: 'FUSION MIX',
           year: '2026',
           genre: 'Crossover Hybrid Mix'
@@ -977,19 +977,35 @@ function getEffectiveSunoCredentials(req) {
   const clientKey = (req.headers['x-suno-api-key'] || req.query.api_key || req.body?.api_key || '').trim();
   const clientProvider = (req.headers['x-suno-provider'] || req.query.provider || req.body?.provider || '').trim();
 
-  // If client explicitly provided their own key, prioritize it
-  if (clientKey.length > 5) {
-    return { key: clientKey, provider: clientProvider || 'suno_official', isClientKey: true };
-  }
-
   const ip = req.ip || req.connection?.remoteAddress || '';
   const isLocalhost = ip.includes('127.0.0.1') || ip === '::1' || ip === 'localhost';
+
+  const isExpiredJwt = (tok) => {
+    if (!tok || !tok.startsWith('eyJ')) return false;
+    try {
+      const parts = tok.split('.');
+      if (parts.length >= 2) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+        return Boolean(payload?.exp && (payload.exp - 5) <= Date.now() / 1000);
+      }
+    } catch (e) {}
+    return false;
+  };
+
+  // If client explicitly provided their own key, prioritize it as long as it is not an expired JWT
+  if (clientKey.length > 5 && !isExpiredJwt(clientKey)) {
+    return { key: clientKey, provider: clientProvider || 'suno_official', isClientKey: true };
+  }
 
   // Only fallback to system-wide configured key if request is from local machine
   if (isLocalhost) {
     const cfg = sunoService.getConfig();
+    let sysKey = (cfg.suno_api_key || '').trim();
+    if (isExpiredJwt(sysKey)) {
+      sysKey = '';
+    }
     return {
-      key: (cfg.suno_api_key || '').trim(),
+      key: sysKey,
       provider: cfg.suno_provider || 'suno_official',
       isClientKey: false
     };

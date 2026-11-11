@@ -1148,6 +1148,38 @@ const MOOD_QUERIES = {
 
 const moodCache = new Map();
 
+function shuffleArray(arr) {
+  if (!Array.isArray(arr) || arr.length <= 1) return Array.isArray(arr) ? [...arr] : [];
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function getRandomizedHomeSections() {
+  const listenAgain = Array.isArray(HOME_SECTIONS.listenAgain) ? [...HOME_SECTIONS.listenAgain] : [];
+  const supermixItem = listenAgain.find(item => item.albumId === 'deck-supermix');
+  const restListenAgain = shuffleArray(listenAgain.filter(item => item.albumId !== 'deck-supermix'));
+
+  const mixedForYou = Array.isArray(HOME_SECTIONS.mixedForYou) ? [...HOME_SECTIONS.mixedForYou] : [];
+  const likedItem = mixedForYou.find(item => item.id === 'mix-liked');
+  const restMixed = shuffleArray(mixedForYou.filter(item => item.id !== 'mix-liked'));
+
+  return {
+    ...HOME_SECTIONS,
+    showcasePlaylists: shuffleArray(HOME_SECTIONS.showcasePlaylists),
+    listenAgain: supermixItem ? [supermixItem, ...restListenAgain] : restListenAgain,
+    quickPicks: shuffleArray(HOME_SECTIONS.quickPicks),
+    coversAndRemixes: shuffleArray(HOME_SECTIONS.coversAndRemixes),
+    newReleases: shuffleArray(HOME_SECTIONS.newReleases),
+    forgottenFavorites: shuffleArray(HOME_SECTIONS.forgottenFavorites),
+    kpopHits: shuffleArray(HOME_SECTIONS.kpopHits),
+    mixedForYou: likedItem ? [likedItem, ...restMixed] : restMixed
+  };
+}
+
 async function getHomeFeed(mood = 'all') {
   if (!mood || mood === 'all') {
     return {
@@ -1156,20 +1188,35 @@ async function getHomeFeed(mood = 'all') {
         name: 'User',
         avatar: '/images/avatar.jpg'
       },
-      sections: HOME_SECTIONS,
+      sections: getRandomizedHomeSections(),
       albums: ALBUM_CATALOG
     };
   }
 
-  // Check cache for mood
+  // Check cache for mood, but re-shuffle tracks on every load
   if (moodCache.has(mood)) {
-    return moodCache.get(mood);
+    const cachedVideos = moodCache.get(mood);
+    const shuffled = shuffleArray(cachedVideos);
+    return {
+      success: true,
+      mood,
+      user: {
+        name: 'User',
+        avatar: '/images/avatar.jpg'
+      },
+      moodData: {
+        title: mood.replace('-', ' ').toUpperCase(),
+        quickPicks: shuffled.slice(0, 9),
+        featuredVideos: shuffled.slice(9, 15).map(v => ({ ...v, cardType: 'video' })),
+        albums: shuffled.slice(15, 18).map(v => ({ ...v, cardType: 'square' }))
+      }
+    };
   }
 
   const query = MOOD_QUERIES[mood] || `${mood} music hits`;
   try {
     const results = await ytSearch(query);
-    const videos = (results.videos || []).slice(0, 18).map(v => ({
+    const allVideos = (results.videos || []).slice(0, 28).map(v => ({
       id: v.videoId,
       title: v.title,
       artist: v.author?.name || 'Artist',
@@ -1179,7 +1226,10 @@ async function getHomeFeed(mood = 'all') {
       type: 'youtube'
     }));
 
-    const response = {
+    moodCache.set(mood, allVideos);
+    const videos = shuffleArray(allVideos);
+
+    return {
       success: true,
       mood,
       user: {
@@ -1193,15 +1243,12 @@ async function getHomeFeed(mood = 'all') {
         albums: videos.slice(15, 18).map(v => ({ ...v, cardType: 'square' }))
       }
     };
-
-    moodCache.set(mood, response);
-    return response;
   } catch (err) {
     console.error('Mood fetch error:', err.message);
     return {
       success: true,
       user: { name: 'User', avatar: '/images/avatar.jpg' },
-      sections: HOME_SECTIONS,
+      sections: getRandomizedHomeSections(),
       albums: ALBUM_CATALOG
     };
   }
@@ -1462,9 +1509,15 @@ function isNonOfficialMusicTrack(video) {
 async function getAlbumDetail(albumId, options = {}) {
   if (!albumId) return null;
 
-  // 1. Return from in-memory cache if already enriched and refresh not forced
+  // 1. Return from in-memory cache if already enriched and refresh not forced, with freshly shuffled tracklist for Beranda
   if (albumEnrichCache.has(albumId) && !options.refresh) {
-    return albumEnrichCache.get(albumId);
+    const cached = albumEnrichCache.get(albumId);
+    const shuffledTracks = shuffleArray(cached.tracks || []);
+    return {
+      ...cached,
+      thumbnail: shuffledTracks[0]?.thumbnail || cached.thumbnail,
+      tracks: shuffledTracks
+    };
   }
 
   let album = ALBUM_CATALOG[albumId];
@@ -1477,7 +1530,7 @@ async function getAlbumDetail(albumId, options = {}) {
       const searchQuery = isMix ? `"${cleanQuery}" official music video` : `${cleanQuery} full album songs official`;
       const searchRes = await ytSearch(searchQuery);
       const candidates = (searchRes && searchRes.videos)
-        ? searchRes.videos.filter(v => v.seconds > 45 && v.seconds < 900)
+        ? shuffleArray(searchRes.videos.filter(v => v.seconds > 45 && v.seconds < 900))
         : [];
 
       if (candidates.length > 0) {
@@ -1513,9 +1566,8 @@ async function getAlbumDetail(albumId, options = {}) {
     tracks: Array.isArray(album.tracks) ? album.tracks.map(t => ({ ...t, type: t.type || 'youtube' })) : []
   };
 
-  // 4. Dynamically enrich ONLY for playlists/mixes or empty dynamic collections.
-  // Studio Albums and EPs preserve their authentic, 100% official tracklist!
-  if (album.type === 'playlist' || album.type === 'mix' || !album.tracks || album.tracks.length === 0) {
+  // 4. Dynamically enrich for Beranda albums, playlists, mixes, or dynamic collections so there is a rich pool of official tracks to randomize
+  if (album.type === 'playlist' || album.type === 'mix' || album.type === 'album' || !album.tracks || album.tracks.length < 18) {
     try {
       const existingIds = new Set(enrichedAlbum.tracks.map(t => t.id));
       const existingTitleKeys = new Set(
@@ -1526,7 +1578,7 @@ async function getAlbumDetail(albumId, options = {}) {
       const searchRes = await ytSearch(searchQuery);
 
       if (searchRes && searchRes.videos) {
-        const candidates = searchRes.videos.filter(v => v.seconds > 45 && v.seconds < 900);
+        const candidates = shuffleArray(searchRes.videos.filter(v => v.seconds > 45 && v.seconds < 900));
         for (const v of candidates) {
           const titleKey = normalizeTrackKey(v.title, album.artist);
           const isDuplicate = existingIds.has(v.videoId) || (titleKey.length >= 2 && existingTitleKeys.has(titleKey));
@@ -1550,7 +1602,7 @@ async function getAlbumDetail(albumId, options = {}) {
         try {
           const artistRes = await ytSearch(`"${album.artist}" official audio`);
           if (artistRes && artistRes.videos) {
-            const extraCandidates = artistRes.videos.filter(v => v.seconds > 45 && v.seconds < 900);
+            const extraCandidates = shuffleArray(artistRes.videos.filter(v => v.seconds > 45 && v.seconds < 900));
             for (const v of extraCandidates) {
               const titleKey = normalizeTrackKey(v.title, album.artist);
               const isDuplicate = existingIds.has(v.videoId) || (titleKey.length >= 2 && existingTitleKeys.has(titleKey));
@@ -1593,7 +1645,11 @@ async function getAlbumDetail(albumId, options = {}) {
   }
 
   albumEnrichCache.set(albumId, enrichedAlbum);
-  return enrichedAlbum;
+  const shuffledTracks = shuffleArray(enrichedAlbum.tracks);
+  return {
+    ...enrichedAlbum,
+    tracks: shuffledTracks
+  };
 }
 
 async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
@@ -1639,14 +1695,17 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
     return true;
   }
 
-  // 1. HYBRID PART 1: Pull remaining tracks from imported albums/playlists
+  // 1. HYBRID PART 1: Pull remaining tracks from imported albums/playlists in randomized order
   try {
-    const allUserPlaylists = playlistDb.getAllPlaylists(userKey).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube');
+    const allUserPlaylists = shuffleArray(
+      playlistDb.getAllPlaylists(userKey).filter(p => p.isImported || p.source === 'spotify' || p.source === 'youtube')
+    );
 
     // If inside Supermix or a crossover fusion mix: check all imported playlists
     if (albumId === 'deck-supermix' || albumId.startsWith('mix-fusion-')) {
       for (const pl of allUserPlaylists) {
-        for (const t of (pl.tracks || [])) {
+        const shuffledPlTracks = shuffleArray(pl.tracks || []);
+        for (const t of shuffledPlTracks) {
           if (tryAddTrack(t, pl.title)) {
             if (newTracks.length >= 6) break;
           }
@@ -1657,7 +1716,8 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
       // If inside a specific imported playlist/album: pull any remaining tracks from that playlist first
       const matchedPl = allUserPlaylists.find(p => p.id === albumId);
       if (matchedPl && Array.isArray(matchedPl.tracks)) {
-        for (const t of matchedPl.tracks) {
+        const shuffledPlTracks = shuffleArray(matchedPl.tracks);
+        for (const t of shuffledPlTracks) {
           if (tryAddTrack(t, matchedPl.artist || matchedPl.title)) {
             if (newTracks.length >= 6) break;
           }
@@ -1672,22 +1732,22 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
   let queryArtists = [];
   if (albumId === 'deck-supermix') {
     const artSet = new Set();
-    (album.tracks || []).forEach(t => {
+    shuffleArray(album.tracks || []).forEach(t => {
       const a = (t.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
       if (a && a.length > 1 && !a.toLowerCase().includes('aurasound')) artSet.add(a);
     });
-    queryArtists = Array.from(artSet).slice(0, 4);
+    queryArtists = shuffleArray(Array.from(artSet)).slice(0, 4);
   } else {
     const cleanArt = (album.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
     if (cleanArt && cleanArt.length > 1 && !cleanArt.toLowerCase().includes('aurasound')) {
       queryArtists = [cleanArt];
     } else {
       const artSet = new Set();
-      (album.tracks || []).forEach(t => {
+      shuffleArray(album.tracks || []).forEach(t => {
         const a = (t.artist || '').split('•')[0].split(',')[0].trim();
         if (a && a.length > 1 && !a.toLowerCase().includes('aurasound')) artSet.add(a);
       });
-      queryArtists = Array.from(artSet).slice(0, 3);
+      queryArtists = shuffleArray(Array.from(artSet)).slice(0, 3);
     }
   }
 
@@ -1700,15 +1760,15 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
     queries.push(`lagu mirip ${art} official music video`);
   });
 
-  const startIndex = Math.floor((offset / 6)) % queries.length;
+  const shuffledQueries = shuffleArray(queries);
 
-  for (let i = 0; i < queries.length && newTracks.length < 15; i++) {
-    const qIndex = (startIndex + i) % queries.length;
-    const q = queries[qIndex];
+  for (let i = 0; i < shuffledQueries.length && newTracks.length < 15; i++) {
+    const q = shuffledQueries[i];
     try {
       const res = await ytSearch(q);
       if (res && res.videos) {
-        for (const v of res.videos) {
+        const candidateVideos = shuffleArray(res.videos);
+        for (const v of candidateVideos) {
           const matchedArtist = queryArtists.find(a => isOfficialMusicTrack(v, a)) || queryArtists[0];
           if (isOfficialMusicTrack(v, matchedArtist)) {
             tryAddTrack({
@@ -1727,7 +1787,7 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
     }
   }
 
-  return newTracks;
+  return shuffleArray(newTracks);
 }
 
 // ==========================================
@@ -1739,29 +1799,35 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
 
   let activeArtists = Array.isArray(topArtists) ? topArtists.filter(Boolean) : [];
 
-  // Also collect artists from imported playlists so their related tracks are blended
+  // Also collect artists from imported playlists (randomly sampled across the entire playlist)
   if (validImported.length > 0) {
     const importedArtists = new Set();
     validImported.forEach(p => {
-      (p.tracks || []).slice(0, 10).forEach(t => {
+      shuffleArray(p.tracks || []).slice(0, 18).forEach(t => {
         const art = (t.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
         if (art && art.length > 1 && !art.toLowerCase().includes('aurasound')) {
           importedArtists.add(art);
         }
       });
     });
-    activeArtists = [...Array.from(importedArtists), ...activeArtists];
+    activeArtists = [...shuffleArray(Array.from(importedArtists)), ...activeArtists];
   }
 
-  if (activeArtists.length === 0 && Array.isArray(favorites)) {
-    const artistSet = new Set();
-    favorites.forEach(f => { if (f.artist) artistSet.add(f.artist); });
-    activeArtists = Array.from(artistSet);
+  if (Array.isArray(favorites) && favorites.length > 0) {
+    const favArtistSet = new Set();
+    shuffleArray(favorites).forEach(f => {
+      const art = (f.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
+      if (art && art.length > 1 && !art.toLowerCase().includes('aurasound')) favArtistSet.add(art);
+    });
+    activeArtists = [...activeArtists, ...shuffleArray(Array.from(favArtistSet))];
   }
-  if (activeArtists.length === 0 && Array.isArray(history)) {
-    const artistSet = new Set();
-    history.forEach(h => { if (h.artist) artistSet.add(h.artist); });
-    activeArtists = Array.from(artistSet);
+  if (Array.isArray(history) && history.length > 0) {
+    const histArtistSet = new Set();
+    shuffleArray(history).forEach(h => {
+      const art = (h.artist || '').split('•')[0].split(',')[0].replace(/feat\..*/i, '').trim();
+      if (art && art.length > 1 && !art.toLowerCase().includes('aurasound')) histArtistSet.add(art);
+    });
+    activeArtists = [...activeArtists, ...shuffleArray(Array.from(histArtistSet))];
   }
   if (activeArtists.length === 0 && validImported.length === 0) {
     return {
@@ -1774,7 +1840,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
       tracks: []
     };
   }
-  activeArtists = [...new Set(activeArtists)].slice(0, 5);
+  activeArtists = shuffleArray([...new Set(activeArtists)]).slice(0, 5);
 
   const existingIds = new Set();
   const existingSongKeys = new Set();
@@ -1804,17 +1870,11 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     return true;
   }
 
-  // 1. Tracks from Imported Playlists/Albums (Balanced across ALL playlists)
+  // 1. Tracks from Imported Playlists/Albums (Randomly sampled across ALL playlists on every open/click)
   function sampleTracksFromPlaylist(tracks, count) {
     if (!Array.isArray(tracks) || tracks.length === 0) return [];
-    if (tracks.length <= count) return [...tracks];
-    const result = [];
-    const step = tracks.length / count;
-    for (let i = 0; i < count; i++) {
-      const idx = Math.floor(i * step);
-      if (tracks[idx]) result.push(tracks[idx]);
-    }
-    return result;
+    const shuffled = shuffleArray(tracks);
+    return shuffled.slice(0, count);
   }
 
   if (validImported.length === 1) {
@@ -1824,7 +1884,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     }
   } else if (validImported.length >= 2) {
     const perPlaylistTarget = Math.max(10, Math.floor(36 / validImported.length));
-    const sampledLists = validImported.map(p => sampleTracksFromPlaylist(p.tracks, perPlaylistTarget));
+    const sampledLists = shuffleArray(validImported).map(p => sampleTracksFromPlaylist(p.tracks, perPlaylistTarget));
     const maxLen = Math.max(...sampledLists.map(l => l.length));
     for (let i = 0; i < maxLen; i++) {
       for (const sList of sampledLists) {
@@ -1835,29 +1895,34 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     }
   }
 
-  // 2. Familiar hits from favorites & history (40% Weight)
+  // 2. Familiar hits from favorites & history (Randomly shuffled on every open/click)
   if (Array.isArray(favorites) && favorites.length > 0) {
-    for (const f of favorites) {
+    for (const f of shuffleArray(favorites)) {
       addTrackIfUnique(f, familiarPool);
     }
   }
 
   if (Array.isArray(history) && familiarPool.length < 15) {
-    for (const h of history) {
+    for (const h of shuffleArray(history)) {
       if (addTrackIfUnique(h, familiarPool) && familiarPool.length >= 15) break;
     }
   }
 
-  // 2. 30% Related Tracks for each top artist (parallel query for official MVs)
+  // 3. 30% Related Tracks for each sampled artist (parallel query with randomized official selection)
   try {
-    const artistQueries = activeArtists.map(a => ytSearch(`"${a}" official music video`));
+    const querySuffixes = ['official music video', 'official audio', 'official mv'];
+    const artistQueries = activeArtists.map(a => {
+      const suffix = querySuffixes[Math.floor(Math.random() * querySuffixes.length)];
+      return ytSearch(`"${a}" ${suffix}`);
+    });
     const artistResults = await Promise.all(artistQueries);
 
     for (let i = 0; i < activeArtists.length; i++) {
       const res = artistResults[i];
       if (res && res.videos) {
         let countForArtist = 0;
-        for (const v of res.videos) {
+        const shuffledVideos = shuffleArray(res.videos);
+        for (const v of shuffledVideos) {
           if (isOfficialMusicTrack(v, activeArtists[i])) {
             const added = addTrackIfUnique({
               id: v.videoId,
@@ -1868,7 +1933,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
             }, relatedPool);
             if (added) {
               countForArtist++;
-              if (countForArtist >= 3) break;
+              if (countForArtist >= 4) break;
             }
           }
         }
@@ -1878,13 +1943,14 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     console.warn('Supermix related artist fetch error:', err.message);
   }
 
-  // 3. 20% Discovery Tracks (matching vibe from official audio)
+  // 4. 20% Discovery Tracks (matching vibe from official audio, randomized candidates)
   try {
-    const primaryArtist = activeArtists[0] || 'K-Pop';
-    const secondaryArtist = activeArtists[1] || 'J-Pop';
+    const shuffledActive = shuffleArray(activeArtists);
+    const primaryArtist = shuffledActive[0] || 'K-Pop';
+    const secondaryArtist = shuffledActive[1] || 'J-Pop';
     const discRes = await ytSearch(`"${primaryArtist}" "${secondaryArtist}" official audio`);
     if (discRes && discRes.videos) {
-      for (const v of discRes.videos) {
+      for (const v of shuffleArray(discRes.videos)) {
         if (isOfficialMusicTrack(v, primaryArtist)) {
           const added = addTrackIfUnique({
             id: v.videoId,
@@ -1901,7 +1967,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     console.warn('Supermix discovery fetch error:', err.message);
   }
 
-  // 4. Interleave & Strict Single-Pass Deduplication (Zero duplicates guaranteed)
+  // 5. Interleave & Strict Single-Pass Deduplication (Zero duplicates guaranteed) + Final Shuffle
   const finalTracks = [];
   const finalSeenIds = new Set();
   const finalSeenKeys = new Set();
@@ -1939,22 +2005,23 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     if (i < discoveryPool.length) pushToFinal(discoveryPool[i]);
   }
 
-  // If still less than 20 tracks, fill from default catalog
+  // If still less than 20 tracks, fill from default catalog in random order
   if (finalTracks.length < 20 && ALBUM_CATALOG['deck-supermix']) {
-    for (const t of ALBUM_CATALOG['deck-supermix'].tracks) {
+    for (const t of shuffleArray(ALBUM_CATALOG['deck-supermix'].tracks)) {
       pushToFinal(t);
     }
   }
 
+  // Shuffle final combined tracks so every open/click starts with a fresh sequence
+  const randomizedFinalTracks = shuffleArray(finalTracks);
+
   // Calculate total duration
   let totalSeconds = 0;
-  finalTracks.forEach(t => {
+  randomizedFinalTracks.forEach(t => {
     totalSeconds += parseDurationSecs(t.duration);
   });
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-  const artistSummary = activeArtists.slice(0, 4).join(', ');
 
   let supermixDescription = 'Kombinasi lagu favorit dan penemuan musik baru untuk Anda.';
   let supermixArtist = 'Dibuat untuk Anda • AuraSound';
@@ -1983,10 +2050,10 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     subtitle: supermixSubtitle,
     releaseYear: '2026',
     genre: 'Algoritma Personalisasi AuraSound',
-    thumbnail: validImported[0]?.thumbnail || '/images/supermix.jpg',
+    thumbnail: randomizedFinalTracks[0]?.thumbnail || validImported[0]?.thumbnail || '/images/supermix.jpg',
     description: supermixDescription,
-    totalDuration: hours > 0 ? `${finalTracks.length} Lagu • ${hours} Jam ${minutes} Menit` : `${finalTracks.length} Lagu • ${minutes} Menit`,
-    tracks: finalTracks,
+    totalDuration: hours > 0 ? `${randomizedFinalTracks.length} Lagu • ${hours} Jam ${minutes} Menit` : `${randomizedFinalTracks.length} Lagu • ${minutes} Menit`,
+    tracks: randomizedFinalTracks,
     isPersonalized: true
   };
 
@@ -1998,8 +2065,9 @@ async function generateLikedRadio({ favorites = [] } = {}) {
   const existingIds = new Set();
   const existingSongKeys = new Set();
   const artistSet = new Set();
-  (favorites || []).forEach(f => { if (f.artist) artistSet.add(f.artist); });
-  const artists = Array.from(artistSet).slice(0, 4);
+  const shuffledFavorites = shuffleArray(favorites || []);
+  shuffledFavorites.forEach(f => { if (f.artist) artistSet.add(f.artist); });
+  const artists = shuffleArray(Array.from(artistSet)).slice(0, 4);
 
   const tracks = [];
 
@@ -2024,8 +2092,8 @@ async function generateLikedRadio({ favorites = [] } = {}) {
     return true;
   }
 
-  // Include ALL of the user's liked songs at the top of the radio station
-  for (const f of (favorites || [])) {
+  // Include ALL of the user's liked songs in randomized order
+  for (const f of shuffledFavorites) {
     addRadioTrackIfUnique(f);
   }
 
@@ -2044,7 +2112,7 @@ async function generateLikedRadio({ favorites = [] } = {}) {
     const results = await Promise.all(queries.map(q => ytSearch(q)));
     for (const res of results) {
       if (res && res.videos) {
-        for (const v of res.videos) {
+        for (const v of shuffleArray(res.videos)) {
           if (isOfficialMusicTrack(v)) {
             addRadioTrackIfUnique(v);
             if (tracks.length >= 35) break;
@@ -2057,8 +2125,10 @@ async function generateLikedRadio({ favorites = [] } = {}) {
     console.warn('Liked radio error:', err.message);
   }
 
+  const randomizedRadioTracks = shuffleArray(tracks);
+
   let totalSeconds = 0;
-  tracks.forEach(t => {
+  randomizedRadioTracks.forEach(t => {
     totalSeconds += parseDurationSecs(t.duration);
   });
   const hours = Math.floor(totalSeconds / 3600);
@@ -2072,10 +2142,10 @@ async function generateLikedRadio({ favorites = [] } = {}) {
     artist: `Stasiun Radio Berdasarkan Lagu yang Anda Sukai`,
     releaseYear: '2026',
     genre: 'Algoritma Rekomendasi Pintar',
-    thumbnail: '/images/liked_music.jpg',
+    thumbnail: randomizedRadioTracks[0]?.thumbnail || '/images/liked_music.jpg',
     description: `Stasiun radio dinamis yang secara cerdas mengeksplorasi lagu-lagu baru yang sefrekuensi dengan lagu-lagu favorit di koleksi Anda.`,
-    totalDuration: hours > 0 ? `${tracks.length} Lagu • ${hours} Jam ${minutes} Menit` : `${tracks.length} Lagu • ${minutes} Menit`,
-    tracks: tracks,
+    totalDuration: hours > 0 ? `${randomizedRadioTracks.length} Lagu • ${hours} Jam ${minutes} Menit` : `${randomizedRadioTracks.length} Lagu • ${minutes} Menit`,
+    tracks: randomizedRadioTracks,
     isPersonalized: true
   };
 
@@ -2093,6 +2163,7 @@ module.exports = {
   cleanArtistKey,
   isOfficialMusicTrack,
   isNonOfficialMusicTrack,
+  shuffleArray,
   HOME_SECTIONS,
   ALBUM_CATALOG
 };

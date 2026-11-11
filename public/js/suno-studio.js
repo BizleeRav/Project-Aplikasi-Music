@@ -107,6 +107,12 @@ class SunoStudio {
         headers: this.getAuthHeaders()
       });
       const data = await res.json();
+      if (data.freshToken) {
+        localStorage.setItem('aurasound_suno_key', data.freshToken);
+        localStorage.setItem('aurasound_suno_provider', 'suno_official');
+      } else if (data.is_expired) {
+        localStorage.removeItem('aurasound_suno_key');
+      }
       this.hasApiKey = Boolean(data.configured && !data.is_auto);
       this.accountInfo = data;
       this.updateConnectionUI(data);
@@ -114,7 +120,7 @@ class SunoStudio {
       // Pre-fill modal fields
       const apiKeyInput = document.getElementById('input-suno-api-key');
       if (apiKeyInput) {
-        apiKeyInput.value = localKey;
+        apiKeyInput.value = localStorage.getItem('aurasound_suno_key') || localKey;
       }
       const providerSel = document.getElementById('input-suno-provider');
       if (providerSel) providerSel.value = localProvider || data.providerCode || 'kie';

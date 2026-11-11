@@ -1,10 +1,11 @@
 {
   "name": "aurasound",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "AuraSound - Hi-Fi Music Hub & Suno AI Music Studio",
   "main": "electron-main.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dist": "electron-builder --win"
   },
   "author": "",
   "license": "ISC",

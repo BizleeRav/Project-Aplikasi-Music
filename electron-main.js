@@ -473,34 +473,50 @@ global.getFreshSunoToken = async () => {
     const cookies = await sunoSession.cookies.get({});
     let token = null;
 
+    const isJwtNonExpired = (jwt) => {
+      if (!jwt || typeof jwt !== 'string' || jwt.length < 20) return false;
+      try {
+        const parts = jwt.split('.');
+        if (parts.length >= 2) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+          return Boolean(payload?.exp && (payload.exp - 10) > Date.now() / 1000);
+        }
+      } catch (e) {}
+      return false;
+    };
+
     const findValidSessionJwt = (cookieList) => {
       const candidates = cookieList
         .filter(c => c && (c.name === '__session' || c.name.startsWith('__session')) && c.value && c.value.length > 20)
         .sort((a, b) => (a.name === '__session' ? -1 : b.name === '__session' ? 1 : 0));
       for (const sc of candidates) {
-        try {
-          const parts = sc.value.split('.');
-          if (parts.length >= 2) {
-            const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-            if (payload?.exp && (payload.exp - 10) > Date.now() / 1000) {
-              return sc.value;
-            }
-          }
-        } catch (e) {}
+        if (isJwtNonExpired(sc.value)) {
+          return sc.value;
+        }
       }
       return null;
     };
 
     token = findValidSessionJwt(cookies);
 
-    const clientCookies = cookies.filter(c => c.name.startsWith('__client'));
-    const hasClerkClient = clientCookies.some(c => c.name === '__client' && c.value && c.value.length > 20) ||
-      clientCookies.some(c => c.name.startsWith('__client_uat') && c.value && c.value !== '0');
+    // If warm engine is running, check if Clerk in page can provide a fresh token
+    if (!token && typeof global.getWarmEngineSessionToken === 'function') {
+      try {
+        const warmTok = await global.getWarmEngineSessionToken();
+        if (isJwtNonExpired(warmTok)) {
+          token = warmTok;
+        }
+      } catch (e) {}
+    }
 
-    if (!token && clientCookies.length > 0) {
+    const clientCookies = cookies.filter(c => c.name.startsWith('__client') || c.name.startsWith('__session'));
+    const hasClerkClient = cookies.some(c => c.name === '__client' && c.value && c.value.length > 20) ||
+      cookies.some(c => c.name.startsWith('__client_uat') && c.value && c.value !== '0');
+
+    if (!token && hasClerkClient) {
       try {
         const axios = require('axios');
-        const cookieHeader = clientCookies.map(c => `${c.name}=${c.value}`).join('; ');
+        const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
         const cleanUa = getCleanNativeUserAgent();
         for (const host of ['auth.suno.com', 'clerk.suno.com']) {
           try {
@@ -514,13 +530,32 @@ global.getFreshSunoToken = async () => {
               timeout: 4500
             });
             const sess = res.data?.response?.sessions?.[0];
-            const jwt = sess?.last_active_token?.jwt;
-            if (jwt && jwt.length > 20) {
-              token = jwt;
+            let candidateJwt = sess?.last_active_token?.jwt;
+
+            if (!isJwtNonExpired(candidateJwt) && sess?.id) {
+              try {
+                const tokRes = await axios.post(`https://${host}/v1/client/sessions/${sess.id}/tokens`, {}, {
+                  headers: {
+                    'Cookie': cookieHeader,
+                    'Origin': 'https://suno.com',
+                    'Referer': 'https://suno.com/',
+                    'User-Agent': cleanUa
+                  },
+                  timeout: 4500
+                });
+                const minted = tokRes.data?.jwt || tokRes.data?.response?.jwt;
+                if (isJwtNonExpired(minted)) {
+                  candidateJwt = minted;
+                }
+              } catch (mintErr) {}
+            }
+
+            if (isJwtNonExpired(candidateJwt)) {
+              token = candidateJwt;
               await sunoSession.cookies.set({
                 url: 'https://suno.com',
                 name: '__session',
-                value: jwt,
+                value: candidateJwt,
                 domain: '.suno.com',
                 path: '/',
                 secure: true,
@@ -540,8 +575,16 @@ global.getFreshSunoToken = async () => {
     if (!token && hasClerkClient && typeof global.initWarmSunoEngine === 'function') {
       try {
         await global.initWarmSunoEngine();
-        const refreshedCookies = await sunoSession.cookies.get({});
-        token = findValidSessionJwt(refreshedCookies);
+        if (typeof global.getWarmEngineSessionToken === 'function') {
+          const warmTok = await global.getWarmEngineSessionToken();
+          if (isJwtNonExpired(warmTok)) {
+            token = warmTok;
+          }
+        }
+        if (!token) {
+          const refreshedCookies = await sunoSession.cookies.get({});
+          token = findValidSessionJwt(refreshedCookies);
+        }
       } catch (e) {}
     }
 

@@ -931,6 +931,33 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
         }
       } catch (e) {}
 
+      if (isExpired && typeof global.getFreshSunoToken === 'function') {
+        try {
+          const fresh = await global.getFreshSunoToken();
+          if (fresh) {
+            currentToken = fresh;
+            isExpired = false;
+            try {
+              const parts = currentToken.split('.');
+              if (parts.length >= 2) {
+                const decoded = Buffer.from(parts[1], 'base64').toString('utf8');
+                const payload = JSON.parse(decoded);
+                if (payload?.sub) userId = `User ${payload.sub.slice(0, 8)}...`;
+                if (payload?.['suno/handle']) {
+                  userHandle = `@${payload['suno/handle']}`;
+                  userId = userHandle;
+                } else if (payload?.email) {
+                  userId = payload.email;
+                }
+                if (payload?.exp && Date.now() >= payload.exp * 1000) {
+                  isExpired = true;
+                }
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
+
       if (isExpired) {
         return {
           configured: false,
@@ -994,6 +1021,7 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
         is_auto: false,
         provider: 'Suno.com (Akun Resmi)',
         providerCode: 'suno_official',
+        freshToken: currentToken,
         userHandle: finalAccountName,
         accountName: finalAccountName,
         credits: creditsDisplay,
@@ -1207,9 +1235,17 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
           if (!hasCustomLyrics) {
             // Authentic Suno Simple Mode (supports up to 3,000 chars!)
             const simpleParts = [];
+            if (rawTitle) simpleParts.push(`Title: ${rawTitle}`);
             if (wantInstrumental) simpleParts.push('Instrumental only, no vocals.');
             if (rawPrompt) simpleParts.push(rawPrompt);
-            if (rawTags) simpleParts.push(`Style: ${rawTags}`);
+            if (rawTags) {
+              simpleParts.push(`Style: ${rawTags}`);
+            } else {
+              const pLower = rawPrompt.toLowerCase();
+              if (pLower.includes('fantasy') || pLower.includes('kerajaan') || (pLower.includes('adventure') && !pLower.includes('folk'))) {
+                simpleParts.push('Style: Epic Fantasy Orchestral, Cinematic Symphony, Piano & Strings, No Folk');
+              }
+            }
             const simpleDesc = simpleParts.join('\n').slice(0, 2950);
             genPayload = {
               gpt_description_prompt: simpleDesc,
