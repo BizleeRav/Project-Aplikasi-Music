@@ -1517,6 +1517,11 @@ function isNonOfficialMusicTrack(video) {
 async function getAlbumDetail(albumId, options = {}) {
   if (!albumId) return null;
 
+  // Deck Supermix must ALWAYS be dynamically generated with a fresh randomized mix on every open/click
+  if (albumId === 'deck-supermix' || albumId === 'showcase-supermix') {
+    return generatePersonalizedSupermix();
+  }
+
   // 1. Return from in-memory cache if already enriched with a solid pool and refresh not forced, with freshly shuffled tracklist for Beranda
   if (albumEnrichCache.has(albumId) && !options.refresh) {
     const cached = albumEnrichCache.get(albumId);
@@ -1865,16 +1870,14 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     });
     activeArtists = [...activeArtists, ...shuffleArray(Array.from(histArtistSet))];
   }
+  const DEFAULT_TOP_ARTISTS_POOL = [
+    'YOASOBI', 'Ado', 'NewJeans', 'tuki.', 'Fujii Kaze', 'Kenshi Yonezu',
+    'IVE', 'LE SSERAFIM', 'Stray Kids', 'Tulus', 'Mahalini', 'Bernadya',
+    'Juicy Luicy', 'NIKI', 'Taylor Swift', 'Hoshimachi Suisei', 'Eve', 'Billie Eilish'
+  ];
+
   if (activeArtists.length === 0 && validImported.length === 0) {
-    return {
-      id: 'deck-supermix',
-      type: 'mix',
-      badge: 'SMART SUPERMIX',
-      title: 'My Supermix',
-      subtitle: 'Putar lagu untuk meracik supermix Anda',
-      thumbnail: '/images/supermix.jpg',
-      tracks: []
-    };
+    activeArtists = shuffleArray(DEFAULT_TOP_ARTISTS_POOL).slice(0, 5);
   }
   activeArtists = shuffleArray([...new Set(activeArtists)]).slice(0, 5);
 
@@ -2041,11 +2044,32 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     if (i < discoveryPool.length) pushToFinal(discoveryPool[i]);
   }
 
-  // If still less than 20 tracks, fill from default catalog in random order
-  if (finalTracks.length < 20 && ALBUM_CATALOG['deck-supermix']) {
-    for (const t of shuffleArray(ALBUM_CATALOG['deck-supermix'].tracks)) {
-      pushToFinal(t);
-    }
+  // If still less than 22 tracks, dynamically backfill from rotating top artists pool
+  if (finalTracks.length < 22) {
+    try {
+      const extraArtists = shuffleArray(DEFAULT_TOP_ARTISTS_POOL).slice(0, 3);
+      const extraQueries = extraArtists.map(a => ytSearch(`"${a}" official music video`));
+      const extraResults = await Promise.all(extraQueries);
+      for (let i = 0; i < extraResults.length; i++) {
+        const res = extraResults[i];
+        if (res && res.videos) {
+          for (const v of shuffleArray(res.videos)) {
+            if (v.seconds > 50 && v.seconds < 600 && isOfficialMusicTrack(v, extraArtists[i])) {
+              pushToFinal({
+                id: v.videoId,
+                title: v.title,
+                artist: v.author ? v.author.name : extraArtists[i],
+                duration: v.timestamp || '3:30',
+                thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+                type: 'youtube'
+              });
+              if (finalTracks.length >= 25) break;
+            }
+          }
+        }
+        if (finalTracks.length >= 25) break;
+      }
+    } catch (e) {}
   }
 
   // Shuffle final combined tracks so every open/click starts with a fresh sequence
@@ -2093,7 +2117,8 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     isPersonalized: true
   };
 
-  albumEnrichCache.set('deck-supermix', supermixAlbum);
+  // Strictly avoid keeping a stale cache for Supermix so every open generates dynamic songs
+  albumEnrichCache.delete('deck-supermix');
   return supermixAlbum;
 }
 

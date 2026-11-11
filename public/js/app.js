@@ -6511,6 +6511,9 @@ class App {
     const mainContent = document.querySelector('.main-content') || window;
     if (mainContent.scrollTo) mainContent.scrollTo({ top: 0, behavior: 'smooth' });
 
+    // Always clear previous album detail to ensure clean re-render
+    this.currentAlbumDetail = null;
+
     let album = null;
     try {
       if (albumId === 'deck-supermix' || albumId === 'showcase-supermix') {
@@ -6522,7 +6525,9 @@ class App {
           body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (data.success && data.album) album = data.album;
+        if (data.success && data.album && Array.isArray(data.album.tracks) && data.album.tracks.length > 0) {
+          album = data.album;
+        }
       } else if (albumId === 'mix-liked-radio') {
         const res = await fetch(`/api/recommendations/liked-radio?_t=${Date.now()}`, {
           method: 'POST',
@@ -6531,14 +6536,16 @@ class App {
           body: JSON.stringify({ favorites: this.favorites || [] })
         });
         const data = await res.json();
-        if (data.success && data.album) album = data.album;
+        if (data.success && data.album && Array.isArray(data.album.tracks) && data.album.tracks.length > 0) {
+          album = data.album;
+        }
       } else {
         const res = await fetch(`/api/home/album/${encodeURIComponent(albumId)}?_t=${Date.now()}`, {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache' }
         });
         const data = await res.json();
-        if (data.success && data.album) {
+        if (data.success && data.album && Array.isArray(data.album.tracks) && data.album.tracks.length > 0) {
           album = data.album;
         }
       }
@@ -6551,6 +6558,40 @@ class App {
         ...album,
         tracks: this.shuffleCopy(album.tracks)
       };
+    } else {
+      album = null;
+    }
+
+    // Dynamic fallback for Supermix if offline or API returned empty
+    if (!album && (albumId === 'deck-supermix' || albumId === 'showcase-supermix')) {
+      const fallbackTracks = [];
+      if (this.playlists && this.playlists.length > 0) {
+        for (const pl of this.playlists) {
+          if (Array.isArray(pl.tracks)) {
+            for (const t of this.shuffleCopy(pl.tracks).slice(0, 10)) {
+              if (!fallbackTracks.some(f => f.id === t.id)) fallbackTracks.push(t);
+            }
+          }
+        }
+      }
+      if (this.favorites && this.favorites.length > 0) {
+        for (const f of this.shuffleCopy(this.favorites).slice(0, 10)) {
+          if (!fallbackTracks.some(t => t.id === f.id)) fallbackTracks.push(f);
+        }
+      }
+      if (fallbackTracks.length > 0) {
+        album = {
+          id: 'deck-supermix',
+          type: 'mix',
+          badge: 'SUPERMIX PRIBADI',
+          title: 'My Supermix',
+          artist: 'Dibuat untuk Anda • AuraSound',
+          subtitle: 'Racikan Dinamis',
+          thumbnail: fallbackTracks[0]?.thumbnail || '/images/supermix.jpg',
+          description: 'Kombinasi lagu favorit dan penemuan musik baru untuk Anda.',
+          tracks: this.shuffleCopy(fallbackTracks)
+        };
+      }
     }
 
     if (!album && this.homeAlbums && this.homeAlbums[albumId]) {

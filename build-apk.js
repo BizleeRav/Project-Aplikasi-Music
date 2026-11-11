@@ -122,8 +122,8 @@ public class BackgroundAudioWebView extends WebView {
 fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurasound.musichub"
-    android:versionCode="11"
-    android:versionName="1.3.7">
+    android:versionCode="12"
+    android:versionName="1.3.8">
 
     <uses-sdk
         android:minSdkVersion="24"
