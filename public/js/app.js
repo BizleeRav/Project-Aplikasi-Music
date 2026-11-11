@@ -2904,7 +2904,7 @@ class App {
     this.currentLyricsTrackId = trackId;
 
     // 1. If lyrics already cached in track instance (and not forcing refresh unless it's neural word-sync which is already exact)
-    if ((!forceRefresh || track._hasWordSync) && track._lyricsEngineVersion === 'v79' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    if ((!forceRefresh || track._hasWordSync) && track._lyricsEngineVersion === 'v81' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2945,7 +2945,7 @@ class App {
             track._parsedLyrics = alignData.parsedLyrics;
             track._lyricsType = 'synced';
             track._hasWordSync = this.hasWordSync;
-            track._lyricsEngineVersion = 'v79';
+            track._lyricsEngineVersion = 'v81';
             track._cachedForTrackId = trackId;
 
             this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
@@ -2981,7 +2981,7 @@ class App {
           track._parsedLyrics = parsed;
           track._lyricsType = candidateSynced ? 'synced' : 'suno_ai';
           track._hasWordSync = false; // Do NOT permanently lock word-sync cache
-          track._lyricsEngineVersion = 'v79';
+          track._lyricsEngineVersion = 'v81';
           track._cachedForTrackId = trackId;
           this.displayLyricsList(this.currentLyricsData, track._lyricsType, null, false, false);
           const curTime = this.getCurrentPlaybackTime();
@@ -3020,7 +3020,7 @@ class App {
                     track._parsedLyrics = retryData.parsedLyrics;
                     track._lyricsType = 'synced';
                     track._hasWordSync = this.hasWordSync;
-                    track._lyricsEngineVersion = 'v79';
+                    track._lyricsEngineVersion = 'v81';
                     track._cachedForTrackId = trackId;
 
                     this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
@@ -3108,7 +3108,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v79';
+        track._lyricsEngineVersion = 'v81';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);

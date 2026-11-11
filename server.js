@@ -363,6 +363,62 @@ async function searchYouTubeMusicSongs(query, limit = 25, page = 1) {
   }
 }
 
+// Universal Record Label / Channel Publisher Regex
+const LABEL_CHANNEL_REGEX = /^(?:hybe\s*labels?|1thek(?:\s*\(.*?\))?|smtown|jyp\s*entertainment|yg\s*entertainment|stone\s*music(?:\s*entertainment)?|starshiptv|starship|woollim|pledis|cube|fnc|kq\s*entertainment|theblacklabel|wm\s*entertainment|rbw|wakeone|mnet(?:\s*k-pop)?|kbs\s*kpop|mbc\s*kpop|sbs\s*kpop|genie\s*music|warner\s*music(?:\s*\w+)?|sony\s*music(?:\s*\w+)?|universal\s*music(?:\s*\w+)?|vevo|youtube(?:\s*music)?|nagaswara|aquarius\s*musikindo|musica\s*studios|trinity\s*optima(?:\s*production)?|avex|king\s*records|ponycanyon|topic|gemblog)$/i;
+
+function applyVersionMismatchPenalty(score, candidateTitle, targetTitle) {
+  const cTitle = (candidateTitle || '').toLowerCase();
+  const tTitle = (targetTitle || '').toLowerCase();
+
+  // Strict foreign language version disqualification (e.g. Japanese ver vs Korean original)
+  const langVersionRegexes = [
+    /\b(?:japanese|jp)\s*(?:ver|version)?\b/i,
+    /-japanese\s*ver/i,
+    /\b(?:english|en|eng)\s*(?:ver|version)?\b/i,
+    /-english\s*ver/i,
+    /\b(?:korean|kr|kor)\s*(?:ver|version)?\b/i,
+    /-korean\s*ver/i,
+    /\b(?:chinese|zh|cn)\s*(?:ver|version)?\b/i,
+    /-chinese\s*ver/i,
+    /日本語(?:ver|version)?/i,
+    /\bspanish\s*(?:ver|version)?\b/i,
+    /\bthai\s*(?:ver|version)?\b/i
+  ];
+
+  for (const regex of langVersionRegexes) {
+    if (regex.test(cTitle) && !regex.test(tTitle)) {
+      return -9999;
+    }
+  }
+
+  const mismatchKeywords = [
+    /\bday\s*ver/i,
+    /\bnight\s*ver/i,
+    /\bacoustic\b/i,
+    /\bremix\b/i,
+    /\bsped\s*up\b/i,
+    /\bslowed\b/i,
+    /\blive\b/i,
+    /\binst(?:rumental)?\b/i,
+    /\borchestra(?:\s*ver(?:sion)?)?\b/i,
+    /\borchestral\b/i,
+    /\bmusic\s*box\b/i,
+    /\bpiano(?:\s*ver(?:sion)?)?\b/i,
+    /\bkaraoke\b/i,
+    /\bstring(?:\s*ver(?:sion)?)?\b/i,
+    /\bcover\b/i,
+    /\bmedley\b/i,
+    /伴奏/i
+  ];
+
+  for (const regex of mismatchKeywords) {
+    if (regex.test(cTitle) && !regex.test(tTitle)) {
+      return -9999; // Disqualify completely if target did not ask for it!
+    }
+  }
+  return score;
+}
+
 const studioTrackCache = new Map(); // videoId -> { id, title, artist, duration, seconds }
 
 async function resolveStudioTrack(videoId, title, artist) {
@@ -388,11 +444,16 @@ async function resolveStudioTrack(videoId, title, artist) {
     // Strip record label publisher channel prefix (e.g. "STARSHIP and IVE" -> "IVE", "1theK (원더케이) and ..." -> "")
     cleanArtist = cleanArtist.replace(/^(?:starship(?:tv)?|smtown|jyp(?:\s*ent(?:ertainment)?)?|yg(?:\s*ent(?:ertainment)?)?|hybe(?:\s*labels?)?|cube|stone\s*music|fnc|rbw|wakeone|1thek)(?:\s*\([^)]*\))?\s*(?:and|&|\+|x)\s*/i, '').trim();
 
+    const isPublisher = !cleanArtist || LABEL_CHANNEL_REGEX.test(cleanArtist) || /1thek|starship|smtown|jyp|hybe|labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(cleanArtist);
+    if (isPublisher) {
+      cleanArtist = '';
+    }
+
     // If title has artist prefix with underscore like "태연 (TAEYEON)_ 만찬가" or "TAEYEON_ BANSANKA"
     if (/\s*_\s*/.test(cleanTitle)) {
       const uParts = cleanTitle.split(/\s*_\s*/);
       if (uParts[0].length > 1 && uParts[1].length > 1) {
-        if (!cleanArtist || /1thek|starship|smtown|jyp|hybe|labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(cleanArtist)) {
+        if (!cleanArtist) {
           cleanArtist = uParts[0].replace(/[()]/g, ' ').trim();
         }
         cleanTitle = uParts[1].trim();
@@ -408,11 +469,42 @@ async function resolveStudioTrack(videoId, title, artist) {
       else cleanTitle = parenSlash[1].trim();
     }
 
-    // If title has quoted track name like "IVE 아이브 'LOVE DIVE'", extract the inner track title
-    const quoteTitle = cleanTitle.match(/['"“‘「『【《]([^'"”’」』】》]+)['"”’」』】》]/);
-    if (quoteTitle && quoteTitle[1].length >= 2 && !/^(?:official|mv|audio|video|hd|4k)$/i.test(quoteTitle[1])) {
-      cleanTitle = quoteTitle[1].trim();
+    // If title has quoted track name like "Red Velvet 레드벨벳 'Feel My Rhythm'" or "IVE 아이브 'LOVE DIVE'"
+    const quoteMatch = cleanTitle.match(/^(.+?)\s*[-_–—]?\s*['"“‘「『【《]([^'"”’」』】》]+)['"”’」』】》]/);
+    if (quoteMatch && quoteMatch[2].trim().length >= 2 && !/^(?:official|mv|audio|video|hd|4k)$/i.test(quoteMatch[2])) {
+      const before = quoteMatch[1].trim();
+      cleanTitle = quoteMatch[2].trim();
+      if (before && !cleanArtist) {
+        const latArtist = before.match(/[A-Za-z0-9\s'’&.-]+/g)?.join(' ')?.trim();
+        cleanArtist = (latArtist && latArtist.length >= 2) ? latArtist : before.replace(/[()]/g, ' ').trim();
+      }
+    } else {
+      const quoteTitle = cleanTitle.match(/['"“‘「『【《]([^'"”’」』】》]+)['"”’」』】》]/);
+      if (quoteTitle && quoteTitle[1].length >= 2 && !/^(?:official|mv|audio|video|hd|4k)$/i.test(quoteTitle[1])) {
+        cleanTitle = quoteTitle[1].trim();
+      }
     }
+
+    // If title has artist prefix with dash e.g. "Red Velvet - Feel My Rhythm"
+    if (cleanTitle.includes(' - ')) {
+      const dashParts = cleanTitle.split(' - ');
+      if (!cleanArtist) {
+        cleanArtist = dashParts[0].trim();
+        cleanTitle = dashParts.slice(1).join(' - ').trim();
+      }
+    }
+
+    // Clean artist if bilingual e.g. "Red Velvet 레드벨벳"
+    if (/[\uac00-\ud7af]/.test(cleanArtist) && /[A-Za-z]/.test(cleanArtist)) {
+      const latOnly = cleanArtist.match(/[A-Za-z0-9\s'’&.-]+/g)?.join(' ')?.trim();
+      if (latOnly && latOnly.length >= 2) cleanArtist = latOnly;
+    }
+
+    cleanTitle = cleanTitle
+      .replace(/\s*[-_–—]\s*(?:official\s*(?:video|mv|film|audio)?|video\s*musik\s*resmi|m\/v|mv).*$/gi, '')
+      .replace(/\s*[(（\[【《](?:official\s*(?:video|mv|film|audio)?|video\s*musik\s*resmi|m\/v|mv|hd|4k)[)）\]】》].*$/gi, '')
+      .replace(/\b(?:official\s*(?:video|mv|film|audio)?|video\s*musik\s*resmi|m\/v|mv)\b/gi, '')
+      .trim();
 
     // Solo member alias
     if (/^solo$/i.test(cleanTitle) && /blackpink/i.test(cleanArtist)) {
@@ -427,13 +519,46 @@ async function resolveStudioTrack(videoId, title, artist) {
     const items = shelf?.contents?.filter(item => item && item.id) || [];
     if (items.length > 0) {
       const normQ = normalizeForCompare(cleanTitle);
-      const match = items.find(item => {
+      const normArtist = normalizeForCompare(cleanArtist);
+
+      let bestItem = null;
+      let bestScore = -99999;
+
+      for (const item of items) {
+        if (!item || !item.id) continue;
         const itemTitle = item.title || '';
-        // Disqualify version mismatches (e.g. Japanese ver / English ver when original was requested)
-        if (applyVersionMismatchPenalty(100, itemTitle, cleanTitle) <= 0) return false;
-        const t = normalizeForCompare(itemTitle);
-        return t === normQ || t.includes(normQ) || normQ.includes(t);
-      }) || items[0];
+        const itemArtist = item.artists?.map(a => a.name).join(', ') || '';
+
+        // Disqualify version mismatches (e.g. Japanese ver / English ver / Orchestra / Music Box / Karaoke)
+        if (applyVersionMismatchPenalty(100, itemTitle, cleanTitle) <= 0) continue;
+
+        let score = 100;
+        const normItemTitle = normalizeForCompare(itemTitle);
+        const normItemArtist = normalizeForCompare(itemArtist);
+
+        // Title match score
+        if (normItemTitle === normQ) {
+          score += 100;
+        } else if (normItemTitle.includes(normQ) || normQ.includes(normItemTitle)) {
+          score += 50;
+        }
+
+        // Artist match score
+        if (normArtist) {
+          if (isArtistFuzzyMatch(normItemArtist, normArtist) || normItemArtist.includes(normArtist) || normArtist.includes(normItemArtist)) {
+            score += 80;
+          } else {
+            score -= 50;
+          }
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestItem = item;
+        }
+      }
+
+      const match = bestItem || (applyVersionMismatchPenalty(100, items[0].title || '', cleanTitle) > 0 ? items[0] : null);
 
       if (match && match.id) {
         const result = {
@@ -2154,51 +2279,6 @@ app.post('/api/user/taste', (req, res) => {
 const lyricsCache = new Map();
 const MAX_LYRICS_CACHE = 500;
 
-function applyVersionMismatchPenalty(score, candidateTitle, targetTitle) {
-  const cTitle = (candidateTitle || '').toLowerCase();
-  const tTitle = (targetTitle || '').toLowerCase();
-
-  // Strict foreign language version disqualification (e.g. Japanese ver vs Korean original)
-  const langVersionRegexes = [
-    /\b(?:japanese|jp)\s*(?:ver|version)?\b/i,
-    /-japanese\s*ver/i,
-    /\b(?:english|en|eng)\s*(?:ver|version)?\b/i,
-    /-english\s*ver/i,
-    /\b(?:korean|kr|kor)\s*(?:ver|version)?\b/i,
-    /-korean\s*ver/i,
-    /\b(?:chinese|zh|cn)\s*(?:ver|version)?\b/i,
-    /-chinese\s*ver/i,
-    /日本語(?:ver|version)?/i,
-    /\bspanish\s*(?:ver|version)?\b/i,
-    /\bthai\s*(?:ver|version)?\b/i
-  ];
-
-  for (const regex of langVersionRegexes) {
-    if (regex.test(cTitle) && !regex.test(tTitle)) {
-      return -9999;
-    }
-  }
-
-  const mismatchKeywords = [
-    /\bday\s*ver/i,
-    /\bnight\s*ver/i,
-    /\bacoustic\b/i,
-    /\bremix\b/i,
-    /\bsped\s*up\b/i,
-    /\bslowed\b/i,
-    /\blive\b/i,
-    /\binst(?:rumental)?\b/i,
-    /伴奏/i
-  ];
-
-  for (const regex of mismatchKeywords) {
-    if (regex.test(cTitle) && !regex.test(tTitle)) {
-      score -= 1000;
-    }
-  }
-  return score;
-}
-
 function stripTagsAndParens(text) {
   let res = '';
   let i = 0;
@@ -2231,8 +2311,6 @@ function stripTagsAndParens(text) {
   }
   return res;
 }
-
-const LABEL_CHANNEL_REGEX = /^(?:hybe\s*labels?|1thek(?:\s*\(.*?\))?|smtown|jyp\s*entertainment|yg\s*entertainment|stone\s*music(?:\s*entertainment)?|starshiptv|starship|woollim|pledis|cube|fnc|kq\s*entertainment|theblacklabel|wm\s*entertainment|rbw|wakeone|mnet|kbs\s*kpop|mbc\s*kpop|sbs\s*kpop|genie\s*music|warner\s*music(?:\s*\w+)?|sony\s*music(?:\s*\w+)?|universal\s*music(?:\s*\w+)?|vevo|youtube(?:\s*music)?|nagaswara|aquarius\s*musikindo|musica\s*studios|trinity\s*optima(?:\s*production)?|avex|king\s*records|ponycanyon|topic|gemblog)$/i;
 
 // High-Performance Dynamic Caches for External Public APIs
 const sponsorBlockCache = new Map(); // videoId -> { introOffsetSec, totalNonMusicDuration, effectiveSongDuration }
@@ -3936,6 +4014,30 @@ async function searchBetterLyrics(title, artist, targetDuration, videoId, artist
   }
   if (/newjeans/i.test(cleanArtist)) artistVariants.add('NewJeans');
   if (/le\s*sserafim/i.test(cleanArtist)) artistVariants.add('LE SSERAFIM');
+  if (/red\s*velvet|레드벨벳/i.test(cleanArtist)) {
+    artistVariants.add('Red Velvet');
+    artistVariants.add('레드벨벳');
+    if (/feel\s*my\s*rhythm/i.test(cleanTitle)) {
+      titleVariants.add('Feel My Rhythm');
+    }
+    if (/psycho/i.test(cleanTitle)) {
+      titleVariants.add('Psycho');
+    }
+    if (/queendom/i.test(cleanTitle)) {
+      titleVariants.add('Queendom');
+    }
+    if (/bad\s*boy/i.test(cleanTitle)) {
+      titleVariants.add('Bad Boy');
+    }
+    if (/russian\s*roulette|러시안\s*룰렛/i.test(cleanTitle)) {
+      titleVariants.add('Russian Roulette');
+      titleVariants.add('러시안 룰렛 (Russian Roulette)');
+    }
+    if (/red\s*flavor|빨간\s*맛/i.test(cleanTitle)) {
+      titleVariants.add('Red Flavor');
+      titleVariants.add('빨간 맛 (Red Flavor)');
+    }
+  }
   if (/blackpink/i.test(cleanArtist)) {
     artistVariants.add('BLACKPINK');
     if (/불장난|playing\s*with\s*fire/i.test(cleanTitle)) {
@@ -4485,7 +4587,19 @@ const KNOWN_MV_OFFSETS = {
   'IHNzOHi8sJQ': 0,   // DDU-DU DDU-DU (starts 0:00)
   'bwmSjveL3Lc': 0,   // BOOMBAYAH (starts 0:00)
   'Amq-qlqbjYA': 0,   // AS IF IT'S YOUR LAST (starts 0:00)
-  'dISNgvVpWlo': 0,   // Lovesick Girls (starts 0:00)
+  'dISNgvVpWlo': 19.609, // Lovesick Girls (dramatic guitar scene intro)
+
+  // Red Velvet
+  'R9At2ICm4LQ': 10.25, // Feel My Rhythm Official MV (classical painting visual intro -> Bach strings start at 10.25s)
+  'uR8Mrt1IpXg': 4.0,   // Psycho Official MV (vintage car intro scene)
+  'c9RzZpV460k': 2.977, // Queendom Official MV (post office intro scene)
+  'IWJUPY-2EIM': 3.508, // Dumb Dumb Official MV (doll factory intro scene)
+  'J_CFBjAyPWE': 0,     // Bad Boy Official MV (starts 0:00)
+  'GlY7aMCm_Og': 0,     // Russian Roulette Official MV (starts 0:00)
+  '6uJf2IT2VlI': 0,     // Peek-A-Boo Official MV (starts 0:00)
+  'QslJYDX3o8s': 0,     // Red Flavor Official MV (starts 0:00)
+  'WfB4sNA0W9M': 0,     // Chill Kill Official MV (starts 0:00)
+  'FY_XZcab23M': 0,     // Cosmic Official MV (starts 0:00)
 
   // IVE
   '6ZUIwj3FgUY': 0,   // I AM (starts 0:00)
@@ -4651,7 +4765,7 @@ app.get('/api/lyrics', async (req, res) => {
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v80___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v81___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
