@@ -1433,12 +1433,20 @@ function isOfficialMusicTrack(video, artistHint = '') {
 
   let isArtistChannel = false;
   if (artistHint) {
+    const cleanAuthor = author.toLowerCase();
     const artists = artistHint.split(/[,&/•|]|(?:\b(?:ft\.?|feat\.?|vs\.?)\b)/i)
-      .map(a => a.trim().toLowerCase().replace(/[^a-z0-9]/g, ''))
+      .map(a => a.trim().toLowerCase())
       .filter(a => a.length >= 2);
-    const cleanAuthor = author.replace(/[^a-z0-9]/g, '');
     for (const art of artists) {
-      if (cleanAuthor.includes(art) || (art.length >= 4 && art.includes(cleanAuthor))) {
+      const artNorm = art.replace(/[^a-z0-9]/g, '');
+      const authorNorm = cleanAuthor.replace(/[^a-z0-9]/g, '');
+      if ((artNorm.length >= 3 && authorNorm.includes(artNorm)) || (authorNorm.length >= 4 && artNorm.includes(authorNorm))) {
+        isArtistChannel = true;
+        break;
+      }
+      // Word-level match for multi-word or VTuber artists (e.g. "Sakura Miko" -> "miko", "Kenshi Yonezu" -> "yonezu")
+      const words = art.split(/\s+/).filter(w => w.length >= 3);
+      if (words.some(w => cleanAuthor.includes(w))) {
         isArtistChannel = true;
         break;
       }
@@ -1509,15 +1517,17 @@ function isNonOfficialMusicTrack(video) {
 async function getAlbumDetail(albumId, options = {}) {
   if (!albumId) return null;
 
-  // 1. Return from in-memory cache if already enriched and refresh not forced, with freshly shuffled tracklist for Beranda
+  // 1. Return from in-memory cache if already enriched with a solid pool and refresh not forced, with freshly shuffled tracklist for Beranda
   if (albumEnrichCache.has(albumId) && !options.refresh) {
     const cached = albumEnrichCache.get(albumId);
-    const shuffledTracks = shuffleArray(cached.tracks || []);
-    return {
-      ...cached,
-      thumbnail: shuffledTracks[0]?.thumbnail || cached.thumbnail,
-      tracks: shuffledTracks
-    };
+    if (cached && Array.isArray(cached.tracks) && cached.tracks.length >= 15) {
+      const shuffledTracks = shuffleArray(cached.tracks);
+      return {
+        ...cached,
+        thumbnail: shuffledTracks[0]?.thumbnail || cached.thumbnail,
+        tracks: shuffledTracks
+      };
+    }
   }
 
   let album = ALBUM_CATALOG[albumId];
@@ -1603,6 +1613,32 @@ async function getAlbumDetail(albumId, options = {}) {
           const artistRes = await ytSearch(`"${album.artist}" official audio`);
           if (artistRes && artistRes.videos) {
             const extraCandidates = shuffleArray(artistRes.videos.filter(v => v.seconds > 45 && v.seconds < 900));
+            for (const v of extraCandidates) {
+              const titleKey = normalizeTrackKey(v.title, album.artist);
+              const isDuplicate = existingIds.has(v.videoId) || (titleKey.length >= 2 && existingTitleKeys.has(titleKey));
+              if (!isDuplicate && isOfficialMusicTrack(v, album.artist)) {
+                existingIds.add(v.videoId);
+                if (titleKey.length >= 2) existingTitleKeys.add(titleKey);
+                enrichedAlbum.tracks.push({
+                  id: v.videoId,
+                  title: v.title,
+                  artist: v.author ? v.author.name : album.artist,
+                  duration: v.timestamp || '3:30',
+                  thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+                  type: 'youtube'
+                });
+              }
+            }
+          }
+        } catch (e) {}
+      }
+
+      // Tertiary expansion if track count is under 18
+      if (enrichedAlbum.tracks.length < 18 && album.artist) {
+        try {
+          const popRes = await ytSearch(`"${album.artist}" popular hits official music video`);
+          if (popRes && popRes.videos) {
+            const extraCandidates = shuffleArray(popRes.videos.filter(v => v.seconds > 45 && v.seconds < 900));
             for (const v of extraCandidates) {
               const titleKey = normalizeTrackKey(v.title, album.artist);
               const isDuplicate = existingIds.has(v.videoId) || (titleKey.length >= 2 && existingTitleKeys.has(titleKey));

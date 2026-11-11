@@ -630,6 +630,12 @@ app.get('/api/search', async (req, res) => {
 
 // 2.5 YouTube Music Home Feed (Listen again, Quick picks, Covers, New releases, etc.)
 app.get('/api/home', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
   try {
     const mood = req.query.mood || 'all';
     const feed = await homeData.getHomeFeed(mood);
@@ -642,8 +648,14 @@ app.get('/api/home', async (req, res) => {
 
 // 2.6 Album & Curated Playlist Details
 app.get('/api/home/album/:id', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
   try {
-    let album = await homeData.getAlbumDetail(req.params.id);
+    let album = await homeData.getAlbumDetail(req.params.id, { refresh: req.query.refresh === '1' });
 
     // If not found in default catalog, check user playlists DB (shuffle tracks exclusively for Beranda album view)
     if (!album) {
@@ -700,6 +712,12 @@ app.get('/api/home/album/:id', async (req, res) => {
 });
 
 app.get('/api/home/album/:id/more', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
   try {
     const offset = parseInt(req.query.offset) || 0;
     const userKey = req.headers['x-device-id'] || req.headers['x-user-id'] || req.query.deviceId || null;
@@ -854,6 +872,12 @@ app.get('/api/artist/:name', async (req, res) => {
 
 // 2.7 Smart Personalized Recommendations (Supermix & Liked Radio)
 app.post('/api/recommendations/supermix', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
   try {
     const { topArtists, favorites, history, importedPlaylists } = req.body || {};
     const userKey = req.headers['x-device-id'] || req.body?.deviceId || null;
@@ -874,6 +898,12 @@ app.post('/api/recommendations/supermix', async (req, res) => {
 });
 
 app.post('/api/recommendations/liked-radio', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
   try {
     const { favorites } = req.body || {};
     const radio = await homeData.generateLikedRadio({ favorites });
@@ -885,6 +915,12 @@ app.post('/api/recommendations/liked-radio', async (req, res) => {
 
 // 2.8 AI Dynamic Personalized Feed & Taste Setup (First-launch & Custom Preferences)
 app.post('/api/recommendations/personalized-feed', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
   try {
     const { name, genres, mood, history, favorites, importedPlaylists } = req.body || {};
     const deviceId = req.headers['x-device-id'] || req.body?.deviceId || null;
@@ -909,6 +945,12 @@ app.post('/api/recommendations/personalized-feed', async (req, res) => {
 });
 
 app.post('/api/recommendations/hypermix', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
   try {
     const { history, favorites, importedPlaylists } = req.body || {};
     const userKey = req.headers['x-device-id'] || req.body?.deviceId || null;

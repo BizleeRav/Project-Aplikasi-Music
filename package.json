@@ -1,6 +1,6 @@
 {
   "name": "aurasound",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "AuraSound - Hi-Fi Music Hub & Suno AI Music Studio",
   "main": "electron-main.js",
   "scripts": {

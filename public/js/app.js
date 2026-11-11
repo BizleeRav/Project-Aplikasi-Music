@@ -4552,12 +4552,14 @@ class App {
           const savedTaste = this.getChosenTaste();
           const history = this.getPlayHistory();
           try {
-            const res = await fetch('/api/recommendations/personalized-feed', {
+            const res = await fetch(`/api/recommendations/personalized-feed?_t=${Date.now()}`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache',
                 'x-device-id': this.getDeviceId()
               },
+              cache: 'no-store',
               body: JSON.stringify({
                 name: this.userProfile?.name || savedTaste.name || 'Sobat Musik',
                 genres: savedTaste.genres,
@@ -4584,7 +4586,10 @@ class App {
       }
 
       // 2. Otherwise load category/mood feed from YouTube
-      const res = await fetch(`/api/home?mood=${encodeURIComponent(mood)}`);
+      const res = await fetch(`/api/home?mood=${encodeURIComponent(mood)}&_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to load home feed');
 
@@ -4754,9 +4759,10 @@ class App {
     let hypermixData = null;
     const importedPlaylists = (this.playlists || []).filter(p => (p.isImported || p.source === 'spotify' || p.source === 'youtube' || !p.isAiMix) && Array.isArray(p.tracks) && p.tracks.length > 0);
     try {
-      const res = await fetch('/api/recommendations/hypermix', {
+      const res = await fetch(`/api/recommendations/hypermix?_t=${Date.now()}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+        cache: 'no-store',
         body: JSON.stringify({ history, favorites: this.favorites || [], importedPlaylists })
       });
       hypermixData = await res.json();
@@ -4784,7 +4790,10 @@ class App {
 
     if ((!newReleases || !this.homeAlbums) && (!hypermixData || !hypermixData.dynamicAlbums)) {
       try {
-        const homeRes = await fetch('/api/home?mood=all');
+        const homeRes = await fetch(`/api/home?mood=all&_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
         const homeJson = await homeRes.json();
         if (homeJson.success) {
           if (homeJson.sections && !newReleases) {
@@ -6506,23 +6515,28 @@ class App {
     try {
       if (albumId === 'deck-supermix' || albumId === 'showcase-supermix') {
         const payload = window.tasteEngine ? window.tasteEngine.generateSupermixPayload() : {};
-        const res = await fetch('/api/recommendations/supermix', {
+        const res = await fetch(`/api/recommendations/supermix?_t=${Date.now()}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+          cache: 'no-store',
           body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (data.success && data.album) album = data.album;
       } else if (albumId === 'mix-liked-radio') {
-        const res = await fetch('/api/recommendations/liked-radio', {
+        const res = await fetch(`/api/recommendations/liked-radio?_t=${Date.now()}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+          cache: 'no-store',
           body: JSON.stringify({ favorites: this.favorites || [] })
         });
         const data = await res.json();
         if (data.success && data.album) album = data.album;
       } else {
-        const res = await fetch(`/api/home/album/${encodeURIComponent(albumId)}`);
+        const res = await fetch(`/api/home/album/${encodeURIComponent(albumId)}?_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
         const data = await res.json();
         if (data.success && data.album) {
           album = data.album;
@@ -6530,6 +6544,13 @@ class App {
       }
     } catch (err) {
       console.warn('Failed to fetch album detail from API, checking local cache:', err);
+    }
+
+    if (album && Array.isArray(album.tracks) && album.tracks.length > 0) {
+      album = {
+        ...album,
+        tracks: this.shuffleCopy(album.tracks)
+      };
     }
 
     if (!album && this.homeAlbums && this.homeAlbums[albumId]) {
@@ -7282,9 +7303,10 @@ class App {
     } else if (albumId === 'deck-supermix' || albumId === 'showcase-supermix') {
       try {
         const payload = window.tasteEngine ? window.tasteEngine.generateSupermixPayload() : {};
-        const res = await fetch('/api/recommendations/supermix', {
+        const res = await fetch(`/api/recommendations/supermix?_t=${Date.now()}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+          cache: 'no-store',
           body: JSON.stringify(payload)
         });
         const data = await res.json();
@@ -7294,9 +7316,10 @@ class App {
       }
     } else if (albumId === 'mix-liked-radio') {
       try {
-        const res = await fetch('/api/recommendations/liked-radio', {
+        const res = await fetch(`/api/recommendations/liked-radio?_t=${Date.now()}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+          cache: 'no-store',
           body: JSON.stringify({ favorites: this.favorites || [] })
         });
         const data = await res.json();
@@ -7306,7 +7329,10 @@ class App {
       }
     } else {
       try {
-        const res = await fetch(`/api/home/album/${encodeURIComponent(albumId)}`);
+        const res = await fetch(`/api/home/album/${encodeURIComponent(albumId)}?_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
         const data = await res.json();
         if (data.success && data.album) {
           album = data.album;
