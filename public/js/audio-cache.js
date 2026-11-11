@@ -8,7 +8,7 @@
 
   class AuraAudioCache {
     constructor() {
-      this.dbName = 'AuraAudioStore';
+      this.dbName = 'AuraAudioStore_v3';
       this.version = 1;
       this.storeName = 'audio_tracks';
       this.db = null;

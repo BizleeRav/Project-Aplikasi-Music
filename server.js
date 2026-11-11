@@ -4744,17 +4744,29 @@ app.get('/api/lyrics', async (req, res) => {
   // Resolve studio track metadata (gives us the true studio duration for TTML lookup)
   const preferStudio = req.query.preferStudio !== 'false';
   let matchedStudioTrack = videoId ? studioTrackCache.get(videoId) : null;
-  if (!matchedStudioTrack && preferStudio && videoId) {
+  if (!matchedStudioTrack && videoId) {
     matchedStudioTrack = await resolveStudioTrack(videoId, rawTitle, rawArtist);
   }
 
   if (matchedStudioTrack && matchedStudioTrack.seconds > 0) {
     effectiveSongDuration = matchedStudioTrack.seconds;
-    if (preferStudio) {
+
+    const mediaDuration = parseFloat(req.query.mediaDuration || 0);
+    // If the client's playing element reports duration matching the MV rather than studio cut,
+    // ensure the MV offset is kept so sing-along stays 100% matched to what is heard!
+    const isPlayingMvMedia = (mediaDuration > 0 && Math.abs(mediaDuration - duration) <= 3 && Math.abs(duration - matchedStudioTrack.seconds) >= 6);
+
+    if (preferStudio && !isPlayingMvMedia) {
       // When preferStudio is enabled, /api/stream-audio plays the clean master studio track directly (starts at 00:00).
       // Therefore, the playing audio has 0s intro offset and non-music video segments must NOT be applied to lyrics!
       introOffsetSec = 0;
       nonMusicSegments = [];
+    } else if (!preferStudio || isPlayingMvMedia) {
+      // Client is playing the YouTube video or the MV media file directly
+      if (hasKnownMvOffset) {
+        introOffsetSec = KNOWN_MV_OFFSETS[videoId];
+        nonMusicSegments = introOffsetSec > 0 ? [[0, introOffsetSec]] : [];
+      }
     } else if (matchedStudioTrack.id === videoId) {
       // Client is playing the pure audio studio track directly -> 0s intro offset
       introOffsetSec = 0;
@@ -4765,7 +4777,7 @@ app.get('/api/lyrics', async (req, res) => {
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v81___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v82___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -4950,6 +4962,54 @@ app.get('/api/lyrics', async (req, res) => {
       detectedLang = parsedBraccato?.lang || (result.detectedLang ? result.detectedLang.split('-')[0].toLowerCase() : null);
 
       if (unifiedLyrics && Array.isArray(unifiedLyrics) && unifiedLyrics.length > 0) {
+        // Ground-Truth Intro Adlib Restoration for Red Velvet - Feel My Rhythm
+        // (Apple Music & Better Lyrics TTML officially omits the 0:06 and 0:15 Wendy opening vocal lines)
+        const isFmr = /feel\s*my\s*rhythm/i.test(title || '') || (videoId === 'R9At2ICm4LQ' || videoId === 'OXWz_x6-dro');
+        if (isFmr) {
+          const firstNonInst = unifiedLyrics.find(l => !l.isInstrumental && l.words && l.words.trim());
+          if (firstNonInst && firstNonInst.startTimeMs >= 20000) {
+            const introLines = [
+              {
+                startTimeMs: 6670,
+                durationMs: 7330,
+                words: 'Ooh, ah-ah, ah, ah-ah, yeah',
+                romanization: 'Ooh, ah-ah, ah, ah-ah, yeah',
+                parts: [
+                  { startTimeMs: 6670, durationMs: 830, words: 'Ooh, ' },
+                  { startTimeMs: 7500, durationMs: 1500, words: 'ah-ah, ' },
+                  { startTimeMs: 9000, durationMs: 1100, words: 'ah, ' },
+                  { startTimeMs: 10100, durationMs: 1900, words: 'ah-ah, ' },
+                  { startTimeMs: 12000, durationMs: 1800, words: 'yeah' }
+                ],
+                timedRomanization: [
+                  { startTimeMs: 6670, durationMs: 830, words: 'Ooh, ' },
+                  { startTimeMs: 7500, durationMs: 1500, words: 'ah-ah, ' },
+                  { startTimeMs: 9000, durationMs: 1100, words: 'ah, ' },
+                  { startTimeMs: 10100, durationMs: 1900, words: 'ah-ah, ' },
+                  { startTimeMs: 12000, durationMs: 1800, words: 'yeah' }
+                ]
+              },
+              {
+                startTimeMs: 15350,
+                durationMs: 7650,
+                words: 'Oh-whoa, oh-whoa, oh-whoa',
+                romanization: 'Oh-whoa, oh-whoa, oh-whoa',
+                parts: [
+                  { startTimeMs: 15350, durationMs: 2150, words: 'Oh-whoa, ' },
+                  { startTimeMs: 17500, durationMs: 2500, words: 'oh-whoa, ' },
+                  { startTimeMs: 20000, durationMs: 2800, words: 'oh-whoa' }
+                ],
+                timedRomanization: [
+                  { startTimeMs: 15350, durationMs: 2150, words: 'Oh-whoa, ' },
+                  { startTimeMs: 17500, durationMs: 2500, words: 'oh-whoa, ' },
+                  { startTimeMs: 20000, durationMs: 2800, words: 'oh-whoa' }
+                ]
+              }
+            ];
+            unifiedLyrics.unshift(...introLines);
+          }
+        }
+
         // Apply netShiftSec and nonMusicSegments (mapping studio time to video time)
         if (nonMusicSegments.length > 0 || netShiftSec !== 0) {
           for (const l of unifiedLyrics) {
