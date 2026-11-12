@@ -45,6 +45,19 @@ function hideEngineWindow() {
         sunoEngineWin.hide();
       }
       sunoEngineWin.setSkipTaskbar(true);
+      sunoEngineWin.setFocusable(false);
+      try {
+        sunoEngineWin.setMinimumSize(1024, 700);
+        sunoEngineWin.setSize(1280, 900);
+        sunoEngineWin.webContents.executeJavaScript(`
+          (() => {
+            try {
+              const el = document.getElementById('aurasound-verify-css');
+              if (el) el.remove();
+            } catch (e) {}
+          })()
+        `).catch(() => {});
+      } catch (e) {}
     }
   } catch (e) {}
 }
@@ -365,12 +378,12 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
         sunoEngineWin = new BrowserWindow({
           width: 1280,
           height: 900,
-          minWidth: 1024,
-          minHeight: 700,
+          minWidth: 380,
+          minHeight: 200,
           show: false,
           skipTaskbar: true,
           focusable: false,
-          title: 'AuraSound Background Engine',
+          title: 'Verifikasi Akun Suno',
           autoHideMenuBar: true,
           backgroundColor: '#0b0f19',
           webPreferences: {
@@ -1009,6 +1022,83 @@ async function generateWithSunoBrowser({
       }
 
       const elapsedMs = Date.now() - clickTimeMs;
+
+      // Check if Cloudflare Turnstile verification challenge modal is blocking
+      if (elapsedMs > 1500 && elapsedMs % 800 < 220) {
+        const turnstileInfo = await genWin.webContents.executeJavaScript(`
+          (() => {
+            const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role="dialog"]'));
+            const modal = overlays.find(el => {
+              const cls = String(el.className || '');
+              const st = window.getComputedStyle(el);
+              if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+              if (cls.includes('z-[1000]')) return true;
+              return Boolean(el.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], [data-sitekey]'));
+            });
+            const hasIframe = Boolean(document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]'));
+            return {
+              hasModal: Boolean(modal || hasIframe)
+            };
+          })()
+        `).catch(() => ({ hasModal: false }));
+
+        if (turnstileInfo.hasModal && !genWin.isVisible() && !genNetworkState.generateStartedAt) {
+          console.log('[Suno Warm Engine] Cloudflare Turnstile challenge detected! Showing clean minimalist verification popup...');
+
+          // Inject CSS to hide all Suno web tabs/sidebars/background and isolate ONLY the verification box
+          await genWin.webContents.executeJavaScript(`
+            (() => {
+              try {
+                let style = document.getElementById('aurasound-verify-css');
+                if (!style) {
+                  style = document.createElement('style');
+                  style.id = 'aurasound-verify-css';
+                  style.textContent = \`
+                    html, body {
+                      background: #0b0f19 !important;
+                      overflow: hidden !important;
+                      width: 100vw !important;
+                      height: 100vh !important;
+                    }
+                    /* Hide everything in Suno page except the verification dialog */
+                    body > *:not(.fixed):not([role="dialog"]) {
+                      visibility: hidden !important;
+                      opacity: 0 !important;
+                      pointer-events: none !important;
+                    }
+                    div.fixed.inset-0, [role="dialog"] {
+                      background: #0b0f19 !important;
+                      display: flex !important;
+                      align-items: center !important;
+                      justify-content: center !important;
+                      position: fixed !important;
+                      inset: 0 !important;
+                      width: 100vw !important;
+                      height: 100vh !important;
+                      z-index: 999999 !important;
+                      padding: 0 !important;
+                      margin: 0 !important;
+                    }
+                  \`;
+                  document.head.appendChild(style);
+                }
+              } catch (e) {}
+            })()
+          `).catch(() => {});
+
+          genWin.setTitle('Verifikasi Akun Suno');
+          genWin.setMinimumSize(380, 200);
+          genWin.setSize(480, 260);
+          genWin.center();
+          genWin.setAlwaysOnTop(true);
+          genWin.setFocusable(true);
+          genWin.setSkipTaskbar(false);
+          genWin.show();
+          genWin.focus();
+        } else if (!turnstileInfo.hasModal && genWin.isVisible()) {
+          hideEngineWindow();
+        }
+      }
 
       // Poll feed every 1.2s starting right after click
       if ((Date.now() - lastFeedPollMs) >= 1200) {
