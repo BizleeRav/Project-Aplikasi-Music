@@ -1,13 +1,13 @@
 {
-  "version": "1.3.8",
+  "version": "1.3.9",
   "desktop": {
-    "version": "1.0.3",
+    "version": "1.0.4",
     "githubRepo": "https://github.com/BizleeRav/Project-Aplikasi-Music"
   },
   "android": {
-    "versionCode": 12,
-    "versionName": "1.3.8",
+    "versionCode": 13,
+    "versionName": "1.3.9",
     "apkUrl": "https://project-aplikasi-music.vercel.app/download/AuraSound.apk",
-    "notes": "Update v1.3.8: Fitur Lirik Realtime pada Notifikasi HP & Lockscreen Player (lengkap dengan Romaji & Hangul/Kanji)."
+    "notes": "Update v1.3.9: Pembuatan lagu Suno AI 100% silent background tanpa popup verifikasi, sinkronisasi token otomatis."
   }
 }

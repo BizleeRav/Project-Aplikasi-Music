@@ -962,15 +962,6 @@ async function generateWithSunoBrowser({
     genNetworkState.generateStatusCode = 0;
     genNetworkState.active = true;
 
-    // First dispatch native mouse events to the button coordinates for trusted click activation
-    if (btnInfo && btnInfo.x > 0 && btnInfo.y > 0) {
-      try {
-        genWin.webContents.sendInputEvent({ type: 'mouseMove', x: btnInfo.x, y: btnInfo.y });
-        genWin.webContents.sendInputEvent({ type: 'mouseDown', x: btnInfo.x, y: btnInfo.y, button: 'left', clickCount: 1 });
-        genWin.webContents.sendInputEvent({ type: 'mouseUp', x: btnInfo.x, y: btnInfo.y, button: 'left', clickCount: 1 });
-      } catch (e) {}
-    }
-
     // Trigger Create click directly via DOM event chain (100% background compatible)
     const clickedOk = await genWin.webContents.executeJavaScript(`
       (() => {
@@ -993,7 +984,7 @@ async function generateWithSunoBrowser({
       throw new Error(clickedOk.error);
     }
 
-    console.log('[Suno Warm Engine] Create triggered in background. Polling for newly created clips...');
+    console.log('[Suno Warm Engine] Create triggered 100% silently in background. Polling for newly created clips...');
 
     let capturedClips = null;
     let lastJwt = null;
@@ -1018,24 +1009,6 @@ async function generateWithSunoBrowser({
       }
 
       const elapsedMs = Date.now() - clickTimeMs;
-
-      // Check if Cloudflare Turnstile verification challenge modal is blocking
-      if (elapsedMs > 1800 && elapsedMs % 1000 < 250) {
-        const turnstileShowing = await genWin.webContents.executeJavaScript(`
-          (() => {
-            const modal = Array.from(document.querySelectorAll('div.fixed.inset-0')).find(el => String(el.className || '').includes('z-[1000]'));
-            const cf = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
-            return Boolean(modal || cf);
-          })()
-        `).catch(() => false);
-
-        if (turnstileShowing && !genWin.isVisible()) {
-          console.log('[Suno Warm Engine] Cloudflare verification modal detected! Showing engine window for verification...');
-          genWin.setAlwaysOnTop(true);
-          genWin.show();
-          genWin.focus();
-        }
-      }
 
       // Poll feed every 1.2s starting right after click
       if ((Date.now() - lastFeedPollMs) >= 1200) {

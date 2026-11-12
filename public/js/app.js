@@ -2904,7 +2904,7 @@ class App {
     this.currentLyricsTrackId = trackId;
 
     // 1. If lyrics already cached in track instance (and not forcing refresh)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v83' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    if (!forceRefresh && track._lyricsEngineVersion === 'v84' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2945,7 +2945,7 @@ class App {
             track._parsedLyrics = alignData.parsedLyrics;
             track._lyricsType = 'synced';
             track._hasWordSync = this.hasWordSync;
-            track._lyricsEngineVersion = 'v83';
+            track._lyricsEngineVersion = 'v84';
             track._cachedForTrackId = trackId;
 
             this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
@@ -2981,7 +2981,7 @@ class App {
           track._parsedLyrics = parsed;
           track._lyricsType = candidateSynced ? 'synced' : 'suno_ai';
           track._hasWordSync = false; // Do NOT permanently lock word-sync cache
-          track._lyricsEngineVersion = 'v83';
+          track._lyricsEngineVersion = 'v84';
           track._cachedForTrackId = trackId;
           this.displayLyricsList(this.currentLyricsData, track._lyricsType, null, false, false);
           const curTime = this.getCurrentPlaybackTime();
@@ -3020,7 +3020,7 @@ class App {
                     track._parsedLyrics = retryData.parsedLyrics;
                     track._lyricsType = 'synced';
                     track._hasWordSync = this.hasWordSync;
-                    track._lyricsEngineVersion = 'v83';
+                    track._lyricsEngineVersion = 'v84';
                     track._cachedForTrackId = trackId;
 
                     this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
@@ -3099,6 +3099,10 @@ class App {
       // Guard against race conditions if song switched during fetch
       if (this.currentLyricsTrackId !== trackId) return;
 
+      if (data.resolvedStudioId) {
+        track.resolvedStudioId = data.resolvedStudioId;
+      }
+
       this.currentLeadingSilence = Number(data.leadingSilence) || 0;
       this.hasWordSync = Boolean(data.hasWordSync);
 
@@ -3113,7 +3117,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v83';
+        track._lyricsEngineVersion = 'v84';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
@@ -3373,15 +3377,15 @@ class App {
           mainContent = this.escapeHtml(item.text);
         }
 
-        const hasWordSync = (Array.isArray(item.words) && item.words.length > 0);
+        const hasWordSync = (Array.isArray(item.words) && item.words.length > 0) || (Array.isArray(item.romajiWords) && item.romajiWords.length > 0);
 
         let romajiContent = '';
         if (item.romaji) {
-          const rWords = hasWordSync ? (
-            (Array.isArray(item.romajiWords) && item.romajiWords.length > 0)
-              ? item.romajiWords
-              : (Array.isArray(item.words) && item.words.some(w => w.romaji) ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end, trailingSpace: w.trailingSpace })) : null)
-          ) : null;
+          const rWords = (Array.isArray(item.romajiWords) && item.romajiWords.length > 0)
+            ? item.romajiWords
+            : (hasWordSync && Array.isArray(item.words) && item.words.some(w => w.romaji)
+                ? item.words.map(w => ({ text: w.romaji || w.text, begin: w.begin, end: w.end, trailingSpace: w.trailingSpace }))
+                : null);
 
           if (rWords && rWords.length > 0) {
             romajiContent = `<div class="lyric-romaji-text">` + rWords.map((w, wIdx) => {
@@ -3745,8 +3749,9 @@ class App {
         const romajiWords = activeLineEl.querySelectorAll('.cinema-lyric-word-romaji, .romaji-word');
         const count = words.length;
 
-        if (count > 0) {
-          // Binary Search murni untuk mencari activeWord berdasarkan syncTime
+        // Animate Original Kanji / Syllables
+        if (words && words.length > 0) {
+          const count = words.length;
           let low = 0;
           let high = count - 1;
           let activeWordIdx = -1;
@@ -3768,24 +3773,16 @@ class App {
           }
 
           if (activeWordIdx !== -1) {
-            // Words before activeWord: fully passed (100%)
             for (let i = 0; i < activeWordIdx; i++) {
               words[i].style.setProperty('--fill-pct', '100%');
               words[i].classList.add('passed');
               words[i].classList.remove('active');
-              if (romajiWords[i]) {
-                romajiWords[i].style.setProperty('--fill-pct', '100%');
-                romajiWords[i].classList.add('passed');
-                romajiWords[i].classList.remove('active');
-              }
             }
 
-            // Active Word: hitung persentase warna secara halus dengan lead anticipation Better Lyrics
             const activeEl = words[activeWordIdx];
             const aBegin = Number(activeEl.dataset.begin || activeEl.getAttribute('data-begin')) || 0;
             const aEnd = Number(activeEl.dataset.end || activeEl.getAttribute('data-end')) || (aBegin + 0.05);
             const aDur = Math.max(0.001, aEnd - aBegin);
-            // Better Lyrics Anticipatory Lead: ~10% lead (max 80ms) so color sweep leads into vowel articulation
             const leadSec = Math.min(0.08, aDur * 0.10);
             const rawPct = ((syncTime + leadSec - aBegin) / aDur) * 100;
             const pct = Math.min(100, Math.max(0, rawPct));
@@ -3794,32 +3791,16 @@ class App {
             activeEl.classList.add('active');
             activeEl.classList.remove('passed');
 
-            if (romajiWords[activeWordIdx]) {
-              romajiWords[activeWordIdx].style.setProperty('--fill-pct', `${pct}%`);
-              romajiWords[activeWordIdx].classList.add('active');
-              romajiWords[activeWordIdx].classList.remove('passed');
-            }
-
-            // Words after activeWord: unstarted (0%)
             for (let i = activeWordIdx + 1; i < count; i++) {
               words[i].style.setProperty('--fill-pct', '0%');
               words[i].classList.remove('active', 'passed');
-              if (romajiWords[i]) {
-                romajiWords[i].style.setProperty('--fill-pct', '0%');
-                romajiWords[i].classList.remove('active', 'passed');
-              }
             }
           } else {
-            // Between words, before first word, or after last word
             const firstBegin = Number(words[0].dataset.begin || words[0].getAttribute('data-begin')) || 0;
             if (syncTime < firstBegin) {
               for (let i = 0; i < count; i++) {
                 words[i].style.setProperty('--fill-pct', '0%');
                 words[i].classList.remove('active', 'passed');
-                if (romajiWords[i]) {
-                  romajiWords[i].style.setProperty('--fill-pct', '0%');
-                  romajiWords[i].classList.remove('active', 'passed');
-                }
               }
             } else {
               for (let i = 0; i < count; i++) {
@@ -3828,18 +3809,78 @@ class App {
                   words[i].style.setProperty('--fill-pct', '100%');
                   words[i].classList.add('passed');
                   words[i].classList.remove('active');
-                  if (romajiWords[i]) {
-                    romajiWords[i].style.setProperty('--fill-pct', '100%');
-                    romajiWords[i].classList.add('passed');
-                    romajiWords[i].classList.remove('active');
-                  }
                 } else {
                   words[i].style.setProperty('--fill-pct', '0%');
                   words[i].classList.remove('active', 'passed');
-                  if (romajiWords[i]) {
-                    romajiWords[i].style.setProperty('--fill-pct', '0%');
-                    romajiWords[i].classList.remove('active', 'passed');
-                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Animate Romaji / Romaja Syllables Independently
+        if (romajiWords && romajiWords.length > 0) {
+          const rCount = romajiWords.length;
+          let rLow = 0;
+          let rHigh = rCount - 1;
+          let activeRIdx = -1;
+
+          while (rLow <= rHigh) {
+            const mid = (rLow + rHigh) >> 1;
+            const rwEl = romajiWords[mid];
+            const rwBegin = Number(rwEl.dataset.begin || rwEl.getAttribute('data-begin')) || 0;
+            const rwEnd = Number(rwEl.dataset.end || rwEl.getAttribute('data-end')) || (rwBegin + 0.05);
+
+            if (syncTime >= rwBegin && syncTime < rwEnd) {
+              activeRIdx = mid;
+              break;
+            } else if (syncTime < rwBegin) {
+              rHigh = mid - 1;
+            } else {
+              rLow = mid + 1;
+            }
+          }
+
+          if (activeRIdx !== -1) {
+            for (let i = 0; i < activeRIdx; i++) {
+              romajiWords[i].style.setProperty('--fill-pct', '100%');
+              romajiWords[i].classList.add('passed');
+              romajiWords[i].classList.remove('active');
+            }
+
+            const activeREl = romajiWords[activeRIdx];
+            const rBegin = Number(activeREl.dataset.begin || activeREl.getAttribute('data-begin')) || 0;
+            const rEnd = Number(activeREl.dataset.end || activeREl.getAttribute('data-end')) || (rBegin + 0.05);
+            const rDur = Math.max(0.001, rEnd - rBegin);
+            const rLeadSec = Math.min(0.08, rDur * 0.10);
+            const rRawPct = ((syncTime + rLeadSec - rBegin) / rDur) * 100;
+            const rPct = Math.min(100, Math.max(0, rRawPct));
+
+            activeREl.style.setProperty('--fill-pct', `${rPct}%`);
+            activeREl.classList.add('active');
+            activeREl.classList.remove('passed');
+
+            for (let i = activeRIdx + 1; i < rCount; i++) {
+              romajiWords[i].style.setProperty('--fill-pct', '0%');
+              romajiWords[i].classList.remove('active', 'passed');
+            }
+          } else {
+            const firstRBegin = Number(romajiWords[0].dataset.begin || romajiWords[0].getAttribute('data-begin')) || 0;
+            if (syncTime < firstRBegin) {
+              for (let i = 0; i < rCount; i++) {
+                romajiWords[i].style.setProperty('--fill-pct', '0%');
+                romajiWords[i].classList.remove('active', 'passed');
+              }
+            } else {
+              for (let i = 0; i < rCount; i++) {
+                const rwEnd = Number(romajiWords[i].dataset.end || romajiWords[i].getAttribute('data-end')) || 0;
+                if (syncTime >= rwEnd) {
+                  romajiWords[i].style.setProperty('--fill-pct', '100%');
+                  romajiWords[i].classList.add('passed');
+                  romajiWords[i].classList.remove('active');
+                } else {
+                  romajiWords[i].style.setProperty('--fill-pct', '0%');
+                  romajiWords[i].classList.remove('active', 'passed');
                 }
               }
             }
@@ -8092,7 +8133,10 @@ class App {
           console.warn('Direct audio stream error, falling back to YouTube player:', err);
           this.currentAudioMode = 'yt';
           if (this.nativeAudio) this.nativeAudio.pause();
-          window.ytPlayer.loadAndPlay(track);
+          const targetFallbackTrack = (track.resolvedStudioId && track.resolvedStudioId.length === 11 && track.resolvedStudioId !== track.id)
+            ? { ...track, id: track.resolvedStudioId }
+            : track;
+          window.ytPlayer.loadAndPlay(targetFallbackTrack);
           this.updateEqStatusBanner();
           this.renderCinemaLyrics(track, null, true);
         });
@@ -8104,7 +8148,10 @@ class App {
           console.warn('Native audio error event, falling back to YouTube player:', e);
           this.currentAudioMode = 'yt';
           this.nativeAudio.onerror = null;
-          window.ytPlayer.loadAndPlay(track);
+          const targetFallbackTrack = (track.resolvedStudioId && track.resolvedStudioId.length === 11 && track.resolvedStudioId !== track.id)
+            ? { ...track, id: track.resolvedStudioId }
+            : track;
+          window.ytPlayer.loadAndPlay(targetFallbackTrack);
           this.updateEqStatusBanner();
           this.renderCinemaLyrics(track, null, true);
         }

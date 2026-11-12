@@ -421,7 +421,7 @@ function applyVersionMismatchPenalty(score, candidateTitle, targetTitle) {
 
 const studioTrackCache = new Map(); // videoId -> { id, title, artist, duration, seconds }
 
-async function resolveStudioTrack(videoId, title, artist) {
+async function resolveStudioTrack(videoId, title, artist, expectedDuration = 0) {
   if (!videoId && !title) return null;
   if (videoId && studioTrackCache.has(videoId)) {
     return studioTrackCache.get(videoId);
@@ -444,9 +444,27 @@ async function resolveStudioTrack(videoId, title, artist) {
     // Strip record label publisher channel prefix (e.g. "STARSHIP and IVE" -> "IVE", "1theK (원더케이) and ..." -> "")
     cleanArtist = cleanArtist.replace(/^(?:starship(?:tv)?|smtown|jyp(?:\s*ent(?:ertainment)?)?|yg(?:\s*ent(?:ertainment)?)?|hybe(?:\s*labels?)?|cube|stone\s*music|fnc|rbw|wakeone|1thek)(?:\s*\([^)]*\))?\s*(?:and|&|\+|x)\s*/i, '').trim();
 
-    const isPublisher = !cleanArtist || LABEL_CHANNEL_REGEX.test(cleanArtist) || /1thek|starship|smtown|jyp|hybe|labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(cleanArtist);
+    const isPublisher = !cleanArtist || LABEL_CHANNEL_REGEX.test(cleanArtist) || /1thek|starship|smtown|jyp|hybe|labels?|records|entertainment|official|channel|vevo|tv$|blog$|toho\s*animation|animetranslations?|siliaaa|googoo888|không\s*sáu\s*mốt|lyrics?|sub(?:title)?s?|ch(?:annel)?[\s._-]|チャンネル/i.test(cleanArtist);
     if (isPublisher) {
       cleanArtist = '';
+    }
+
+    // Trailing bracket extraction: "Song Title 【Artist】" or "Song Title [Artist]"
+    const trailingBracket = cleanTitle.match(/^(.+?)\s*[【\[]([^】\]]+)[】\]]\s*$/);
+    if (trailingBracket && !/official|mv|audio|video|hd|4k|remix|live/i.test(trailingBracket[2])) {
+      if (!cleanArtist) {
+        cleanArtist = trailingBracket[2].trim();
+      }
+      cleanTitle = trailingBracket[1].trim();
+    }
+
+    // Slash separation: "Song Title / Artist" e.g. "KING / Kanaria"
+    if ((!cleanArtist || isPublisher) && (cleanTitle.includes(' / ') || cleanTitle.includes('／'))) {
+      const slashParts = cleanTitle.split(/\s*[/／]\s*/);
+      if (slashParts.length === 2 && slashParts[0].length > 1 && slashParts[1].length > 1) {
+        cleanTitle = slashParts[0].trim();
+        cleanArtist = slashParts[1].trim();
+      }
     }
 
     // If title has artist prefix with underscore like "태연 (TAEYEON)_ 만찬가" or "TAEYEON_ BANSANKA"
@@ -528,6 +546,7 @@ async function resolveStudioTrack(videoId, title, artist) {
         if (!item || !item.id) continue;
         const itemTitle = item.title || '';
         const itemArtist = item.artists?.map(a => a.name).join(', ') || '';
+        const itemDurationSec = item.duration?.seconds || 0;
 
         // Disqualify version mismatches (e.g. Japanese ver / English ver / Orchestra / Music Box / Karaoke)
         if (applyVersionMismatchPenalty(100, itemTitle, cleanTitle) <= 0) continue;
@@ -536,11 +555,17 @@ async function resolveStudioTrack(videoId, title, artist) {
         const normItemTitle = normalizeForCompare(itemTitle);
         const normItemArtist = normalizeForCompare(itemArtist);
 
-        // Title match score
-        if (normItemTitle === normQ) {
-          score += 100;
-        } else if (normItemTitle.includes(normQ) || normQ.includes(normItemTitle)) {
-          score += 50;
+        // Title match score - title match is MANDATORY for studio cut resolution
+        const isExactTitle = (normItemTitle === normQ);
+        const isSubTitle = (normItemTitle.includes(normQ) || normQ.includes(normItemTitle));
+        const hasTitleMatch = isExactTitle || isSubTitle;
+
+        if (isExactTitle) {
+          score += 120;
+        } else if (isSubTitle) {
+          score += 60;
+        } else {
+          score -= 300;
         }
 
         // Artist match score
@@ -548,17 +573,29 @@ async function resolveStudioTrack(videoId, title, artist) {
           if (isArtistFuzzyMatch(normItemArtist, normArtist) || normItemArtist.includes(normArtist) || normArtist.includes(normItemArtist)) {
             score += 80;
           } else {
-            score -= 50;
+            score -= 60;
           }
         }
 
-        if (score > bestScore) {
+        // Duration validation check
+        if (expectedDuration > 0 && itemDurationSec > 0) {
+          const durDiff = Math.abs(itemDurationSec - expectedDuration);
+          if (durDiff <= 5) {
+            score += 50;
+          } else if (durDiff <= 15) {
+            score += 25;
+          } else if (durDiff > 35) {
+            score -= 300; // Over 35s difference is almost certainly a different song
+          }
+        }
+
+        if (hasTitleMatch && score > bestScore) {
           bestScore = score;
           bestItem = item;
         }
       }
 
-      const match = bestItem || (applyVersionMismatchPenalty(100, items[0].title || '', cleanTitle) > 0 ? items[0] : null);
+      const match = (bestItem && bestScore >= 120) ? bestItem : null;
 
       if (match && match.id) {
         const result = {
@@ -1644,10 +1681,11 @@ app.get('/api/stream-audio', async (req, res) => {
   // If video is an MV or has intro bumper, resolve the clean YouTube Music studio cut
   const title = req.query.title || '';
   const artist = req.query.artist || '';
+  const duration = parseFloat(req.query.duration || 0);
   const preferStudio = req.query.preferStudio !== 'false';
   if (preferStudio && (title || videoId)) {
     try {
-      const studioTrack = await resolveStudioTrack(videoId, title, artist);
+      const studioTrack = await resolveStudioTrack(videoId, title, artist, duration);
       if (studioTrack && studioTrack.id && studioTrack.id !== videoId) {
         videoId = studioTrack.id;
         res.setHeader('X-Resolved-Studio-Id', videoId);
@@ -2366,19 +2404,19 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
   let introOffsetSec = 0;
   let totalNonMusicDuration = 0;
   let detectedVideoDuration = videoDuration || 0;
-  const nonMusicSegments = [];
+  const rawSegments = [];
 
   try {
     const url = `https://sponsor.ajay.app/api/skipSegments?videoID=${encodeURIComponent(videoId)}&category=music_offtopic`;
     const res = await axios.get(url, {
-      timeout: 1800,
+      timeout: 2500,
       headers: { 'User-Agent': 'AuraSound/4.13 (sponsorblock-client)' }
     });
     const segments = Array.isArray(res.data) ? res.data : [];
     for (const item of segments) {
       const itemVDur = Number(item.videoDuration) || 0;
       // Guard: If caller provided actual YouTube video duration, reject segments from a completely different cut/reupload
-      if (videoDuration > 0 && itemVDur > 0 && Math.abs(itemVDur - videoDuration) > 10) {
+      if (videoDuration > 0 && itemVDur > 0 && Math.abs(itemVDur - videoDuration) > 15) {
         continue;
       }
       if (detectedVideoDuration <= 0 && itemVDur > 0) {
@@ -2394,15 +2432,8 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
         const segEnd = Number(seg[1]) || 0;
         const dur = Math.max(0, segEnd - segStart);
 
-        if (dur >= 0.5) {
-          const isVerified = (item.locked === 1) || (Number(item.votes) >= 1) || (dur >= 2.0);
-          if (isVerified) {
-            nonMusicSegments.push([segStart, segEnd]);
-            totalNonMusicDuration += dur;
-            if (segStart <= 2.5 && segEnd < 120) {
-              introOffsetSec = Math.max(introOffsetSec, segEnd);
-            }
-          }
+        if (dur >= 0.3) {
+          rawSegments.push([segStart, segEnd]);
         }
       }
     }
@@ -2410,10 +2441,34 @@ async function resolveDynamicAudioSegments(videoId, videoDuration = 0) {
     // 404 or timeout means no non-music segments found (normal for pure studio tracks)
   }
 
-  nonMusicSegments.sort((a, b) => a[0] - b[0]);
+  // Sort and merge contiguous or overlapping non-music segments
+  rawSegments.sort((a, b) => a[0] - b[0]);
+  const nonMusicSegments = [];
+  for (const seg of rawSegments) {
+    if (nonMusicSegments.length === 0) {
+      nonMusicSegments.push([seg[0], seg[1]]);
+    } else {
+      const last = nonMusicSegments[nonMusicSegments.length - 1];
+      if (seg[0] <= last[1] + 0.5) {
+        last[1] = Math.max(last[1], seg[1]);
+      } else {
+        nonMusicSegments.push([seg[0], seg[1]]);
+      }
+    }
+  }
+
+  for (const [start, end] of nonMusicSegments) {
+    const dur = Math.max(0, end - start);
+    totalNonMusicDuration += dur;
+    // If segment starts at the very beginning of the video (within 2.5s), it is the intro bumper/scene!
+    if (start <= 2.5 && end < 180 && introOffsetSec === 0) {
+      introOffsetSec = end;
+    }
+  }
+
   const baseDur = videoDuration > 0 ? videoDuration : detectedVideoDuration;
   const effectiveSongDuration = baseDur > 0
-    ? Math.max(0, baseDur - introOffsetSec)
+    ? Math.max(0, baseDur - totalNonMusicDuration)
     : 0;
 
   const result = {
@@ -2576,7 +2631,7 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
     artist = labelPrefixMatch[1].trim();
   }
 
-  const isChannelPublisher = !artist || LABEL_CHANNEL_REGEX.test(artist) || /1thek|starship|smtown|jyp|hybe|labels?|records|entertainment|official|channel|vevo|tv$|blog$/i.test(artist);
+  const isChannelPublisher = !artist || LABEL_CHANNEL_REGEX.test(artist) || /1thek|starship|smtown|jyp|hybe|labels?|records|entertainment|official|channel|vevo|tv$|blog$|toho\s*animation|animetranslations?|siliaaa|googoo888|không\s*sáu\s*mốt|lyrics?|sub(?:title)?s?|ch(?:annel)?[\s._-]|チャンネル/i.test(artist);
 
   // 0. Handle parenthetical OST / Drama / Game theme song annotations
   // e.g. 有点甜 (《萌三国》网游主题曲|《微微一笑很倾城》电视剧插曲)
@@ -2613,28 +2668,45 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
       }
       title = leadingArtistMatch[2].trim();
     } else {
-      // 4. Quotes / Corner brackets: Artist 「Title」, Artist 『Title』, Artist 'Title'
-      const cornerBracketMatch = title.match(/^(.+?)\s*[-_–—]?\s*['"“‘「『【《]([^'"”’」』】》]+)['"”’」』】》](.*)$/);
-      if (cornerBracketMatch && cornerBracketMatch[2].trim().length > 0) {
-        const inside = cornerBracketMatch[2].trim();
-        const before = cornerBracketMatch[1].trim();
-        if (!/^(?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|mv|hd|4k|live|remix|lyrics?|full\s*audio|visualizer)$/i.test(inside)) {
-          title = inside;
-          if (before.length > 0 && !/^(?:official|music\s*video|mv|audio|video|hd|4k)$/i.test(before)) {
-            if (isChannelPublisher || !artist || /blackpink|bts|twice|exo|nct|red\s*velvet|seventeen|stray\s*kids|girls['’]?\s*generation|snsd/i.test(artist)) {
-              artist = before;
+      // 3b. Trailing artist tag: Title 【Artist】 (e.g. 可愛くてごめん 【HoneyWorks】, KING 【Kanaria】)
+      const trailingArtistMatch = title.match(/^(.+?)\s*[【\[]([^】\]]+)[】\]]\s*$/);
+      if (trailingArtistMatch && !/official|mv|audio|video|hd|4k|remix|live/i.test(trailingArtistMatch[2])) {
+        if (isChannelPublisher || !artist) {
+          artist = trailingArtistMatch[2].trim();
+        }
+        title = trailingArtistMatch[1].trim();
+      } else {
+        // 4. Quotes / Corner brackets: Artist 「Title」, Artist 『Title』, Artist 'Title'
+        const cornerBracketMatch = title.match(/^(.+?)\s*[-_–—]?\s*['"“‘「『《]([^'"”’」』》]+)['"”’」』》](.*)$/);
+        if (cornerBracketMatch && cornerBracketMatch[2].trim().length > 0) {
+          const inside = cornerBracketMatch[2].trim();
+          const before = cornerBracketMatch[1].trim();
+          if (!/^(?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|mv|hd|4k|live|remix|lyrics?|full\s*audio|visualizer)$/i.test(inside)) {
+            title = inside;
+            if (before.length > 0 && !/^(?:official|music\s*video|mv|audio|video|hd|4k)$/i.test(before)) {
+              if (isChannelPublisher || !artist || /blackpink|bts|twice|exo|nct|red\s*velvet|seventeen|stray\s*kids|girls['’]?\s*generation|snsd/i.test(artist)) {
+                artist = before;
+              }
             }
           }
-        }
-      } else if (/\s*_\s*/.test(title)) {
-        const parts = title.split(/\s*_\s*/);
-        if (parts[0].trim().length > 1 && parts[1].trim().length > 1) {
-          if (isChannelPublisher || !artist || parts[0].length >= 2) {
-            artist = parts[0].trim();
-            title = parts.slice(1).join(' _ ').trim();
+        } else if (/\s*_\s*/.test(title)) {
+          const parts = title.split(/\s*_\s*/);
+          if (parts[0].trim().length > 1 && parts[1].trim().length > 1) {
+            if (isChannelPublisher || !artist || parts[0].length >= 2) {
+              artist = parts[0].trim();
+              title = parts.slice(1).join(' _ ').trim();
+            }
           }
-        }
-      } else if (title.includes(' - ')) {
+        } else if (title.includes(' / ') || title.includes('／')) {
+          const slashParts = title.split(/\s*[/／]\s*/);
+          const p0 = slashParts[0].trim();
+          const p1 = slashParts.slice(1).join(' / ').trim();
+          if ((isChannelPublisher || !artist) && p0.length > 1 && p1.length > 1) {
+            // In Vocaloid / J-Pop, format is "Title / Artist" (e.g. KING / Kanaria, 可愛くてごめん／HoneyWorks)
+            title = p0;
+            artist = p1;
+          }
+        } else if (title.includes(' - ')) {
         const dashParts = title.split(' - ');
         const p0 = dashParts[0].trim();
         const p1 = dashParts.slice(1).join(' - ').trim();
@@ -2671,6 +2743,7 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
       }
     }
   }
+}
 
   // Remove pipes and trailing info
   title = title.replace(/\|.*$/g, '').replace(/丨.*$/g, '').trim();
@@ -3491,19 +3564,22 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
             }
           }
           if (l.romanization && (!l.timedRomanization || l.timedRomanization.length === 0)) {
-            try {
-              const romanizer = getLyricsRomanizer();
-              const lTime = l.startTimeMs / 1000;
-              const lEnd = (l.startTimeMs + l.durationMs) / 1000;
-              const rWords = romanizer.interpolateLineWords(l.romanization, lTime, lEnd);
-              if (rWords && rWords.length > 0) {
-                l.timedRomanization = rWords.map(rw => ({
-                  startTimeMs: Math.round(rw.begin * 1000),
-                  durationMs: Math.max(50, Math.round((rw.end - rw.begin) * 1000)),
-                  words: (rw.trailingSpace !== false) ? `${rw.text} ` : rw.text
-                }));
-              }
-            } catch (e) {}
+            // Only interpolate if line has NO syllable parts (if it has parts, romanizeLyricsList will lock syllables accurately)
+            if (!Array.isArray(l.parts) || l.parts.length === 0) {
+              try {
+                const romanizer = getLyricsRomanizer();
+                const lTime = l.startTimeMs / 1000;
+                const lEnd = (l.startTimeMs + l.durationMs) / 1000;
+                const rWords = romanizer.interpolateLineWords(l.romanization, lTime, lEnd);
+                if (rWords && rWords.length > 0) {
+                  l.timedRomanization = rWords.map(rw => ({
+                    startTimeMs: Math.round(rw.begin * 1000),
+                    durationMs: Math.max(50, Math.round((rw.end - rw.begin) * 1000)),
+                    words: (rw.trailingSpace !== false) ? `${rw.text} ` : rw.text
+                  }));
+                }
+              } catch (e) {}
+            }
           }
           // Zero machine translation as requested
           delete l.translation;
@@ -4667,22 +4743,22 @@ const KNOWN_MV_OFFSETS = {
   'eqKhhG4FVoQ': 0    // Hearts2Hearts - FOCUS
 };
 
-// High-precision MV Intro Offset Resolver (Primary: KNOWN_MV_OFFSETS -> Fallback: SponsorBlock Public API)
+// High-precision MV Intro Offset Resolver (Primary: Dynamic SponsorBlock -> Fallback: KNOWN_MV_OFFSETS)
 async function getMvIntroOffset(videoId, videoDur, studioDur, isMv) {
   if (!videoId) return 0;
 
-  // 1. Check KNOWN_MV_OFFSETS first (0ms ground truth)
-  if (KNOWN_MV_OFFSETS[videoId] !== undefined) {
-    return KNOWN_MV_OFFSETS[videoId];
-  }
-
-  // 2. Fallback to SponsorBlock Public API for unmapped videos
+  // 1. Primary: Dynamic SponsorBlock Public API for ground-truth audio segments (zero hardcode)
   try {
     const segs = await resolveDynamicAudioSegments(videoId, videoDur);
     if (segs && segs.introOffsetSec > 0) {
       return segs.introOffsetSec;
     }
   } catch (e) {}
+
+  // 2. Fallback: Emergency cache
+  if (KNOWN_MV_OFFSETS[videoId] !== undefined) {
+    return KNOWN_MV_OFFSETS[videoId];
+  }
 
   return 0;
 }
@@ -4717,21 +4793,12 @@ app.get('/api/lyrics', async (req, res) => {
     duration = meta.duration;
   }
 
-  const hasKnownMvOffset = Boolean(videoId && KNOWN_MV_OFFSETS[videoId] !== undefined);
-  const isMvExplicit = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
-  const isMv = isMvExplicit || hasKnownMvOffset;
-
-  // 2. Resolve intro offset & non-music segments: Check KNOWN_MV_OFFSETS first, then SponsorBlock, then studio track
+  // 2. Resolve dynamic audio segments via SponsorBlock (primary source of truth)
   let introOffsetSec = 0;
   let effectiveSongDuration = duration;
   let nonMusicSegments = [];
 
-  if (hasKnownMvOffset) {
-    introOffsetSec = KNOWN_MV_OFFSETS[videoId];
-    if (introOffsetSec > 0) {
-      nonMusicSegments.push([0, introOffsetSec]);
-    }
-  } else if (videoId) {
+  if (videoId) {
     try {
       const segs = await resolveDynamicAudioSegments(videoId, duration);
       if (segs) {
@@ -4748,18 +4815,31 @@ app.get('/api/lyrics', async (req, res) => {
     } catch (e) {}
   }
 
-  // Resolve studio track metadata (gives us the true studio duration for TTML lookup)
+  // Fallback: If SponsorBlock had no data for this video, check emergency offset cache
+  if (introOffsetSec === 0 && videoId && KNOWN_MV_OFFSETS[videoId] !== undefined) {
+    introOffsetSec = KNOWN_MV_OFFSETS[videoId];
+    if (introOffsetSec > 0 && nonMusicSegments.length === 0) {
+      nonMusicSegments.push([0, introOffsetSec]);
+    }
+  }
+
+  const hasKnownMvOffset = introOffsetSec > 0;
+  const isMvExplicit = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
+  const isMv = isMvExplicit || hasKnownMvOffset;
+
+  // 3. Resolve studio track metadata (gives clean studio duration & clean artist/title for TTML lookup)
   const preferStudio = req.query.preferStudio !== 'false';
   let matchedStudioTrack = videoId ? studioTrackCache.get(videoId) : null;
   if (!matchedStudioTrack && videoId) {
-    matchedStudioTrack = await resolveStudioTrack(videoId, rawTitle, rawArtist);
+    matchedStudioTrack = await resolveStudioTrack(videoId, rawTitle, rawArtist, effectiveSongDuration || duration);
   }
 
   if (matchedStudioTrack && matchedStudioTrack.seconds > 0) {
+    // Studio master duration is always the cleanest target for TTML lyrics search
     effectiveSongDuration = matchedStudioTrack.seconds;
 
     const mediaDuration = parseFloat(req.query.mediaDuration || 0);
-    // If the client's playing element reports duration matching the MV rather than studio cut,
+    // If the client's playing element explicitly reports duration matching the MV rather than studio cut,
     // ensure the MV offset is kept so sing-along stays 100% matched to what is heard!
     const isPlayingMvMedia = (mediaDuration > 0 && Math.abs(mediaDuration - duration) <= 3 && Math.abs(duration - matchedStudioTrack.seconds) >= 6);
 
@@ -4768,23 +4848,19 @@ app.get('/api/lyrics', async (req, res) => {
       // Therefore, the playing audio has 0s intro offset and non-music video segments must NOT be applied to lyrics!
       introOffsetSec = 0;
       nonMusicSegments = [];
-    } else if (!preferStudio || isPlayingMvMedia) {
-      // Client is playing the YouTube video or the MV media file directly
-      if (hasKnownMvOffset) {
-        introOffsetSec = KNOWN_MV_OFFSETS[videoId];
-        nonMusicSegments = introOffsetSec > 0 ? [[0, introOffsetSec]] : [];
+    } else {
+      // Client is playing the YouTube video / MV directly (via ytPlayer or direct media)
+      // Ensure SponsorBlock nonMusicSegments & introOffsetSec remain active!
+      if (introOffsetSec > 0 && nonMusicSegments.length === 0) {
+        nonMusicSegments.push([0, introOffsetSec]);
       }
-    } else if (matchedStudioTrack.id === videoId) {
-      // Client is playing the pure audio studio track directly -> 0s intro offset
-      introOffsetSec = 0;
-      nonMusicSegments = [];
     }
   }
 
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v83___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v84___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -4954,10 +5030,20 @@ app.get('/api/lyrics', async (req, res) => {
         (result.id && String(result.id).startsWith('bl_'))
       );
 
+      const hasWordSync = Boolean(
+        result.hasWordSync ||
+        result.timing_type === 'word' ||
+        (result.type === 'syllable') ||
+        isBetterLyricsOrTtml
+      );
+
       // LRC internal offset if present
-      if (!isBetterLyricsOrTtml) {
+      if (!hasWordSync) {
         // Community line-level LRC human reaction compensation (~250ms advance so it doesn't feel 'lambat')
         netShiftSec = -lrcOffsetSec - 0.25;
+      } else {
+        // High-precision machine/syllable-aligned lyrics (Apple Music TTML, NetEase YRC, QQ QRC) maintain 0ms ground truth
+        netShiftSec = -lrcOffsetSec;
       }
     }
 
@@ -5158,7 +5244,7 @@ app.get('/api/lyrics', async (req, res) => {
                   if (l.romanization) {
                     l.romanization = l.romanization.replace(/\bswit\b/gi, 'shh');
                   }
-                  if (!l.timedRomanization && r && Array.isArray(r.romajiWords) && r.romajiWords.length > 0 && Array.isArray(l.parts) && l.parts.length > 0) {
+                  if (r && Array.isArray(r.romajiWords) && r.romajiWords.length > 0) {
                     l.timedRomanization = r.romajiWords.map(rw => ({
                       startTimeMs: Math.round(rw.begin * 1000),
                       durationMs: Math.max(50, Math.round((rw.end - rw.begin) * 1000)),
@@ -5197,12 +5283,37 @@ app.get('/api/lyrics', async (req, res) => {
             }
             if (validParts.length > 0) words = validParts;
           }
+
+          let romajiWords = null;
+          if (Array.isArray(l.timedRomanization) && l.timedRomanization.length > 0) {
+            const validRomaji = [];
+            for (let ri = 0; ri < l.timedRomanization.length; ri++) {
+              const rw = l.timedRomanization[ri];
+              const rwText = (rw.words || '').trim();
+              if (!rwText) continue;
+              validRomaji.push({
+                text: rwText,
+                begin: parseFloat((rw.startTimeMs / 1000).toFixed(3)),
+                end: parseFloat(((rw.startTimeMs + rw.durationMs) / 1000).toFixed(3)),
+                trailingSpace: /\s+$/.test(rw.words || '')
+              });
+            }
+            if (validRomaji.length > 0) romajiWords = validRomaji;
+          }
+
+          if (words && romajiWords && words.length === romajiWords.length) {
+            for (let wi = 0; wi < words.length; wi++) {
+              words[wi].romaji = romajiWords[wi].text;
+            }
+          }
+
           return {
             time,
             endTime,
             text: l.words,
             words,
             romaji: l.romanization || null,
+            romajiWords: (romajiWords && romajiWords.length > 0) ? romajiWords : null,
             lang: detectedLang
           };
         });
@@ -5214,6 +5325,7 @@ app.get('/api/lyrics', async (req, res) => {
     const payload = result ? {
       found: true,
       id: result.id,
+      resolvedStudioId: matchedStudioTrack?.id || null,
       source: result.sourceName || 'LRCLib',
       sourceName: result.sourceName || 'Better Lyrics',
       type: Boolean(result.hasWordSync || (parsedLyrics && parsedLyrics.some(l => l.words && l.words.length > 0))) ? 'syllable' : 'synced',
@@ -5233,6 +5345,7 @@ app.get('/api/lyrics', async (req, res) => {
       hasRomaji: Boolean(parsedLyrics && parsedLyrics.some(l => Boolean(l.romaji)))
     } : {
       found: false,
+      resolvedStudioId: matchedStudioTrack?.id || null,
       title,
       artist
     };

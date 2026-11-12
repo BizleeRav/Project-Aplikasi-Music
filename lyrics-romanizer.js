@@ -133,11 +133,14 @@ function romanizeKoreanTokens(text) {
         else if ([7, 19, 20, 22, 23, 25, 27].includes(jong)) jongStr = 'n'; // ㄷ, ㅅ, ㅆ, ㅈ, ㅊ, ㅌ, ㅎ -> n
         else jongStr = KO_JONG_BASE[jong];
       }
-      // Rule 5: Liquid Assimilation (ㄴ+ㄹ or ㄹ+ㄴ -> ll)
+      // Rule 5: Liquid Assimilation (ㄴ+ㄹ, ㄹ+ㄴ, ㄹ+ㄹ -> ll)
       else if (jong === 4 && next && nextCho === 5) { // ㄴ + ㄹ -> ll
         jongStr = 'l';
         next.customCho = 'l';
       } else if (jong === 8 && next && nextCho === 2) { // ㄹ + ㄴ -> ll
+        jongStr = 'l';
+        next.customCho = 'l';
+      } else if (jong === 8 && next && nextCho === 5) { // ㄹ + ㄹ -> ll (e.g. 골라 -> golla, 열린 -> yeollin)
         jongStr = 'l';
         next.customCho = 'l';
       }
@@ -629,7 +632,7 @@ class LyricsRomanizer {
     });
   }
 
-  async alignJapaneseWords(lineText, words) {
+  async alignJapaneseWords(lineText, words, lineRomaji = '') {
     if (!words || words.length === 0) return words;
     await this.initJapanese();
     if (!this.isJpReady) {
@@ -740,14 +743,25 @@ class LyricsRomanizer {
         raw.push({ ...w, wReading });
       }
 
-      // 5. Convert to Romaji with phonetic sokuon (っ / ッ) and youon lookahead
+      // 5. Convert to Romaji with phonetic sokuon (っ / ッ), particles (は/へ) and youon lookahead
       const result = [];
       for (let i = 0; i < raw.length; i++) {
         const item = raw[i];
         let wReading = item.wReading;
         let wRomaji = '';
 
-        if (i < raw.length - 1) {
+        const trimmedReading = (wReading || '').trim();
+        const trimmedText = (item.text || '').trim();
+
+        // Particle checks: は (wa) and へ (e)
+        const isHaParticle = (trimmedReading === 'は' || trimmedText === 'は') && (!lineRomaji || /\bwa\b/i.test(lineRomaji));
+        const isHeParticle = (trimmedReading === 'へ' || trimmedText === 'へ') && (!lineRomaji || /\be\b/i.test(lineRomaji));
+
+        if (isHaParticle) {
+          wRomaji = 'wa';
+        } else if (isHeParticle) {
+          wRomaji = 'e';
+        } else if (i < raw.length - 1) {
           const nextReading = raw[i + 1].wReading || '';
           if (/[っッ]$/.test(wReading)) {
             // Sokuon gemination
@@ -828,7 +842,7 @@ class LyricsRomanizer {
       let updatedWords = item.words || null;
       if (Array.isArray(item.words) && item.words.length > 0) {
         if (lineLang === 'ja') {
-          updatedWords = await this.alignJapaneseWords(item.text, item.words);
+          updatedWords = await this.alignJapaneseWords(item.text, item.words, romaji);
         } else if (lineLang === 'ko') {
           updatedWords = this.alignKoreanWords(item.text, item.words);
         } else if (lineLang === 'zh') {

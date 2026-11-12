@@ -126,8 +126,9 @@ class YTPlayerManager {
     }
 
     try {
+      const vidId = (track.resolvedStudioId && track.resolvedStudioId.length === 11) ? track.resolvedStudioId : track.id;
       this.player.loadVideoById({
-        videoId: track.id,
+        videoId: vidId,
         suggestedQuality: 'tiny'
       });
       if (this.player.setPlaybackQuality) {
