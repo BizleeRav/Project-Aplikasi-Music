@@ -3477,6 +3477,7 @@ class App {
     if (this._lyricsSyncRaf) return;
     const tick = () => {
       if (this.isPlaying) {
+        this._lastRafLyricsTick = Date.now();
         const cur = this.getCurrentPlaybackTime();
         if (cur !== undefined && !isNaN(cur)) {
           this.updateActiveLyricsLine(cur);
@@ -3546,6 +3547,10 @@ class App {
       if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
       const streamLeadIn = document.getElementById('cinema-stream-leadin');
       if (streamLeadIn) streamLeadIn.style.display = 'none';
+      if (this.activeLyricIdx !== -1) {
+        this.activeLyricIdx = -1;
+        this.syncLyricsToMediaNotification();
+      }
       return;
     }
 
@@ -3662,6 +3667,7 @@ class App {
     if (activeIdx !== this.activeLyricIdx) {
       const prevIdx = this.activeLyricIdx;
       this.activeLyricIdx = activeIdx;
+      this.syncLyricsToMediaNotification();
       this.cinemaLyricsStream.classList.toggle('has-active', activeIdx >= 0);
 
       // High-performance targeted update: only modify changed lines during normal forward playback
@@ -8346,6 +8352,7 @@ class App {
       this.startLyricsSyncLoop();
     } else {
       this.stopLyricsSyncLoop();
+      this.syncLyricsToMediaNotification();
     }
 
     if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
@@ -8470,10 +8477,15 @@ class App {
     }
 
     // Dynamic Sing-Along lyrics line highlight & autoscroll:
-    // When playing, startLyricsSyncLoop (rAF at 60/120fps) is the sole high-precision driver.
-    // Only call updateActiveLyricsLine here when paused or seeking while stopped to prevent clock collision.
+    // When playing in foreground, startLyricsSyncLoop (rAF at 60/120fps) is the sole high-precision driver.
+    // When screen is off or app minimized, Chromium throttles rAF, so keep lyrics updating via progress callback.
     if (!this.isPlaying) {
       this.updateActiveLyricsLine(current);
+    } else {
+      const now = Date.now();
+      if (!this._lastRafLyricsTick || (now - this._lastRafLyricsTick > 250)) {
+        this.updateActiveLyricsLine(current);
+      }
     }
   }
 
@@ -9424,6 +9436,85 @@ class App {
           Boolean(this.isPlaying)
         );
       }
+    }
+
+    this.syncLyricsToMediaNotification();
+  }
+
+  getCurrentLyricInfo() {
+    if (!this.currentLyricsData || this.currentLyricsData.length === 0 || this.activeLyricIdx < 0) {
+      return null;
+    }
+    const line = this.currentLyricsData[this.activeLyricIdx];
+    if (!line || !line.text || !line.text.trim()) return null;
+
+    const tr = this.currentTrack || {};
+    const songTitle = tr.title || 'AuraSound Music';
+    const artistName = tr.artist || 'AuraSound';
+    const rawText = line.text.trim();
+    const rawRomaji = (line.romaji && line.romaji.trim() && line.romaji.trim() !== rawText) ? line.romaji.trim() : null;
+
+    const displayLyric = rawRomaji || rawText;
+    const main = '🎵 ' + displayLyric;
+    let sub = '';
+    if (rawRomaji) {
+      sub = rawText + ' • ' + songTitle;
+    } else {
+      sub = songTitle + ' • ' + artistName;
+    }
+
+    return {
+      main,
+      sub,
+      rawText,
+      rawRomaji
+    };
+  }
+
+  syncLyricsToMediaNotification() {
+    const tr = this.currentTrack || {};
+    const songTitle = tr.title || 'AuraSound Music';
+    const artistName = tr.artist || 'AuraSound';
+    const isPlaying = Boolean(this.isPlaying);
+
+    let lyricMain = '';
+    let lyricSub = '';
+
+    if (isPlaying) {
+      const info = this.getCurrentLyricInfo();
+      if (info) {
+        lyricMain = info.main;
+        lyricSub = info.sub;
+      }
+    }
+
+    // 1. Android Native Bridge
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackLyric === 'function') {
+      window.AuraSoundAndroid.updatePlaybackLyric(lyricMain, lyricSub);
+    }
+
+    // 2. Web Media Session API (Works on Mobile Chrome Lockscreen & Desktop OS Media Controls)
+    if ('mediaSession' in navigator && this.currentTrack) {
+      try {
+        const artwork = [
+          { src: tr.thumbnail || '/icons/icon.svg', sizes: '512x512', type: 'image/jpeg' }
+        ];
+        if (lyricMain) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: lyricMain,
+            artist: lyricSub || artistName,
+            album: songTitle + ' • ' + artistName,
+            artwork: artwork
+          });
+        } else {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: songTitle,
+            artist: artistName,
+            album: 'AuraSound Music Hub',
+            artwork: artwork
+          });
+        }
+      } catch (e) {}
     }
   }
 

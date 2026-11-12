@@ -207,6 +207,13 @@ public class AndroidMediaBridge {
     }
 
     @JavascriptInterface
+    public void updatePlaybackLyric(String lyricTitle, String lyricSubtitle) {
+        if (activity != null) {
+            activity.updateMediaLyric(lyricTitle, lyricSubtitle);
+        }
+    }
+
+    @JavascriptInterface
     public void stopPlayback() {
         if (activity != null) {
             activity.stopMediaService();
@@ -270,7 +277,7 @@ public class AndroidMediaBridge {
 
     @JavascriptInterface
     public int getAppVersionCode() {
-        return 9;
+        return 12;
     }
 }
 `);
@@ -307,6 +314,7 @@ public class MediaPlaybackService extends Service {
 
     public static final String ACTION_UPDATE = "ACTION_UPDATE";
     public static final String ACTION_PROGRESS = "ACTION_PROGRESS";
+    public static final String ACTION_UPDATE_LYRIC = "ACTION_UPDATE_LYRIC";
     public static final String ACTION_PLAY_PAUSE = "ACTION_PLAY_PAUSE";
     public static final String ACTION_PLAY = "ACTION_PLAY";
     public static final String ACTION_PAUSE = "ACTION_PAUSE";
@@ -325,6 +333,45 @@ public class MediaPlaybackService extends Service {
     private boolean isPlaying = false;
     private long currentPositionMs = 0;
     private long currentDurationMs = 0;
+    private String currentLyricTitle = "";
+    private String currentLyricSubtitle = "";
+
+    private String getDisplayTitle() {
+        if (currentLyricTitle != null && !currentLyricTitle.isEmpty()) {
+            return currentLyricTitle;
+        }
+        return (currentTitle != null && !currentTitle.isEmpty()) ? currentTitle : "AuraSound Music";
+    }
+
+    private String getDisplaySubtitle() {
+        if (currentLyricTitle != null && !currentLyricTitle.isEmpty()) {
+            if (currentLyricSubtitle != null && !currentLyricSubtitle.isEmpty()) {
+                return currentLyricSubtitle;
+            }
+            return (currentTitle != null ? currentTitle : "") + " • " + (currentArtist != null ? currentArtist : "");
+        }
+        return (currentArtist != null && !currentArtist.isEmpty()) ? currentArtist : "AuraSound";
+    }
+
+    private void updateLyric(String lTitle, String lSub) {
+        String safeTitle = (lTitle != null) ? lTitle.trim() : "";
+        String safeSub = (lSub != null) ? lSub.trim() : "";
+
+        if (safeTitle.equals(this.currentLyricTitle) && safeSub.equals(this.currentLyricSubtitle)) {
+            return;
+        }
+
+        this.currentLyricTitle = safeTitle;
+        this.currentLyricSubtitle = safeSub;
+
+        updateMediaSessionState();
+
+        Notification notif = buildNotification(getDisplayTitle(), getDisplaySubtitle(), currentCoverBitmap, isPlaying);
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.notify(NOTIFICATION_ID, notif);
+        }
+    }
 
     @Override
     public void onCreate() {
@@ -434,6 +481,10 @@ public class MediaPlaybackService extends Service {
                 long dur = intent.getLongExtra("durationMs", 0);
                 boolean playing = intent.getBooleanExtra("isPlaying", false);
                 updateProgressOnly(pos, dur, playing);
+            } else if (ACTION_UPDATE_LYRIC.equals(action)) {
+                String lTitle = intent.getStringExtra("lyricTitle");
+                String lSub = intent.getStringExtra("lyricSubtitle");
+                updateLyric(lTitle, lSub);
             } else if (ACTION_PLAY_PAUSE.equals(action)) {
                 MainActivity.sendMediaAction("play_pause");
             } else if (ACTION_PLAY.equals(action)) {
@@ -462,8 +513,16 @@ public class MediaPlaybackService extends Service {
     }
 
     private void updatePlayback(String title, String artist, String coverUrl, boolean playing, long pos, long dur) {
-        this.currentTitle = (title != null && !title.isEmpty()) ? title : "AuraSound Music";
-        this.currentArtist = (artist != null && !artist.isEmpty()) ? artist : "AuraSound";
+        String newTitle = (title != null && !title.isEmpty()) ? title : "AuraSound Music";
+        String newArtist = (artist != null && !artist.isEmpty()) ? artist : "AuraSound";
+
+        if (!newTitle.equals(this.currentTitle)) {
+            this.currentLyricTitle = "";
+            this.currentLyricSubtitle = "";
+        }
+
+        this.currentTitle = newTitle;
+        this.currentArtist = newArtist;
         this.isPlaying = playing;
         if (pos > 0) this.currentPositionMs = pos;
         if (dur > 0) this.currentDurationMs = dur;
@@ -478,11 +537,11 @@ public class MediaPlaybackService extends Service {
 
         if (coverUrl != null && !coverUrl.equals(currentCoverUrl) && !coverUrl.isEmpty()) {
             this.currentCoverUrl = coverUrl;
-            Notification notif = buildNotification(currentTitle, currentArtist, currentCoverBitmap, isPlaying);
+            Notification notif = buildNotification(getDisplayTitle(), getDisplaySubtitle(), currentCoverBitmap, isPlaying);
             startServiceForeground(notif);
             loadCoverBitmapAsync(coverUrl);
         } else {
-            Notification notif = buildNotification(currentTitle, currentArtist, currentCoverBitmap, isPlaying);
+            Notification notif = buildNotification(getDisplayTitle(), getDisplaySubtitle(), currentCoverBitmap, isPlaying);
             startServiceForeground(notif);
         }
     }
@@ -507,9 +566,9 @@ public class MediaPlaybackService extends Service {
             mediaSession.setPlaybackState(stateBuilder.build());
 
             MediaMetadata.Builder metaBuilder = new MediaMetadata.Builder()
-                    .putString(MediaMetadata.METADATA_KEY_TITLE, currentTitle)
-                    .putString(MediaMetadata.METADATA_KEY_ARTIST, currentArtist)
-                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "AuraSound Music Hub");
+                    .putString(MediaMetadata.METADATA_KEY_TITLE, getDisplayTitle())
+                    .putString(MediaMetadata.METADATA_KEY_ARTIST, getDisplaySubtitle())
+                    .putString(MediaMetadata.METADATA_KEY_ALBUM, (currentTitle != null ? currentTitle : "AuraSound") + " • " + (currentArtist != null ? currentArtist : ""));
 
             if (currentDurationMs > 0) {
                 metaBuilder.putLong(MediaMetadata.METADATA_KEY_DURATION, currentDurationMs);
@@ -559,7 +618,7 @@ public class MediaPlaybackService extends Service {
                 if (urlStr.equals(currentCoverUrl)) {
                     currentCoverBitmap = finalBitmap;
                     updateMediaSessionState();
-                    Notification notif = buildNotification(currentTitle, currentArtist, currentCoverBitmap, isPlaying);
+                    Notification notif = buildNotification(getDisplayTitle(), getDisplaySubtitle(), currentCoverBitmap, isPlaying);
                     startServiceForeground(notif);
                 }
             });
@@ -598,7 +657,7 @@ public class MediaPlaybackService extends Service {
         builder.setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
                 .setContentText(artist)
-                .setSubText("AuraSound")
+                .setSubText(currentTitle != null && !currentTitle.isEmpty() ? currentTitle : "AuraSound")
                 .setContentIntent(contentPendingIntent)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setOngoing(playing);
@@ -1980,11 +2039,20 @@ public class MainActivity extends Activity {
             + "    var cover = '';"
             + "    var curSec = 0;"
             + "    var durSec = 0;"
+            + "    var lyricMain = '';"
+            + "    var lyricSub = '';"
             + "    if (window.app && window.app.currentTrack) {"
             + "      title = window.app.currentTrack.title || '';"
             + "      artist = window.app.currentTrack.artist || '';"
             + "      cover = window.app.currentTrack.thumbnail || '';"
             + "      if (window.app.isPlaying) isPlaying = true;"
+            + "      if (typeof window.app.getCurrentLyricInfo === 'function') {"
+            + "        var li = window.app.getCurrentLyricInfo();"
+            + "        if (li) {"
+            + "          lyricMain = li.main || '';"
+            + "          lyricSub = li.sub || '';"
+            + "        }"
+            + "      }"
             + "    } else if (window.ytPlayer && window.ytPlayer.currentTrack) {"
             + "      title = window.ytPlayer.currentTrack.title || '';"
             + "      artist = window.ytPlayer.currentTrack.artist || '';"
@@ -2024,7 +2092,9 @@ public class MainActivity extends Activity {
             + "      cover: cover,"
             + "      isPlaying: isPlaying,"
             + "      posMs: Math.round(curSec * 1000),"
-            + "      durMs: Math.round(durSec * 1000)"
+            + "      durMs: Math.round(durSec * 1000),"
+            + "      lyricMain: lyricMain,"
+            + "      lyricSub: lyricSub"
             + "    };"
             + "  }"
             + "  setInterval(function() {"
@@ -2040,6 +2110,7 @@ public class MainActivity extends Activity {
             + "        var titleChanged = (window.__lastSyncedTitle !== info.title);"
             + "        var stateChanged = (window.__lastSyncedState !== info.isPlaying);"
             + "        var durChanged = (window.__lastSyncedDuration !== info.durMs && info.durMs > 0);"
+            + "        var lyricChanged = (window.__lastSyncedLyric !== info.lyricMain);"
             + "        if (titleChanged || stateChanged || durChanged) {"
             + "          window.__lastSyncedTitle = info.title;"
             + "          window.__lastSyncedState = info.isPlaying;"
@@ -2051,12 +2122,32 @@ public class MainActivity extends Activity {
             + "            window.AuraSoundAndroid.updatePlaybackProgress(info.posMs, info.durMs, true);"
             + "          }"
             + "        }"
+            + "        if (lyricChanged || titleChanged) {"
+            + "          window.__lastSyncedLyric = info.lyricMain;"
+            + "          if (typeof window.AuraSoundAndroid.updatePlaybackLyric === 'function') {"
+            + "            window.AuraSoundAndroid.updatePlaybackLyric(info.lyricMain, info.lyricSub);"
+            + "          }"
+            + "        }"
             + "      }"
             + "    } catch(err) {}"
             + "  }, 1000);"
             + "}"
             + "})();";
         webView.evaluateJavascript(js, null);
+    }
+
+    public void updateMediaLyric(String lyricTitle, String lyricSubtitle) {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(this, MediaPlaybackService.class);
+                intent.setAction(MediaPlaybackService.ACTION_UPDATE_LYRIC);
+                intent.putExtra("lyricTitle", lyricTitle != null ? lyricTitle : "");
+                intent.putExtra("lyricSubtitle", lyricSubtitle != null ? lyricSubtitle : "");
+                startService(intent);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     public void updateMediaNotification(String title, String artist, String coverUrl, boolean isPlaying, long positionMs, long durationMs) {
