@@ -45,20 +45,6 @@ function hideEngineWindow() {
         sunoEngineWin.hide();
       }
       sunoEngineWin.setSkipTaskbar(true);
-      sunoEngineWin.setFocusable(false);
-      try {
-        sunoEngineWin.setSize(1280, 900);
-        sunoEngineWin.webContents.executeJavaScript(`
-          (() => {
-            try {
-              document.documentElement.style.cssText = '';
-              document.body.style.cssText = '';
-              const hdr = document.getElementById('aurasound-verify-header');
-              if (hdr) hdr.remove();
-            } catch (e) {}
-          })()
-        `).catch(() => {});
-      } catch (e) {}
     }
   } catch (e) {}
 }
@@ -379,17 +365,15 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
         const mainWin = (typeof global.getMainWindow === 'function') ? global.getMainWindow() : null;
         sunoEngineWin = new BrowserWindow({
           parent: (mainWin && !mainWin.isDestroyed()) ? mainWin : undefined,
-          width: 1280,
-          height: 900,
-          minWidth: 360,
-          minHeight: 180,
+          modal: true,
+          width: 1000,
+          height: 720,
+          minWidth: 880,
+          minHeight: 600,
           show: false,
-          frame: false,
-          resizable: false,
-          hasShadow: true,
           skipTaskbar: true,
           focusable: true,
-          title: 'Verifikasi Akun Suno',
+          title: 'Verifikasi Akun Suno — Cukup Klik Centang 1x',
           autoHideMenuBar: true,
           backgroundColor: '#0b0f19',
           webPreferences: {
@@ -1003,11 +987,12 @@ async function generateWithSunoBrowser({
       throw new Error(clickedOk.error);
     }
 
-    console.log('[Suno Warm Engine] Create triggered 100% silently in background. Polling for newly created clips...');
+    console.log('[Suno Warm Engine] Create triggered in background. Polling for newly created clips...');
 
     let capturedClips = null;
     let lastJwt = null;
     let lastFeedPollMs = 0;
+    let challengeWindowShown = false;
     const maxTotalWaitMs = 60000;
 
     while ((Date.now() - clickTimeMs) < maxTotalWaitMs) {
@@ -1030,106 +1015,31 @@ async function generateWithSunoBrowser({
       const elapsedMs = Date.now() - clickTimeMs;
 
       // Check if Cloudflare Turnstile verification challenge modal is blocking
-      if (elapsedMs > 1500 && elapsedMs % 800 < 220) {
-        const isCancelled = await genWin.webContents.executeJavaScript(`Boolean(window.__aurasoundCancelled)`).catch(() => false);
-        if (isCancelled || userCancelledCurrentRun) {
-          throw new Error('Verifikasi Suno dibatalkan oleh pengguna.');
-        }
-
-        const turnstileInfo = await genWin.webContents.executeJavaScript(`
-          (() => {
-            const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role="dialog"]'));
-            const modal = overlays.find(el => {
-              const cls = String(el.className || '');
-              const st = window.getComputedStyle(el);
-              if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
-              if (cls.includes('z-[1000]')) return true;
-              return Boolean(el.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], [data-sitekey]'));
-            });
-            const hasIframe = Boolean(document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]'));
-            return {
-              hasModal: Boolean(modal || hasIframe)
-            };
-          })()
-        `).catch(() => ({ hasModal: false }));
-
-        if (turnstileInfo.hasModal && !genWin.isVisible() && !genNetworkState.generateStartedAt) {
-          console.log('[Suno Warm Engine] Cloudflare Turnstile challenge detected! Embedding in-app frameless verification card...');
-
-          // Style modal and inject AuraSound native header directly inside the card
-          await genWin.webContents.executeJavaScript(`
+      if (elapsedMs > 1500 && elapsedMs % 1000 < 250) {
+        if (!challengeWindowShown && !genNetworkState.generateStartedAt) {
+          const turnstileInfo = await genWin.webContents.executeJavaScript(`
             (() => {
-              try {
-                window.__aurasoundCancelled = false;
-
-                // Set clean dark theme on html & body
-                document.documentElement.style.cssText = 'background:#0b0f19 !important;overflow:hidden !important;width:100% !important;height:100% !important;margin:0 !important;padding:0 !important;';
-                document.body.style.cssText = 'background:#0b0f19 !important;overflow:hidden !important;width:100% !important;height:100% !important;margin:0 !important;padding:0 !important;';
-
-                // Find the Turnstile iframe & modal
-                const iframe = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
-                const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role="dialog"]'));
-                const modal = overlays.find(el => el.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], [data-sitekey]')) || (iframe ? iframe.closest('div.fixed, [role="dialog"]') : null);
-
-                if (modal) {
-                  modal.style.cssText = 'position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;background:#0b0f19 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;z-index:2147483647 !important;padding:12px 16px !important;box-sizing:border-box !important;border:1px solid rgba(255,255,255,0.18) !important;border-radius:12px !important;';
-                }
-
-                if (iframe) {
-                  const card = iframe.parentElement;
-                  if (card) {
-                    card.style.cssText = 'background:transparent !important;display:flex !important;align-items:center !important;justify-content:center !important;box-shadow:none !important;border:none !important;margin:0 !important;padding:0 !important;';
-                  }
-                }
-
-                // Inject AuraSound in-app header
-                if (!document.getElementById('aurasound-verify-header')) {
-                  const hdr = document.createElement('div');
-                  hdr.id = 'aurasound-verify-header';
-                  hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;width:100%;max-width:320px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.12);font-family:system-ui,-apple-system,sans-serif;box-sizing:border-box;-webkit-app-region:drag;user-select:none;';
-                  hdr.innerHTML = \`
-                    <div style="display:flex;align-items:center;gap:8px;-webkit-app-region:drag;">
-                      <div style="width:20px;height:20px;border-radius:5px;background:#6366f1;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:bold;">A</div>
-                      <span style="color:#f8fafc;font-size:13px;font-weight:600;">Verifikasi Keamanan Suno</span>
-                    </div>
-                    <button id="aurasound-btn-close-modal" style="-webkit-app-region:no-drag;background:none;border:none;color:#94a3b8;font-size:16px;cursor:pointer;padding:2px 6px;line-height:1;" title="Batal">✕</button>
-                  \`;
-
-                  if (modal) {
-                    modal.insertBefore(hdr, modal.firstChild);
-                  } else {
-                    document.body.insertBefore(hdr, document.body.firstChild);
-                  }
-
-                  const cb = document.getElementById('aurasound-btn-close-modal');
-                  if (cb) {
-                    cb.onclick = () => { window.__aurasoundCancelled = true; };
-                  }
-                }
-              } catch (e) {}
+              const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role="dialog"]'));
+              const modal = overlays.find(el => {
+                const cls = String(el.className || '');
+                const st = window.getComputedStyle(el);
+                if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+                if (cls.includes('z-[1000]')) return true;
+                return Boolean(el.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], [data-sitekey]'));
+              });
+              const hasIframe = Boolean(document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]'));
+              return { hasModal: Boolean(modal || hasIframe) };
             })()
-          `).catch(() => {});
+          `).catch(() => ({ hasModal: false }));
 
-          const mainWin = (typeof global.getMainWindow === 'function') ? global.getMainWindow() : null;
-          const boxWidth = 400;
-          const boxHeight = 200;
-
-          if (mainWin && !mainWin.isDestroyed()) {
-            const bounds = mainWin.getBounds();
-            const x = Math.round(bounds.x + (bounds.width - boxWidth) / 2);
-            const y = Math.round(bounds.y + (bounds.height - boxHeight) / 2);
-            genWin.setBounds({ x, y, width: boxWidth, height: boxHeight });
-          } else {
-            genWin.setSize(boxWidth, boxHeight);
+          if (turnstileInfo.hasModal && !genWin.isVisible() && !genNetworkState.generateStartedAt) {
+            challengeWindowShown = true;
+            console.log('[Suno Warm Engine] Cloudflare Turnstile challenge detected! Showing untampered verification window...');
+            genWin.setAlwaysOnTop(true);
             genWin.center();
+            genWin.show();
+            genWin.focus();
           }
-
-          genWin.setAlwaysOnTop(true);
-          genWin.setSkipTaskbar(true);
-          genWin.show();
-          genWin.focus();
-        } else if (!turnstileInfo.hasModal && genWin.isVisible()) {
-          hideEngineWindow();
         }
       }
 
