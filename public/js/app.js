@@ -2903,8 +2903,8 @@ class App {
     }
     this.currentLyricsTrackId = trackId;
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh unless it's neural word-sync which is already exact)
-    if ((!forceRefresh || track._hasWordSync) && track._lyricsEngineVersion === 'v82' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    // 1. If lyrics already cached in track instance (and not forcing refresh)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v83' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -2945,7 +2945,7 @@ class App {
             track._parsedLyrics = alignData.parsedLyrics;
             track._lyricsType = 'synced';
             track._hasWordSync = this.hasWordSync;
-            track._lyricsEngineVersion = 'v82';
+            track._lyricsEngineVersion = 'v83';
             track._cachedForTrackId = trackId;
 
             this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
@@ -2981,7 +2981,7 @@ class App {
           track._parsedLyrics = parsed;
           track._lyricsType = candidateSynced ? 'synced' : 'suno_ai';
           track._hasWordSync = false; // Do NOT permanently lock word-sync cache
-          track._lyricsEngineVersion = 'v82';
+          track._lyricsEngineVersion = 'v83';
           track._cachedForTrackId = trackId;
           this.displayLyricsList(this.currentLyricsData, track._lyricsType, null, false, false);
           const curTime = this.getCurrentPlaybackTime();
@@ -3020,7 +3020,7 @@ class App {
                     track._parsedLyrics = retryData.parsedLyrics;
                     track._lyricsType = 'synced';
                     track._hasWordSync = this.hasWordSync;
-                    track._lyricsEngineVersion = 'v82';
+                    track._lyricsEngineVersion = 'v83';
                     track._cachedForTrackId = trackId;
 
                     this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
@@ -3113,7 +3113,7 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
-        track._lyricsEngineVersion = 'v82';
+        track._lyricsEngineVersion = 'v83';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
         this.displayLyricsList(data.parsedLyrics, track._lyricsType, data.detectedLang, this.currentHasRomaji, this.hasWordSync, data.braccatoLyrics);
@@ -3565,7 +3565,8 @@ class App {
       const cur = lyrics[mid];
       const next = lyrics[mid + 1];
       const start = cur.time;
-      const end = cur.endTime !== undefined ? cur.endTime : (next ? next.time : (start + 5.0));
+      const nominalEnd = cur.endTime !== undefined ? cur.endTime : (next ? next.time : (start + 5.0));
+      const end = (next && next.time > start) ? Math.min(nominalEnd, next.time) : nominalEnd;
 
       if (syncTime >= start && syncTime < end) {
         activeIdx = mid;
@@ -8110,6 +8111,7 @@ class App {
       };
 
       this.updateMediaSession(track);
+      this.renderCinemaLyrics(track, null, true);
     }
 
     if (track.id !== 'dsp-test-demo') {

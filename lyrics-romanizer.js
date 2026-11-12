@@ -56,6 +56,10 @@ function romanizeKoreanTokens(text) {
 
   for (let i = 0; i < tokens.length; i++) {
     const curr = tokens[i];
+    if (curr.ch === '쉿') {
+      result.push({ text: curr.ch, romaji: 'shh' });
+      continue;
+    }
     if (!curr.hangul) {
       result.push({ text: curr.ch, romaji: curr.ch });
       continue;

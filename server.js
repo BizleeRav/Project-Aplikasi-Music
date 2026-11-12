@@ -3482,8 +3482,13 @@ async function parseAppleMusicTTMLAsync(ttmlString, durationSec) {
         for (const l of parsed.lyrics) {
           if (l.key && translitMap.has(l.key)) {
             const tr = translitMap.get(l.key);
-            l.romanization = tr.text;
-            if (tr.parts) l.timedRomanization = tr.parts;
+            l.romanization = tr.text ? tr.text.replace(/\bswit\b/gi, 'shh') : tr.text;
+            if (tr.parts) {
+              l.timedRomanization = tr.parts.map(tp => ({
+                ...tp,
+                words: tp.words ? tp.words.replace(/\bswit\b/gi, 'shh') : tp.words
+              }));
+            }
           }
           if (l.romanization && (!l.timedRomanization || l.timedRomanization.length === 0)) {
             try {
@@ -4622,13 +4627,15 @@ const KNOWN_MV_OFFSETS = {
   'c7rCyll5AeY': 0,   // CHEER UP
 
   // BABYMONSTER
-  'yd_uG3TtREs': 3.6,  // PSYCHO M/V (opening camera flash visual scene - vocal at 0:04)
-  'Zp-Jhuhq0bQ': 1.1,  // DRIP M/V (opening audio logo - vocal at 0:09)
-  'HkiaLCniIj8': 0,    // DRIP (Topic audio starts 0:00)
-  '2wA_b6bbJNo': 0,    // SHEESH (starts 0:00)
-  'olDWZk9B6aU': 0,    // BATTER UP (starts 0:00)
-  'bUq6Q8_N2lY': 0,    // FOREVER (starts 0:00)
-  'q3ei-x2uW6s': 0,    // CLIK CLAK (starts 0:00)
+  '2wA_b6YHjqQ': 4.80,  // SHEESH Official M/V (gothic castle & footsteps scene -> music starts at 4.80s)
+  'kOanBE5Wg24': 5.188, // SHEESH PERFORMANCE VIDEO (opening silhouette visual intro)
+  '-Uw97CvOgKU': 0,     // SHEESH Official Studio Track (starts 0:00)
+  'olDWm2veCrM': 2.123, // BATTER UP Official M/V (horn intro scene)
+  'eJCHKjt0MPw': 0.7,   // FOREVER Official M/V
+  'yd_uG3TtREs': 3.6,   // PSYCHO M/V (opening camera flash visual scene - vocal at 0:04)
+  'Zp-Jhuhq0bQ': 0,     // DRIP M/V (starts 0:00)
+  'HkiaLCniIj8': 0,     // DRIP (Topic audio starts 0:00)
+  'q3ei-x2uW6s': 0,     // CLIK CLAK (starts 0:00)
 
   // Stray Kids
   'TQTlCHxyuu8': 0,   // God's Menu (starts 0:00)
@@ -4777,7 +4784,7 @@ app.get('/api/lyrics', async (req, res) => {
   console.log('[lyrics-query]', { title, artist, effectiveSongDuration, introOffsetSec, isMv, hasKnownMvOffset, segmentsCount: nonMusicSegments.length, preferStudio });
 
   const roundedOffset = Math.round((introOffsetSec || 0) * 1000);
-  const cacheKey = `v82___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
+  const cacheKey = `v83___${normalizeForCompare(title)}___${normalizeForCompare(artist)}___${Math.round(effectiveSongDuration)}___off_${roundedOffset}___seg_${nonMusicSegments.length}`;
 
   const bypassCache = req.query.nocache === '1' || req.query.refresh === 'true';
 
@@ -5092,7 +5099,7 @@ app.get('/api/lyrics', async (req, res) => {
         }
         unifiedLyrics = dedupedLyrics;
 
-        // Ensure reasonable line durations
+        // Ensure reasonable line durations and prevent overlap with next line
         for (let i = 0; i < unifiedLyrics.length; i++) {
           const curr = unifiedLyrics[i];
           if (!curr.durationMs || curr.durationMs <= 0) {
@@ -5101,6 +5108,12 @@ app.get('/api/lyrics', async (req, res) => {
               curr.durationMs = Math.max(500, Math.min(6000, nextStart - curr.startTimeMs - 80));
             } else {
               curr.durationMs = 4500;
+            }
+          } else if (i < unifiedLyrics.length - 1) {
+            const nextStart = unifiedLyrics[i + 1].startTimeMs;
+            if (nextStart > curr.startTimeMs && (curr.startTimeMs + curr.durationMs) > nextStart) {
+              // Clamp line duration so previous line completes before next vocal onset (leaving a clean 40ms gap)
+              curr.durationMs = Math.max(300, nextStart - curr.startTimeMs - 40);
             }
           } else if (i === unifiedLyrics.length - 1 && curr.durationMs > 10000) {
             curr.durationMs = 4500;
@@ -5141,6 +5154,9 @@ app.get('/api/lyrics', async (req, res) => {
                   const r = processed.lines[sungIdx++];
                   if (!l.romanization && r && r.romaji) {
                     l.romanization = r.romaji;
+                  }
+                  if (l.romanization) {
+                    l.romanization = l.romanization.replace(/\bswit\b/gi, 'shh');
                   }
                   if (!l.timedRomanization && r && Array.isArray(r.romajiWords) && r.romajiWords.length > 0 && Array.isArray(l.parts) && l.parts.length > 0) {
                     l.timedRomanization = r.romajiWords.map(rw => ({
