@@ -47,13 +47,14 @@ function hideEngineWindow() {
       sunoEngineWin.setSkipTaskbar(true);
       sunoEngineWin.setFocusable(false);
       try {
-        sunoEngineWin.setMinimumSize(1024, 700);
         sunoEngineWin.setSize(1280, 900);
         sunoEngineWin.webContents.executeJavaScript(`
           (() => {
             try {
-              const el = document.getElementById('aurasound-verify-css');
-              if (el) el.remove();
+              document.documentElement.style.cssText = '';
+              document.body.style.cssText = '';
+              const hdr = document.getElementById('aurasound-verify-header');
+              if (hdr) hdr.remove();
             } catch (e) {}
           })()
         `).catch(() => {});
@@ -375,14 +376,19 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
     try {
       if (!sunoEngineWin || sunoEngineWin.isDestroyed()) {
         isDestroyingEngine = false;
+        const mainWin = (typeof global.getMainWindow === 'function') ? global.getMainWindow() : null;
         sunoEngineWin = new BrowserWindow({
+          parent: (mainWin && !mainWin.isDestroyed()) ? mainWin : undefined,
           width: 1280,
           height: 900,
-          minWidth: 380,
-          minHeight: 200,
+          minWidth: 360,
+          minHeight: 180,
           show: false,
+          frame: false,
+          resizable: false,
+          hasShadow: true,
           skipTaskbar: true,
-          focusable: false,
+          focusable: true,
           title: 'Verifikasi Akun Suno',
           autoHideMenuBar: true,
           backgroundColor: '#0b0f19',
@@ -1025,6 +1031,11 @@ async function generateWithSunoBrowser({
 
       // Check if Cloudflare Turnstile verification challenge modal is blocking
       if (elapsedMs > 1500 && elapsedMs % 800 < 220) {
+        const isCancelled = await genWin.webContents.executeJavaScript(`Boolean(window.__aurasoundCancelled)`).catch(() => false);
+        if (isCancelled || userCancelledCurrentRun) {
+          throw new Error('Verifikasi Suno dibatalkan oleh pengguna.');
+        }
+
         const turnstileInfo = await genWin.webContents.executeJavaScript(`
           (() => {
             const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role="dialog"]'));
@@ -1043,56 +1054,78 @@ async function generateWithSunoBrowser({
         `).catch(() => ({ hasModal: false }));
 
         if (turnstileInfo.hasModal && !genWin.isVisible() && !genNetworkState.generateStartedAt) {
-          console.log('[Suno Warm Engine] Cloudflare Turnstile challenge detected! Showing clean minimalist verification popup...');
+          console.log('[Suno Warm Engine] Cloudflare Turnstile challenge detected! Embedding in-app frameless verification card...');
 
-          // Inject CSS to hide all Suno web tabs/sidebars/background and isolate ONLY the verification box
+          // Style modal and inject AuraSound native header directly inside the card
           await genWin.webContents.executeJavaScript(`
             (() => {
               try {
-                let style = document.getElementById('aurasound-verify-css');
-                if (!style) {
-                  style = document.createElement('style');
-                  style.id = 'aurasound-verify-css';
-                  style.textContent = \`
-                    html, body {
-                      background: #0b0f19 !important;
-                      overflow: hidden !important;
-                      width: 100vw !important;
-                      height: 100vh !important;
-                    }
-                    /* Hide everything in Suno page except the verification dialog */
-                    body > *:not(.fixed):not([role="dialog"]) {
-                      visibility: hidden !important;
-                      opacity: 0 !important;
-                      pointer-events: none !important;
-                    }
-                    div.fixed.inset-0, [role="dialog"] {
-                      background: #0b0f19 !important;
-                      display: flex !important;
-                      align-items: center !important;
-                      justify-content: center !important;
-                      position: fixed !important;
-                      inset: 0 !important;
-                      width: 100vw !important;
-                      height: 100vh !important;
-                      z-index: 999999 !important;
-                      padding: 0 !important;
-                      margin: 0 !important;
-                    }
+                window.__aurasoundCancelled = false;
+
+                // Set clean dark theme on html & body
+                document.documentElement.style.cssText = 'background:#0b0f19 !important;overflow:hidden !important;width:100% !important;height:100% !important;margin:0 !important;padding:0 !important;';
+                document.body.style.cssText = 'background:#0b0f19 !important;overflow:hidden !important;width:100% !important;height:100% !important;margin:0 !important;padding:0 !important;';
+
+                // Find the Turnstile iframe & modal
+                const iframe = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
+                const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role="dialog"]'));
+                const modal = overlays.find(el => el.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], [data-sitekey]')) || (iframe ? iframe.closest('div.fixed, [role="dialog"]') : null);
+
+                if (modal) {
+                  modal.style.cssText = 'position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;background:#0b0f19 !important;display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;z-index:2147483647 !important;padding:12px 16px !important;box-sizing:border-box !important;border:1px solid rgba(255,255,255,0.18) !important;border-radius:12px !important;';
+                }
+
+                if (iframe) {
+                  const card = iframe.parentElement;
+                  if (card) {
+                    card.style.cssText = 'background:transparent !important;display:flex !important;align-items:center !important;justify-content:center !important;box-shadow:none !important;border:none !important;margin:0 !important;padding:0 !important;';
+                  }
+                }
+
+                // Inject AuraSound in-app header
+                if (!document.getElementById('aurasound-verify-header')) {
+                  const hdr = document.createElement('div');
+                  hdr.id = 'aurasound-verify-header';
+                  hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;width:100%;max-width:320px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.12);font-family:system-ui,-apple-system,sans-serif;box-sizing:border-box;-webkit-app-region:drag;user-select:none;';
+                  hdr.innerHTML = \`
+                    <div style="display:flex;align-items:center;gap:8px;-webkit-app-region:drag;">
+                      <div style="width:20px;height:20px;border-radius:5px;background:#6366f1;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:bold;">A</div>
+                      <span style="color:#f8fafc;font-size:13px;font-weight:600;">Verifikasi Keamanan Suno</span>
+                    </div>
+                    <button id="aurasound-btn-close-modal" style="-webkit-app-region:no-drag;background:none;border:none;color:#94a3b8;font-size:16px;cursor:pointer;padding:2px 6px;line-height:1;" title="Batal">✕</button>
                   \`;
-                  document.head.appendChild(style);
+
+                  if (modal) {
+                    modal.insertBefore(hdr, modal.firstChild);
+                  } else {
+                    document.body.insertBefore(hdr, document.body.firstChild);
+                  }
+
+                  const cb = document.getElementById('aurasound-btn-close-modal');
+                  if (cb) {
+                    cb.onclick = () => { window.__aurasoundCancelled = true; };
+                  }
                 }
               } catch (e) {}
             })()
           `).catch(() => {});
 
-          genWin.setTitle('Verifikasi Akun Suno');
-          genWin.setMinimumSize(380, 200);
-          genWin.setSize(480, 260);
-          genWin.center();
+          const mainWin = (typeof global.getMainWindow === 'function') ? global.getMainWindow() : null;
+          const boxWidth = 400;
+          const boxHeight = 200;
+
+          if (mainWin && !mainWin.isDestroyed()) {
+            const bounds = mainWin.getBounds();
+            const x = Math.round(bounds.x + (bounds.width - boxWidth) / 2);
+            const y = Math.round(bounds.y + (bounds.height - boxHeight) / 2);
+            genWin.setBounds({ x, y, width: boxWidth, height: boxHeight });
+          } else {
+            genWin.setSize(boxWidth, boxHeight);
+            genWin.center();
+          }
+
           genWin.setAlwaysOnTop(true);
-          genWin.setFocusable(true);
-          genWin.setSkipTaskbar(false);
+          genWin.setSkipTaskbar(true);
           genWin.show();
           genWin.focus();
         } else if (!turnstileInfo.hasModal && genWin.isVisible()) {

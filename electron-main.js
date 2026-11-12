@@ -37,6 +37,7 @@ try {
 }
 
 let mainWindow = null;
+global.getMainWindow = () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
 let sunoLoginWin = null;
 
 // Ensure local server is running on port 3000
