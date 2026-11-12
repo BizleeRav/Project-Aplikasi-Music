@@ -3667,7 +3667,8 @@ class App {
     if (activeIdx !== this.activeLyricIdx) {
       const prevIdx = this.activeLyricIdx;
       this.activeLyricIdx = activeIdx;
-      this.syncLyricsToMediaNotification();
+      this._lastLyricProgressHalf = false;
+      this.syncLyricsToMediaNotification(syncTime);
       this.cinemaLyricsStream.classList.toggle('has-active', activeIdx >= 0);
 
       // High-performance targeted update: only modify changed lines during normal forward playback
@@ -3717,6 +3718,21 @@ class App {
             }
           }
         });
+      }
+    }
+
+    // For long multi-phrase lines, check if progress has crossed mid-point to slide phrase in notification
+    if (activeIdx >= 0 && this.currentLyricsData && this.currentLyricsData[activeIdx]) {
+      const curL = this.currentLyricsData[activeIdx];
+      if (curL.text && curL.text.length > 28) {
+        const lStart = curL.time || 0;
+        const lEnd = curL.endTime || (lStart + 4.5);
+        const lDur = Math.max(1.5, lEnd - lStart);
+        const isSecondHalf = (syncTime - lStart) / lDur > 0.45;
+        if (this._lastLyricProgressHalf !== isSecondHalf) {
+          this._lastLyricProgressHalf = isSecondHalf;
+          this.syncLyricsToMediaNotification(syncTime);
+        }
       }
     }
 
@@ -9441,37 +9457,121 @@ class App {
     this.syncLyricsToMediaNotification();
   }
 
-  getCurrentLyricInfo() {
+  formatSmart2LineLyrics(displayLyric, rawText, rawRomaji, line, currentSecs) {
+    const songTitle = this.currentTrack?.title || 'AuraSound Music';
+    const artistName = this.currentTrack?.artist || 'AuraSound';
+
+    const getVisualLen = (str) => {
+      let l = 0;
+      for (let i = 0; i < str.length; i++) {
+        const c = str.charCodeAt(i);
+        if ((c >= 0x2E80 && c <= 0x9FFF) || (c >= 0xAC00 && c <= 0xD7AF) || (c >= 0x3040 && c <= 0x30FF)) {
+          l += 1.7;
+        } else {
+          l += 1;
+        }
+      }
+      return l;
+    };
+
+    const textToFormat = (displayLyric || '').trim();
+    if (!textToFormat) return null;
+
+    const vLen = getVisualLen(textToFormat);
+
+    // Case 1: Short lyric (fits comfortably on Line 1, max ~23 visual length without truncation)
+    if (vLen <= 23) {
+      let sub = '';
+      if (rawRomaji && rawText && rawRomaji !== rawText) {
+        sub = rawText + (songTitle ? ' • ' + songTitle : '');
+      } else {
+        sub = songTitle + (artistName ? ' • ' + artistName : '');
+      }
+      return { main: textToFormat, sub };
+    }
+
+    // Case 2: Longer lyric - Smart phrase wrap into Line 1 and Line 2
+    if (textToFormat.includes(' ')) {
+      const words = textToFormat.split(/\s+/);
+      const lineStart = line?.time || 0;
+      const lineEnd = line?.endTime || (lineStart + 4.5);
+      const lineDur = Math.max(1.5, lineEnd - lineStart);
+      const progress = (typeof currentSecs === 'number' && currentSecs > lineStart)
+        ? Math.min(1.0, (currentSecs - lineStart) / lineDur)
+        : 0;
+
+      // Group words into natural phrases: Line 1 target ~22 visual length, Line 2 target ~36 visual length
+      const phrases = [];
+      let currentPhrase = '';
+
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        const candidate = currentPhrase ? (currentPhrase + ' ' + w) : w;
+        const targetLimit = phrases.length === 0 ? 22 : 36;
+
+        if (getVisualLen(candidate) <= targetLimit) {
+          currentPhrase = candidate;
+        } else {
+          if (currentPhrase) phrases.push(currentPhrase);
+          currentPhrase = w;
+        }
+      }
+      if (currentPhrase) phrases.push(currentPhrase);
+
+      if (phrases.length <= 2) {
+        return {
+          main: phrases[0] || textToFormat,
+          sub: phrases[1] || ''
+        };
+      } else {
+        // Multi-phrase (> 2 chunks, e.g. long rap or fast verse)
+        // If progress > 0.45, slide to show phrase 2 and phrase 3
+        if (progress > 0.45 && phrases.length >= 3) {
+          return {
+            main: phrases[1],
+            sub: phrases.slice(2).join(' ')
+          };
+        } else {
+          return {
+            main: phrases[0],
+            sub: phrases.slice(1).join(' ')
+          };
+        }
+      }
+    } else {
+      // CJK text without spaces (continuous Hanzi / Kana)
+      // Split at ~12-13 characters
+      const cutIdx = Math.min(13, Math.floor(textToFormat.length / 2));
+      const p1 = textToFormat.slice(0, cutIdx);
+      const p2 = textToFormat.slice(cutIdx);
+      return { main: p1, sub: p2 };
+    }
+  }
+
+  getCurrentLyricInfo(currentSecs) {
     if (!this.currentLyricsData || this.currentLyricsData.length === 0 || this.activeLyricIdx < 0) {
       return null;
     }
     const line = this.currentLyricsData[this.activeLyricIdx];
     if (!line || !line.text || !line.text.trim()) return null;
 
-    const tr = this.currentTrack || {};
-    const songTitle = tr.title || 'AuraSound Music';
-    const artistName = tr.artist || 'AuraSound';
     const rawText = line.text.trim();
     const rawRomaji = (line.romaji && line.romaji.trim() && line.romaji.trim() !== rawText) ? line.romaji.trim() : null;
-
     const displayLyric = rawRomaji || rawText;
-    const main = '🎵 ' + displayLyric;
-    let sub = '';
-    if (rawRomaji) {
-      sub = rawText + ' • ' + songTitle;
-    } else {
-      sub = songTitle + ' • ' + artistName;
-    }
+
+    const curSec = (typeof currentSecs === 'number') ? currentSecs : (this.getCurrentPlaybackTime() || 0);
+    const formatted = this.formatSmart2LineLyrics(displayLyric, rawText, rawRomaji, line, curSec);
+    if (!formatted) return null;
 
     return {
-      main,
-      sub,
+      main: formatted.main,
+      sub: formatted.sub,
       rawText,
       rawRomaji
     };
   }
 
-  syncLyricsToMediaNotification() {
+  syncLyricsToMediaNotification(currentSecs) {
     const tr = this.currentTrack || {};
     const songTitle = tr.title || 'AuraSound Music';
     const artistName = tr.artist || 'AuraSound';
@@ -9481,7 +9581,7 @@ class App {
     let lyricSub = '';
 
     if (isPlaying) {
-      const info = this.getCurrentLyricInfo();
+      const info = this.getCurrentLyricInfo(currentSecs);
       if (info) {
         lyricMain = info.main;
         lyricSub = info.sub;
