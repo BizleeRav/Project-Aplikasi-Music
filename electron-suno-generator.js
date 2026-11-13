@@ -160,33 +160,65 @@ function isGenuineCustomLyrics(text) {
 function deriveTagsFromPrompt(prompt, userTags) {
   if (userTags && userTags.trim().length > 2) return userTags.trim();
   const p = (prompt || '').toLowerCase();
+
+  // 1. Anime Opening / J-Rock / J-Pop / Japanese OST / Naruto / Shonen
+  if (
+    p.includes('anime') || p.includes('naruto') || p.includes('blue bird') || p.includes('silhouette') ||
+    p.includes('j-pop') || p.includes('jpop') || p.includes('j-rock') || p.includes('jrock') ||
+    p.includes('japanese') || p.includes('romaji') || p.includes('wibu') || p.includes('shonen')
+  ) {
+    const hasFemale = p.includes('female') || p.includes('wanita') || p.includes('cewek') || p.includes('girl');
+    const vocalStyle = hasFemale
+      ? 'Energetic Youthful Female Lead Vocal, Clear Japanese Romaji Diction'
+      : 'Energetic Dynamic Lead Vocal, Clear Japanese Romaji Diction';
+    return `High-Energy Japanese Anime Opening Rock, Fast Driving 4/4 Beat, Melodic J-Rock, Bright Distorted Guitars, Punchy Live Drums, Melodic Bassline, Soaring Chorus, ${vocalStyle}, No Folk, No Country, No Acoustic Ballad`;
+  }
+
+  // 2. Epic Fantasy / Orchestral Choir
   if (p.includes('epic') || p.includes('choir') || p.includes('orchestr') || p.includes('fantasy') || p.includes('symphon') || p.includes('kingdom')) {
-    return 'Epic Fantasy Orchestral Choir, Cinematic Symphony, Female Vocal & Grand Choir, 432Hz Master';
+    return 'Epic Fantasy Orchestral Choir, Cinematic Symphony, Powerful Female Vocal & Grand Choir, No Folk';
   }
+
+  // 3. Synthwave / Cyberpunk
   if (p.includes('synthwave') || p.includes('cyber') || p.includes('retro') || p.includes('80s')) {
-    return 'Retro Synthwave, Cyberpunk Arpeggio, 80s Synthesizer, Analog Master';
+    return 'Retro Synthwave, Cyberpunk Arpeggio, 80s Analog Synthesizer, Punchy Bass';
   }
-  if (p.includes('rock') || p.includes('metal')) {
+
+  // 4. Rock / Metal
+  if (p.includes('rock') || p.includes('metal') || p.includes('hard rock')) {
     if (!/\b(no|tanpa|not)\s+rock\b/i.test(prompt)) {
-      return 'Emotional Symphonic Rock, Driving Guitars, Dynamic Live Performance';
+      return 'Emotional Symphonic Rock, Driving Distorted Guitars, Punchy Live Drums, Dynamic Vocal';
     }
   }
+
+  // 5. Dangdut / Koplo
   if (p.includes('koplo') || p.includes('dangdut')) {
     return 'Dangdut Koplo Modern, Kendang Asik, Upbeat Melodic Vocal';
   }
+
+  // 6. Ballad / Romantic Piano
   if (p.includes('ballad') || p.includes('romantis') || p.includes('piano')) {
-    return 'Acoustic Piano Ballad, Warm Melodic Vocal, Emotional Studio Mix';
+    return 'Emotional Acoustic Piano Ballad, Warm Melodic Vocal, Gentle Strings';
   }
+
+  // 7. Lo-Fi / Chill / Senja
   if (p.includes('lofi') || p.includes('chill') || p.includes('senja')) {
-    return 'Lo-Fi Chill Beats, Relaxing Ambient Melodies, Warm Senja Vinyl';
+    return 'Lo-Fi Chill Beats, Relaxing Ambient Rhodes, Warm Senja Vinyl';
   }
-  if (p.includes('j-pop') || p.includes('anime') || p.includes('japanese')) {
-    return 'J-Pop Anime Opening, Uplifting Melody, Bright Piano & Strings';
-  }
+
+  // 8. K-Pop
   if (p.includes('k-pop') || p.includes('kpop') || p.includes('korean')) {
-    return 'K-Pop Modern Dance Pop, Layered Harmonies, Punchy Bass';
+    return 'K-Pop Modern Dance Pop, Layered Vocal Harmonies, Punchy 808 Bass';
   }
-  return 'Indonesian Pop, Emotional Vocal, 432Hz Studio Mix';
+
+  // 9. Adventure (explicitly guarded against sleepy folk unless asked)
+  if (p.includes('adventure') || p.includes('petualang')) {
+    if (!p.includes('folk')) {
+      return 'Uplifting Cinematic Adventure Pop, Inspiring Melodic Strings, Driving Upbeat Rhythm, No Folk';
+    }
+  }
+
+  return 'Indonesian Pop, Catchy Melodic Chorus, Emotional Warm Vocal';
 }
 
 /**
@@ -825,13 +857,9 @@ async function generateWithSunoBrowser({
       if (cleanPromptText) {
         simpleParts.push(cleanPromptText);
       }
-      if (cleanTagsText) {
-        simpleParts.push(`Style: ${cleanTagsText}`);
-      } else {
-        const pLower = cleanPromptText.toLowerCase();
-        if (pLower.includes('fantasy') || pLower.includes('kerajaan') || (pLower.includes('adventure') && !pLower.includes('folk'))) {
-          simpleParts.push('Style: Epic Fantasy Orchestral, Cinematic Symphony, Piano & Strings, No Folk');
-        }
+      const effectiveStyle = cleanTagsText || deriveTagsFromPrompt(cleanPromptText, '');
+      if (effectiveStyle) {
+        simpleParts.push(`Style: ${effectiveStyle}`);
       }
       const simpleDescription = simpleParts.join('\n').slice(0, 2950);
 
