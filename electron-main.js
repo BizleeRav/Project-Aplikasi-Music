@@ -631,7 +631,6 @@ app.on('before-quit', () => {
 });
 
 app.whenReady().then(() => {
-  logStartup('app.whenReady() fired successfully!');
   setTimeout(checkSunoSessionCookies, 2000);
   setInterval(checkSunoSessionCookies, 10000);
 
