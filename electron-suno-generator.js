@@ -7,6 +7,7 @@ let engineInitPromise = null;
 let isDestroyingEngine = false;
 let isGeneratingBusy = false;
 let userCancelledCurrentRun = false;
+let isChallengeResolved = false;
 let networkObserverAttached = false;
 
 const genNetworkState = {
@@ -40,6 +41,9 @@ function getCleanUserAgent() {
 function hideEngineWindow() {
   try {
     if (sunoEngineWin && !sunoEngineWin.isDestroyed()) {
+      try {
+        sunoEngineWin.setShape([]);
+      } catch (e) {}
       sunoEngineWin.setAlwaysOnTop(false);
       if (sunoEngineWin.isVisible()) {
         sunoEngineWin.hide();
@@ -66,9 +70,10 @@ function attachSessionNetworkObserver(sunoSession) {
             genNetworkState.cCheckStartedAt = Date.now();
           }
         } else if (/\/api\/generate\b/i.test(u)) {
+          isChallengeResolved = true;
           if (!genNetworkState.generateStartedAt) {
             genNetworkState.generateStartedAt = Date.now();
-            console.log('[Suno Warm Engine] POST /api/generate detected! Hiding window immediately if shown.');
+            console.log('[Suno Warm Engine] POST /api/generate detected! Hiding window immediately.');
           }
           // Instant 0ms auto-hide the moment generation request fires!
           hideEngineWindow();
@@ -365,17 +370,18 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
         const mainWin = (typeof global.getMainWindow === 'function') ? global.getMainWindow() : null;
         sunoEngineWin = new BrowserWindow({
           parent: (mainWin && !mainWin.isDestroyed()) ? mainWin : undefined,
-          modal: true,
-          width: 1000,
+          modal: false,
+          width: 1050,
           height: 720,
-          minWidth: 880,
-          minHeight: 600,
           show: false,
           skipTaskbar: true,
           focusable: true,
-          title: 'Verifikasi Akun Suno — Cukup Klik Centang 1x',
+          frame: false,
+          transparent: true,
+          resizable: false,
+          title: 'Verifikasi Suno AI',
           autoHideMenuBar: true,
-          backgroundColor: '#0b0f19',
+          backgroundColor: '#00000000',
           webPreferences: {
             session: sunoSession,
             nodeIntegration: false,
@@ -389,6 +395,13 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
           sunoEngineWin.removeMenu();
         }
         sunoEngineWin.webContents.setUserAgent(cleanUa);
+
+        sunoEngineWin.webContents.on('before-input-event', (event, input) => {
+          if (input.key === 'Escape') {
+            userCancelledCurrentRun = true;
+            hideEngineWindow();
+          }
+        });
 
         // Preserve warm engine if user manually closes the verification window
         sunoEngineWin.on('close', (e) => {
@@ -992,7 +1005,9 @@ async function generateWithSunoBrowser({
     let capturedClips = null;
     let lastJwt = null;
     let lastFeedPollMs = 0;
+    let lastChallengeCheckMs = 0;
     let challengeWindowShown = false;
+    isChallengeResolved = false;
     const maxTotalWaitMs = 60000;
 
     while ((Date.now() - clickTimeMs) < maxTotalWaitMs) {
@@ -1015,30 +1030,100 @@ async function generateWithSunoBrowser({
       const elapsedMs = Date.now() - clickTimeMs;
 
       // Check if Cloudflare Turnstile verification challenge modal is blocking
-      if (elapsedMs > 1500 && elapsedMs % 1000 < 250) {
-        if (!challengeWindowShown && !genNetworkState.generateStartedAt) {
-          const turnstileInfo = await genWin.webContents.executeJavaScript(`
+      const nowMs = Date.now();
+      if ((nowMs - lastChallengeCheckMs) >= 500 && !genNetworkState.generateStartedAt) {
+        lastChallengeCheckMs = nowMs;
+
+        if (!challengeWindowShown && !isChallengeResolved) {
+          const turnstileBox = await genWin.webContents.executeJavaScript(`
             (() => {
+              const iframes = Array.from(document.querySelectorAll('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]'));
+              const activeIframe = iframes.find(f => {
+                const st = window.getComputedStyle(f);
+                if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+                const r = f.getBoundingClientRect();
+                return r.width > 40 && r.height > 20;
+              });
+
               const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role="dialog"]'));
               const modal = overlays.find(el => {
                 const cls = String(el.className || '');
                 const st = window.getComputedStyle(el);
                 if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+                if (el.offsetWidth < 80 || el.offsetHeight < 50) return false;
                 if (cls.includes('z-[1000]')) return true;
                 return Boolean(el.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], [data-sitekey]'));
               });
-              const hasIframe = Boolean(document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]'));
-              return { hasModal: Boolean(modal || hasIframe) };
-            })()
-          `).catch(() => ({ hasModal: false }));
 
-          if (turnstileInfo.hasModal && !genWin.isVisible() && !genNetworkState.generateStartedAt) {
+              if (!activeIframe && !modal) {
+                return null;
+              }
+
+              // Determine the card element wrapping the challenge
+              let targetEl = activeIframe || modal;
+              if (activeIframe) {
+                let p = activeIframe.parentElement;
+                while (p && p !== document.body && p !== document.documentElement) {
+                  const pr = p.getBoundingClientRect();
+                  if (pr.width >= 240 && pr.width <= 550 && pr.height >= 70 && pr.height <= 420) {
+                    targetEl = p;
+                  }
+                  if (pr.width > 550 || pr.height > 420) {
+                    break;
+                  }
+                  p = p.parentElement;
+                }
+              }
+
+              const r = targetEl.getBoundingClientRect();
+              if (r.width < 40 || r.height < 20) return null;
+
+              return {
+                found: true,
+                x: Math.max(0, Math.floor(r.x)),
+                y: Math.max(0, Math.floor(r.y)),
+                width: Math.min(1050, Math.ceil(r.width)),
+                height: Math.min(720, Math.ceil(r.height))
+              };
+            })()
+          `).catch(() => null);
+
+          if (turnstileBox && turnstileBox.found && !genNetworkState.generateStartedAt) {
             challengeWindowShown = true;
-            console.log('[Suno Warm Engine] Cloudflare Turnstile challenge detected! Showing untampered verification window...');
-            genWin.setAlwaysOnTop(true);
+            console.log(`[Suno Warm Engine] Cloudflare Turnstile card detected at (${turnstileBox.x}, ${turnstileBox.y}, ${turnstileBox.width}x${turnstileBox.height})! Clipping window to verify box only...`);
+
+            try {
+              genWin.setShape([{
+                x: turnstileBox.x,
+                y: turnstileBox.y,
+                width: turnstileBox.width,
+                height: turnstileBox.height
+              }]);
+            } catch (shapeErr) {
+              console.warn('[Suno Warm Engine] setShape fallback:', shapeErr.message);
+            }
+
+            genWin.setAlwaysOnTop(true, 'screen-saver');
             genWin.center();
             genWin.show();
             genWin.focus();
+          }
+        } else if (challengeWindowShown && !isChallengeResolved && genWin.isVisible()) {
+          // If modal was dismissed or verified and gone from DOM
+          const stillOpen = await genWin.webContents.executeJavaScript(`
+            (() => {
+              const iframes = Array.from(document.querySelectorAll('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]'));
+              return iframes.some(f => {
+                const st = window.getComputedStyle(f);
+                return st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) > 0;
+              });
+            })()
+          `).catch(() => false);
+
+          if (!stillOpen) {
+            console.log('[Suno Warm Engine] Turnstile challenge completed or dismissed. Auto-hiding window.');
+            isChallengeResolved = true;
+            hideEngineWindow();
           }
         }
       }
