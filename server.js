@@ -1307,7 +1307,12 @@ app.get('/api/suno/creations', async (req, res) => {
     const deviceId = (req.headers['x-device-id'] || req.query.device_id || '').trim();
     const creds = getEffectiveSunoCredentials(req);
 
-    // Library sync disabled: only user creations made in AuraSound are displayed
+    // Sync live Suno feed when explicitly requested (e.g. sync=1 or sync button clicked)
+    if (sync === '1' || sync === 'true') {
+      try {
+        await sunoService.syncOfficialFeed(creds.key, deviceId);
+      } catch (e) {}
+    }
 
     const result = sunoService.getCreationsPaginated({ page, pageSize, query: q, deviceId, apiKey: creds.key });
     res.json(result);

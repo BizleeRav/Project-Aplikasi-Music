@@ -93,9 +93,84 @@ function saveCreations(list) {
 
 let isSyncingFeed = false;
 async function syncOfficialFeed(rawToken, deviceId = null) {
-  // User requested: Do NOT sync external library from Suno.com
-  // Only songs generated inside AuraSound are stored in the library.
-  return [];
+  if (isSyncingFeed) return [];
+  isSyncingFeed = true;
+  try {
+    let cleanJwt = (rawToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+    if (!cleanJwt || cleanJwt.length < 20) {
+      const cfg = getConfig();
+      cleanJwt = (cfg.suno_api_key || '').trim();
+    }
+    if ((!cleanJwt || cleanJwt.length < 20) && typeof global.getWarmEngineSessionToken === 'function') {
+      try {
+        const warmTok = await global.getWarmEngineSessionToken();
+        if (warmTok && warmTok.length > 20) cleanJwt = warmTok;
+      } catch (e) {}
+    }
+    if (!cleanJwt || cleanJwt.length < 20) return [];
+
+    let clips = [];
+    const headers = {
+      'Authorization': `Bearer ${cleanJwt}`,
+      'Cookie': `__session=${cleanJwt}`,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Origin': 'https://suno.com',
+      'Referer': 'https://suno.com/'
+    };
+
+    // 1. Try feed/v3 (POST)
+    try {
+      const res = await axios.post('https://studio-api.prod.suno.com/api/feed/v3', {
+        cursor: null,
+        limit: 30
+      }, {
+        headers,
+        timeout: 9000
+      });
+      if (Array.isArray(res.data?.clips) && res.data.clips.length > 0) {
+        clips = res.data.clips;
+      }
+    } catch (e1) {}
+
+    // 2. Try feed/v2 (GET) fallback
+    if (!clips || clips.length === 0) {
+      try {
+        const res2 = await axios.get('https://studio-api.prod.suno.com/api/feed/v2', {
+          headers,
+          timeout: 9000
+        });
+        if (Array.isArray(res2.data?.clips) && res2.data.clips.length > 0) {
+          clips = res2.data.clips;
+        } else if (Array.isArray(res2.data) && res2.data.length > 0) {
+          clips = res2.data;
+        }
+      } catch (e2) {}
+    }
+
+    if (Array.isArray(clips) && clips.length > 0) {
+      const formatted = clips.map(c => formatOfficialClipTrack(c, {
+        rawTitle: c.title,
+        rawTags: c.metadata?.tags || c.tags,
+        rawPrompt: c.metadata?.gpt_description_prompt || c.metadata?.prompt || c.prompt,
+        customLyricsText: c.metadata?.prompt || c.lyrics,
+        officialMv: c.major_model_version || 'v6-mini',
+        deviceId
+      }));
+
+      // Invert array so newest clips get unshifted to the top of creations
+      [...formatted].reverse().forEach(track => {
+        addCreation(track, deviceId);
+      });
+      console.log(`[Suno Sync] Successfully synchronized ${formatted.length} songs from official Suno account!`);
+      return formatted;
+    }
+    return [];
+  } catch (err) {
+    console.warn('[Suno Sync] Error syncing official feed:', err.message);
+    return [];
+  } finally {
+    isSyncingFeed = false;
+  }
 }
 
 function addCreation(track, deviceId = null) {
@@ -1145,8 +1220,8 @@ function formatOfficialClipTrack(c, { rawTitle, rawTags, rawPrompt, customLyrics
     ? formatDurationSec(durationSec)
     : ((c.status === 'complete' || c.status === 'streaming') ? '2:00' : 'Sedang dibuat...');
   const verLabel = formatSunoModelLabel(c.major_model_version || c.model_name || officialMv);
-  const resolvedTitle = (c.title && c.title.trim()) || rawTitle || 'Membuat Judul & Lirik...';
-  const resolvedTags = (c.metadata?.tags && c.metadata.tags.trim()) || c.tags || rawTags || 'Suno AI';
+  const resolvedTitle = (c.title && c.title.trim()) || rawTitle || ((c.status === 'complete' || c.status === 'streaming') ? (c.display_tags ? `Lagu Suno (${c.display_tags})` : 'Lagu Suno AI') : 'Membuat Judul & Lirik...');
+  const resolvedTags = (c.metadata?.tags && c.metadata.tags.trim()) || c.tags || c.display_tags || rawTags || 'Suno AI';
 
   return {
     id: clipId,
@@ -1302,19 +1377,37 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
     // Step 1B: Pre-Warmed Persistent Suno Engine (Desktop Electron)
     if (typeof global.generateWithSunoBrowser === 'function') {
       console.log('[Suno Generate] Delegating to Pre-Warmed Suno Engine...');
-      const genRes = await global.generateWithSunoBrowser({
-        prompt: rawPrompt,
-        lyrics: customLyricsText,
-        tags: rawTags,
-        title: rawTitle,
-        make_instrumental: wantInstrumental,
-        model: officialMv,
-        rawPrompt,
-        rawLyrics: customLyricsText,
-        rawTags,
-        rawTitle,
-        hasCustomLyrics
-      });
+      let genRes = null;
+      try {
+        genRes = await global.generateWithSunoBrowser({
+          prompt: rawPrompt,
+          lyrics: customLyricsText,
+          tags: rawTags,
+          title: rawTitle,
+          make_instrumental: wantInstrumental,
+          model: officialMv,
+          rawPrompt,
+          rawLyrics: customLyricsText,
+          rawTags,
+          rawTitle,
+          hasCustomLyrics
+        });
+      } catch (browserErr) {
+        console.warn('[Suno Generate] Browser generation error:', browserErr.message);
+        // Emergency recovery: Check if Suno cloud successfully processed the song and sync immediately
+        try {
+          const synced = await syncOfficialFeed(officialToken, deviceId);
+          if (Array.isArray(synced) && synced.length > 0) {
+            console.log(`[Suno Generate] Emergency sync recovered ${synced.length} songs from official Suno account!`);
+            return {
+              success: true,
+              is_auto: false,
+              data: synced.slice(0, 2)
+            };
+          }
+        } catch (syncErr) {}
+        throw browserErr;
+      }
 
       if (genRes && genRes.success && genRes.clips && genRes.clips.length > 0) {
         const formattedClips = genRes.clips.map(c =>
@@ -1329,6 +1422,19 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
           data: formattedClips
         };
       }
+
+      // Safety recovery: sync official feed before declaring error
+      try {
+        const synced = await syncOfficialFeed(officialToken, deviceId);
+        if (Array.isArray(synced) && synced.length > 0) {
+          return {
+            success: true,
+            is_auto: false,
+            data: synced.slice(0, 2)
+          };
+        }
+      } catch (syncErr) {}
+
       throw new Error('Suno belum mengembalikan lagu baru. Pastikan kuota kredit akun Suno Anda mencukupi.');
     }
 

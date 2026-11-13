@@ -220,6 +220,11 @@ async function readLiveSessionJwt(sunoSession) {
       if (tok) return tok;
     } catch (e) {}
   }
+  try {
+    const sunoService = require('./suno-service');
+    const cfgTok = sunoService.getConfig()?.suno_api_key;
+    if (cfgTok && cfgTok.length > 20) return cfgTok;
+  } catch (e) {}
   return null;
 }
 
@@ -510,7 +515,13 @@ async function checkInteractiveTurnstileModal(genWin) {
  * and direct studio-api fallback with live session cookie.
  */
 async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, cleanUa) {
-  const liveJwt = await readLiveSessionJwt(sunoSession);
+  let liveJwt = await readLiveSessionJwt(sunoSession);
+  if (!liveJwt || liveJwt.length < 20) {
+    try {
+      const sunoService = require('./suno-service');
+      liveJwt = sunoService.getConfig()?.suno_api_key;
+    } catch (e) {}
+  }
 
   // 1. Same-origin in-page fetch on suno.com/create (automatically carries live Clerk session)
   if (genWin && !genWin.isDestroyed()) {
@@ -523,29 +534,39 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
             const headers = { 'Content-Type': 'application/json' };
             if (tok) headers['Authorization'] = 'Bearer ' + tok;
 
-            // Try feed/v2 (GET) first
-            try {
-              const r2 = await fetch('/a/api/feed/v2', {
-                method: 'GET',
-                credentials: 'include',
-                headers
-              });
-              if (r2.ok) {
-                const d2 = await r2.json();
-                if (Array.isArray(d2?.clips) && d2.clips.length > 0) return d2.clips;
-              }
-            } catch (e2) {}
+            // Try feed/v3 (POST) first
+            for (const ep of ['/a/api/feed/v3', '/api/feed/v3']) {
+              try {
+                const r3 = await fetch(ep, {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers,
+                  body: JSON.stringify({ cursor: null, limit: 15 })
+                });
+                if (r3.ok) {
+                  const d3 = await r3.json();
+                  if (Array.isArray(d3?.clips) && d3.clips.length > 0) return d3.clips;
+                }
+              } catch (e3) {}
+            }
 
-            // Fallback to feed/v3 (POST)
-            const r3 = await fetch('/a/api/feed/v3', {
-              method: 'POST',
-              credentials: 'include',
-              headers,
-              body: JSON.stringify({ cursor: null, limit: 12 })
-            });
-            if (!r3.ok) return null;
-            const d3 = await r3.json();
-            return Array.isArray(d3?.clips) ? d3.clips : null;
+            // Try feed/v2 (GET)
+            for (const ep of ['/a/api/feed/v2', '/api/feed/v2', '/a/api/feed/', '/api/feed/']) {
+              try {
+                const r2 = await fetch(ep, {
+                  method: 'GET',
+                  credentials: 'include',
+                  headers
+                });
+                if (r2.ok) {
+                  const d2 = await r2.json();
+                  if (Array.isArray(d2?.clips) && d2.clips.length > 0) return d2.clips;
+                  if (Array.isArray(d2) && d2.length > 0) return d2;
+                }
+              } catch (e2) {}
+            }
+
+            return null;
           } catch (e) {
             return null;
           }
@@ -566,11 +587,11 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
   }
 
   // 2. Direct HTTP fallback via studio-api
-  if (liveJwt) {
+  if (liveJwt && liveJwt.length > 20) {
     try {
       const feedRes = await axios.post('https://studio-api.prod.suno.com/api/feed/v3', {
         cursor: null,
-        limit: 12
+        limit: 15
       }, {
         headers: {
           'Authorization': `Bearer ${liveJwt}`,
@@ -592,7 +613,28 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
         return true;
       });
       if (fresh.length > 0) return { clips: fresh, jwt: liveJwt };
-    } catch (e) {}
+    } catch (e) {
+      try {
+        const feedRes2 = await axios.get('https://studio-api.prod.suno.com/api/feed/v2', {
+          headers: {
+            'Authorization': `Bearer ${liveJwt}`,
+            'Cookie': `__session=${liveJwt}`,
+            'User-Agent': cleanUa
+          },
+          timeout: 4500
+        });
+        const feedClips2 = feedRes2.data?.clips || (Array.isArray(feedRes2.data) ? feedRes2.data : []);
+        const fresh2 = feedClips2.filter(c => {
+          if (!c || !c.id || existingClipIds.has(c.id)) return false;
+          if (c.created_at) {
+            const t = new Date(c.created_at).getTime();
+            if (Number.isFinite(t) && t < (clickTimeMs - 15 * 60 * 1000)) return false;
+          }
+          return true;
+        });
+        if (fresh2.length > 0) return { clips: fresh2, jwt: liveJwt };
+      } catch (e2) {}
+    }
   }
 
   return { clips: null, jwt: liveJwt };
@@ -1010,7 +1052,7 @@ async function generateWithSunoBrowser({
     let lastChallengeCheckMs = 0;
     let challengeWindowShown = false;
     isChallengeResolved = false;
-    const maxTotalWaitMs = 60000;
+    const maxTotalWaitMs = 120000;
 
     while ((Date.now() - clickTimeMs) < maxTotalWaitMs) {
       await new Promise(r => setTimeout(r, 200));
@@ -1051,6 +1093,10 @@ async function generateWithSunoBrowser({
           isChallengeResolved = true;
           console.log('[Suno Warm Engine] Turnstile verified successfully by user! Auto-hiding window & submitting song...');
           hideEngineWindow();
+
+          // Reset clickTimeMs so the timeout countdown starts fresh from submission
+          clickTimeMs = Date.now();
+          lastFeedPollMs = 0;
 
           // Auto-submit Create with verified token so song is generated immediately
           await genWin.webContents.executeJavaScript(`
@@ -1148,6 +1194,10 @@ async function generateWithSunoBrowser({
             isChallengeResolved = true;
             hideEngineWindow();
 
+            // Reset clickTimeMs so the timeout countdown starts fresh from submission
+            clickTimeMs = Date.now();
+            lastFeedPollMs = 0;
+
             // Re-trigger Create click in case modal auto-closed upon success
             await genWin.webContents.executeJavaScript(`
               (() => {
@@ -1195,6 +1245,25 @@ async function generateWithSunoBrowser({
         `).catch(() => null);
         if (pageError) throw new Error(pageError);
       }
+    }
+
+    if (!capturedClips || capturedClips.length === 0) {
+      console.log('[Suno Warm Engine] Loop finished without clips. Performing safety check on recent feed for new creations...');
+      try {
+        const finalSnap = await pollNewClips(genWin, sunoSession, new Set(), Date.now(), cleanUa);
+        if (Array.isArray(finalSnap.clips) && finalSnap.clips.length > 0) {
+          const fifteenMinAgo = Date.now() - (15 * 60 * 1000);
+          const recovered = finalSnap.clips.filter(c => {
+            if (!c || !c.id || existingClipIds.has(c.id)) return false;
+            const t = c.created_at ? new Date(c.created_at).getTime() : 0;
+            return t >= fifteenMinAgo;
+          });
+          if (recovered.length > 0) {
+            capturedClips = recovered;
+            console.log(`[Suno Warm Engine] Final check successfully recovered ${capturedClips.length} clips!`);
+          }
+        }
+      } catch (e) {}
     }
 
     if (!capturedClips || capturedClips.length === 0) {
