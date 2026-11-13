@@ -407,7 +407,9 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
         sunoEngineWin.on('close', (e) => {
           if (!isDestroyingEngine && sunoEngineWin && !sunoEngineWin.isDestroyed()) {
             e.preventDefault();
-            userCancelledCurrentRun = true;
+            if (!isChallengeResolved) {
+              userCancelledCurrentRun = true;
+            }
             hideEngineWindow();
           }
         });
@@ -1031,9 +1033,42 @@ async function generateWithSunoBrowser({
 
       // Check if Cloudflare Turnstile verification challenge modal is blocking
       const nowMs = Date.now();
-      if ((nowMs - lastChallengeCheckMs) >= 500 && !genNetworkState.generateStartedAt) {
+      if ((nowMs - lastChallengeCheckMs) >= 400 && !genNetworkState.generateStartedAt) {
         lastChallengeCheckMs = nowMs;
 
+        // 1. Check if the user has solved the Turnstile verification
+        const turnstileStatus = await genWin.webContents.executeJavaScript(`
+          (() => {
+            const tokenInput = document.querySelector('[name*="cf-turnstile-response"], [name="turnstile_token"]');
+            if (tokenInput && tokenInput.value && tokenInput.value.length > 20) {
+              return { solved: true, token: tokenInput.value };
+            }
+            return { solved: false };
+          })()
+        `).catch(() => ({ solved: false }));
+
+        if (turnstileStatus && turnstileStatus.solved && !isChallengeResolved) {
+          isChallengeResolved = true;
+          console.log('[Suno Warm Engine] Turnstile verified successfully by user! Auto-hiding window & submitting song...');
+          hideEngineWindow();
+
+          // Auto-submit Create with verified token so song is generated immediately
+          await genWin.webContents.executeJavaScript(`
+            (() => {
+              const createBtn = document.querySelector('button[aria-label="Create song"]') ||
+                Array.from(document.querySelectorAll('button')).find(b => {
+                  const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                  return !b.closest('nav') && !b.closest('aside') && (t === 'create' || t.startsWith('create ') || t.startsWith('create('));
+                });
+              if (createBtn && !createBtn.disabled) {
+                createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                createBtn.click();
+              }
+            })()
+          `).catch(() => {});
+        }
+
+        // 2. Detect visible Cloudflare Turnstile card to display ONLY the small verification box
         if (!challengeWindowShown && !isChallengeResolved) {
           const turnstileBox = await genWin.webContents.executeJavaScript(`
             (() => {
@@ -1042,48 +1077,36 @@ async function generateWithSunoBrowser({
                 const st = window.getComputedStyle(f);
                 if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
                 const r = f.getBoundingClientRect();
-                return r.width > 40 && r.height > 20;
+                return r.width >= 40 && r.height >= 20;
               });
 
-              const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role="dialog"]'));
-              const modal = overlays.find(el => {
-                const cls = String(el.className || '');
-                const st = window.getComputedStyle(el);
-                if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
-                if (el.offsetWidth < 80 || el.offsetHeight < 50) return false;
-                if (cls.includes('z-[1000]')) return true;
-                return Boolean(el.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], [data-sitekey]'));
-              });
-
-              if (!activeIframe && !modal) {
+              if (!activeIframe) {
                 return null;
               }
 
               // Determine the card element wrapping the challenge
-              let targetEl = activeIframe || modal;
-              if (activeIframe) {
-                let p = activeIframe.parentElement;
-                while (p && p !== document.body && p !== document.documentElement) {
-                  const pr = p.getBoundingClientRect();
-                  if (pr.width >= 240 && pr.width <= 550 && pr.height >= 70 && pr.height <= 420) {
-                    targetEl = p;
-                  }
-                  if (pr.width > 550 || pr.height > 420) {
-                    break;
-                  }
-                  p = p.parentElement;
+              let targetEl = activeIframe;
+              let p = activeIframe.parentElement;
+              while (p && p !== document.body && p !== document.documentElement) {
+                const pr = p.getBoundingClientRect();
+                if (pr.width >= 240 && pr.width <= 480 && pr.height >= 60 && pr.height <= 320) {
+                  targetEl = p;
                 }
+                if (pr.width > 480 || pr.height > 320) {
+                  break;
+                }
+                p = p.parentElement;
               }
 
               const r = targetEl.getBoundingClientRect();
-              if (r.width < 40 || r.height < 20) return null;
+              if (r.width < 40 || r.height < 20 || r.width > 520 || r.height > 360) return null;
 
               return {
                 found: true,
                 x: Math.max(0, Math.floor(r.x)),
                 y: Math.max(0, Math.floor(r.y)),
-                width: Math.min(1050, Math.ceil(r.width)),
-                height: Math.min(720, Math.ceil(r.height))
+                width: Math.min(480, Math.ceil(r.width)),
+                height: Math.min(320, Math.ceil(r.height))
               };
             })()
           `).catch(() => null);
@@ -1121,9 +1144,23 @@ async function generateWithSunoBrowser({
           `).catch(() => false);
 
           if (!stillOpen) {
-            console.log('[Suno Warm Engine] Turnstile challenge completed or dismissed. Auto-hiding window.');
+            console.log('[Suno Warm Engine] Turnstile challenge completed or dismissed. Auto-hiding window & submitting song...');
             isChallengeResolved = true;
             hideEngineWindow();
+
+            // Re-trigger Create click in case modal auto-closed upon success
+            await genWin.webContents.executeJavaScript(`
+              (() => {
+                const createBtn = document.querySelector('button[aria-label="Create song"]') ||
+                  Array.from(document.querySelectorAll('button')).find(b => {
+                    const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                    return !b.closest('nav') && !b.closest('aside') && (t === 'create' || t.startsWith('create ') || t.startsWith('create('));
+                  });
+                if (createBtn && !createBtn.disabled) {
+                  createBtn.click();
+                }
+              })()
+            `).catch(() => {});
           }
         }
       }
