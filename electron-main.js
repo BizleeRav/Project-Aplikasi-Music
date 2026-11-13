@@ -2,6 +2,24 @@ const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
+
+const crashLog = path.join(os.homedir(), 'aurasound-crash.txt');
+function logCrash(msg) {
+  try {
+    fs.appendFileSync(crashLog, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch (e) {}
+}
+try {
+  fs.writeFileSync(crashLog, `[${new Date().toISOString()}] App started. PID: ${process.pid}\n`);
+} catch (e) {}
+
+process.on('uncaughtException', (err) => {
+  logCrash(`FATAL uncaughtException: ${err?.stack || err}`);
+});
+process.on('unhandledRejection', (err) => {
+  logCrash(`FATAL unhandledRejection: ${err?.stack || err}`);
+});
 
 // Ensure background windows (like silent Suno engine) execute JavaScript and DOM without throttling
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
@@ -50,7 +68,9 @@ function ensureServerRunning() {
       if (serverStarted) return;
       serverStarted = true;
       try {
+        logCrash('Requiring ./server...');
         require('./server');
+        logCrash('./server required successfully!');
         setTimeout(() => {
           if (!resolved) {
             resolved = true;
@@ -58,6 +78,7 @@ function ensureServerRunning() {
           }
         }, 800);
       } catch (err) {
+        logCrash('Error starting internal server: ' + (err?.stack || err));
         console.error('Error starting internal server:', err);
         if (!resolved) {
           resolved = true;
@@ -86,7 +107,9 @@ function ensureServerRunning() {
 }
 
 async function createMainWindow() {
+  logCrash('createMainWindow started. Calling ensureServerRunning...');
   await ensureServerRunning();
+  logCrash('ensureServerRunning resolved. Creating BrowserWindow...');
 
   mainWindow = new BrowserWindow({
     width: 1360,
@@ -103,6 +126,7 @@ async function createMainWindow() {
       sandbox: false
     }
   });
+  logCrash('mainWindow created successfully!');
 
   // Clean User-Agent globally and on window so no service detects Electron/AuraSound
   try {
@@ -632,12 +656,14 @@ async function checkSunoSessionCookies() {
 }
 
 app.on('before-quit', () => {
+  logCrash('app event: before-quit');
   if (typeof global.destroyWarmSunoEngine === 'function') {
     global.destroyWarmSunoEngine();
   }
 });
 
 app.whenReady().then(() => {
+  logCrash('app.whenReady() event fired! Starting checkSunoSessionCookies & createMainWindow...');
   setTimeout(checkSunoSessionCookies, 2000);
   setInterval(checkSunoSessionCookies, 10000);
 
@@ -659,6 +685,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  logCrash('app event: window-all-closed');
   if (process.platform !== 'darwin') {
     app.quit();
   }
