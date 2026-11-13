@@ -123,7 +123,14 @@ async function createMainWindow() {
     console.log(`[Renderer Console] ${message} (${sourceId}:${line})`);
   });
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.error(`[Renderer Load Error] Failed to load ${validatedURL}: ${errorCode} - ${errorDescription}`);
+    console.warn(`[Renderer Load Error] Failed to load ${validatedURL}: ${errorCode} - ${errorDescription}. Retrying in 1.2s...`);
+    if (validatedURL && (validatedURL.includes('localhost:3000') || validatedURL.includes('127.0.0.1:3000'))) {
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.loadURL(LOCAL_URL).catch(() => {});
+        }
+      }, 1200);
+    }
   });
 
   // Handle any popup windows cleanly in Electron (prevent blank white windows)
