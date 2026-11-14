@@ -1,6 +1,6 @@
-const CACHE_NAME = 'aurasound-v100';
+const CACHE_NAME = 'aurasound-v101';
 
-const IMAGE_CACHE = 'aurasound-images-v3';
+const IMAGE_CACHE = 'aurasound-images-v4';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -35,6 +35,16 @@ self.addEventListener('fetch', event => {
           return fetch(event.request).then(networkResponse => {
             if (networkResponse && networkResponse.status === 200) {
               cache.put(event.request, networkResponse.clone());
+              return networkResponse;
+            }
+            if (url.hostname.includes('ytimg.com') && url.pathname.includes('/vi_webp/') && (!networkResponse || networkResponse.status === 404)) {
+              const fallbackUrl = event.request.url.replace('/vi_webp/', '/vi/').replace('.webp', '.jpg');
+              return fetch(fallbackUrl).then(fbRes => {
+                if (fbRes && fbRes.status === 200) {
+                  cache.put(event.request, fbRes.clone());
+                }
+                return fbRes;
+              }).catch(() => networkResponse);
             }
             return networkResponse;
           }).catch(() => cachedResponse);

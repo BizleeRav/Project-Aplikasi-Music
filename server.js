@@ -330,14 +330,16 @@ async function searchYouTubeMusicSongs(query, limit = 25, page = 1) {
       const duration = s.duration?.text || '0:00';
       const seconds = s.duration?.seconds || 0;
 
-      // Extract high-res 1:1 square album thumbnail from YouTube Music
-      let thumbnail = `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+      // Extract WebP 1:1 square album thumbnail from YouTube Music
+      let thumbnail = `https://i.ytimg.com/vi_webp/${id}/mqdefault.webp`;
       if (s.thumbnails && s.thumbnails.length > 0) {
         const rawUrl = s.thumbnails[0].url || '';
         if (rawUrl.includes('googleusercontent.com')) {
-          thumbnail = rawUrl.replace(/=w\d+-h\d+[^"]*/, '=w226-h226-l90-rj');
+          thumbnail = rawUrl.replace(/=w\d+-h\d+[^"]*/, '=w226-h226-l85-rw');
         } else if (rawUrl) {
-          thumbnail = rawUrl;
+          thumbnail = rawUrl.includes('ytimg.com')
+            ? rawUrl.replace(/\/vi\/([^/]+)\/(?:hqdefault|mqdefault|sddefault|maxresdefault)\.jpg.*/i, '/vi_webp/$1/mqdefault.webp')
+            : rawUrl;
         }
       }
 
@@ -769,7 +771,7 @@ app.get('/api/search', async (req, res) => {
           artist: v.author?.name || 'Unknown Artist',
           duration: v.timestamp || '0:00',
           seconds: v.seconds || 0,
-          thumbnail: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+          thumbnail: `https://i.ytimg.com/vi_webp/${v.videoId}/mqdefault.webp`,
           views: v.views || 0,
           ago: v.ago || '',
           type: 'youtube',
@@ -925,7 +927,7 @@ app.get('/api/artist/:name', async (req, res) => {
           const rawThumb = card.thumbnail?.contents?.[0]?.url;
           if (rawThumb) {
             artistInfo.avatar = rawThumb.includes('googleusercontent.com')
-              ? rawThumb.replace(/=w\d+-h\d+[^"]*/, '=w544-h544-l90-rj')
+              ? rawThumb.replace(/=w\d+-h\d+[^"]*/, '=w400-h400-l85-rw')
               : rawThumb;
             artistInfo.banner = artistInfo.avatar;
           }
@@ -948,8 +950,8 @@ app.get('/api/artist/:name', async (req, res) => {
                   allOfficialTracks = pl.items.map(item => {
                     const rawItemThumb = item.thumbnails?.[0]?.url || item.thumbnail?.contents?.[0]?.url || artistInfo.avatar || '/images/supermix.jpg';
                     const hiresThumb = rawItemThumb.includes('googleusercontent.com')
-                      ? rawItemThumb.replace(/=w\d+-h\d+[^"]*/, '=w226-h226-l90-rj')
-                      : (rawItemThumb.includes('ytimg.com') ? rawItemThumb.replace(/hqdefault/, 'mqdefault') : rawItemThumb);
+                      ? rawItemThumb.replace(/=w\d+-h\d+[^"]*/, '=w226-h226-l85-rw')
+                      : (rawItemThumb.includes('ytimg.com') ? rawItemThumb.replace(/\/vi\/([^/]+)\/(?:hqdefault|mqdefault|sddefault|maxresdefault)\.jpg.*/i, '/vi_webp/$1/mqdefault.webp') : rawItemThumb);
                     const itemArtist = Array.isArray(item.artists)
                       ? item.artists.map(a => a.name).join(', ')
                       : (typeof item.author === 'string' ? item.author : artistInfo.name);
@@ -1161,7 +1163,7 @@ app.get('/api/trending', async (req, res) => {
         artist: v.author?.name || 'Popular Artist',
         duration: v.timestamp || '0:00',
         seconds: v.seconds || 0,
-        thumbnail: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+        thumbnail: `https://i.ytimg.com/vi_webp/${v.videoId}/mqdefault.webp`,
         views: v.views || 0,
         type: 'youtube',
         isOfficial: true,
@@ -1336,12 +1338,12 @@ app.get('/api/suno/aligned-lyrics/:id', async (req, res) => {
   try {
     const clipId = req.params.id;
     const creds = getEffectiveSunoCredentials(req);
+    const allCreations = sunoService.getCreations();
+    const trackMeta = allCreations.find(t => t.id === clipId);
     const result = await sunoService.getAlignedLyrics(clipId, creds.key);
     if (result && result.found && Array.isArray(result.parsedLyrics)) {
       // Run Multi-Lingual Romanizer (Japanese Romaji, Chinese Pinyin, Korean Romaja)
       const romanizer = getLyricsRomanizer();
-      const allCreations = sunoService.getCreations();
-      const trackMeta = allCreations.find(t => t.id === clipId);
 
       const romanized = await romanizer.romanizeLyricsList(result.parsedLyrics, {
         tags: trackMeta?.tags || '',
@@ -1360,6 +1362,15 @@ app.get('/api/suno/aligned-lyrics/:id', async (req, res) => {
         detectedLang: romanized.detectedLang || null,
         parsedLyrics: romanized.lines,
         totalWords: result.totalWords
+      });
+    }
+    if (trackMeta) {
+      return res.json({
+        found: false,
+        fallbackLyrics: trackMeta.lyrics || '',
+        fallbackSyncedLyrics: trackMeta.syncedLyrics || trackMeta.lyrics_synced || '',
+        fallbackPrompt: trackMeta.prompt || '',
+        seconds: trackMeta.seconds || null
       });
     }
     res.json({ found: false });
@@ -1709,7 +1720,17 @@ app.get('/api/stream-audio', async (req, res) => {
       const info = await ytdl.getInfo(videoId);
       let format;
       try {
-        format = chooseFormat ? chooseFormat(info.formats, { filter: f => f.hasAudio && !f.hasVideo, quality: 'highestaudio' }) : null;
+        // Prioritize highest-bitrate Opus (WebM) audio-only: 20-30% smaller than AAC at identical studio fidelity,
+        // and natively supported by MediaSource (MSE) for Single-Stream Capture!
+        const audioOnlyFormats = (info.formats || []).filter(f => f.hasAudio && !f.hasVideo);
+        const opusFormats = audioOnlyFormats
+          .filter(f => (f.mimeType || '').toLowerCase().includes('webm') || (f.codecs || '').toLowerCase().includes('opus'))
+          .sort((a, b) => (Number(b.audioBitrate) || 0) - (Number(a.audioBitrate) || 0));
+        if (opusFormats.length > 0) {
+          format = opusFormats[0];
+        } else {
+          format = chooseFormat ? chooseFormat(info.formats, { filter: f => f.hasAudio && !f.hasVideo, quality: 'highestaudio' }) : null;
+        }
       } catch (e) {
         try {
           format = chooseFormat(info.formats, { filter: 'audioonly' });
@@ -1746,7 +1767,9 @@ app.get('/api/stream-audio', async (req, res) => {
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize,
         'Content-Type': cached.mimeType || 'audio/webm',
-        'Access-Control-Allow-Origin': '*'
+        'Cache-Control': 'private, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': 'Content-Type, Content-Length, Content-Range, Accept-Ranges, X-Resolved-Studio-Id'
       });
 
       downloadOpts.range = { start, end };
@@ -1754,7 +1777,9 @@ app.get('/api/stream-audio', async (req, res) => {
       const headers = {
         'Content-Type': cached.mimeType || 'audio/webm',
         'Accept-Ranges': 'bytes',
-        'Access-Control-Allow-Origin': '*'
+        'Cache-Control': 'private, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': 'Content-Type, Content-Length, Content-Range, Accept-Ranges, X-Resolved-Studio-Id'
       };
       if (contentLength > 0) {
         headers['Content-Length'] = contentLength;
@@ -1865,7 +1890,7 @@ app.post('/api/playlist/import', async (req, res) => {
             title: trackTitle,
             artist,
             duration,
-            thumbnail: `https://i.ytimg.com/vi/${lockup.contentId}/mqdefault.jpg`,
+            thumbnail: `https://i.ytimg.com/vi_webp/${lockup.contentId}/mqdefault.webp`,
             type: 'youtube'
           });
         }

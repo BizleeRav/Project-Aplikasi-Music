@@ -589,12 +589,29 @@ class AudioEngine {
     return nextMode;
   }
 
+  setPausedForBackground(paused) {
+    this._isBackgroundPaused = Boolean(paused);
+    if (this._isBackgroundPaused) {
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+      }
+    } else if ((this.canvas || this.cinemaCanvas) && !this.animationFrameId) {
+      this.startVisualizerLoop();
+    }
+  }
+
   startVisualizerLoop() {
+    if (this._isBackgroundPaused) return;
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
     }
 
     const render = () => {
+      if (this._isBackgroundPaused) {
+        this.animationFrameId = null;
+        return;
+      }
       this.drawVisualizer();
       this.drawCinemaVisualizer();
       this.animationFrameId = requestAnimationFrame(render);

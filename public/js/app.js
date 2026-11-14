@@ -177,6 +177,7 @@ class App {
     try { this.fetchNetworkInfo(); } catch (e) { console.error('Error fetching network info:', e); }
     try { this.checkPWAInstall(); } catch (e) { console.error('Error checking PWA install:', e); }
     try { this.initEntranceAnimation(); } catch (e) { console.error('Error in entrance animation:', e); }
+    try { this.initSmartNetworkAndLifecycle(); } catch (e) { console.error('Error in smart network lifecycle:', e); }
   }
 
   initElements() {
@@ -1414,11 +1415,14 @@ class App {
     this.nativeAudio.addEventListener('timeupdate', () => {
       if (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local') {
         const cur = this.nativeAudio.currentTime;
-        const dur = this.nativeAudio.duration || 1;
+        const rawDur = this.nativeAudio.duration;
+        const dur = (rawDur && isFinite(rawDur) && rawDur > 0)
+          ? rawDur
+          : (Number(this.currentTrack?.seconds) || this.parseDuration(this.currentTrack?.duration) || 1);
         this.updateProgress(cur, dur);
 
-        // Smart Audio Cache: Cache track after 12s of active listening for 0 KB replays
-        if (cur > 12 && this.currentTrack && !this.currentTrack._cacheTriggered && !this._isPlayingFromCache) {
+        // Safety fallback cache ONLY on Wi-Fi when track didn't use Single-Stream Capture (never double-fetch on cellular!)
+        if (cur > 12 && this.currentTrack && !this.currentTrack._cacheTriggered && !this._isPlayingFromCache && !this._isSingleStreamActive && this.isOnWifiConnection()) {
           this.currentTrack._cacheTriggered = true;
           this.cacheCurrentTrackInBackground(this.currentTrack);
         }
@@ -2885,8 +2889,38 @@ class App {
     return result;
   }
 
+  hydrateSunoTrack(track) {
+    if (!track) return track;
+    const id = track.id || '';
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const hasSunoMedia = /suno\.ai|cloudfront\.net\/1\/clip\//i.test(`${track.thumbnail || ''} ${track.audio_url || ''}`);
+    const creations = (window.sunoStudio && Array.isArray(window.sunoStudio.creations))
+      ? window.sunoStudio.creations
+      : [];
+    const matchedClip = creations.find(c => c && c.id === id);
+
+    if (track.type === 'suno' || matchedClip || hasSunoMedia || isUuid) {
+      track.type = 'suno';
+      if (matchedClip) {
+        if (!track.lyrics && matchedClip.lyrics) track.lyrics = matchedClip.lyrics;
+        if (!track.syncedLyrics && (matchedClip.syncedLyrics || matchedClip.lyrics_synced)) {
+          track.syncedLyrics = matchedClip.syncedLyrics || matchedClip.lyrics_synced;
+        }
+        if (!track.lyrics_synced && (matchedClip.lyrics_synced || matchedClip.syncedLyrics)) {
+          track.lyrics_synced = matchedClip.lyrics_synced || matchedClip.syncedLyrics;
+        }
+        if (!track.prompt && matchedClip.prompt) track.prompt = matchedClip.prompt;
+        if (!track.audio_url && matchedClip.audio_url) track.audio_url = matchedClip.audio_url;
+        if (!track.seconds && matchedClip.seconds) track.seconds = matchedClip.seconds;
+        if (!track.tags && matchedClip.tags) track.tags = matchedClip.tags;
+      }
+    }
+    return track;
+  }
+
   async renderCinemaLyrics(track, overrideDuration = null, forceRefresh = false) {
     if (!this.cinemaLyricsStream || !track) return;
+    this.hydrateSunoTrack(track);
 
     this.activeLyricIdx = -1;
     this.lastScrolledLyricIdx = -1;
@@ -2962,6 +2996,10 @@ class App {
             this.updateActiveLyricsLine(curTime);
             return;
           }
+          if (!track.lyrics && alignData.fallbackLyrics) track.lyrics = alignData.fallbackLyrics;
+          if (!track.syncedLyrics && alignData.fallbackSyncedLyrics) track.syncedLyrics = alignData.fallbackSyncedLyrics;
+          if (!track.prompt && alignData.fallbackPrompt) track.prompt = alignData.fallbackPrompt;
+          if (!track.seconds && alignData.seconds) track.seconds = alignData.seconds;
         }
       } catch (alignErr) {
         console.warn('[Suno] Aligned lyrics fetch error, using structural fallback:', alignErr);
@@ -3526,7 +3564,7 @@ class App {
   }
 
   startLyricsSyncLoop() {
-    if (this._lyricsSyncRaf) return;
+    if (this._isAppInBackground || this._lyricsSyncRaf) return;
     const tick = () => {
       if (this.isPlaying) {
         this._lastRafLyricsTick = Date.now();
@@ -3722,6 +3760,9 @@ class App {
       this.activeLyricIdx = activeIdx;
       this._lastLyricProgressHalf = false;
       this.syncLyricsToMediaNotification(syncTime);
+      if (this._isAppInBackground) {
+        return; // Screen off/minimized: keep notification lyrics live, skip heavy DOM/scroll work
+      }
       this.cinemaLyricsStream.classList.toggle('has-active', activeIdx >= 0);
 
       // High-performance targeted update: only modify changed lines during normal forward playback
@@ -4410,7 +4451,7 @@ class App {
       // Deduplicate by ID
       history = history.filter(h => h.id !== track.id);
       const artistName = track.artist || (track.author ? track.author.name : 'AuraSound');
-      history.unshift({
+      const historyItem = {
         id: track.id,
         title: track.title,
         artist: artistName,
@@ -4418,7 +4459,17 @@ class App {
         thumbnail: track.thumbnail || '/images/supermix.jpg',
         type: track.type || 'youtube',
         playedAt: Date.now()
-      });
+      };
+      if (track.type === 'suno') {
+        if (track.audio_url) historyItem.audio_url = track.audio_url;
+        if (track.lyrics) historyItem.lyrics = track.lyrics;
+        if (track.syncedLyrics) historyItem.syncedLyrics = track.syncedLyrics;
+        if (track.lyrics_synced) historyItem.lyrics_synced = track.lyrics_synced;
+        if (track.prompt) historyItem.prompt = track.prompt;
+        if (track.tags) historyItem.tags = track.tags;
+        if (track.seconds) historyItem.seconds = track.seconds;
+      }
+      history.unshift(historyItem);
       if (history.length > 50) history = history.slice(0, 50);
       localStorage.setItem('aurasound_play_history', JSON.stringify(history));
 
@@ -7984,6 +8035,8 @@ class App {
       }
     }
 
+    this.hydrateSunoTrack(track);
+
     // Record playback metrics in TasteEngine and Play History
     if (window.tasteEngine) {
       if (this.currentTrackPlayStartTime && this.lastPlayedTrack) {
@@ -8057,7 +8110,13 @@ class App {
       }
     });
 
-    // Smart Buffering: Abort previous playback and purge active network buffering immediately
+    // Smart Buffering: Abort any active Single-Stream fetch & purge previous audio buffer immediately
+    if (this._activeStreamAbortController) {
+      try { this._activeStreamAbortController.abort(); } catch (_) {}
+      this._activeStreamAbortController = null;
+    }
+    this._isSingleStreamActive = false;
+
     if (this.nativeAudio) {
       this.nativeAudio.pause();
       if (this._currentBlobUrl) {
@@ -8165,29 +8224,13 @@ class App {
       this.updateMediaSession(track);
       this.renderCinemaLyrics(track, null, true);
     } else {
-      // YouTube Music track -> Route through /api/stream-audio for 100% Web Audio DSP processing
+      // YouTube Music track -> Route through Single-Stream Capture (/api/stream-audio)
+      // Plays immediately via MSE while capturing the exact same stream into IndexedDB (0 double-download!)
       if (window.ytPlayer) window.ytPlayer.pause();
       this.currentAudioMode = 'native';
 
       const streamUrl = `/api/stream-audio?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}`;
-      this.nativeAudio.src = streamUrl;
-
-      const playPromise = this.nativeAudio.play();
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          this.updatePlayState(true);
-        }).catch(err => {
-          if (err.name === 'AbortError') return; // User track switch or pause; do not fallback
-          this.fallbackToYouTube(track, err);
-        });
-      }
-
-      this.nativeAudio.onerror = (e) => {
-        if (!this.nativeAudio.src || this.nativeAudio.src === window.location.href) return;
-        if (this.currentAudioMode === 'native' && track.type !== 'suno' && track.type !== 'local') {
-          this.fallbackToYouTube(track, e);
-        }
-      };
+      this.playWithSingleStreamCapture(track, streamUrl);
 
       this.updateMediaSession(track);
       this.renderCinemaLyrics(track, null, true);
@@ -8275,6 +8318,324 @@ class App {
     this.playTrack(testTrack);
     this.updateEqStatusBanner();
     this.showToast(isEn ? '🎧 DSP Test Mode Active! Switch presets now to hear the difference.' : '🎧 Mode Tes DSP Aktif! Silakan ganti preset sekarang untuk mendengar perbedaannya.', 'success');
+  }
+
+  initSmartNetworkAndLifecycle() {
+    this._isAppInBackground = false;
+    this._wifiPreCacheTimer = null;
+    this._wifiPreCacheAbort = null;
+    this._isWifiPreCaching = false;
+
+    // Mobile browser visibility change -> pause heavy visual rendering in background
+    document.addEventListener('visibilitychange', () => {
+      if (typeof window.AuraSoundAndroid === 'undefined') {
+        this.setAppBackgroundState(document.hidden);
+      }
+      if (!document.hidden && this.isOnWifiConnection()) {
+        this.scheduleWifiPreCache(3000);
+      }
+    });
+
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (conn && typeof conn.addEventListener === 'function') {
+      conn.addEventListener('change', () => {
+        if (this.isOnWifiConnection()) {
+          console.log('[SmartPreCache] 📶 Wi-Fi detected! Scheduling Rolling Pre-Cache...');
+          this.scheduleWifiPreCache(2500);
+        } else {
+          console.log('[SmartPreCache] 📱 Switched to Cellular/Save-Data. Stopping background pre-cache.');
+          this.cancelWifiPreCache();
+        }
+      });
+    }
+
+    window.addEventListener('online', () => {
+      if (this.isOnWifiConnection()) {
+        this.scheduleWifiPreCache(3000);
+      }
+    });
+
+    // Initial check after home feed has loaded
+    if (this.isOnWifiConnection()) {
+      this.scheduleWifiPreCache(7000);
+    }
+  }
+
+  setAppBackgroundState(isBg) {
+    const bg = Boolean(isBg);
+    if (this._isAppInBackground === bg) return;
+    this._isAppInBackground = bg;
+
+    if (window.audioEngine && typeof window.audioEngine.setPausedForBackground === 'function') {
+      window.audioEngine.setPausedForBackground(bg);
+    }
+    if (bg) {
+      this.stopLyricsSyncLoop();
+    } else if (this.isPlaying) {
+      this.startLyricsSyncLoop();
+      if (this.currentLyricsData && this.currentLyricsData.length > 0) {
+        const cur = this.getCurrentPlaybackTime();
+        this.updateActiveLyricsLine(cur);
+      }
+    }
+  }
+
+  isOnWifiConnection() {
+    if (!navigator.onLine) return false;
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (!conn) return false;
+    if (conn.saveData) return false;
+    if (conn.type === 'wifi' || conn.type === 'ethernet') return true;
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (!isMobile && !conn.type && conn.effectiveType === '4g') return true;
+    return false;
+  }
+
+  scheduleWifiPreCache(delayMs = 3000) {
+    if (this._wifiPreCacheTimer) clearTimeout(this._wifiPreCacheTimer);
+    if (!this.isOnWifiConnection() || !window.audioCache) return;
+    this._wifiPreCacheTimer = setTimeout(() => {
+      this.runWifiPreCache();
+    }, delayMs);
+  }
+
+  cancelWifiPreCache() {
+    if (this._wifiPreCacheTimer) {
+      clearTimeout(this._wifiPreCacheTimer);
+      this._wifiPreCacheTimer = null;
+    }
+    if (this._wifiPreCacheAbort) {
+      try { this._wifiPreCacheAbort.abort(); } catch (_) {}
+      this._wifiPreCacheAbort = null;
+    }
+    this._isWifiPreCaching = false;
+  }
+
+  async runWifiPreCache() {
+    if (this._isWifiPreCaching || !this.isOnWifiConnection() || !window.audioCache) return;
+    this._isWifiPreCaching = true;
+    this._wifiPreCacheAbort = new AbortController();
+    const signal = this._wifiPreCacheAbort.signal;
+
+    try {
+      // Gather candidate tracks: Favorites + Current Queue + Dynamic Home/Supermix Recommendations
+      const candidates = [];
+      const seen = new Set();
+      const pushCandidate = (t) => {
+        if (!t || !t.id || seen.has(t.id)) return;
+        if (t.id.startsWith('sp_') || t.id.startsWith('mix-') || t.id === 'dsp-test-demo') return;
+        if (t.type === 'suno' || t.type === 'local') return; // Focus pre-cache on YT Music tracks
+        seen.add(t.id);
+        candidates.push(t);
+      };
+
+      (this.favorites || []).slice(0, 10).forEach(pushCandidate);
+      (this.queue || []).slice(0, 5).forEach(pushCandidate);
+      Object.values(this.trackListRegistry || {}).forEach(list => {
+        if (Array.isArray(list)) list.slice(0, 6).forEach(pushCandidate);
+      });
+
+      const targetBatch = candidates.slice(0, 18);
+      let cachedCount = 0;
+
+      for (const track of targetBatch) {
+        if (signal.aborted || !this.isOnWifiConnection()) break;
+        const alreadyCached = await window.audioCache.isCached(track.id);
+        if (alreadyCached) continue;
+
+        try {
+          const url = `/api/stream-audio?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}`;
+          const resp = await fetch(url, { signal });
+          if (resp.ok) {
+            const blob = await resp.blob();
+            if (blob && blob.size > 10000 && !signal.aborted) {
+              await window.audioCache.saveAudioBlob(track.id, blob, {
+                title: track.title,
+                artist: track.artist
+              });
+              cachedCount++;
+            }
+          }
+        } catch (err) {
+          if (err.name === 'AbortError') break;
+        }
+
+        // Small polite pause between tracks so active playback stays priority #1
+        await new Promise(r => setTimeout(r, 600));
+      }
+
+      if (cachedCount > 0) {
+        console.log(`[SmartPreCache] ✅ Rolling Wi-Fi Pre-Cache finished: ${cachedCount} fresh tracks saved for 0 KB mobile playback!`);
+      }
+    } finally {
+      this._isWifiPreCaching = false;
+      this._wifiPreCacheAbort = null;
+    }
+  }
+
+  async playWithSingleStreamCapture(track, streamUrl) {
+    const abortCtrl = new AbortController();
+    this._activeStreamAbortController = abortCtrl;
+    this._isSingleStreamActive = true;
+
+    const fallbackStandardAudio = () => {
+      if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
+      this._isSingleStreamActive = false;
+      if (this._currentBlobUrl) {
+        try { URL.revokeObjectURL(this._currentBlobUrl); } catch (_) {}
+        this._currentBlobUrl = null;
+      }
+      this.nativeAudio.src = streamUrl;
+      const p = this.nativeAudio.play();
+      if (p !== undefined) {
+        p.then(() => this.updatePlayState(true)).catch(err => {
+          if (err.name === 'AbortError') return;
+          this.fallbackToYouTube(track, err);
+        });
+      }
+      this.nativeAudio.onerror = (e) => {
+        if (!this.nativeAudio.src || this.nativeAudio.src === window.location.href) return;
+        if (this.currentAudioMode === 'native' && track.type !== 'suno' && track.type !== 'local') {
+          this.fallbackToYouTube(track, e);
+        }
+      };
+    };
+
+    try {
+      const resp = await fetch(streamUrl, { signal: abortCtrl.signal });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
+
+      let contentType = resp.headers.get('content-type') || 'audio/webm; codecs="opus"';
+      if (contentType.trim().toLowerCase() === 'audio/webm') {
+        contentType = 'audio/webm; codecs="opus"';
+      }
+
+      // Path A: Native MediaSource (MSE) Progressive Streaming + Single-Stream Capture (0 double-download!)
+      if (typeof window.MediaSource !== 'undefined' && MediaSource.isTypeSupported(contentType) && resp.body) {
+        const mediaSource = new MediaSource();
+        const msUrl = URL.createObjectURL(mediaSource);
+        this._currentBlobUrl = msUrl;
+        this.nativeAudio.src = msUrl;
+
+        this.nativeAudio.onerror = (e) => {
+          if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
+          console.warn('[SingleStream MSE] Media element error, switching to standard stream:', e);
+          try { abortCtrl.abort(); } catch (_) {}
+          fallbackStandardAudio();
+        };
+
+        await new Promise((resolve, reject) => {
+          mediaSource.addEventListener('sourceopen', resolve, { once: true });
+          mediaSource.addEventListener('error', reject, { once: true });
+        });
+
+        if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
+
+        const sb = mediaSource.addSourceBuffer(contentType);
+        const reader = resp.body.getReader();
+        const capturedChunks = [];
+        let playStarted = false;
+
+        const appendChunk = (chunk) => new Promise((resolve, reject) => {
+          if (abortCtrl.signal.aborted || mediaSource.readyState !== 'open') return resolve();
+          const doAppend = () => {
+            try {
+              sb.addEventListener('updateend', resolve, { once: true });
+              sb.addEventListener('error', reject, { once: true });
+              sb.appendBuffer(chunk);
+            } catch (err) {
+              reject(err);
+            }
+          };
+          if (sb.updating) {
+            sb.addEventListener('updateend', doAppend, { once: true });
+          } else {
+            doAppend();
+          }
+        });
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (abortCtrl.signal.aborted || this.currentTrack !== track) {
+            try { reader.cancel(); } catch (_) {}
+            return;
+          }
+
+          if (done) {
+            if (!sb.updating && mediaSource.readyState === 'open') {
+              try { mediaSource.endOfStream(); } catch (_) {}
+            } else if (mediaSource.readyState === 'open') {
+              sb.addEventListener('updateend', () => {
+                if (mediaSource.readyState === 'open') {
+                  try { mediaSource.endOfStream(); } catch (_) {}
+                }
+              }, { once: true });
+            }
+
+            if (capturedChunks.length > 0 && window.audioCache) {
+              const fullBlob = new Blob(capturedChunks, { type: contentType });
+              if (fullBlob.size > 10000) {
+                this._isPlayingFromCache = true;
+                this.currentTrack._cacheTriggered = true;
+                window.audioCache.saveAudioBlob(track.id, fullBlob, {
+                  title: track.title,
+                  artist: track.artist
+                }).catch(() => {});
+              }
+            }
+            break;
+          }
+
+          if (value && value.byteLength > 0) {
+            capturedChunks.push(value);
+            await appendChunk(value);
+            if (!playStarted) {
+              playStarted = true;
+              const playPromise = this.nativeAudio.play();
+              if (playPromise !== undefined) {
+                playPromise.then(() => this.updatePlayState(true)).catch(err => {
+                  if (err.name !== 'AbortError') {
+                    console.warn('[SingleStream MSE] Play error:', err);
+                  }
+                });
+              }
+            }
+          }
+        }
+        return;
+      }
+
+      // Path B: Non-MSE codec (e.g. MP4/AAC fallback) -> Single-fetch Blob + Play + Cache (still 1x download!)
+      const blob = await resp.blob();
+      if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
+      if (blob && blob.size > 10000) {
+        if (window.audioCache) {
+          this._isPlayingFromCache = true;
+          this.currentTrack._cacheTriggered = true;
+          window.audioCache.saveAudioBlob(track.id, blob, {
+            title: track.title,
+            artist: track.artist
+          }).catch(() => {});
+        }
+        this._currentBlobUrl = URL.createObjectURL(blob);
+        this.nativeAudio.src = this._currentBlobUrl;
+        const p = this.nativeAudio.play();
+        if (p !== undefined) {
+          p.then(() => this.updatePlayState(true)).catch(err => {
+            if (err.name !== 'AbortError') this.fallbackToYouTube(track, err);
+          });
+        }
+        return;
+      }
+
+      fallbackStandardAudio();
+    } catch (err) {
+      if (err.name === 'AbortError' || this.currentTrack !== track) return;
+      console.warn('[SingleStream] Stream error, trying fallback:', err.message);
+      this._isSingleStreamActive = false;
+      this.fallbackToYouTube(track, err);
+    }
   }
 
   async cacheCurrentTrackInBackground(track) {
@@ -8571,8 +8932,8 @@ class App {
 
   updateProgress(current, duration) {
     let dur = duration;
-    if ((!dur || dur <= 0) && this.currentTrack?.duration) {
-      dur = this.parseDuration(this.currentTrack.duration);
+    if ((!dur || dur <= 0 || !isFinite(dur)) && this.currentTrack) {
+      dur = Number(this.currentTrack.seconds) || this.parseDuration(this.currentTrack.duration);
     }
 
     if (this.progressBar && dur > 0) {
@@ -8609,7 +8970,7 @@ class App {
       this.updateActiveLyricsLine(current);
     } else {
       const now = Date.now();
-      if (!this._lastRafLyricsTick || (now - this._lastRafLyricsTick > 250)) {
+      if (this._isAppInBackground || !this._lastRafLyricsTick || (now - this._lastRafLyricsTick > 250)) {
         this.updateActiveLyricsLine(current);
       }
     }

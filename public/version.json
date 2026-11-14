@@ -1,13 +1,13 @@
 {
-  "version": "1.3.11",
+  "version": "1.3.12",
   "desktop": {
     "version": "1.1.2",
     "githubRepo": "https://github.com/BizleeRav/Project-Aplikasi-Music"
   },
   "android": {
-    "versionCode": 15,
-    "versionName": "1.3.11",
+    "versionCode": 16,
+    "versionName": "1.3.12",
     "apkUrl": "https://project-aplikasi-music.vercel.app/download/AuraSound.apk",
-    "notes": "Update v1.3.11: Mode Simple Suno kini mengirim prompt murni tanpa Style otomatis agar 2 lagu hasil generate bisa memiliki lirik, judul, dan aransemen berbeda."
+    "notes": "Update v1.3.12: Ultra Data Saver Engine (Single-Stream Capture anti double-download, Rolling Pre-Cache otomatis saat Wi-Fi, kompresi thumbnail WebP, & Sleep Mode visual saat layar mati tanpa mematikan lirik notifikasi)."
   }
 }

@@ -122,8 +122,8 @@ public class BackgroundAudioWebView extends WebView {
 fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurasound.musichub"
-    android:versionCode="15"
-    android:versionName="1.3.11">
+    android:versionCode="16"
+    android:versionName="1.3.12">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -277,7 +277,7 @@ public class AndroidMediaBridge {
 
     @JavascriptInterface
     public int getAppVersionCode() {
-        return 15;
+        return 16;
     }
 }
 `);
@@ -2272,12 +2272,18 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (webView != null) {
+            webView.evaluateJavascript("if (window.app && window.app.setAppBackgroundState) { window.app.setAppBackgroundState(false); }", null);
+        }
         refreshSunoTokenSilently();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        if (webView != null) {
+            webView.evaluateJavascript("if (window.app && window.app.setAppBackgroundState) { window.app.setAppBackgroundState(true); }", null);
+        }
         // Do NOT call webView.onPause() or pauseTimers() - allows uninterrupted background audio playback!
     }
 

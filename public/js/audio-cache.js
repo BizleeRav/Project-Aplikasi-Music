@@ -49,6 +49,23 @@
       });
     }
 
+    async isCached(trackId) {
+      if (!trackId) return false;
+      try {
+        await this._initPromise;
+        if (!this.db) return false;
+
+        return new Promise((resolve) => {
+          const tx = this.db.transaction(this.storeName, 'readonly');
+          const req = tx.objectStore(this.storeName).count(trackId);
+          req.onsuccess = () => resolve((req.result || 0) > 0);
+          req.onerror = () => resolve(false);
+        });
+      } catch (err) {
+        return false;
+      }
+    }
+
     async getAudioBlob(trackId) {
       if (!trackId) return null;
       try {

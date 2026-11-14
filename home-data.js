@@ -27,15 +27,15 @@ const ALBUM_CATALOG = {
     artist: 'NMIXX',
     releaseYear: '2024',
     genre: 'K-Pop • MIXX POP • Hip Hop',
-    thumbnail: 'https://i.ytimg.com/vi/7UecFm_bSTU/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Mini album kedua dari NMIXX yang memadukan ritme MIXX POP bertenaga, vokal spektakuler, dan track utama DASH yang memukau.',
     tracks: [
-      { id: '7UecFm_bSTU', title: 'DASH', artist: 'NMIXX', duration: '3:35', thumbnail: 'https://i.ytimg.com/vi/7UecFm_bSTU/mqdefault.jpg' },
-      { id: 'MMtRxcy8PX0', title: 'Soñar (Breaker)', artist: 'NMIXX', duration: '3:12', thumbnail: 'https://i.ytimg.com/vi/MMtRxcy8PX0/mqdefault.jpg' },
-      { id: 'j6tKIdt9K9M', title: 'Run For Roses', artist: 'NMIXX', duration: '3:45', thumbnail: 'https://i.ytimg.com/vi/j6tKIdt9K9M/mqdefault.jpg' },
-      { id: 'h-7ag-IkUdE', title: 'BOOM', artist: 'NMIXX', duration: '2:56', thumbnail: 'https://i.ytimg.com/vi/h-7ag-IkUdE/mqdefault.jpg' },
-      { id: 'v7rfkLyeTzs', title: 'Passionfruit', artist: 'NMIXX', duration: '2:41', thumbnail: 'https://i.ytimg.com/vi/v7rfkLyeTzs/mqdefault.jpg' },
-      { id: 'M8iMREaObhM', title: 'Break The Wall', artist: 'NMIXX', duration: '3:25', thumbnail: 'https://i.ytimg.com/vi/M8iMREaObhM/mqdefault.jpg' }
+      { id: '7UecFm_bSTU', title: 'DASH', artist: 'NMIXX', duration: '3:35', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'MMtRxcy8PX0', title: 'Soñar (Breaker)', artist: 'NMIXX', duration: '3:12', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'j6tKIdt9K9M', title: 'Run For Roses', artist: 'NMIXX', duration: '3:45', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'h-7ag-IkUdE', title: 'BOOM', artist: 'NMIXX', duration: '2:56', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'v7rfkLyeTzs', title: 'Passionfruit', artist: 'NMIXX', duration: '2:41', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'M8iMREaObhM', title: 'Break The Wall', artist: 'NMIXX', duration: '3:25', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -47,16 +47,16 @@ const ALBUM_CATALOG = {
     artist: 'Sakura Miko',
     releaseYear: '2024',
     genre: 'J-Pop • VTuber Original • Anisong',
-    thumbnail: 'https://i.ytimg.com/vi/BerwUFzdj4U/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Album studio perdana dari Sakura Miko (Hololive) dengan melodi bunga sakura yang ceria, penuh emosi, dan aransemen megah.',
     tracks: [
-      { id: 'BerwUFzdj4U', title: 'flower rhapsody', artist: 'Sakura Miko', duration: '4:25', thumbnail: 'https://i.ytimg.com/vi/BerwUFzdj4U/mqdefault.jpg' },
-      { id: '4ZafIoQ_g7Y', title: 'SUNAO', artist: 'Sakura Miko', duration: '3:48', thumbnail: 'https://i.ytimg.com/vi/4ZafIoQ_g7Y/mqdefault.jpg' },
-      { id: 'cm0R2rqDJJ4', title: 'ファッションビート (Fashion Beat)', artist: 'Sakura Miko', duration: '3:35', thumbnail: 'https://i.ytimg.com/vi/cm0R2rqDJJ4/mqdefault.jpg' },
-      { id: 'SF-_47-oCtk', title: 'Mantra Hujan (Special Guest: Kobo)', artist: 'Sakura Miko x Kobo Kanaeru', duration: '1:53', thumbnail: 'https://i.ytimg.com/vi/SF-_47-oCtk/mqdefault.jpg' },
-      { id: 'bKJefYPsJdk', title: 'Sakuraful March', artist: 'Sakura Miko', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi/bKJefYPsJdk/mqdefault.jpg' },
-      { id: 'X9zw0QF12Kc', title: 'サクラカゼ (Sakurakaze)', artist: 'Sakura Miko', duration: '3:51', thumbnail: 'https://i.ytimg.com/vi/X9zw0QF12Kc/mqdefault.jpg' },
-      { id: 'Y8o4goeVM0o', title: 'マイネームイズエリート☆', artist: 'Sakura Miko', duration: '3:55', thumbnail: 'https://i.ytimg.com/vi/Y8o4goeVM0o/mqdefault.jpg' }
+      { id: 'BerwUFzdj4U', title: 'flower rhapsody', artist: 'Sakura Miko', duration: '4:25', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '4ZafIoQ_g7Y', title: 'SUNAO', artist: 'Sakura Miko', duration: '3:48', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'cm0R2rqDJJ4', title: 'ファッションビート (Fashion Beat)', artist: 'Sakura Miko', duration: '3:35', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'SF-_47-oCtk', title: 'Mantra Hujan (Special Guest: Kobo)', artist: 'Sakura Miko x Kobo Kanaeru', duration: '1:53', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'bKJefYPsJdk', title: 'Sakuraful March', artist: 'Sakura Miko', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'X9zw0QF12Kc', title: 'サクラカゼ (Sakurakaze)', artist: 'Sakura Miko', duration: '3:51', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'Y8o4goeVM0o', title: 'マイネームイズエリート☆', artist: 'Sakura Miko', duration: '3:55', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -68,15 +68,15 @@ const ALBUM_CATALOG = {
     artist: 'K/DA, League of Legends',
     releaseYear: '2024',
     genre: 'Electropop • K-Pop • Gaming',
-    thumbnail: 'https://i.ytimg.com/vi/UOxkGD8qRB4/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Koleksi lengkap lagu revolusioner grup virtual K/DA bersama Madison Beer, (G)I-DLE, Lexie Liu, dan Jaira Burns.',
     tracks: [
-      { id: 'UOxkGD8qRB4', title: 'POP/STARS', artist: 'K/DA ft. Madison Beer, (G)I-DLE', duration: '3:22', thumbnail: 'https://i.ytimg.com/vi/UOxkGD8qRB4/mqdefault.jpg' },
-      { id: '3VTkBuxU4yk', title: 'MORE', artist: 'K/DA ft. Madison Beer, (G)I-DLE, Lexie Liu', duration: '3:37', thumbnail: 'https://i.ytimg.com/vi/3VTkBuxU4yk/mqdefault.jpg' },
-      { id: 'RkID8_gnTxw', title: 'THE BADDEST', artist: 'K/DA ft. (G)I-DLE, Bea Miller, Wolftyla', duration: '2:43', thumbnail: 'https://i.ytimg.com/vi/RkID8_gnTxw/mqdefault.jpg' },
-      { id: 'vvG3BhuBLz8', title: 'VILLAIN', artist: 'K/DA ft. Madison Beer, Kim Petras', duration: '3:10', thumbnail: 'https://i.ytimg.com/vi/UOxkGD8qRB4/mqdefault.jpg' },
-      { id: 'E_PbH5y70Tc', title: 'DRUM GO DUM (Official Concept Video)', artist: 'K/DA ft. Aluna, Wolftyla, Bekuh BOOM', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi/E_PbH5y70Tc/mqdefault.jpg' },
-      { id: 'WW1BpABbzHs', title: "I’LL SHOW YOU (Official Concept Video)", artist: 'K/DA ft. TWICE, Bekuh BOOM, Annika Wells', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi/WW1BpABbzHs/mqdefault.jpg' }
+      { id: 'UOxkGD8qRB4', title: 'POP/STARS', artist: 'K/DA ft. Madison Beer, (G)I-DLE', duration: '3:22', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '3VTkBuxU4yk', title: 'MORE', artist: 'K/DA ft. Madison Beer, (G)I-DLE, Lexie Liu', duration: '3:37', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'RkID8_gnTxw', title: 'THE BADDEST', artist: 'K/DA ft. (G)I-DLE, Bea Miller, Wolftyla', duration: '2:43', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'vvG3BhuBLz8', title: 'VILLAIN', artist: 'K/DA ft. Madison Beer, Kim Petras', duration: '3:10', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'E_PbH5y70Tc', title: 'DRUM GO DUM (Official Concept Video)', artist: 'K/DA ft. Aluna, Wolftyla, Bekuh BOOM', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'WW1BpABbzHs', title: "I’LL SHOW YOU (Official Concept Video)", artist: 'K/DA ft. TWICE, Bekuh BOOM, Annika Wells', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -88,15 +88,15 @@ const ALBUM_CATALOG = {
     artist: 'Ado',
     releaseYear: '2024',
     genre: 'J-Pop • Rock • Electro',
-    thumbnail: 'https://i.ytimg.com/vi/pgXpM4l_MwI/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Album mahakarya vokal Ado yang memadukan irama rave Universal Studios Japan dengan lagu-lagu legendarisnya.',
     tracks: [
-      { id: 'pgXpM4l_MwI', title: '唱 - Show', artist: 'Ado', duration: '3:10', thumbnail: 'https://i.ytimg.com/vi/pgXpM4l_MwI/mqdefault.jpg' },
-      { id: 'Qp3b-RXtz4w', title: 'うっせぇわ - Usseewa', artist: 'Ado', duration: '3:24', thumbnail: 'https://i.ytimg.com/vi/Qp3b-RXtz4w/mqdefault.jpg' },
-      { id: 'YnSW8ian29w', title: '踊 - Odo', artist: 'Ado', duration: '3:30', thumbnail: 'https://i.ytimg.com/vi/YnSW8ian29w/mqdefault.jpg' },
-      { id: 'sOiMD45QGLs', title: 'ギラギラ - Gira Gira', artist: 'Ado', duration: '4:36', thumbnail: 'https://i.ytimg.com/vi/sOiMD45QGLs/mqdefault.jpg' },
-      { id: '1FliVTcX8bQ', title: '新時代 - New Genesis (Official MV)', artist: 'Ado', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi/1FliVTcX8bQ/mqdefault.jpg' },
-      { id: 'W_fHWaoQwkw', title: 'クラクラ - Kura Kura (Official MV)', artist: 'Ado', duration: '3:12', thumbnail: 'https://i.ytimg.com/vi/W_fHWaoQwkw/mqdefault.jpg' }
+      { id: 'pgXpM4l_MwI', title: '唱 - Show', artist: 'Ado', duration: '3:10', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'Qp3b-RXtz4w', title: 'うっせぇわ - Usseewa', artist: 'Ado', duration: '3:24', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'YnSW8ian29w', title: '踊 - Odo', artist: 'Ado', duration: '3:30', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'sOiMD45QGLs', title: 'ギラギラ - Gira Gira', artist: 'Ado', duration: '4:36', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '1FliVTcX8bQ', title: '新時代 - New Genesis (Official MV)', artist: 'Ado', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'W_fHWaoQwkw', title: 'クラクラ - Kura Kura (Official MV)', artist: 'Ado', duration: '3:12', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -108,15 +108,15 @@ const ALBUM_CATALOG = {
     artist: 'Rokudenashi',
     releaseYear: '2023',
     genre: 'J-Pop • Acoustic Indie',
-    thumbnail: 'https://i.ytimg.com/vi/5GUaMOpfmr8/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Lagu viral yang menyentuh jutaan hati dengan petikan akustik lembut dan vokal penuh kehangatan emosional.',
     tracks: [
-      { id: '5GUaMOpfmr8', title: 'ただ声一つ - One Voice', artist: 'Rokudenashi', duration: '2:42', thumbnail: 'https://i.ytimg.com/vi/5GUaMOpfmr8/mqdefault.jpg' },
-      { id: '_XeE2aEiPHk', title: 'The Flame of Love (愛の炎)', artist: 'Rokudenashi', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi/_XeE2aEiPHk/mqdefault.jpg' },
-      { id: 'TfZUcD7mwck', title: 'The Shape of Rain (雨の輪郭)', artist: 'Rokudenashi', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi/TfZUcD7mwck/mqdefault.jpg' },
-      { id: 'Ol1o3dgPIbI', title: 'Spica (スピカ)', artist: 'Rokudenashi', duration: '2:46', thumbnail: 'https://i.ytimg.com/vi/Ol1o3dgPIbI/mqdefault.jpg' },
-      { id: '5yXXgMCcrK0', title: '星を巡る - Circling the Stars', artist: 'Rokudenashi', duration: '3:10', thumbnail: 'https://i.ytimg.com/vi/5yXXgMCcrK0/mqdefault.jpg' },
-      { id: 'p7TZdvXJRtk', title: 'Shooting Star (流れ星)', artist: 'Rokudenashi', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi/p7TZdvXJRtk/mqdefault.jpg' }
+      { id: '5GUaMOpfmr8', title: 'ただ声一つ - One Voice', artist: 'Rokudenashi', duration: '2:42', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '_XeE2aEiPHk', title: 'The Flame of Love (愛の炎)', artist: 'Rokudenashi', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'TfZUcD7mwck', title: 'The Shape of Rain (雨の輪郭)', artist: 'Rokudenashi', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'Ol1o3dgPIbI', title: 'Spica (スピカ)', artist: 'Rokudenashi', duration: '2:46', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '5yXXgMCcrK0', title: '星を巡る - Circling the Stars', artist: 'Rokudenashi', duration: '3:10', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'p7TZdvXJRtk', title: 'Shooting Star (流れ星)', artist: 'Rokudenashi', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -128,14 +128,14 @@ const ALBUM_CATALOG = {
     artist: 'Kizuna AI',
     releaseYear: '2024',
     genre: 'Future Bass • Electronic Pop',
-    thumbnail: 'https://i.ytimg.com/vi/S8dmq5YIUoc/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Karya elektronik masa depan dari pelopor VTuber dunia Kizuna AI diproduseri maestro Yasutaka Nakata.',
     tracks: [
-      { id: 'S8dmq5YIUoc', title: 'AIAIAI (feat. Yasutaka Nakata)', artist: 'Kizuna AI', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi/S8dmq5YIUoc/mqdefault.jpg' },
-      { id: 'w1ABOYXXGzY', title: 'Hello, Morning', artist: 'Kizuna AI', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi/w1ABOYXXGzY/mqdefault.jpg' },
-      { id: 'yeD7eAuza74', title: 'future base (Prod. Yunomi)', artist: 'Kizuna AI', duration: '3:04', thumbnail: 'https://i.ytimg.com/vi/yeD7eAuza74/mqdefault.jpg' },
-      { id: 'yLrstz80MKs', title: 'Sky High (Prod. Yunomi)', artist: 'Kizuna AI', duration: '3:49', thumbnail: 'https://i.ytimg.com/vi/yLrstz80MKs/mqdefault.jpg' },
-      { id: 'X-6foRGSjPg', title: 'melty world (Prod. TeddyLoid)', artist: 'Kizuna AI', duration: '4:49', thumbnail: 'https://i.ytimg.com/vi/X-6foRGSjPg/mqdefault.jpg' }
+      { id: 'S8dmq5YIUoc', title: 'AIAIAI (feat. Yasutaka Nakata)', artist: 'Kizuna AI', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'w1ABOYXXGzY', title: 'Hello, Morning', artist: 'Kizuna AI', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'yeD7eAuza74', title: 'future base (Prod. Yunomi)', artist: 'Kizuna AI', duration: '3:04', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'yLrstz80MKs', title: 'Sky High (Prod. Yunomi)', artist: 'Kizuna AI', duration: '3:49', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'X-6foRGSjPg', title: 'melty world (Prod. TeddyLoid)', artist: 'Kizuna AI', duration: '4:49', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -151,13 +151,13 @@ const ALBUM_CATALOG = {
     thumbnail: '/images/kpop_king.jpg',
     description: 'Daftar putar mahakarya K-Pop paling berpengaruh di dunia, menampilkan rilisan spektakuler aespa, NewJeans, IVE, dan Stray Kids.',
     tracks: [
-      { id: 'nFYwcndNuOY', title: 'Armageddon', artist: 'aespa', duration: '3:17', thumbnail: 'https://i.ytimg.com/vi/nFYwcndNuOY/mqdefault.jpg' },
-      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi/ArmDp-zijuc/mqdefault.jpg' },
-      { id: 'JsOOis4bBFg', title: 'S-Class (특)', artist: 'Stray Kids', duration: '3:16', thumbnail: 'https://i.ytimg.com/vi/JsOOis4bBFg/mqdefault.jpg' },
-      { id: 'F0B7HDiY-10', title: 'After LIKE', artist: 'IVE', duration: '2:57', thumbnail: 'https://i.ytimg.com/vi/F0B7HDiY-10/mqdefault.jpg' },
-      { id: 'XsX3ATc3FbA', title: 'Boy With Luv (feat. Halsey)', artist: 'BTS', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi/XsX3ATc3FbA/mqdefault.jpg' },
-      { id: 'gQlMMD8auMs', title: 'Pink Venom', artist: 'BLACKPINK', duration: '3:07', thumbnail: 'https://i.ytimg.com/vi/gQlMMD8auMs/mqdefault.jpg' },
-      { id: 'UBURTj20HXI', title: 'UNFORGIVEN', artist: 'LE SSERAFIM', duration: '3:03', thumbnail: 'https://i.ytimg.com/vi/UBURTj20HXI/mqdefault.jpg' }
+      { id: 'nFYwcndNuOY', title: 'Armageddon', artist: 'aespa', duration: '3:17', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'JsOOis4bBFg', title: 'S-Class (특)', artist: 'Stray Kids', duration: '3:16', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'F0B7HDiY-10', title: 'After LIKE', artist: 'IVE', duration: '2:57', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'XsX3ATc3FbA', title: 'Boy With Luv (feat. Halsey)', artist: 'BTS', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'gQlMMD8auMs', title: 'Pink Venom', artist: 'BLACKPINK', duration: '3:07', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'UBURTj20HXI', title: 'UNFORGIVEN', artist: 'LE SSERAFIM', duration: '3:03', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -169,16 +169,16 @@ const ALBUM_CATALOG = {
     artist: 'NewJeans, aespa, IVE, LE SSERAFIM, TWICE',
     releaseYear: '2026',
     genre: 'K-Pop Girl Groups',
-    thumbnail: 'https://i.ytimg.com/vi/pSUydWEqKwE/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Kumpulan lagu paling ikonik dari girl group K-Pop terpopuler dengan melodi ceria, visual menawan, dan harmoni vokal tinggi.',
     tracks: [
-      { id: 'pSUydWEqKwE', title: 'Ditto', artist: 'NewJeans', duration: '3:06', thumbnail: 'https://i.ytimg.com/vi/pSUydWEqKwE/mqdefault.jpg' },
-      { id: 'Y8JFxS1HlDo', title: 'LOVE DIVE', artist: 'IVE', duration: '2:58', thumbnail: 'https://i.ytimg.com/vi/Y8JFxS1HlDo/mqdefault.jpg' },
-      { id: 'i0p1bmr0EmE', title: 'What is Love?', artist: 'TWICE', duration: '3:28', thumbnail: 'https://i.ytimg.com/vi/i0p1bmr0EmE/mqdefault.jpg' },
-      { id: 'ioNng23DkIM', title: 'How You Like That', artist: 'BLACKPINK', duration: '3:00', thumbnail: 'https://i.ytimg.com/vi/ioNng23DkIM/mqdefault.jpg' },
-      { id: 'D8VEhcPeSlc', title: 'Drama', artist: 'aespa', duration: '3:35', thumbnail: 'https://i.ytimg.com/vi/D8VEhcPeSlc/mqdefault.jpg' },
-      { id: '7HDeem-JaSY', title: 'Queencard (퀸카)', artist: '(G)I-DLE', duration: '2:42', thumbnail: 'https://i.ytimg.com/vi/7HDeem-JaSY/mqdefault.jpg' },
-      { id: 'uR8Mrt1IpXg', title: 'Psycho', artist: 'Red Velvet', duration: '3:31', thumbnail: 'https://i.ytimg.com/vi/uR8Mrt1IpXg/mqdefault.jpg' }
+      { id: 'pSUydWEqKwE', title: 'Ditto', artist: 'NewJeans', duration: '3:06', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'Y8JFxS1HlDo', title: 'LOVE DIVE', artist: 'IVE', duration: '2:58', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'i0p1bmr0EmE', title: 'What is Love?', artist: 'TWICE', duration: '3:28', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'ioNng23DkIM', title: 'How You Like That', artist: 'BLACKPINK', duration: '3:00', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'D8VEhcPeSlc', title: 'Drama', artist: 'aespa', duration: '3:35', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '7HDeem-JaSY', title: 'Queencard (퀸카)', artist: '(G)I-DLE', duration: '2:42', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'uR8Mrt1IpXg', title: 'Psycho', artist: 'Red Velvet', duration: '3:31', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -190,16 +190,16 @@ const ALBUM_CATALOG = {
     artist: 'Trending viral TikTok & Shorts choreography',
     releaseYear: '2026',
     genre: 'Dance • Choreography Pop',
-    thumbnail: 'https://i.ytimg.com/vi/Vk5-c_v4gMU/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Beat adiktif dan gerakan dance ikonik yang mendominasi tren viral YouTube Shorts dan TikTok.',
     tracks: [
-      { id: '_ZAgIHmHLdc', title: 'OMG', artist: 'NewJeans', duration: '3:33', thumbnail: 'https://i.ytimg.com/vi/_ZAgIHmHLdc/mqdefault.jpg' },
-      { id: 'Vk5-c_v4gMU', title: 'Magnetic', artist: 'ILLIT', duration: '3:09', thumbnail: 'https://i.ytimg.com/vi/Vk5-c_v4gMU/mqdefault.jpg' },
-      { id: '7UecFm_bSTU', title: 'DASH', artist: 'NMIXX', duration: '3:35', thumbnail: 'https://i.ytimg.com/vi/7UecFm_bSTU/mqdefault.jpg' },
-      { id: 'fE2h3lGlOsk', title: 'WANNABE', artist: 'ITZY', duration: '3:39', thumbnail: 'https://i.ytimg.com/vi/fE2h3lGlOsk/mqdefault.jpg' },
-      { id: 'pyf8cbqyfPs', title: 'ANTIFRAGILE', artist: 'LE SSERAFIM', duration: '3:05', thumbnail: 'https://i.ytimg.com/vi/pyf8cbqyfPs/mqdefault.jpg' },
-      { id: 'f5_wn8mexmM', title: 'The Feels', artist: 'TWICE', duration: '3:18', thumbnail: 'https://i.ytimg.com/vi/f5_wn8mexmM/mqdefault.jpg' },
-      { id: '2S24-y0Ij3Y', title: 'Kill This Love', artist: 'BLACKPINK', duration: '3:09', thumbnail: 'https://i.ytimg.com/vi/2S24-y0Ij3Y/mqdefault.jpg' }
+      { id: '_ZAgIHmHLdc', title: 'OMG', artist: 'NewJeans', duration: '3:33', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'Vk5-c_v4gMU', title: 'Magnetic', artist: 'ILLIT', duration: '3:09', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '7UecFm_bSTU', title: 'DASH', artist: 'NMIXX', duration: '3:35', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'fE2h3lGlOsk', title: 'WANNABE', artist: 'ITZY', duration: '3:39', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'pyf8cbqyfPs', title: 'ANTIFRAGILE', artist: 'LE SSERAFIM', duration: '3:05', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'f5_wn8mexmM', title: 'The Feels', artist: 'TWICE', duration: '3:18', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '2S24-y0Ij3Y', title: 'Kill This Love', artist: 'BLACKPINK', duration: '3:09', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -211,16 +211,16 @@ const ALBUM_CATALOG = {
     artist: 'Non-stop Korean Pop Anthems',
     releaseYear: '2026',
     genre: 'K-Pop Global Anthems',
-    thumbnail: 'https://i.ytimg.com/vi/6ZUIwj3FgUY/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Non-stop energi pop Korea dari grup papan atas yang memenangkan berbagai penghargaan dunia.',
     tracks: [
-      { id: '6ZUIwj3FgUY', title: 'I AM', artist: 'IVE', duration: '3:05', thumbnail: 'https://i.ytimg.com/vi/6ZUIwj3FgUY/mqdefault.jpg' },
-      { id: 'phuiiNCxRMg', title: 'Supernova', artist: 'aespa', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi/phuiiNCxRMg/mqdefault.jpg' },
-      { id: '9wUKhEgnllc', title: 'Hype Boy', artist: 'NewJeans', duration: '2:59', thumbnail: 'https://i.ytimg.com/vi/9wUKhEgnllc/mqdefault.jpg' },
-      { id: 'hLvWy2b857I', title: 'Perfect Night', artist: 'LE SSERAFIM', duration: '3:03', thumbnail: 'https://i.ytimg.com/vi/hLvWy2b857I/mqdefault.jpg' },
-      { id: 'MMtRxcy8PX0', title: 'Soñar (Breaker)', artist: 'NMIXX', duration: '3:12', thumbnail: 'https://i.ytimg.com/vi/MMtRxcy8PX0/mqdefault.jpg' },
-      { id: 'WMweEpGlu_U', title: 'Butter', artist: 'BTS', duration: '2:45', thumbnail: 'https://i.ytimg.com/vi/WMweEpGlu_U/mqdefault.jpg' },
-      { id: 'UOxkGD8qRB4', title: 'POP/STARS', artist: 'K/DA', duration: '3:22', thumbnail: 'https://i.ytimg.com/vi/UOxkGD8qRB4/mqdefault.jpg' }
+      { id: '6ZUIwj3FgUY', title: 'I AM', artist: 'IVE', duration: '3:05', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'phuiiNCxRMg', title: 'Supernova', artist: 'aespa', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '9wUKhEgnllc', title: 'Hype Boy', artist: 'NewJeans', duration: '2:59', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'hLvWy2b857I', title: 'Perfect Night', artist: 'LE SSERAFIM', duration: '3:03', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'MMtRxcy8PX0', title: 'Soñar (Breaker)', artist: 'NMIXX', duration: '3:12', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'WMweEpGlu_U', title: 'Butter', artist: 'BTS', duration: '2:45', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'UOxkGD8qRB4', title: 'POP/STARS', artist: 'K/DA', duration: '3:22', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -232,15 +232,15 @@ const ALBUM_CATALOG = {
     artist: 'Stray Kids, NCT 127, SEVENTEEN, ENHYPEN',
     releaseYear: '2026',
     genre: 'Hip Hop • Electro K-Pop',
-    thumbnail: 'https://i.ytimg.com/vi/OvioeS1ZZ7o/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Bassline berbobot tebal, rap cepat, dan aransemen beat hip-hop modern dari deretan boy group terbaik.',
     tracks: [
-      { id: 'OvioeS1ZZ7o', title: 'MANIAC', artist: 'Stray Kids', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi/OvioeS1ZZ7o/mqdefault.jpg' },
-      { id: 'FRilMXZqNhA', title: '2 Baddies', artist: 'NCT 127', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi/FRilMXZqNhA/mqdefault.jpg' },
-      { id: '-GQg25oP0S4', title: 'Super', artist: 'SEVENTEEN', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi/-GQg25oP0S4/mqdefault.jpg' },
-      { id: 'wXFLzODIdUI', title: 'Bite Me', artist: 'ENHYPEN', duration: '2:37', thumbnail: 'https://i.ytimg.com/vi/wXFLzODIdUI/mqdefault.jpg' },
-      { id: 'tyrVtwE8Gv0', title: 'Make A Wish (Birthday Song)', artist: 'NCT U', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi/tyrVtwE8Gv0/mqdefault.jpg' },
-      { id: 'kTlv5_Bs8aw', title: 'MIC Drop (Steve Aoki Remix)', artist: 'BTS', duration: '3:58', thumbnail: 'https://i.ytimg.com/vi/kTlv5_Bs8aw/mqdefault.jpg' }
+      { id: 'OvioeS1ZZ7o', title: 'MANIAC', artist: 'Stray Kids', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'FRilMXZqNhA', title: '2 Baddies', artist: 'NCT 127', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '-GQg25oP0S4', title: 'Super', artist: 'SEVENTEEN', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'wXFLzODIdUI', title: 'Bite Me', artist: 'ENHYPEN', duration: '2:37', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'tyrVtwE8Gv0', title: 'Make A Wish (Birthday Song)', artist: 'NCT U', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'kTlv5_Bs8aw', title: 'MIC Drop (Steve Aoki Remix)', artist: 'BTS', duration: '3:58', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -252,15 +252,15 @@ const ALBUM_CATALOG = {
     artist: 'BTS, Stray Kids, TXT, ATEEZ, ENHYPEN',
     releaseYear: '2026',
     genre: 'Boy Bands • Global Pop',
-    thumbnail: 'https://i.ytimg.com/vi/gdZLi9oWNZg/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Track spektakuler boy group yang menggetarkan stadium konser dunia.',
     tracks: [
-      { id: 'gdZLi9oWNZg', title: 'Dynamite', artist: 'BTS', duration: '3:44', thumbnail: 'https://i.ytimg.com/vi/gdZLi9oWNZg/mqdefault.jpg' },
-      { id: '0P0aQreFs8w', title: 'Chk Chk Boom', artist: 'Stray Kids', duration: '3:26', thumbnail: 'https://i.ytimg.com/vi/0P0aQreFs8w/mqdefault.jpg' },
-      { id: 'P9tKTxbgdkk', title: 'Sugar Rush Ride', artist: 'TXT', duration: '3:33', thumbnail: 'https://i.ytimg.com/vi/P9tKTxbgdkk/mqdefault.jpg' },
-      { id: '-GQg25oP0S4', title: 'Super', artist: 'SEVENTEEN', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi/-GQg25oP0S4/mqdefault.jpg' },
-      { id: 'wXFLzODIdUI', title: 'Bite Me', artist: 'ENHYPEN', duration: '2:37', thumbnail: 'https://i.ytimg.com/vi/wXFLzODIdUI/mqdefault.jpg' },
-      { id: 'FRilMXZqNhA', title: '2 Baddies', artist: 'NCT 127', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi/FRilMXZqNhA/mqdefault.jpg' }
+      { id: 'gdZLi9oWNZg', title: 'Dynamite', artist: 'BTS', duration: '3:44', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '0P0aQreFs8w', title: 'Chk Chk Boom', artist: 'Stray Kids', duration: '3:26', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'P9tKTxbgdkk', title: 'Sugar Rush Ride', artist: 'TXT', duration: '3:33', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '-GQg25oP0S4', title: 'Super', artist: 'SEVENTEEN', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'wXFLzODIdUI', title: 'Bite Me', artist: 'ENHYPEN', duration: '2:37', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'FRilMXZqNhA', title: '2 Baddies', artist: 'NCT 127', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -276,12 +276,12 @@ const ALBUM_CATALOG = {
     thumbnail: '/images/chill_vibes.jpg',
     description: 'Koleksi melodi santai, vokal lembut, dan aransemen akustik yang menenangkan jiwa.',
     tracks: [
-      { id: 'oZpYEEcvu5I', title: '晩餐歌 - Bansanka', artist: 'tuki.', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi/oZpYEEcvu5I/mqdefault.jpg' },
-      { id: '-VKIqrvVOpo', title: 'ただ君に晴れ', artist: 'Yorushika', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi/-VKIqrvVOpo/mqdefault.jpg' },
-      { id: 'iw_1zU2MSc8', title: 'トリセツ - Torisetsu (Official MV)', artist: 'Kana Nishino', duration: '4:18', thumbnail: 'https://i.ytimg.com/vi/iw_1zU2MSc8/mqdefault.jpg' },
-      { id: '1s84rIhPuhk', title: '海の幽霊 - Spirits of the Sea (Official MV)', artist: 'Kenshi Yonezu', duration: '4:15', thumbnail: 'https://i.ytimg.com/vi/1s84rIhPuhk/mqdefault.jpg' },
-      { id: 'a2GujJZfXpg', title: 'スパークル [original ver.]', artist: 'RADWIMPS', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi/a2GujJZfXpg/mqdefault.jpg' },
-      { id: 'SJywJjwqIK8', title: 'secret base ~Kimi ga Kureta Mono~', artist: 'ZONE / Sony Music', duration: '4:55', thumbnail: 'https://i.ytimg.com/vi/SJywJjwqIK8/mqdefault.jpg' }
+      { id: 'oZpYEEcvu5I', title: '晩餐歌 - Bansanka', artist: 'tuki.', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '-VKIqrvVOpo', title: 'ただ君に晴れ', artist: 'Yorushika', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'iw_1zU2MSc8', title: 'トリセツ - Torisetsu (Official MV)', artist: 'Kana Nishino', duration: '4:18', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '1s84rIhPuhk', title: '海の幽霊 - Spirits of the Sea (Official MV)', artist: 'Kenshi Yonezu', duration: '4:15', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'a2GujJZfXpg', title: 'スパークル [original ver.]', artist: 'RADWIMPS', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'SJywJjwqIK8', title: 'secret base ~Kimi ga Kureta Mono~', artist: 'ZONE / Sony Music', duration: '4:55', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -296,11 +296,11 @@ const ALBUM_CATALOG = {
     thumbnail: '/images/focus_beats.jpg',
     description: 'Ketukan lo-fi santai tanpa lirik untuk menemani konsentrasi saat belajar, coding, atau membaca buku.',
     tracks: [
-      { id: 'rFZHOHl-L8A', title: 'lofi hip hop radio 📚 beats to relax/study to', artist: 'Lofi Girl', duration: '3:30', thumbnail: 'https://i.ytimg.com/vi/rFZHOHl-L8A/mqdefault.jpg' },
-      { id: '1fueZCTYkpA', title: 'Morning Coffee ☕️ [lofi hip hop]', artist: 'Chillhop Music', duration: '3:15', thumbnail: 'https://i.ytimg.com/vi/1fueZCTYkpA/mqdefault.jpg' },
-      { id: 'YqGqy6agS08', title: 'Tokyo Rain Night - Chill Lofi Beats', artist: 'Lofi Records', duration: '4:10', thumbnail: 'https://i.ytimg.com/vi/YqGqy6agS08/mqdefault.jpg' },
-      { id: 'edirMh-BzY4', title: 'Ripples of Past Reverie (Ambient)', artist: 'HOYO-MiX, Cassie Wei', duration: '3:07', thumbnail: 'https://i.ytimg.com/vi/edirMh-BzY4/mqdefault.jpg' },
-      { id: 'NCzUV95VIEI', title: 'DAMIDAMI (Chill Instrumental)', artist: 'Zenless Zone Zero OST', duration: '3:15', thumbnail: 'https://i.ytimg.com/vi/NCzUV95VIEI/mqdefault.jpg' }
+      { id: 'rFZHOHl-L8A', title: 'lofi hip hop radio 📚 beats to relax/study to', artist: 'Lofi Girl', duration: '3:30', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '1fueZCTYkpA', title: 'Morning Coffee ☕️ [lofi hip hop]', artist: 'Chillhop Music', duration: '3:15', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'YqGqy6agS08', title: 'Tokyo Rain Night - Chill Lofi Beats', artist: 'Lofi Records', duration: '4:10', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'edirMh-BzY4', title: 'Ripples of Past Reverie (Ambient)', artist: 'HOYO-MiX, Cassie Wei', duration: '3:07', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'NCzUV95VIEI', title: 'DAMIDAMI (Chill Instrumental)', artist: 'Zenless Zone Zero OST', duration: '3:15', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -315,12 +315,12 @@ const ALBUM_CATALOG = {
     thumbnail: '/images/discover.jpg',
     description: 'Temukan lagu-lagu baru yang cocok dengan selera musik Anda, diperbarui otomatis setiap minggu.',
     tracks: [
-      { id: 'ZRtdQ81jPUQ', title: 'YOASOBI - アイドル (Idol)', artist: 'Ayase / YOASOBI', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi/ZRtdQ81jPUQ/mqdefault.jpg' },
-      { id: '5GUaMOpfmr8', title: 'ただ声一つ - One Voice', artist: 'Rokudenashi', duration: '2:42', thumbnail: 'https://i.ytimg.com/vi/5GUaMOpfmr8/mqdefault.jpg' },
-      { id: 'Vk5-c_v4gMU', title: 'Magnetic', artist: 'ILLIT', duration: '3:09', thumbnail: 'https://i.ytimg.com/vi/Vk5-c_v4gMU/mqdefault.jpg' },
-      { id: 'phuiiNCxRMg', title: 'Supernova', artist: 'aespa', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi/phuiiNCxRMg/mqdefault.jpg' },
-      { id: 'oe4wxQmP6qc', title: 'CLOSE(R)', artist: 'Vestia Zeta', duration: '2:48', thumbnail: 'https://i.ytimg.com/vi/oe4wxQmP6qc/mqdefault.jpg' },
-      { id: 'B5HD_FSyrWY', title: '一輪花 - Ichirinka', artist: 'tuki.', duration: '3:51', thumbnail: 'https://i.ytimg.com/vi/B5HD_FSyrWY/mqdefault.jpg' }
+      { id: 'ZRtdQ81jPUQ', title: 'YOASOBI - アイドル (Idol)', artist: 'Ayase / YOASOBI', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '5GUaMOpfmr8', title: 'ただ声一つ - One Voice', artist: 'Rokudenashi', duration: '2:42', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'Vk5-c_v4gMU', title: 'Magnetic', artist: 'ILLIT', duration: '3:09', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'phuiiNCxRMg', title: 'Supernova', artist: 'aespa', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'oe4wxQmP6qc', title: 'CLOSE(R)', artist: 'Vestia Zeta', duration: '2:48', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'B5HD_FSyrWY', title: '一輪花 - Ichirinka', artist: 'tuki.', duration: '3:51', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -335,12 +335,12 @@ const ALBUM_CATALOG = {
     thumbnail: '/images/supermix.jpg',
     description: 'Deretan lagu teratas tangga lagu dunia dengan kualitas suara terbaik.',
     tracks: [
-      { id: 'UtF6Jej8yb4', title: 'The Nights', artist: 'Avicii', duration: '3:11', thumbnail: 'https://i.ytimg.com/vi/UtF6Jej8yb4/mqdefault.jpg' },
-      { id: 'OpQFFLBMEPI', title: 'Just Give Me a Reason', artist: 'P!nk ft. Nate Ruess', duration: '4:03', thumbnail: 'https://i.ytimg.com/vi/OpQFFLBMEPI/mqdefault.jpg' },
-      { id: 'UOxkGD8qRB4', title: 'POP/STARS', artist: 'K/DA', duration: '3:22', thumbnail: 'https://i.ytimg.com/vi/UOxkGD8qRB4/mqdefault.jpg' },
-      { id: 'gdZLi9oWNZg', title: 'Dynamite', artist: 'BTS', duration: '3:44', thumbnail: 'https://i.ytimg.com/vi/gdZLi9oWNZg/mqdefault.jpg' },
-      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi/ArmDp-zijuc/mqdefault.jpg' },
-      { id: 'fE2h3lGlOsk', title: 'WANNABE', artist: 'ITZY', duration: '3:39', thumbnail: 'https://i.ytimg.com/vi/fE2h3lGlOsk/mqdefault.jpg' }
+      { id: 'UtF6Jej8yb4', title: 'The Nights', artist: 'Avicii', duration: '3:11', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'OpQFFLBMEPI', title: 'Just Give Me a Reason', artist: 'P!nk ft. Nate Ruess', duration: '4:03', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'UOxkGD8qRB4', title: 'POP/STARS', artist: 'K/DA', duration: '3:22', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'gdZLi9oWNZg', title: 'Dynamite', artist: 'BTS', duration: '3:44', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'fE2h3lGlOsk', title: 'WANNABE', artist: 'ITZY', duration: '3:39', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -355,13 +355,13 @@ const ALBUM_CATALOG = {
     thumbnail: '/images/supermix.jpg',
     description: 'Kombinasi lagu favorit tanpa batas dari artis kesukaan Anda yang dirancang spesial untuk Anda.',
     tracks: [
-      { id: 'ZRtdQ81jPUQ', title: 'YOASOBI - アイドル (Idol)', artist: 'Ayase / YOASOBI', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi/ZRtdQ81jPUQ/mqdefault.jpg' },
-      { id: 'oZpYEEcvu5I', title: '晩餐歌 - Bansanka', artist: 'tuki.', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi/oZpYEEcvu5I/mqdefault.jpg' },
-      { id: 'pgXpM4l_MwI', title: '唱 - Show', artist: 'Ado', duration: '3:10', thumbnail: 'https://i.ytimg.com/vi/pgXpM4l_MwI/mqdefault.jpg' },
-      { id: 'a51VH9BYzZA', title: 'Stellar Stellar', artist: 'Hoshimachi Suisei', duration: '4:58', thumbnail: 'https://i.ytimg.com/vi/a51VH9BYzZA/mqdefault.jpg' },
-      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi/ArmDp-zijuc/mqdefault.jpg' },
-      { id: 'ijXeGqSRNJc', title: '廻廻奇譚 (Kaikai Kitan)', artist: 'Eve', duration: '3:45', thumbnail: 'https://i.ytimg.com/vi/ijXeGqSRNJc/mqdefault.jpg' },
-      { id: '8ZP5eqm4JqM', title: 'ビビデバ - BIBBIDIBA (Official MV)', artist: 'Hoshimachi Suisei', duration: '2:47', thumbnail: 'https://i.ytimg.com/vi/8ZP5eqm4JqM/mqdefault.jpg' }
+      { id: 'ZRtdQ81jPUQ', title: 'YOASOBI - アイドル (Idol)', artist: 'Ayase / YOASOBI', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'oZpYEEcvu5I', title: '晩餐歌 - Bansanka', artist: 'tuki.', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'pgXpM4l_MwI', title: '唱 - Show', artist: 'Ado', duration: '3:10', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'a51VH9BYzZA', title: 'Stellar Stellar', artist: 'Hoshimachi Suisei', duration: '4:58', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'ijXeGqSRNJc', title: '廻廻奇譚 (Kaikai Kitan)', artist: 'Eve', duration: '3:45', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '8ZP5eqm4JqM', title: 'ビビデバ - BIBBIDIBA (Official MV)', artist: 'Hoshimachi Suisei', duration: '2:47', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -377,11 +377,11 @@ const ALBUM_CATALOG = {
     thumbnail: '/images/discover.jpg',
     description: 'Lagu-lagu yang paling sering Anda putar ulang belakangan ini.',
     tracks: [
-      { id: 'x8VYWazR5mE', title: '夜に駆ける - Racing into the Night', artist: 'YOASOBI', duration: '4:21', thumbnail: 'https://i.ytimg.com/vi/x8VYWazR5mE/mqdefault.jpg' },
-      { id: '-VKIqrvVOpo', title: 'ただ君に晴れ', artist: 'Yorushika', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi/-VKIqrvVOpo/mqdefault.jpg' },
-      { id: 'oZpYEEcvu5I', title: '晩餐歌', artist: 'tuki.', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi/oZpYEEcvu5I/mqdefault.jpg' },
-      { id: 'ijXeGqSRNJc', title: '廻廻奇譚', artist: 'Eve', duration: '3:45', thumbnail: 'https://i.ytimg.com/vi/ijXeGqSRNJc/mqdefault.jpg' },
-      { id: 'a2GujJZfXpg', title: 'スパークル', artist: 'RADWIMPS', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi/a2GujJZfXpg/mqdefault.jpg' }
+      { id: 'x8VYWazR5mE', title: '夜に駆ける - Racing into the Night', artist: 'YOASOBI', duration: '4:21', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '-VKIqrvVOpo', title: 'ただ君に晴れ', artist: 'Yorushika', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'oZpYEEcvu5I', title: '晩餐歌', artist: 'tuki.', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'ijXeGqSRNJc', title: '廻廻奇譚', artist: 'Eve', duration: '3:45', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'a2GujJZfXpg', title: 'スパークル', artist: 'RADWIMPS', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -393,14 +393,14 @@ const ALBUM_CATALOG = {
     artist: 'HOYO-MiX, Star Rail, Zenless Zone Zero',
     releaseYear: '2026',
     genre: 'Gaming & Anime OSTs',
-    thumbnail: 'https://i.ytimg.com/vi/edirMh-BzY4/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Soundtrack megah dan sinematik dari game favorit Honkai: Star Rail dan anime pilihan.',
     tracks: [
-      { id: 'edirMh-BzY4', title: 'Ripples of Past Reverie', artist: 'HOYO-MiX, Cassie Wei', duration: '3:07', thumbnail: 'https://i.ytimg.com/vi/edirMh-BzY4/mqdefault.jpg' },
-      { id: 'NCzUV95VIEI', title: 'DAMIDAMI', artist: 'EP Lucia • Zenless Zone Zero', duration: '3:15', thumbnail: 'https://i.ytimg.com/vi/NCzUV95VIEI/mqdefault.jpg' },
-      { id: 'ijXeGqSRNJc', title: '廻廻奇譚 (Jujutsu Kaisen OP)', artist: 'Eve', duration: '3:45', thumbnail: 'https://i.ytimg.com/vi/ijXeGqSRNJc/mqdefault.jpg' },
-      { id: 'a2GujJZfXpg', title: 'スパークル (Your Name OST)', artist: 'RADWIMPS', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi/a2GujJZfXpg/mqdefault.jpg' },
-      { id: 'SJywJjwqIK8', title: 'secret base ~Kimi ga Kureta Mono~', artist: 'AnoHana ED', duration: '5:50', thumbnail: 'https://i.ytimg.com/vi/SJywJjwqIK8/mqdefault.jpg' }
+      { id: 'edirMh-BzY4', title: 'Ripples of Past Reverie', artist: 'HOYO-MiX, Cassie Wei', duration: '3:07', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'NCzUV95VIEI', title: 'DAMIDAMI', artist: 'EP Lucia • Zenless Zone Zero', duration: '3:15', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'ijXeGqSRNJc', title: '廻廻奇譚 (Jujutsu Kaisen OP)', artist: 'Eve', duration: '3:45', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'a2GujJZfXpg', title: 'スパークル (Your Name OST)', artist: 'RADWIMPS', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'SJywJjwqIK8', title: 'secret base ~Kimi ga Kureta Mono~', artist: 'AnoHana ED', duration: '5:50', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -415,11 +415,11 @@ const ALBUM_CATALOG = {
     thumbnail: '/images/kpop_king.jpg',
     description: 'Lagu-lagu girl group modern dengan nada vokal memikat dan aransemen mutakhir.',
     tracks: [
-      { id: 'phuiiNCxRMg', title: 'Supernova', artist: 'aespa', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi/phuiiNCxRMg/mqdefault.jpg' },
-      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi/ArmDp-zijuc/mqdefault.jpg' },
-      { id: '6ZUIwj3FgUY', title: 'I AM', artist: 'IVE', duration: '3:05', thumbnail: 'https://i.ytimg.com/vi/6ZUIwj3FgUY/mqdefault.jpg' },
-      { id: 'hLvWy2b857I', title: 'Perfect Night', artist: 'LE SSERAFIM', duration: '3:03', thumbnail: 'https://i.ytimg.com/vi/hLvWy2b857I/mqdefault.jpg' },
-      { id: 'Vk5-c_v4gMU', title: 'Magnetic', artist: 'ILLIT', duration: '3:09', thumbnail: 'https://i.ytimg.com/vi/Vk5-c_v4gMU/mqdefault.jpg' }
+      { id: 'phuiiNCxRMg', title: 'Supernova', artist: 'aespa', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '6ZUIwj3FgUY', title: 'I AM', artist: 'IVE', duration: '3:05', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'hLvWy2b857I', title: 'Perfect Night', artist: 'LE SSERAFIM', duration: '3:03', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'Vk5-c_v4gMU', title: 'Magnetic', artist: 'ILLIT', duration: '3:09', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -431,14 +431,14 @@ const ALBUM_CATALOG = {
     artist: 'Kana Nishino, tuki., DAZBEE, Yorushika',
     releaseYear: '2026',
     genre: 'J-Pop Acoustic & Piano',
-    thumbnail: 'https://i.ytimg.com/vi/OtQynp1Vi6A/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Alunan piano dan petikan gitar akustik yang menemani sore hari dengan suasana hangat.',
     tracks: [
-      { id: 'OtQynp1Vi6A', title: 'Kana Nishino - If', artist: 'Kana Nishino', duration: '4:40', thumbnail: 'https://i.ytimg.com/vi/OtQynp1Vi6A/mqdefault.jpg' },
-      { id: 'oZpYEEcvu5I', title: '晩餐歌', artist: 'tuki.', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi/oZpYEEcvu5I/mqdefault.jpg' },
-      { id: '8oV_qxVSt94', title: '海の幽霊', artist: 'DAZBEE', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi/8oV_qxVSt94/mqdefault.jpg' },
-      { id: '-VKIqrvVOpo', title: 'ただ君に晴れ', artist: 'Yorushika', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi/-VKIqrvVOpo/mqdefault.jpg' },
-      { id: '5GUaMOpfmr8', title: 'ただ声一つ', artist: 'Rokudenashi', duration: '2:42', thumbnail: 'https://i.ytimg.com/vi/5GUaMOpfmr8/mqdefault.jpg' }
+      { id: 'OtQynp1Vi6A', title: 'Kana Nishino - If', artist: 'Kana Nishino', duration: '4:40', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'oZpYEEcvu5I', title: '晩餐歌', artist: 'tuki.', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '8oV_qxVSt94', title: '海の幽霊', artist: 'DAZBEE', duration: '3:50', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '-VKIqrvVOpo', title: 'ただ君に晴れ', artist: 'Yorushika', duration: '3:20', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '5GUaMOpfmr8', title: 'ただ声一つ', artist: 'Rokudenashi', duration: '2:42', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -450,14 +450,14 @@ const ALBUM_CATALOG = {
     artist: '9Lana, Vestia Zeta, Kizuna AI',
     releaseYear: '2026',
     genre: 'City Pop • Synthwave',
-    thumbnail: 'https://i.ytimg.com/vi/5mUkMs-jE6c/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Nuansa lampu neon malam hari dengan bass synth groovy dan melodi retro futuristik.',
     tracks: [
-      { id: '5mUkMs-jE6c', title: '螺旋 - RASEN', artist: '9Lana', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi/5mUkMs-jE6c/mqdefault.jpg' },
-      { id: 'oe4wxQmP6qc', title: 'CLOSE(R)', artist: 'Vestia Zeta', duration: '2:48', thumbnail: 'https://i.ytimg.com/vi/oe4wxQmP6qc/mqdefault.jpg' },
-      { id: 'S8dmq5YIUoc', title: 'AIAIAI', artist: 'Kizuna AI', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi/S8dmq5YIUoc/mqdefault.jpg' },
-      { id: 'a2GujJZfXpg', title: 'スパークル [original ver.]', artist: 'RADWIMPS', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi/a2GujJZfXpg/mqdefault.jpg' },
-      { id: 'x8VYWazR5mE', title: '夜に駆ける', artist: 'YOASOBI', duration: '4:21', thumbnail: 'https://i.ytimg.com/vi/x8VYWazR5mE/mqdefault.jpg' }
+      { id: '5mUkMs-jE6c', title: '螺旋 - RASEN', artist: '9Lana', duration: '3:40', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'oe4wxQmP6qc', title: 'CLOSE(R)', artist: 'Vestia Zeta', duration: '2:48', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'S8dmq5YIUoc', title: 'AIAIAI', artist: 'Kizuna AI', duration: '3:14', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'a2GujJZfXpg', title: 'スパークル [original ver.]', artist: 'RADWIMPS', duration: '3:02', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'x8VYWazR5mE', title: '夜に駆ける', artist: 'YOASOBI', duration: '4:21', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -469,14 +469,14 @@ const ALBUM_CATALOG = {
     artist: 'Avicii, K/DA, Dance Festival Anthems',
     releaseYear: '2026',
     genre: 'Festival EDM • Progressive House',
-    thumbnail: 'https://i.ytimg.com/vi/UtF6Jej8yb4/mqdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
     description: 'Dentuman bass festival dan hook vokal anthemik untuk mengisi semangat Anda.',
     tracks: [
-      { id: 'UtF6Jej8yb4', title: 'The Nights', artist: 'Avicii', duration: '3:11', thumbnail: 'https://i.ytimg.com/vi/UtF6Jej8yb4/mqdefault.jpg' },
-      { id: 'UOxkGD8qRB4', title: 'POP/STARS', artist: 'K/DA', duration: '3:22', thumbnail: 'https://i.ytimg.com/vi/UOxkGD8qRB4/mqdefault.jpg' },
-      { id: 'OpQFFLBMEPI', title: 'Just Give Me a Reason (feat. Nate Ruess)', artist: 'P!nk', duration: '4:03', thumbnail: 'https://i.ytimg.com/vi/OpQFFLBMEPI/mqdefault.jpg' },
-      { id: '3VTkBuxU4yk', title: 'MORE', artist: 'K/DA', duration: '3:37', thumbnail: 'https://i.ytimg.com/vi/3VTkBuxU4yk/mqdefault.jpg' },
-      { id: 'gdZLi9oWNZg', title: 'Dynamite (Official MV)', artist: 'BTS', duration: '3:44', thumbnail: 'https://i.ytimg.com/vi/gdZLi9oWNZg/mqdefault.jpg' }
+      { id: 'UtF6Jej8yb4', title: 'The Nights', artist: 'Avicii', duration: '3:11', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'UOxkGD8qRB4', title: 'POP/STARS', artist: 'K/DA', duration: '3:22', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'OpQFFLBMEPI', title: 'Just Give Me a Reason (feat. Nate Ruess)', artist: 'P!nk', duration: '4:03', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '3VTkBuxU4yk', title: 'MORE', artist: 'K/DA', duration: '3:37', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'gdZLi9oWNZg', title: 'Dynamite (Official MV)', artist: 'BTS', duration: '3:44', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   },
 
@@ -492,12 +492,12 @@ const ALBUM_CATALOG = {
     thumbnail: '/images/liked.jpg',
     description: 'Koleksi kenangan dan lagu-lagu yang paling sering Anda dengarkan selama musim semi 2026.',
     tracks: [
-      { id: 'ZRtdQ81jPUQ', title: 'アイドル (Idol)', artist: 'YOASOBI', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi/ZRtdQ81jPUQ/mqdefault.jpg' },
-      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi/ArmDp-zijuc/mqdefault.jpg' },
-      { id: '-yG8j2MGOyY', title: 'Kenangan Terindah', artist: 'SAMSONS', duration: '4:12', thumbnail: 'https://i.ytimg.com/vi/-yG8j2MGOyY/mqdefault.jpg' },
-      { id: 'IWvo2fld3s4', title: 'Dan...', artist: 'Sheila On 7', duration: '4:46', thumbnail: 'https://i.ytimg.com/vi/IWvo2fld3s4/mqdefault.jpg' },
-      { id: 'OpQFFLBMEPI', title: 'Just Give Me a Reason', artist: 'P!nk', duration: '4:03', thumbnail: 'https://i.ytimg.com/vi/OpQFFLBMEPI/mqdefault.jpg' },
-      { id: 'UtF6Jej8yb4', title: 'The Nights', artist: 'Avicii', duration: '3:11', thumbnail: 'https://i.ytimg.com/vi/UtF6Jej8yb4/mqdefault.jpg' }
+      { id: 'ZRtdQ81jPUQ', title: 'アイドル (Idol)', artist: 'YOASOBI', duration: '3:46', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'ArmDp-zijuc', title: 'Super Shy', artist: 'NewJeans', duration: '3:21', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: '-yG8j2MGOyY', title: 'Kenangan Terindah', artist: 'SAMSONS', duration: '4:12', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'IWvo2fld3s4', title: 'Dan...', artist: 'Sheila On 7', duration: '4:46', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'OpQFFLBMEPI', title: 'Just Give Me a Reason', artist: 'P!nk', duration: '4:03', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' },
+      { id: 'UtF6Jej8yb4', title: 'The Nights', artist: 'Avicii', duration: '3:11', thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp' }
     ]
   }
 };
@@ -600,7 +600,7 @@ const HOME_SECTIONS = {
       artist: '西野カナ Official YouTube Channel',
       views: '110M views',
       duration: '4:18',
-      thumbnail: 'https://i.ytimg.com/vi/iw_1zU2MSc8/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     },
@@ -610,7 +610,7 @@ const HOME_SECTIONS = {
       artist: 'Kenshi Yonezu 米津玄師',
       views: '135M views',
       duration: '4:15',
-      thumbnail: 'https://i.ytimg.com/vi/1s84rIhPuhk/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     },
@@ -621,7 +621,7 @@ const HOME_SECTIONS = {
       artist: 'HOYO-MiX, Cassie Wei',
       views: '409K views',
       duration: '3:07',
-      thumbnail: 'https://i.ytimg.com/vi/edirMh-BzY4/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'square'
     },
@@ -631,7 +631,7 @@ const HOME_SECTIONS = {
       artist: 'Ayase / YOASOBI',
       views: '450M views',
       duration: '3:46',
-      thumbnail: 'https://i.ytimg.com/vi/ZRtdQ81jPUQ/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     },
@@ -641,7 +641,7 @@ const HOME_SECTIONS = {
       artist: 'RADWIMPS',
       views: '210M views',
       duration: '3:02',
-      thumbnail: 'https://i.ytimg.com/vi/a2GujJZfXpg/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     },
@@ -651,7 +651,7 @@ const HOME_SECTIONS = {
       artist: 'tuki.',
       views: '54M views',
       duration: '3:40',
-      thumbnail: 'https://i.ytimg.com/vi/oZpYEEcvu5I/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     },
@@ -661,7 +661,7 @@ const HOME_SECTIONS = {
       artist: 'Eve',
       views: '340M views',
       duration: '3:45',
-      thumbnail: 'https://i.ytimg.com/vi/ijXeGqSRNJc/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     }
@@ -675,7 +675,7 @@ const HOME_SECTIONS = {
       artist: 'K/DA • League of Legends',
       views: '570M views',
       duration: '3:22',
-      thumbnail: 'https://i.ytimg.com/vi/UOxkGD8qRB4/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -684,7 +684,7 @@ const HOME_SECTIONS = {
       artist: '9Lana • RASEN',
       views: '6.4M plays',
       duration: '3:40',
-      thumbnail: 'https://i.ytimg.com/vi/5mUkMs-jE6c/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -694,7 +694,7 @@ const HOME_SECTIONS = {
       artist: 'Ado • Show',
       views: '120M views',
       duration: '3:10',
-      thumbnail: 'https://i.ytimg.com/vi/pgXpM4l_MwI/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -703,7 +703,7 @@ const HOME_SECTIONS = {
       artist: 'EP Lucia • Zenless Zone Zero',
       views: '6.4M views',
       duration: '3:15',
-      thumbnail: 'https://i.ytimg.com/vi/NCzUV95VIEI/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -712,7 +712,7 @@ const HOME_SECTIONS = {
       artist: 'tuki. • Official MV',
       views: '12M views',
       duration: '3:51',
-      thumbnail: 'https://i.ytimg.com/vi/B5HD_FSyrWY/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -721,7 +721,7 @@ const HOME_SECTIONS = {
       artist: 'Vestia Zeta • CLOSE(R)',
       views: '318K plays',
       duration: '2:48',
-      thumbnail: 'https://i.ytimg.com/vi/oe4wxQmP6qc/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -730,7 +730,7 @@ const HOME_SECTIONS = {
       artist: 'Yorushika • Elma',
       views: '190M views',
       duration: '3:20',
-      thumbnail: 'https://i.ytimg.com/vi/-VKIqrvVOpo/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -739,7 +739,7 @@ const HOME_SECTIONS = {
       artist: 'NewJeans • Get Up',
       views: '180M views',
       duration: '3:21',
-      thumbnail: 'https://i.ytimg.com/vi/ArmDp-zijuc/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -748,7 +748,7 @@ const HOME_SECTIONS = {
       artist: 'LE SSERAFIM • Perfect Night',
       views: '120M views',
       duration: '3:03',
-      thumbnail: 'https://i.ytimg.com/vi/hLvWy2b857I/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -757,7 +757,7 @@ const HOME_SECTIONS = {
       artist: 'aespa • Armageddon',
       views: '110M views',
       duration: '3:14',
-      thumbnail: 'https://i.ytimg.com/vi/phuiiNCxRMg/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     }
   ],
@@ -768,7 +768,7 @@ const HOME_SECTIONS = {
       title: 'K/DA - POP/STARS (Official Music Video)',
       artist: 'League of Legends • 590M views',
       duration: '3:22',
-      thumbnail: 'https://i.ytimg.com/vi/UOxkGD8qRB4/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -776,7 +776,7 @@ const HOME_SECTIONS = {
       title: 'YOASOBI - アイドル (Idol Official MV)',
       artist: 'Ayase / YOASOBI • 450M views',
       duration: '3:46',
-      thumbnail: 'https://i.ytimg.com/vi/ZRtdQ81jPUQ/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -784,7 +784,7 @@ const HOME_SECTIONS = {
       title: 'NewJeans (뉴진스) - Super Shy (Official MV)',
       artist: 'HYBE LABELS • 190M views',
       duration: '3:21',
-      thumbnail: 'https://i.ytimg.com/vi/ArmDp-zijuc/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -792,7 +792,7 @@ const HOME_SECTIONS = {
       title: 'ITZY - WANNABE (Official Music Video)',
       artist: 'JYP Entertainment • 540M views',
       duration: '3:39',
-      thumbnail: 'https://i.ytimg.com/vi/fE2h3lGlOsk/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -800,7 +800,7 @@ const HOME_SECTIONS = {
       title: 'BTS (방탄소년단) - Dynamite (Official MV)',
       artist: 'HYBE LABELS • 1.8B views',
       duration: '3:44',
-      thumbnail: 'https://i.ytimg.com/vi/gdZLi9oWNZg/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -808,7 +808,7 @@ const HOME_SECTIONS = {
       title: 'LE SSERAFIM - Perfect Night (Official Music Video)',
       artist: 'HYBE LABELS • 110M views',
       duration: '3:05',
-      thumbnail: 'https://i.ytimg.com/vi/hLvWy2b857I/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -816,7 +816,7 @@ const HOME_SECTIONS = {
       title: '米津玄師 - Lemon (Official Music Video)',
       artist: 'Kenshi Yonezu 米津玄師 • 890M views',
       duration: '4:15',
-      thumbnail: 'https://i.ytimg.com/vi/SX_ViT4Ra7k/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -824,7 +824,7 @@ const HOME_SECTIONS = {
       title: '星街すいせい - ビビデバ (BIBBIDIBA Official MV)',
       artist: 'Hoshimachi Suisei • 110M views',
       duration: '2:47',
-      thumbnail: 'https://i.ytimg.com/vi/8ZP5eqm4JqM/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -832,7 +832,7 @@ const HOME_SECTIONS = {
       title: 'ILLIT (아일릿) - Magnetic (Official MV)',
       artist: 'HYBE LABELS • 160M views',
       duration: '3:09',
-      thumbnail: 'https://i.ytimg.com/vi/Vk5-c_v4gMU/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -840,7 +840,7 @@ const HOME_SECTIONS = {
       title: 'Ado - 唱 (Show Official Music Video)',
       artist: 'Ado • 170M views',
       duration: '3:10',
-      thumbnail: 'https://i.ytimg.com/vi/pgXpM4l_MwI/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -848,7 +848,7 @@ const HOME_SECTIONS = {
       title: 'aespa 에スパ - Supernova (Official MV)',
       artist: 'SMTOWN • 130M views',
       duration: '3:14',
-      thumbnail: 'https://i.ytimg.com/vi/phuiiNCxRMg/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     },
     {
@@ -856,7 +856,7 @@ const HOME_SECTIONS = {
       title: 'tuki.『晩餐歌』Official Music Video',
       artist: 'tuki. • 65M views',
       duration: '3:40',
-      thumbnail: 'https://i.ytimg.com/vi/oZpYEEcvu5I/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube'
     }
   ],
@@ -867,7 +867,7 @@ const HOME_SECTIONS = {
       albumId: 'album-nmixx-dash',
       title: 'DASH',
       artist: 'EP Fe3O4: BREAK • NMIXX',
-      thumbnail: 'https://i.ytimg.com/vi/7UecFm_bSTU/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'EP • 6 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -878,7 +878,7 @@ const HOME_SECTIONS = {
       albumId: 'album-sakura-miko',
       title: 'flower rhapsody',
       artist: 'Album • Sakura Miko',
-      thumbnail: 'https://i.ytimg.com/vi/BerwUFzdj4U/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'Album • 6 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -889,7 +889,7 @@ const HOME_SECTIONS = {
       albumId: 'album-kda-popstars',
       title: 'POP/STARS',
       artist: 'Album • K/DA, League of Legends',
-      thumbnail: 'https://i.ytimg.com/vi/UOxkGD8qRB4/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'Album • 5 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -900,7 +900,7 @@ const HOME_SECTIONS = {
       albumId: 'album-ado-show',
       title: '唱 - Show',
       artist: 'Album Zanmu • Ado',
-      thumbnail: 'https://i.ytimg.com/vi/pgXpM4l_MwI/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'Album • 6 Lagu',
       isAlbum: true,
       cardType: 'square'
@@ -910,7 +910,7 @@ const HOME_SECTIONS = {
       albumId: 'album-rokudenashi-one-voice',
       title: 'ただ声一つ - One Voice',
       artist: 'EP • Rokudenashi',
-      thumbnail: 'https://i.ytimg.com/vi/5GUaMOpfmr8/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'EP • 5 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -921,7 +921,7 @@ const HOME_SECTIONS = {
       albumId: 'album-kizuna-ai',
       title: 'AIAIAI (feat. Yasutaka Nakata)',
       artist: 'EP Hello, World • Kizuna AI',
-      thumbnail: 'https://i.ytimg.com/vi/S8dmq5YIUoc/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'EP • 5 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -935,7 +935,7 @@ const HOME_SECTIONS = {
       title: 'Stellar Stellar / 星街すいせい',
       artist: 'Hoshimachi Suisei • 1st Album',
       duration: '4:58',
-      thumbnail: 'https://i.ytimg.com/vi/a51VH9BYzZA/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     },
@@ -944,7 +944,7 @@ const HOME_SECTIONS = {
       title: 'Just Give Me a Reason (feat. Nate Ruess)',
       artist: 'P!nk • 26M views',
       duration: '4:03',
-      thumbnail: 'https://i.ytimg.com/vi/OpQFFLBMEPI/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     },
@@ -953,7 +953,7 @@ const HOME_SECTIONS = {
       title: 'Samsons - Kenangan Terindah',
       artist: 'SAMSONS • Official Music Video',
       duration: '4:12',
-      thumbnail: 'https://i.ytimg.com/vi/-yG8j2MGOyY/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     },
@@ -962,7 +962,7 @@ const HOME_SECTIONS = {
       title: 'Sheila On 7 - Dan... (Official Audio)',
       artist: 'Sony Music Entertainment Indonesia',
       duration: '4:46',
-      thumbnail: 'https://i.ytimg.com/vi/IWvo2fld3s4/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       type: 'youtube',
       cardType: 'video'
     },
@@ -996,7 +996,7 @@ const HOME_SECTIONS = {
       albumId: 'pl-kpop-girls',
       title: 'K-Pop Girl Group Essentials',
       artist: 'NewJeans, aespa, IVE, LE SSERAFIM',
-      thumbnail: 'https://i.ytimg.com/vi/ArmDp-zijuc/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'Playlist • 8 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -1007,7 +1007,7 @@ const HOME_SECTIONS = {
       albumId: 'pl-kpop-dance',
       title: 'K-Pop Dance Challenge',
       artist: 'Trending viral TikTok & Shorts choreography',
-      thumbnail: 'https://i.ytimg.com/vi/hLvWy2b857I/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'Playlist • 6 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -1018,7 +1018,7 @@ const HOME_SECTIONS = {
       albumId: 'pl-all-kpop',
       title: 'All about K-Pop',
       artist: 'Non-stop Korean Pop Anthems • IVE, NewJeans',
-      thumbnail: 'https://i.ytimg.com/vi/6ZUIwj3FgUY/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'Playlist • 6 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -1029,7 +1029,7 @@ const HOME_SECTIONS = {
       albumId: 'pl-beat-on',
       title: 'BEAT ON',
       artist: 'Stray Kids, NCT, SEVENTEEN, ENHYPEN',
-      thumbnail: 'https://i.ytimg.com/vi/0P0aQreFs8w/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'Playlist • 6 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -1040,7 +1040,7 @@ const HOME_SECTIONS = {
       albumId: 'pl-kpop-boys',
       title: 'K-Pop Boy Band Essentials',
       artist: 'BTS, Stray Kids, TXT, ATEEZ',
-      thumbnail: 'https://i.ytimg.com/vi/gdZLi9oWNZg/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       duration: 'Playlist • 6 Lagu',
       isAlbum: true,
       type: 'youtube',
@@ -1082,7 +1082,7 @@ const HOME_SECTIONS = {
       albumId: 'mix-01',
       title: 'My Mix 01',
       artist: 'HOYO-MiX, Honkai Star Rail, Anime OSTs',
-      thumbnail: 'https://i.ytimg.com/vi/edirMh-BzY4/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       isAlbum: true,
       type: 'youtube',
       cardType: 'square'
@@ -1102,7 +1102,7 @@ const HOME_SECTIONS = {
       albumId: 'mix-03',
       title: 'My Mix 03',
       artist: 'Chill J-Pop, Acoustic & Piano',
-      thumbnail: 'https://i.ytimg.com/vi/OtQynp1Vi6A/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       isAlbum: true,
       type: 'youtube',
       cardType: 'square'
@@ -1112,7 +1112,7 @@ const HOME_SECTIONS = {
       albumId: 'mix-05',
       title: 'My Mix 05',
       artist: 'City Pop, Retro & Synthwave',
-      thumbnail: 'https://i.ytimg.com/vi/5mUkMs-jE6c/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       isAlbum: true,
       type: 'youtube',
       cardType: 'square'
@@ -1122,7 +1122,7 @@ const HOME_SECTIONS = {
       albumId: 'mix-07',
       title: 'My Mix 07',
       artist: 'Avicii, EDM & Festival Anthems',
-      thumbnail: 'https://i.ytimg.com/vi/UtF6Jej8yb4/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi_webp//mqdefault.webp',
       isAlbum: true,
       type: 'youtube',
       cardType: 'square'
@@ -1222,7 +1222,7 @@ async function getHomeFeed(mood = 'all') {
       artist: v.author?.name || 'Artist',
       duration: v.timestamp || '0:00',
       views: v.views ? `${(v.views / 1000000).toFixed(1)}M views` : '',
-      thumbnail: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+      thumbnail: `https://i.ytimg.com/vi_webp//mqdefault.webp`,
       type: 'youtube'
     }));
 
@@ -1605,7 +1605,7 @@ async function getAlbumDetail(albumId, options = {}) {
               title: v.title,
               artist: v.author ? v.author.name : album.artist,
               duration: v.timestamp || '3:30',
-              thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+              thumbnail: v.thumbnail || `https://i.ytimg.com/vi_webp//mqdefault.webp`,
               type: 'youtube'
             });
           }
@@ -1629,7 +1629,7 @@ async function getAlbumDetail(albumId, options = {}) {
                   title: v.title,
                   artist: v.author ? v.author.name : album.artist,
                   duration: v.timestamp || '3:30',
-                  thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+                  thumbnail: v.thumbnail || `https://i.ytimg.com/vi_webp//mqdefault.webp`,
                   type: 'youtube'
                 });
               }
@@ -1655,7 +1655,7 @@ async function getAlbumDetail(albumId, options = {}) {
                   title: v.title,
                   artist: v.author ? v.author.name : album.artist,
                   duration: v.timestamp || '3:30',
-                  thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+                  thumbnail: v.thumbnail || `https://i.ytimg.com/vi_webp//mqdefault.webp`,
                   type: 'youtube'
                 });
               }
@@ -1726,7 +1726,7 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
       title: t.title,
       artist: t.artist || (t.author ? t.author.name : fallbackArtist),
       duration: t.duration || t.timestamp || '3:30',
-      thumbnail: t.thumbnail || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+      thumbnail: t.thumbnail || `https://i.ytimg.com/vi_webp//mqdefault.webp`,
       type: 'youtube'
     };
     newTracks.push(trk);
@@ -1817,7 +1817,7 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
               title: v.title,
               artist: v.author ? v.author.name : matchedArtist,
               duration: v.timestamp || '3:30',
-              thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`
+              thumbnail: v.thumbnail || `https://i.ytimg.com/vi_webp//mqdefault.webp`
             }, matchedArtist);
             if (newTracks.length >= 15) break;
           }
@@ -1868,6 +1868,28 @@ function sortVideosPreferStudio(videos) {
 // ==========================================
 // SMART SUPERMIX & LIKED RADIO ENGINE
 // ==========================================
+function buildMixTrackObject(track, fallbackArtist = 'AuraSound Mix') {
+  const id = track.id || track.videoId;
+  const base = {
+    id: id,
+    title: track.title,
+    artist: track.artist || (track.author ? track.author.name : fallbackArtist),
+    duration: track.duration || track.timestamp || '3:30',
+    thumbnail: track.thumbnail || `https://i.ytimg.com/vi_webp//mqdefault.webp`,
+    type: track.type || 'youtube'
+  };
+  if (track.type === 'suno') {
+    if (track.audio_url) base.audio_url = track.audio_url;
+    if (track.lyrics) base.lyrics = track.lyrics;
+    if (track.syncedLyrics) base.syncedLyrics = track.syncedLyrics;
+    if (track.lyrics_synced) base.lyrics_synced = track.lyrics_synced;
+    if (track.prompt) base.prompt = track.prompt;
+    if (track.tags) base.tags = track.tags;
+    if (track.seconds) base.seconds = track.seconds;
+  }
+  return base;
+}
+
 async function generatePersonalizedSupermix({ topArtists = [], favorites = [], history = [], importedPlaylists = [] } = {}) {
   const validImported = (Array.isArray(importedPlaylists) ? importedPlaylists : [])
     .filter(p => p && Array.isArray(p.tracks) && p.tracks.length > 0);
@@ -1932,14 +1954,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
 
     existingIds.add(id);
     if (compKey && compKey.length >= 3) existingSongKeys.add(compKey);
-    targetPool.push({
-      id: id,
-      title: track.title,
-      artist: track.artist || (track.author ? track.author.name : 'AuraSound Mix'),
-      duration: track.duration || track.timestamp || '3:30',
-      thumbnail: track.thumbnail || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
-      type: 'youtube'
-    });
+    targetPool.push(buildMixTrackObject(track, 'AuraSound Mix'));
     return true;
   }
 
@@ -2002,7 +2017,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
               title: v.title,
               artist: v.author ? v.author.name : activeArtists[i],
               duration: v.timestamp || '3:30',
-              thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`
+              thumbnail: v.thumbnail || `https://i.ytimg.com/vi_webp//mqdefault.webp`
             }, relatedPool);
             if (added) {
               countForArtist++;
@@ -2030,7 +2045,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
             title: v.title,
             artist: v.author ? v.author.name : 'AuraSound Discovery',
             duration: v.timestamp || '3:30',
-            thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`
+            thumbnail: v.thumbnail || `https://i.ytimg.com/vi_webp//mqdefault.webp`
           }, discoveryPool);
           if (added && discoveryPool.length >= 8) break;
         }
@@ -2059,14 +2074,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     finalSeenIds.add(id);
     if (compKey && compKey.length >= 3) finalSeenKeys.add(compKey);
 
-    finalTracks.push({
-      id: id,
-      title: track.title,
-      artist: track.artist || (track.author ? track.author.name : 'AuraSound Mix'),
-      duration: track.duration || track.timestamp || '3:30',
-      thumbnail: track.thumbnail || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
-      type: 'youtube'
-    });
+    finalTracks.push(buildMixTrackObject(track, 'AuraSound Mix'));
     return true;
   }
 
@@ -2094,7 +2102,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
                 title: v.title,
                 artist: v.author ? v.author.name : extraArtists[i],
                 duration: v.timestamp || '3:30',
-                thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+                thumbnail: v.thumbnail || `https://i.ytimg.com/vi_webp//mqdefault.webp`,
                 type: 'youtube'
               });
               if (finalTracks.length >= 25) break;
@@ -2176,14 +2184,7 @@ async function generateLikedRadio({ favorites = [] } = {}) {
 
     existingIds.add(id);
     if (compKey && compKey.length >= 3) existingSongKeys.add(compKey);
-    tracks.push({
-      id: id,
-      title: track.title,
-      artist: track.artist || (track.author ? track.author.name : 'Radio Rekomendasi'),
-      duration: track.duration || track.timestamp || '3:30',
-      thumbnail: track.thumbnail || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
-      type: 'youtube'
-    });
+    tracks.push(buildMixTrackObject(track, 'Radio Rekomendasi'));
     return true;
   }
 
