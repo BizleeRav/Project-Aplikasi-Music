@@ -122,8 +122,8 @@ public class BackgroundAudioWebView extends WebView {
 fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurasound.musichub"
-    android:versionCode="14"
-    android:versionName="1.3.10">
+    android:versionCode="15"
+    android:versionName="1.3.11">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -277,7 +277,7 @@ public class AndroidMediaBridge {
 
     @JavascriptInterface
     public int getAppVersionCode() {
-        return 14;
+        return 15;
     }
 }
 `);
@@ -1792,9 +1792,6 @@ public class MainActivity extends Activity {
             + "      if (wantInstr) sParts.push('Instrumental only, no vocals.');"
             + "      if (promptText) sParts.push(promptText);"
             + "      if (tagsText) sParts.push('Style: ' + tagsText);"
-            + "      else if (promptText.toLowerCase().includes('fantasy') || (promptText.toLowerCase().includes('adventure') && !promptText.toLowerCase().includes('folk'))) {"
-            + "        sParts.push('Style: Epic Fantasy Orchestral, Cinematic Symphony, Piano & Strings, No Folk');"
-            + "      }"
             + "      setNativeVal(pBox, sParts.join(NL).slice(0, 2950));"
             + "    } else {"
             + "      if (switchTab('advanced')) await new Promise(function(r) { setTimeout(r, 320); });"

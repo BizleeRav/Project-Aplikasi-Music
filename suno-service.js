@@ -1378,9 +1378,8 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
             if (rawTitle) simpleParts.push(`Title: ${rawTitle}`);
             if (wantInstrumental) simpleParts.push('Instrumental only, no vocals.');
             if (rawPrompt) simpleParts.push(rawPrompt);
-            const effectiveStyle = rawTags || deriveTagsFromPrompt(rawPrompt, '');
-            if (effectiveStyle) {
-              simpleParts.push(`Style: ${effectiveStyle}`);
+            if (rawTags) {
+              simpleParts.push(`Style: ${rawTags}`);
             }
             const simpleDesc = simpleParts.join('\n').slice(0, 2950);
             genPayload = {

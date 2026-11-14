@@ -872,9 +872,8 @@ async function generateWithSunoBrowser({
       if (cleanPromptText) {
         simpleParts.push(cleanPromptText);
       }
-      const effectiveStyle = cleanTagsText || deriveTagsFromPrompt(cleanPromptText, '');
-      if (effectiveStyle) {
-        simpleParts.push(`Style: ${effectiveStyle}`);
+      if (cleanTagsText) {
+        simpleParts.push(`Style: ${cleanTagsText}`);
       }
       const simpleDescription = simpleParts.join('\n').slice(0, 2950);
 
