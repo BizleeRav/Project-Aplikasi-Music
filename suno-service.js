@@ -58,6 +58,25 @@ function saveConfig(data) {
   return updated;
 }
 
+function isPreviewTrackOrClip(c) {
+  if (!c) return true;
+  const m = c.metadata || c.meta || {};
+  const clipType = String(m.type || c.clipType || '').toLowerCase();
+  const rawType = String(c.type || '').toLowerCase();
+  if (clipType === 'preview' || clipType === 'sample' || clipType === 'upsell') return true;
+  if (rawType === 'preview' || rawType === 'sample' || rawType === 'upsell') return true;
+  if (c.isPreview === true || c.canRemix === false) return true;
+  if (m.can_remix === false && clipType !== 'gen' && !m.is_remix) return true;
+  const rawDur = Number(m.duration != null ? m.duration : (typeof c.duration === 'number' ? c.duration : NaN));
+  if (Number.isFinite(rawDur) && rawDur > 0 && rawDur <= 65 && clipType !== 'gen') return true;
+  if (Number.isFinite(rawDur) && rawDur >= 58 && rawDur <= 62) return true;
+  const sec = Number(c.seconds);
+  if (Number.isFinite(sec) && sec >= 58 && sec <= 62) return true;
+  const durStr = typeof c.duration === 'string' ? c.duration.trim() : '';
+  if (durStr === '1:00' || durStr === '0:59' || durStr === '1:01') return true;
+  return false;
+}
+
 /**
  * Persistent Storage for User Creations (Pure Lagu Buatan Kita)
  */
@@ -65,7 +84,7 @@ function getCreations(deviceId = null) {
   if (fs.existsSync(CREATIONS_FILE)) {
     try {
       const data = JSON.parse(fs.readFileSync(CREATIONS_FILE, 'utf8'));
-      const list = Array.isArray(data) ? data : [];
+      const list = (Array.isArray(data) ? data : []).filter(t => t && !isPreviewTrackOrClip(t));
       if (deviceId) {
         return list.filter(t => !t.deviceId || t.deviceId === deviceId);
       }
@@ -159,7 +178,8 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
     }
 
     if (Array.isArray(clips) && clips.length > 0) {
-      const formatted = clips.map(c => formatOfficialClipTrack(c, {
+      const validClips = clips.filter(c => !isPreviewTrackOrClip(c));
+      const formatted = validClips.map(c => formatOfficialClipTrack(c, {
         rawTitle: c.title,
         rawTags: c.metadata?.tags || c.tags,
         rawPrompt: c.metadata?.gpt_description_prompt || c.metadata?.prompt || c.prompt,
@@ -185,7 +205,7 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
 }
 
 function addCreation(track, deviceId = null) {
-  if (!track || !track.id) return;
+  if (!track || !track.id || isPreviewTrackOrClip(track)) return null;
   const list = getCreations(); // load all
   const existingIdx = list.findIndex(t => t.id === track.id);
   if (existingIdx !== -1) {
@@ -1279,6 +1299,7 @@ function formatOfficialClipTrack(c, { rawTitle, rawTags, rawPrompt, customLyrics
     audio_url: audioUrl,
     duration: durationStr,
     seconds: durationSec,
+    clipType: String((c.metadata || c.meta || {}).type || '').toLowerCase() || undefined,
     type: 'suno',
     rawCreatedAt: c.created_at || new Date().toISOString(),
     created_at: 'Hari ini',
@@ -1389,9 +1410,10 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
             }
           );
 
-          const clips = sunoRes.data?.clips || sunoRes.data?.data?.clips || [];
+          const rawDirectClips = sunoRes.data?.clips || sunoRes.data?.data?.clips || [];
+          const clips = rawDirectClips.filter(c => !isPreviewTrackOrClip(c));
           if (clips.length > 0) {
-            const formattedClips = clips.map(c =>
+            const formattedClips = clips.slice(0, 2).map(c =>
               formatOfficialClipTrack(c, { rawTitle, rawTags, rawPrompt, customLyricsText, officialMv, deviceId })
             );
             [...formattedClips].reverse().forEach(trackObj => {
@@ -1459,7 +1481,9 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
       }
 
       if (genRes && genRes.success && genRes.clips && genRes.clips.length > 0) {
-        const formattedClips = genRes.clips.map(c =>
+        const cleanGenClips = genRes.clips.filter(c => !isPreviewTrackOrClip(c));
+        const targetClips = cleanGenClips.length > 0 ? cleanGenClips : genRes.clips;
+        const formattedClips = targetClips.slice(0, 2).map(c =>
           formatOfficialClipTrack(c, { rawTitle, rawTags, rawPrompt, customLyricsText, officialMv, deviceId })
         );
         [...formattedClips].reverse().forEach(trackObj => {
@@ -1768,6 +1792,10 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
 
         const existingList = getCreations();
         const formatted = (rawClips || []).map(c => {
+          if (isPreviewTrackOrClip(c)) {
+            if (c && c.id) deleteCreation(c.id);
+            return { id: c.id, isPreview: true, status: c.status || 'complete' };
+          }
           const existing = existingList.find(x => x.id === c.id);
           const audioUrl = extractAudioUrl(c);
           const thumb = c.image_url || c.image_large_url || existing?.thumbnail || (c.id ? `https://cdn2.suno.ai/image_${c.id}.jpeg` : '/icons/icon.svg');

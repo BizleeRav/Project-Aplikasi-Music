@@ -731,15 +731,17 @@ class SunoStudio {
       const data = await res.json();
 
       if (data.success && Array.isArray(data.clips)) {
+        const cleanServerClips = data.clips.filter(c => c && !this.isPreviewTrack(c));
         const stored = localStorage.getItem('aurasound_local_creations');
         let localList = stored ? JSON.parse(stored) : [];
-        if (Array.isArray(localList) && localList.length > 0) {
+        localList = Array.isArray(localList) ? localList.filter(c => c && !this.isPreviewTrack(c)) : [];
+        if (localList.length > 0) {
           const map = new Map();
-          data.clips.forEach(c => map.set(c.id, c));
+          cleanServerClips.forEach(c => map.set(c.id, c));
           localList.forEach(c => { if (!map.has(c.id)) map.set(c.id, c); });
           this.creations = Array.from(map.values());
         } else {
-          this.creations = data.clips;
+          this.creations = cleanServerClips;
         }
         this.saveLocalCreationsBackup(this.creations);
         this.totalPages = data.totalPages || 1;
@@ -793,12 +795,13 @@ class SunoStudio {
     const container = document.getElementById('suno-library-list');
     if (!container) return;
 
-    if (!this.creations || this.creations.length === 0) {
+    const visibleCreations = (this.creations || []).filter(t => t && !this.isPreviewTrack(t));
+    if (visibleCreations.length === 0) {
       this.renderEmptyCreations();
       return;
     }
 
-    container.innerHTML = this.creations.map((track, idx) => {
+    container.innerHTML = visibleCreations.map((track, idx) => {
       const audioUrl = track.audio_url || `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${track.id}.m4a`;
       const thumb = track.thumbnail || (track.id ? `https://cdn2.suno.ai/image_${track.id}.jpeg` : '/icons/icon.svg');
       const safeTitle = this.escapeHtml(track.title || 'Lagu Baru');
@@ -908,7 +911,8 @@ class SunoStudio {
     if (!container) return;
     const isEn = (window.app?.userProfile?.lang === 'en');
 
-    if (this.creations.length === 0) {
+    const visibleCreations = (this.creations || []).filter(t => t && !this.isPreviewTrack(t));
+    if (visibleCreations.length === 0) {
       container.innerHTML = `
         <div class="suno-recent-empty">
           <h4>${isEn ? 'No Songs Created Yet' : 'Belum Ada Lagu Dibuat'}</h4>
@@ -918,7 +922,7 @@ class SunoStudio {
       return;
     }
 
-    const latest = this.creations[0];
+    const latest = visibleCreations[0];
     const thumb = latest.thumbnail || (latest.id ? `https://cdn2.suno.ai/image_${latest.id}.jpeg` : '/icons/icon.svg');
     const safeTitle = this.escapeHtml(latest.title || (isEn ? 'New Song' : 'Lagu Baru'));
     const safeTags = this.escapeHtml(latest.tags || 'AI Music');
@@ -1129,13 +1133,33 @@ class SunoStudio {
     );
   }
 
+  isPreviewTrack(c) {
+    if (!c) return true;
+    const m = c.metadata || c.meta || {};
+    const clipType = String(m.type || c.clipType || '').toLowerCase();
+    const rawType = String(c.type || '').toLowerCase();
+    if (clipType === 'preview' || clipType === 'sample' || clipType === 'upsell') return true;
+    if (rawType === 'preview' || rawType === 'sample' || rawType === 'upsell') return true;
+    if (c.isPreview === true || c.canRemix === false) return true;
+    if (m.can_remix === false && clipType !== 'gen' && !m.is_remix) return true;
+    const rawDur = Number(m.duration != null ? m.duration : (typeof c.duration === 'number' ? c.duration : NaN));
+    if (Number.isFinite(rawDur) && rawDur > 0 && rawDur <= 65 && clipType !== 'gen') return true;
+    if (Number.isFinite(rawDur) && rawDur >= 58 && rawDur <= 62) return true;
+    const sec = Number(c.seconds);
+    if (Number.isFinite(sec) && sec >= 58 && sec <= 62) return true;
+    const durStr = typeof c.duration === 'string' ? c.duration.trim() : '';
+    if (durStr === '1:00' || durStr === '0:59' || durStr === '1:01') return true;
+    return false;
+  }
+
   saveLocalCreationsBackup(newClips) {
     try {
       const stored = localStorage.getItem('aurasound_local_creations');
       let list = stored ? JSON.parse(stored) : [];
-      if (!Array.isArray(list)) list = [];
+      list = Array.isArray(list) ? list.filter(c => c && !this.isPreviewTrack(c)) : [];
       const set = new Set(list.map(c => c.id));
-      for (const nc of newClips) {
+      for (const nc of (newClips || [])) {
+        if (!nc || !nc.id || this.isPreviewTrack(nc)) continue;
         if (!set.has(nc.id)) {
           list.unshift(nc);
           set.add(nc.id);
@@ -1158,11 +1182,15 @@ class SunoStudio {
       if (!Array.isArray(rawClips) || rawClips.length === 0) {
         throw new Error('Tidak ada klip lagu yang dihasilkan dari Suno.');
       }
+      const validRawClips = rawClips.filter(c => c && !this.isPreviewTrack(c));
+      if (validRawClips.length === 0) {
+        throw new Error('Klip lagu utuh belum tersedia (hanya preview 1 menit). Silakan coba lagi.');
+      }
       const reqTitle = (this._lastRequestedTitle || '').trim();
       const reqTags = (this._lastRequestedTags || '').trim();
       const reqPrompt = (this._lastRequestedPrompt || '').trim();
 
-      const formattedClips = rawClips.map(c => {
+      const formattedClips = validRawClips.slice(0, 2).map(c => {
         let audioUrl = '';
         if (Array.isArray(c.media_urls) && c.media_urls.length > 0) {
           const validMedia = c.media_urls.find(m => m && m.url && !m.url.includes('/api/forbidden'));
@@ -1197,6 +1225,7 @@ class SunoStudio {
           audio_url: audioUrl,
           duration: durationStr,
           seconds: durationSec,
+          clipType: String((c.metadata || c.meta || {}).type || '').toLowerCase() || undefined,
           type: 'suno',
           created_at: 'Hari ini'
         };
@@ -1275,8 +1304,11 @@ class SunoStudio {
 
       if (isAndroidClient && activeProvider === 'suno_official') {
         const savedJwt = (localStorage.getItem('aurasound_suno_key') || '').trim();
+        const genStartedAtMs = Date.now();
+        let fastPathAttempted = false;
         // Fast path: check if direct HTTP generation is permitted (~250ms) before engaging WebView
         if (savedJwt.length > 20) {
+          fastPathAttempted = true;
           try {
             const fastRes = await fetch('/api/suno/generate', {
               method: 'POST',
@@ -1290,7 +1322,9 @@ class SunoStudio {
               })
             });
             const fastData = await fastRes.json();
-            if (fastData && fastData.success && Array.isArray(fastData.data) && fastData.data.length > 0) {
+            if (fastData && fastData.requires_client_engine) {
+              fastPathAttempted = false;
+            } else if (fastData && fastData.success && Array.isArray(fastData.data) && fastData.data.length > 0) {
               result = fastData;
             }
           } catch (fastErr) {}
@@ -1307,7 +1341,9 @@ class SunoStudio {
             lyrics: isCustomLyrics ? pTrimmed : '',
             make_instrumental: Boolean(make_instrumental),
             model: model || 'v6-mini',
-            isCustomLyrics: Boolean(isCustomLyrics)
+            isCustomLyrics: Boolean(isCustomLyrics),
+            fastPathAttempted,
+            genStartedAtMs
           };
           result = await new Promise((resolve, reject) => {
             this._androidGenResolve = resolve;
@@ -1380,8 +1416,32 @@ class SunoStudio {
   applyUpdatedClipsToState(clips) {
     if (!Array.isArray(clips) || clips.length === 0) return;
 
+    const previewIds = new Set();
+    const validClips = [];
     for (const clip of clips) {
-      if (!this.creations) this.creations = [];
+      if (!clip || !clip.id) continue;
+      if (this.isPreviewTrack(clip)) {
+        previewIds.add(clip.id);
+      } else {
+        validClips.push(clip);
+      }
+    }
+
+    if (!this.creations) this.creations = [];
+    if (previewIds.size > 0) {
+      this.creations = this.creations.filter(c => c && !previewIds.has(c.id));
+      try {
+        const stored = localStorage.getItem('aurasound_local_creations');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            localStorage.setItem('aurasound_local_creations', JSON.stringify(parsed.filter(c => c && !previewIds.has(c.id))));
+          }
+        }
+      } catch (le) {}
+    }
+
+    for (const clip of validClips) {
       const idx = this.creations.findIndex(c => c.id === clip.id);
       if (idx !== -1) {
         this.creations[idx] = Object.assign({}, this.creations[idx], clip);
@@ -1389,7 +1449,7 @@ class SunoStudio {
         this.creations.unshift(clip);
       }
     }
-    this.saveLocalCreationsBackup(clips);
+    this.saveLocalCreationsBackup(validClips);
     this.renderCreations();
     this.renderRecentPreview();
 
@@ -1472,8 +1532,9 @@ class SunoStudio {
           if (data.success && data.clips && data.clips.length > 0) {
             this.applyUpdatedClipsToState(data.clips);
 
-            const allStreamReady = data.clips.every(c => (c.status === 'complete' || c.status === 'streaming') && c.audio_url);
-            const allFullyComplete = data.clips.every(c => c.status === 'complete');
+            const activeClips = data.clips.filter(c => c && !this.isPreviewTrack(c));
+            const allStreamReady = activeClips.length > 0 && activeClips.every(c => (c.status === 'complete' || c.status === 'streaming') && c.audio_url);
+            const allFullyComplete = activeClips.length > 0 && activeClips.every(c => c.status === 'complete');
 
             if (allStreamReady || attempts >= maxAttempts) {
               clearInterval(interval);

@@ -542,6 +542,18 @@ async function checkInteractiveTurnstileModal(genWin) {
   }
 }
 
+function isSunoPreviewClip(c) {
+  if (!c) return true;
+  const m = c.metadata || c.meta || {};
+  const tp = String(m.type || c.type || '').toLowerCase();
+  if (tp === 'preview' || tp === 'sample' || tp === 'upsell') return true;
+  if (m.can_remix === false && tp !== 'gen' && !m.is_remix) return true;
+  const dur = Number(m.duration != null ? m.duration : c.duration);
+  if (Number.isFinite(dur) && dur > 0 && dur <= 65 && tp !== 'gen') return true;
+  if (Number.isFinite(dur) && dur >= 58 && dur <= 62) return true;
+  return false;
+}
+
 /**
  * Query newly created clips using both same-origin in-page fetch (immune to stale JWT)
  * and direct studio-api fallback with live session cookie.
@@ -607,13 +619,14 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
       if (Array.isArray(pageClips) && pageClips.length > 0) {
         const fresh = pageClips.filter(c => {
           if (!c || !c.id || existingClipIds.has(c.id)) return false;
+          if (clickTimeMs > 0 && isSunoPreviewClip(c)) return false;
           if (c.created_at) {
             const t = new Date(c.created_at).getTime();
             if (Number.isFinite(t) && t < (clickTimeMs - 15 * 60 * 1000)) return false;
           }
           return true;
         });
-        if (fresh.length > 0) return { clips: fresh, jwt: liveJwt };
+        if (fresh.length > 0) return { clips: clickTimeMs > 0 ? fresh.slice(0, 2) : fresh, jwt: liveJwt };
       }
     } catch (e) {}
   }
@@ -638,13 +651,14 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
       const feedClips = feedRes.data?.clips || [];
       const fresh = feedClips.filter(c => {
         if (!c || !c.id || existingClipIds.has(c.id)) return false;
+        if (clickTimeMs > 0 && isSunoPreviewClip(c)) return false;
         if (c.created_at) {
           const t = new Date(c.created_at).getTime();
           if (Number.isFinite(t) && t < (clickTimeMs - 15 * 60 * 1000)) return false;
         }
         return true;
       });
-      if (fresh.length > 0) return { clips: fresh, jwt: liveJwt };
+      if (fresh.length > 0) return { clips: clickTimeMs > 0 ? fresh.slice(0, 2) : fresh, jwt: liveJwt };
     } catch (e) {
       try {
         const feedRes2 = await axios.get('https://studio-api.prod.suno.com/api/feed/v2', {
@@ -658,13 +672,14 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
         const feedClips2 = feedRes2.data?.clips || (Array.isArray(feedRes2.data) ? feedRes2.data : []);
         const fresh2 = feedClips2.filter(c => {
           if (!c || !c.id || existingClipIds.has(c.id)) return false;
+          if (clickTimeMs > 0 && isSunoPreviewClip(c)) return false;
           if (c.created_at) {
             const t = new Date(c.created_at).getTime();
             if (Number.isFinite(t) && t < (clickTimeMs - 15 * 60 * 1000)) return false;
           }
           return true;
         });
-        if (fresh2.length > 0) return { clips: fresh2, jwt: liveJwt };
+        if (fresh2.length > 0) return { clips: clickTimeMs > 0 ? fresh2.slice(0, 2) : fresh2, jwt: liveJwt };
       } catch (e2) {}
     }
   }
@@ -1283,9 +1298,10 @@ async function generateWithSunoBrowser({
           const fifteenMinAgo = Date.now() - (15 * 60 * 1000);
           const recovered = finalSnap.clips.filter(c => {
             if (!c || !c.id || existingClipIds.has(c.id)) return false;
+            if (isSunoPreviewClip(c)) return false;
             const t = c.created_at ? new Date(c.created_at).getTime() : 0;
             return t >= fifteenMinAgo;
-          });
+          }).slice(0, 2);
           if (recovered.length > 0) {
             capturedClips = recovered;
             console.log(`[Suno Warm Engine] Final check successfully recovered ${capturedClips.length} clips!`);
