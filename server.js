@@ -2646,7 +2646,7 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   }
 
   // 1. Strip obvious junk tags in brackets at start/end
-  const junkPattern = /\s*[\[(【](?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|audio|mv|m\/v|hd|4k|full\s*audio|visualizer|teaser|trailer|clip|special\s*clip|performance\s*video|dance\s*practice)[\])】]/gi;
+  const junkPattern = /\s*[\[(【](?:official\s*(?:music\s*video|mv|video|audio)?|music\s*video|lyric\s*video|original\s*song(?:\s*mv)?|audio|mv|m\/v|hd|4k|full\s*audio|visualizer|teaser|trailer|clip|special\s*clip|performance\s*video|dance\s*practice)[\])】]/gi;
   title = title.replace(junkPattern, ' ').trim();
   artist = artist.replace(junkPattern, ' ').trim();
 
@@ -2797,7 +2797,7 @@ function cleanLyricsTrackInfo(rawTitle, rawArtist) {
   title = stripTagsAndParens(title);
 
   // Strip standalone suffix words
-  title = title.replace(/\b(?:official\s*(?:music\s*video|video|audio|mv|lyric\s*video)?|music\s*video|lyric\s*video|visualizer|m\/v|mv)\b/gi, '');
+  title = title.replace(/\b(?:official\s*(?:music\s*video|video|audio|mv|lyric\s*video)?|original\s*song(?:\s*mv)?|music\s*video|lyric\s*video|visualizer|m\/v|mv)\b/gi, '');
 
   // Clean bracket artifacts while keeping internal contraction apostrophes (e.g. CAN'T, DON'T)
   title = title
@@ -2895,6 +2895,20 @@ function buildSearchCandidates(title, artist, nativeTitle, nativeArtist, artistL
   // 2. Search queries
   if (mainLatin && mainTitleLatin) candidates.push({ type: 'search', q: `${mainLatin} ${mainTitleLatin}` });
   if (mainLatin && title) candidates.push({ type: 'search', q: `${mainLatin} ${title}` });
+
+  // If title has a colon sub-title (e.g. "S.O.Re: Song of Reality")
+  if (title.includes(':') || title.includes('：')) {
+    const colonParts = title.split(/[:：]/).map(s => s.trim()).filter(s => s.length >= 2);
+    for (const p of colonParts) {
+      if (mainLatin) {
+        candidates.push({ type: 'search', q: `${p} ${mainLatin}`.trim() });
+        candidates.push({ type: 'get', track: p, artist: mainLatin });
+      } else {
+        candidates.push({ type: 'search', q: p });
+      }
+    }
+  }
+
   if (titleAsian && mainLatin) candidates.push({ type: 'search', q: `${titleAsian} ${mainLatin}` });
   if (titleAsian && mainAsian) candidates.push({ type: 'search', q: `${titleAsian} ${mainAsian}` });
   if (title && artist) candidates.push({ type: 'search', q: `${title} ${artist}` });
@@ -2930,8 +2944,16 @@ function pickBestLyrics(items, targetDuration, targetArtist, targetTitle = '', i
     }
 
     if (cleanTargetTitle && itemTrack) {
-      if (itemTrack.includes(cleanTargetTitle) || cleanTargetTitle.includes(itemTrack)) {
+      const isDirectMatch = itemTrack.includes(cleanTargetTitle) || cleanTargetTitle.includes(itemTrack);
+      let isSubTitleMatch = false;
+      if (!isDirectMatch && (targetTitle.includes(':') || targetTitle.includes('：'))) {
+        const subParts = targetTitle.split(/[:：]/).map(s => normalizeForCompare(s)).filter(s => s.length >= 3);
+        isSubTitleMatch = subParts.some(sp => itemTrack.includes(sp) || sp.includes(itemTrack));
+      }
+      if (isDirectMatch) {
         score += 100;
+      } else if (isSubTitleMatch) {
+        score += 85;
       } else {
         return { item, score: -9999 }; // Title doesn't match -> reject!
       }
@@ -4951,29 +4973,36 @@ app.get('/api/lyrics', async (req, res) => {
 
     // Step C: Try LRCLib for Synced Lyrics (or fallback if Asian engines had no match)
     if (!syncedResult) {
-      const candidates = buildSearchCandidates(title, artist, nativeTitle, nativeArtist, artistLatin, artistHangul, titleLatin).slice(0, 3);
-      for (const c of candidates) {
+      const candidates = buildSearchCandidates(title, artist, nativeTitle, nativeArtist, artistLatin, artistHangul, titleLatin);
+      const getCandidates = candidates.filter(c => c.type === 'get').slice(0, 3);
+      const searchCandidates = candidates.filter(c => c.type === 'search').slice(0, 4);
+
+      for (const c of getCandidates) {
         try {
-          if (c.type === 'get') {
-            const getRes = await axios.get('https://lrclib.net/api/get', {
-              params: {
-                track_name: c.track,
-                artist_name: c.artist
-              },
-              headers,
-              timeout: 2000
-            });
-            if (getRes.data) {
-              if (getRes.data.syncedLyrics) {
-                if (!effectiveSongDuration || !getRes.data.duration || Math.abs(getRes.data.duration - effectiveSongDuration) <= 5) {
-                  syncedResult = { ...getRes.data, sourceName: 'LRCLib' };
-                  break;
-                }
-              } else if (getRes.data.plainLyrics && !plainResult) {
-                plainResult = { ...getRes.data, sourceName: 'LRCLib' };
+          const getRes = await axios.get('https://lrclib.net/api/get', {
+            params: {
+              track_name: c.track,
+              artist_name: c.artist
+            },
+            headers,
+            timeout: 2000
+          });
+          if (getRes.data) {
+            if (getRes.data.syncedLyrics) {
+              if (!effectiveSongDuration || !getRes.data.duration || Math.abs(getRes.data.duration - effectiveSongDuration) <= 5) {
+                syncedResult = { ...getRes.data, sourceName: 'LRCLib' };
+                break;
               }
+            } else if (getRes.data.plainLyrics && !plainResult) {
+              plainResult = { ...getRes.data, sourceName: 'LRCLib' };
             }
-          } else if (c.type === 'search') {
+          }
+        } catch (e) {}
+      }
+
+      if (!syncedResult) {
+        for (const c of searchCandidates) {
+          try {
             const searchRes = await axios.get('https://lrclib.net/api/search', {
               params: { q: c.q },
               headers,
@@ -4990,8 +5019,8 @@ app.get('/api/lyrics', async (req, res) => {
                 }
               }
             }
-          }
-        } catch (e) {}
+          } catch (e) {}
+        }
       }
     }
 
