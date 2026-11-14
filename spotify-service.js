@@ -26,6 +26,57 @@ function parseDuration(durationMs) {
   return `${m}:${s}`;
 }
 
+/**
+ * Scores yt-search candidates to strongly prefer clean Studio Audio ("- Topic" / "Official Audio")
+ * starting at 00:00 instead of Music Videos / live / covers / remixes that shift lyric sync.
+ */
+function pickBestStudioVideo(videos, title = '', artist = '') {
+  if (!Array.isArray(videos) || videos.length === 0) return null;
+
+  const cleanTitle = (title || '').toLowerCase();
+  const cleanArtist = (artist || '').toLowerCase();
+  const wantLive = /\blive\b|\bconcert\b|\btour\b/.test(cleanTitle);
+  const wantRemix = /\bremix\b|\bver\.?\b|\bacoustic\b|\binstrumental\b|\bsped\s*up\b|\bslowed\b/.test(cleanTitle);
+  const wantCover = /\bcover\b/.test(cleanTitle);
+
+  let bestVideo = null;
+  let bestScore = -Infinity;
+
+  for (const v of videos) {
+    if (!v || !v.videoId || (v.seconds && v.seconds < 45)) continue;
+    const vTitle = (v.title || '').toLowerCase();
+    const vAuthor = (v.author?.name || '').toLowerCase();
+    const combined = `${vTitle} ${vAuthor}`;
+
+    if (vTitle.includes('#shorts') || vTitle.includes('shorts')) continue;
+    if (!wantCover && /\bcover\b|\bby\s+[a-z]+\s+cover\b/.test(vTitle)) continue;
+    if (!wantRemix && /\b(?:karaoke|8d audio|nightcore|sped up|slowed|reverb|bass boosted|instrumental|off vocal|1 hour|loop)\b/.test(vTitle)) continue;
+    if (!wantLive && /\b(?:live at|live performance|fancam|concert|mcountdown|music bank|inkigayo|the first take)\b/.test(vTitle)) continue;
+
+    let score = 0;
+    if (vAuthor.includes('- topic')) score += 120;
+    if (vTitle.includes('official audio') || vTitle.includes('provided to youtube')) score += 75;
+    if (vTitle.includes('topic')) score += 25;
+
+    if (cleanTitle && vTitle.includes(cleanTitle)) score += 40;
+    if (cleanArtist && (vAuthor.includes(cleanArtist) || vTitle.includes(cleanArtist))) score += 30;
+
+    if (/\b(?:official\s*(?:music\s*)?video|m\/v|mv|music video|lyric video|visualizer)\b/.test(combined) && !vAuthor.includes('- topic')) {
+      score -= 60;
+    }
+    if (vTitle.includes('teaser') || vTitle.includes('trailer') || vTitle.includes('reaction')) {
+      score -= 100;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestVideo = v;
+    }
+  }
+
+  return bestVideo || videos.find(v => v && v.videoId) || null;
+}
+
 async function resolveSpotifyTrack(title = '', artist = '', id = '') {
   const cacheKey = `sp_${id || (artist + '_' + title)}`.toLowerCase();
   if (resolvedCache.has(cacheKey)) {
@@ -35,22 +86,28 @@ async function resolveSpotifyTrack(title = '', artist = '', id = '') {
     }
   }
 
-  const query = `${artist} - ${title} official audio`;
-  try {
-    const res = await ytSearch(query);
-    const firstVid = res.videos?.[0];
-    if (firstVid && firstVid.videoId) {
-      resolvedCache.set(cacheKey, { videoId: firstVid.videoId, timestamp: Date.now() });
-      return firstVid.videoId;
+  const queries = [
+    `${artist} - ${title} official audio`,
+    `${artist} ${title} topic`
+  ];
+
+  for (const query of queries) {
+    try {
+      const res = await ytSearch(query);
+      const picked = pickBestStudioVideo(res?.videos, title, artist);
+      if (picked && picked.videoId) {
+        resolvedCache.set(cacheKey, { videoId: picked.videoId, timestamp: Date.now() });
+        return picked.videoId;
+      }
+    } catch (err) {
+      console.warn(`Resolve error for "${query}":`, err.message);
     }
-  } catch (err) {
-    console.warn(`Resolve error for "${query}":`, err.message);
   }
 
   // Backup simple search
   try {
     const backupRes = await ytSearch(`${title} ${artist}`);
-    const backupVid = backupRes.videos?.[0];
+    const backupVid = pickBestStudioVideo(backupRes?.videos, title, artist);
     if (backupVid && backupVid.videoId) {
       resolvedCache.set(cacheKey, { videoId: backupVid.videoId, timestamp: Date.now() });
       return backupVid.videoId;

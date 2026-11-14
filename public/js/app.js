@@ -2902,9 +2902,18 @@ class App {
       this.sunoAlignRetryTimer = null;
     }
     this.currentLyricsTrackId = trackId;
+    const lyricsReqSeq = (this._lyricsRequestSeq = (this._lyricsRequestSeq || 0) + 1);
 
-    // 1. If lyrics already cached in track instance (and not forcing refresh)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v84' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 && (!track._cachedForTrackId || track._cachedForTrackId === trackId)) {
+    const playingYtId = (this.currentAudioMode === 'yt')
+      ? (window.ytPlayer?.player?.getVideoData?.()?.video_id || window.ytPlayer?.currentTrack?.id || track.resolvedStudioId || track.id || track.videoId || '')
+      : '';
+    const activeVideoId = playingYtId || track.id || track.videoId || '';
+
+    // 1. If lyrics already cached in track instance for the active audio mode & videoId (and not forcing refresh)
+    if (!forceRefresh && track._lyricsEngineVersion === 'v84' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 &&
+        (!track._cachedForTrackId || track._cachedForTrackId === trackId) &&
+        (!track._cachedForAudioMode || track._cachedForAudioMode === this.currentAudioMode) &&
+        (!track._cachedForVideoId || track._cachedForVideoId === activeVideoId)) {
       this.currentLyricsData = track._parsedLyrics;
       this.currentLyricsLang = track._lyricsLang || null;
       this.currentHasRomaji = Boolean(track._hasRomaji);
@@ -3071,10 +3080,13 @@ class App {
     if (actualDuration > 0 && (!track.seconds || forceRefresh)) track.seconds = actualDuration;
 
     try {
+      const isPlayingStudioYt = this.currentAudioMode === 'yt' && Boolean(track.resolvedStudioId && playingYtId === track.resolvedStudioId);
       const isTopicTrack = (typeof track.artist === 'string' && track.artist.toLowerCase().includes('- topic')) ||
                            (typeof track.author === 'string' && track.author.toLowerCase().includes('- topic')) ||
-                           (track.source === 'ytmusic');
-      const videoId = track.id || track.videoId || '';
+                           (track.source === 'ytmusic') ||
+                           isPlayingStudioYt;
+      const videoId = activeVideoId;
+      const preferStudioParam = (this.currentAudioMode !== 'yt' || isPlayingStudioYt) ? 'true' : 'false';
       const mediaDur = (this.nativeAudio && !isNaN(this.nativeAudio.duration) && this.nativeAudio.duration > 0)
         ? Math.round(this.nativeAudio.duration)
         : (window.ytPlayer && typeof window.ytPlayer.getCurrentTime === 'function' && window.ytPlayer.player && typeof window.ytPlayer.player.getDuration === 'function' ? Math.round(window.ytPlayer.player.getDuration()) : '');
@@ -3086,21 +3098,51 @@ class App {
         mediaDuration: mediaDur > 0 ? String(mediaDur) : '',
         videoId: videoId,
         source: track.source || (isTopicTrack ? 'ytmusic' : ''),
-        preferStudio: (this.currentAudioMode !== 'yt') ? 'true' : 'false'
+        preferStudio: preferStudioParam
       });
       if (forceRefresh) {
         queryParams.set('nocache', '1');
       }
 
+      this._lyricsRequestInFlightTrackId = trackId;
       const res = await fetch(`/api/lyrics?${queryParams.toString()}`);
       if (!res.ok) throw new Error('Network error');
       const data = await res.json();
 
-      // Guard against race conditions if song switched during fetch
-      if (this.currentLyricsTrackId !== trackId) return;
+      // Guard against race conditions if song switched or newer lyrics fetch started
+      if (this.currentLyricsTrackId !== trackId || this._lyricsRequestSeq !== lyricsReqSeq) return;
+      if (this._lyricsRequestInFlightTrackId === trackId) {
+        this._lyricsRequestInFlightTrackId = null;
+      }
 
       if (data.resolvedStudioId) {
         track.resolvedStudioId = data.resolvedStudioId;
+        // If playback already fell back to YouTube IFrame on a non-studio (MV) video ID,
+        // seamlessly upgrade YouTube playback to the resolved Studio Audio ID so audio & lyrics match 100%.
+        const nowYtId = (this.currentAudioMode === 'yt')
+          ? (window.ytPlayer?.player?.getVideoData?.()?.video_id || window.ytPlayer?.currentTrack?.id || videoId)
+          : '';
+        if (this.currentAudioMode === 'yt' && this.currentTrack === track && window.ytPlayer &&
+            data.resolvedStudioId.length === 11 && nowYtId && nowYtId !== data.resolvedStudioId) {
+          const curPos = this.getCurrentPlaybackTime();
+          const resumeAt = (curPos > 1.5 && curPos < 18) ? curPos : 0;
+          this._lastYtDurationChecked = false;
+          window.ytPlayer.loadAndPlay({ ...track, id: data.resolvedStudioId });
+          if (resumeAt > 0 && typeof window.ytPlayer.seekTo === 'function') {
+            setTimeout(() => {
+              if (this.currentTrack === track && this.currentAudioMode === 'yt') {
+                window.ytPlayer.seekTo(resumeAt);
+              }
+            }, 700);
+          }
+          this.renderCinemaLyrics(track, overrideDuration, true);
+          return;
+        }
+      } else if (this.currentAudioMode === 'yt' && this.currentTrack === track && preferStudioParam === 'true' && !isPlayingStudioYt) {
+        // Audio fell back to YouTube MV while preferStudio=true request was in flight and no Studio ID existed;
+        // re-fetch once with preferStudio=false so server applies MV intro offset against mediaDuration.
+        this.renderCinemaLyrics(track, overrideDuration, true);
+        return;
       }
 
       this.currentLeadingSilence = Number(data.leadingSilence) || 0;
@@ -3117,6 +3159,8 @@ class App {
         track._hasRomaji = this.currentHasRomaji;
         track._hasWordSync = this.hasWordSync;
         track._cachedForTrackId = trackId;
+        track._cachedForAudioMode = this.currentAudioMode;
+        track._cachedForVideoId = videoId;
         track._lyricsEngineVersion = 'v84';
 
         track._braccatoLyrics = data.braccatoLyrics || null;
@@ -3220,7 +3264,7 @@ class App {
         emptyBox.style.display = 'flex';
       }
     } catch (err) {
-      if (this.currentLyricsTrackId !== trackId) return;
+      if (this.currentLyricsTrackId !== trackId || this._lyricsRequestSeq !== lyricsReqSeq) return;
       if (this.cinemaLyricsBadge) this.cinemaLyricsBadge.style.display = 'none';
       if (this.btnToggleRomaji) this.btnToggleRomaji.style.display = 'none';
       if (this.cinemaLeadInDots) this.cinemaLeadInDots.style.display = 'none';
@@ -3235,6 +3279,10 @@ class App {
           <div class="cinema-lyrics-empty-desc">Gagal memuat lirik. Silakan periksa koneksi internet Anda.</div>
         `;
         emptyBox.style.display = 'flex';
+      }
+    } finally {
+      if (this._lyricsRequestSeq === lyricsReqSeq && this._lyricsRequestInFlightTrackId === trackId) {
+        this._lyricsRequestInFlightTrackId = null;
       }
     }
   }
@@ -8130,30 +8178,14 @@ class App {
           this.updatePlayState(true);
         }).catch(err => {
           if (err.name === 'AbortError') return; // User track switch or pause; do not fallback
-          console.warn('Direct audio stream error, falling back to YouTube player:', err);
-          this.currentAudioMode = 'yt';
-          if (this.nativeAudio) this.nativeAudio.pause();
-          const targetFallbackTrack = (track.resolvedStudioId && track.resolvedStudioId.length === 11 && track.resolvedStudioId !== track.id)
-            ? { ...track, id: track.resolvedStudioId }
-            : track;
-          window.ytPlayer.loadAndPlay(targetFallbackTrack);
-          this.updateEqStatusBanner();
-          this.renderCinemaLyrics(track, null, true);
+          this.fallbackToYouTube(track, err);
         });
       }
 
       this.nativeAudio.onerror = (e) => {
         if (!this.nativeAudio.src || this.nativeAudio.src === window.location.href) return;
         if (this.currentAudioMode === 'native' && track.type !== 'suno' && track.type !== 'local') {
-          console.warn('Native audio error event, falling back to YouTube player:', e);
-          this.currentAudioMode = 'yt';
-          this.nativeAudio.onerror = null;
-          const targetFallbackTrack = (track.resolvedStudioId && track.resolvedStudioId.length === 11 && track.resolvedStudioId !== track.id)
-            ? { ...track, id: track.resolvedStudioId }
-            : track;
-          window.ytPlayer.loadAndPlay(targetFallbackTrack);
-          this.updateEqStatusBanner();
-          this.renderCinemaLyrics(track, null, true);
+          this.fallbackToYouTube(track, e);
         }
       };
 
@@ -8170,6 +8202,35 @@ class App {
 
     this.updatePlayState(true);
     this.persistPlaybackState();
+  }
+
+  /**
+   * Falls back cleanly from native DSP audio streaming to YouTube IFrame playback
+   * while keeping lyrics timing synchronized with whichever video ID loads.
+   */
+  fallbackToYouTube(track, reason) {
+    if (!track || this.currentTrack !== track || this.currentAudioMode === 'yt') return;
+    console.warn('Direct audio stream error, falling back to YouTube player:', reason);
+    this.currentAudioMode = 'yt';
+    if (this.nativeAudio) {
+      this.nativeAudio.onerror = null;
+      this.nativeAudio.pause();
+    }
+    this._lastYtDurationChecked = false;
+    const hasStudioId = Boolean(track.resolvedStudioId && track.resolvedStudioId.length === 11 && track.resolvedStudioId !== track.id);
+    const targetFallbackTrack = hasStudioId ? { ...track, id: track.resolvedStudioId } : track;
+    window.ytPlayer.loadAndPlay(targetFallbackTrack);
+    this.updateEqStatusBanner();
+
+    const trackId = track.id || track.videoId || track.title;
+    // If an in-flight /api/lyrics request is already resolving resolvedStudioId, let it complete:
+    // renderCinemaLyrics will either upgrade ytPlayer to resolvedStudioId or re-fetch with preferStudio=false.
+    if (this._lyricsRequestInFlightTrackId === trackId) return;
+
+    const targetVideoId = targetFallbackTrack.id || trackId;
+    if (track._cachedForAudioMode !== 'yt' || track._cachedForVideoId !== targetVideoId) {
+      this.renderCinemaLyrics(track, null, true);
+    }
   }
 
   updateEqStatusBanner() {

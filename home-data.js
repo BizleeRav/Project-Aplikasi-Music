@@ -1796,9 +1796,9 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
 
   const queries = [];
   queryArtists.forEach(art => {
-    queries.push(`"${art}" official music video`);
     queries.push(`"${art}" official audio`);
-    queries.push(`lagu mirip ${art} official music video`);
+    queries.push(`"${art}" topic`);
+    queries.push(`lagu mirip ${art} official audio`);
   });
 
   const shuffledQueries = shuffleArray(queries);
@@ -1808,7 +1808,7 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
     try {
       const res = await ytSearch(q);
       if (res && res.videos) {
-        const candidateVideos = shuffleArray(res.videos);
+        const candidateVideos = sortVideosPreferStudio(res.videos);
         for (const v of candidateVideos) {
           const matchedArtist = queryArtists.find(a => isOfficialMusicTrack(v, a)) || queryArtists[0];
           if (isOfficialMusicTrack(v, matchedArtist)) {
@@ -1829,6 +1829,40 @@ async function fetchMoreAlbumTracks(albumId, offset = 0, userKey = null) {
   }
 
   return shuffleArray(newTracks);
+}
+
+/**
+ * Tiers YouTube search candidates so clean Studio Audio tracks ("- Topic",
+ * "Official Audio") are tried before Music Videos while preserving random
+ * variety within each tier.
+ */
+function sortVideosPreferStudio(videos) {
+  if (!Array.isArray(videos) || videos.length === 0) return [];
+  const topicTier = [];
+  const studioAudioTier = [];
+  const neutralTier = [];
+  const mvTier = [];
+
+  for (const v of videos) {
+    if (!v) continue;
+    const title = (v.title || '').toLowerCase();
+    const author = (v.author?.name || '').toLowerCase();
+    const isTopic = author.includes(' - topic') || author.endsWith('- topic') || title.includes('provided to youtube');
+    const hasMvTag = /\b(?:official\s*(?:music\s*)?video|m\/v|mv|music video|lyric video|visualizer)\b/.test(title);
+    const isAudioTag = title.includes('official audio') || /\baudio\b/.test(title);
+
+    if (isTopic) topicTier.push(v);
+    else if (isAudioTag && !hasMvTag) studioAudioTier.push(v);
+    else if (hasMvTag) mvTier.push(v);
+    else neutralTier.push(v);
+  }
+
+  return [
+    ...shuffleArray(topicTier),
+    ...shuffleArray(studioAudioTier),
+    ...shuffleArray(neutralTier),
+    ...shuffleArray(mvTier)
+  ];
 }
 
 // ==========================================
@@ -1947,9 +1981,9 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     }
   }
 
-  // 3. 30% Related Tracks for each sampled artist (parallel query with randomized official selection)
+  // 3. 30% Related Tracks for each sampled artist (parallel query with studio-first selection)
   try {
-    const querySuffixes = ['official music video', 'official audio', 'official mv'];
+    const querySuffixes = ['official audio', 'topic', 'audio'];
     const artistQueries = activeArtists.map(a => {
       const suffix = querySuffixes[Math.floor(Math.random() * querySuffixes.length)];
       return ytSearch(`"${a}" ${suffix}`);
@@ -1960,7 +1994,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
       const res = artistResults[i];
       if (res && res.videos) {
         let countForArtist = 0;
-        const shuffledVideos = shuffleArray(res.videos);
+        const shuffledVideos = sortVideosPreferStudio(res.videos);
         for (const v of shuffledVideos) {
           if (isOfficialMusicTrack(v, activeArtists[i])) {
             const added = addTrackIfUnique({
@@ -1989,7 +2023,7 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
     const secondaryArtist = shuffledActive[1] || 'J-Pop';
     const discRes = await ytSearch(`"${primaryArtist}" "${secondaryArtist}" official audio`);
     if (discRes && discRes.videos) {
-      for (const v of shuffleArray(discRes.videos)) {
+      for (const v of sortVideosPreferStudio(discRes.videos)) {
         if (isOfficialMusicTrack(v, primaryArtist)) {
           const added = addTrackIfUnique({
             id: v.videoId,
@@ -2048,12 +2082,12 @@ async function generatePersonalizedSupermix({ topArtists = [], favorites = [], h
   if (finalTracks.length < 22) {
     try {
       const extraArtists = shuffleArray(DEFAULT_TOP_ARTISTS_POOL).slice(0, 3);
-      const extraQueries = extraArtists.map(a => ytSearch(`"${a}" official music video`));
+      const extraQueries = extraArtists.map(a => ytSearch(`"${a}" official audio`));
       const extraResults = await Promise.all(extraQueries);
       for (let i = 0; i < extraResults.length; i++) {
         const res = extraResults[i];
         if (res && res.videos) {
-          for (const v of shuffleArray(res.videos)) {
+          for (const v of sortVideosPreferStudio(res.videos)) {
             if (v.seconds > 50 && v.seconds < 600 && isOfficialMusicTrack(v, extraArtists[i])) {
               pushToFinal({
                 id: v.videoId,
