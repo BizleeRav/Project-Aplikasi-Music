@@ -4798,12 +4798,19 @@ app.get('/api/lyrics', async (req, res) => {
     duration = meta.duration;
   }
 
-  // 2. Resolve dynamic audio segments via SponsorBlock (primary source of truth)
+  // 2. Resolve intro offset & non-music segments: KNOWN_MV_OFFSETS ground truth first, fallback to SponsorBlock
   let introOffsetSec = 0;
   let effectiveSongDuration = duration;
   let nonMusicSegments = [];
 
-  if (videoId) {
+  const hasKnownMvOffset = Boolean(videoId && KNOWN_MV_OFFSETS[videoId] !== undefined);
+
+  if (hasKnownMvOffset) {
+    introOffsetSec = KNOWN_MV_OFFSETS[videoId];
+    if (introOffsetSec > 0) {
+      nonMusicSegments = [[0, introOffsetSec]];
+    }
+  } else if (videoId) {
     try {
       const segs = await resolveDynamicAudioSegments(videoId, duration);
       if (segs) {
@@ -4819,16 +4826,6 @@ app.get('/api/lyrics', async (req, res) => {
       }
     } catch (e) {}
   }
-
-  // Fallback: If SponsorBlock had no data for this video, check emergency offset cache
-  if (introOffsetSec === 0 && videoId && KNOWN_MV_OFFSETS[videoId] !== undefined) {
-    introOffsetSec = KNOWN_MV_OFFSETS[videoId];
-    if (introOffsetSec > 0 && nonMusicSegments.length === 0) {
-      nonMusicSegments.push([0, introOffsetSec]);
-    }
-  }
-
-  const hasKnownMvOffset = introOffsetSec > 0;
   const isMvExplicit = /\b(?:mv|m\/v|music\s*video|official\s*(?:video|mv|film)|special\s*clip|performance\s*video|live|concert|the\s*first\s*take)\b|【mv】|\[mv\]|（live）|\(live\)/i.test(rawTitle || '');
   const isMv = isMvExplicit || hasKnownMvOffset;
 
@@ -4855,8 +4852,10 @@ app.get('/api/lyrics', async (req, res) => {
       nonMusicSegments = [];
     } else {
       // Client is playing the YouTube video / MV directly (via ytPlayer or direct media)
-      // Ensure SponsorBlock nonMusicSegments & introOffsetSec remain active!
-      if (introOffsetSec > 0 && nonMusicSegments.length === 0) {
+      if (hasKnownMvOffset) {
+        introOffsetSec = KNOWN_MV_OFFSETS[videoId];
+        nonMusicSegments = introOffsetSec > 0 ? [[0, introOffsetSec]] : [];
+      } else if (introOffsetSec > 0 && nonMusicSegments.length === 0) {
         nonMusicSegments.push([0, introOffsetSec]);
       }
     }
