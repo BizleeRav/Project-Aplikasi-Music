@@ -8004,6 +8004,39 @@ class App {
     this.showToast(`"${track.title}" ditambahkan ke antrean 🎶`, 'success');
   }
 
+  /**
+   * Immediately halts all active playback (in-flight stream fetches, HTML5 Audio, and YouTube IFrame)
+   * so switching tracks stops previous audio instantaneously across desktop and mobile.
+   */
+  stopAllActiveAudio() {
+    if (this._activeStreamAbortController) {
+      try { this._activeStreamAbortController.abort(); } catch (_) {}
+      this._activeStreamAbortController = null;
+    }
+    this._isSingleStreamActive = false;
+    this._isPlayingFromCache = false;
+    this.currentAudioMode = 'native';
+
+    if (this.nativeAudio) {
+      this.nativeAudio.onerror = null;
+      this.nativeAudio.pause();
+      if (this._currentBlobUrl) {
+        try { URL.revokeObjectURL(this._currentBlobUrl); } catch (_) {}
+        this._currentBlobUrl = null;
+      }
+      this.nativeAudio.removeAttribute('src');
+      this.nativeAudio.load();
+    }
+
+    if (window.ytPlayer) {
+      if (typeof window.ytPlayer.stop === 'function') {
+        window.ytPlayer.stop();
+      } else if (typeof window.ytPlayer.pause === 'function') {
+        window.ytPlayer.pause();
+      }
+    }
+  }
+
   async playTrack(track) {
     if (!track) return;
 
@@ -8017,12 +8050,16 @@ class App {
       return;
     }
 
+    const playSeq = (this._playTrackSeq = (this._playTrackSeq || 0) + 1);
+    this.stopAllActiveAudio();
+
     // On-demand Spotify audio resolution (seamless matching without delay)
     if (track.id && (track.id.startsWith('sp_') || (track.isSpotify && !track.youtubeResolved))) {
       this.showToast(`Menyambungkan audio: ${track.title}...`, 'info');
       try {
         const resolveRes = await fetch(`/api/spotify/resolve?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist || '')}&id=${encodeURIComponent(track.spotifyId || track.id)}`);
         const resolveData = await resolveRes.json();
+        if (this._playTrackSeq !== playSeq) return;
         if (resolveData.success && resolveData.videoId) {
           track.originalSpotifyId = track.id;
           track.id = resolveData.videoId;
@@ -8033,6 +8070,7 @@ class App {
       } catch (spErr) {
         console.warn('Spotify on-demand resolve error:', spErr);
       }
+      if (this._playTrackSeq !== playSeq) return;
     }
 
     this.hydrateSunoTrack(track);
@@ -8110,24 +8148,6 @@ class App {
       }
     });
 
-    // Smart Buffering: Abort any active Single-Stream fetch & purge previous audio buffer immediately
-    if (this._activeStreamAbortController) {
-      try { this._activeStreamAbortController.abort(); } catch (_) {}
-      this._activeStreamAbortController = null;
-    }
-    this._isSingleStreamActive = false;
-
-    if (this.nativeAudio) {
-      this.nativeAudio.pause();
-      if (this._currentBlobUrl) {
-        URL.revokeObjectURL(this._currentBlobUrl);
-        this._currentBlobUrl = null;
-      }
-      this.nativeAudio.removeAttribute('src');
-      this.nativeAudio.load();
-    }
-    this._isPlayingFromCache = false;
-
     // Smart Audio Cache: Instant playback & 0 KB network consumption on replay
     let cachedBlob = null;
     if (window.audioCache && track.id) {
@@ -8137,13 +8157,14 @@ class App {
         console.warn('[AudioCache] Read error:', cErr);
       }
     }
+    if (this._playTrackSeq !== playSeq) return;
 
     if (cachedBlob) {
       this._isPlayingFromCache = true;
       console.log(`[AudioCache] ⚡ Playing "${track.title}" from Offline Smart Cache (0 KB used! 🚀)`);
       this._currentBlobUrl = URL.createObjectURL(cachedBlob);
       this.currentAudioMode = 'native';
-      if (window.ytPlayer) window.ytPlayer.pause();
+      if (window.ytPlayer) window.ytPlayer.stop();
       if (window.audioEngine) window.audioEngine.resume();
 
       if (!this.queue || this.queue.length === 0) {
@@ -8178,8 +8199,8 @@ class App {
     // Route playback based on type
     if (track.type === 'suno' || track.type === 'local') {
       this.currentAudioMode = 'native';
-      // Pause YouTube player
-      if (window.ytPlayer) window.ytPlayer.pause();
+      // Ensure YouTube player stays stopped
+      if (window.ytPlayer) window.ytPlayer.stop();
 
       if (window.audioEngine) {
         window.audioEngine.resume();
@@ -8226,7 +8247,7 @@ class App {
     } else {
       // YouTube Music track -> Route through Single-Stream Capture (/api/stream-audio)
       // Plays immediately via MSE while capturing the exact same stream into IndexedDB (0 double-download!)
-      if (window.ytPlayer) window.ytPlayer.pause();
+      if (window.ytPlayer) window.ytPlayer.stop();
       this.currentAudioMode = 'native';
 
       const streamUrl = `/api/stream-audio?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}`;

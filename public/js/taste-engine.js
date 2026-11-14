@@ -52,7 +52,7 @@ class TasteEngine {
 
     // Add to history (avoid duplicates at the top, limit to 60)
     this.taste.history = (this.taste.history || []).filter(h => h.id !== track.id);
-    this.taste.history.unshift({
+    const historyEntry = {
       id: track.id,
       title: track.title,
       artist: track.artist || 'AuraSound',
@@ -60,7 +60,17 @@ class TasteEngine {
       duration: track.duration || '3:30',
       type: track.type || 'youtube',
       playedAt: Date.now()
-    });
+    };
+    if (track.type === 'suno') {
+      if (track.audio_url) historyEntry.audio_url = track.audio_url;
+      if (track.lyrics) historyEntry.lyrics = track.lyrics;
+      if (track.syncedLyrics) historyEntry.syncedLyrics = track.syncedLyrics;
+      if (track.lyrics_synced) historyEntry.lyrics_synced = track.lyrics_synced;
+      if (track.prompt) historyEntry.prompt = track.prompt;
+      if (track.tags) historyEntry.tags = track.tags;
+      if (track.seconds) historyEntry.seconds = track.seconds;
+    }
+    this.taste.history.unshift(historyEntry);
 
     if (this.taste.history.length > 60) {
       this.taste.history = this.taste.history.slice(0, 60);

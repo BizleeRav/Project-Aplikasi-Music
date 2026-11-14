@@ -773,43 +773,43 @@
         <div class="bass-boost-box">
           <div class="bass-header">
             <span>Sub-Bass Booster</span>
-            <span id="bass-boost-val" style="color: var(--primary);">+4 dB</span>
+            <span id="bass-boost-val" style="color: var(--primary);">+3 dB</span>
           </div>
-          <input type="range" id="bass-boost-slider" class="slider" min="0" max="16" value="4" step="1">
+          <input type="range" id="bass-boost-slider" class="slider" min="0" max="16" value="3" step="0.5">
         </div>
 
         <div class="bass-boost-box">
           <div class="bass-header">
             <span>3D Spatial Soundstage</span>
-            <span id="spatial-width-val" style="color: #06b6d4;">145% (3D Surround)</span>
+            <span id="spatial-width-val" style="color: #06b6d4;">135% (3D Surround)</span>
           </div>
-          <input type="range" id="spatial-width-slider" class="slider" min="0" max="200" value="145" step="5">
+          <input type="range" id="spatial-width-slider" class="slider" min="0" max="200" value="135" step="5">
         </div>
       </div>
 
       <div class="eq-bars-container">
         <div class="eq-column">
-          <input type="range" class="vertical-slider" id="eq-slider-0" min="-12" max="12" step="0.5" value="5" oninput="audioEngine.setBandGain(0, this.value)">
+          <input type="range" class="vertical-slider" id="eq-slider-0" min="-12" max="12" step="0.5" value="3.5" oninput="audioEngine.setBandGain(0, this.value)">
           <span class="eq-freq-label">32Hz</span>
         </div>
         <div class="eq-column">
-          <input type="range" class="vertical-slider" id="eq-slider-1" min="-12" max="12" step="0.5" value="6" oninput="audioEngine.setBandGain(1, this.value)">
+          <input type="range" class="vertical-slider" id="eq-slider-1" min="-12" max="12" step="0.5" value="4" oninput="audioEngine.setBandGain(1, this.value)">
           <span class="eq-freq-label">64Hz</span>
         </div>
         <div class="eq-column">
-          <input type="range" class="vertical-slider" id="eq-slider-2" min="-12" max="12" step="0.5" value="2" oninput="audioEngine.setBandGain(2, this.value)">
+          <input type="range" class="vertical-slider" id="eq-slider-2" min="-12" max="12" step="0.5" value="1.5" oninput="audioEngine.setBandGain(2, this.value)">
           <span class="eq-freq-label">125Hz</span>
         </div>
         <div class="eq-column">
-          <input type="range" class="vertical-slider" id="eq-slider-3" min="-12" max="12" step="0.5" value="-1" oninput="audioEngine.setBandGain(3, this.value)">
+          <input type="range" class="vertical-slider" id="eq-slider-3" min="-12" max="12" step="0.5" value="-1.5" oninput="audioEngine.setBandGain(3, this.value)">
           <span class="eq-freq-label">250Hz</span>
         </div>
         <div class="eq-column">
-          <input type="range" class="vertical-slider" id="eq-slider-4" min="-12" max="12" step="0.5" value="-2" oninput="audioEngine.setBandGain(4, this.value)">
+          <input type="range" class="vertical-slider" id="eq-slider-4" min="-12" max="12" step="0.5" value="-1" oninput="audioEngine.setBandGain(4, this.value)">
           <span class="eq-freq-label">500Hz</span>
         </div>
         <div class="eq-column">
-          <input type="range" class="vertical-slider" id="eq-slider-5" min="-12" max="12" step="0.5" value="0" oninput="audioEngine.setBandGain(5, this.value)">
+          <input type="range" class="vertical-slider" id="eq-slider-5" min="-12" max="12" step="0.5" value="0.5" oninput="audioEngine.setBandGain(5, this.value)">
           <span class="eq-freq-label">1kHz</span>
         </div>
         <div class="eq-column">
@@ -817,15 +817,15 @@
           <span class="eq-freq-label">2kHz</span>
         </div>
         <div class="eq-column">
-          <input type="range" class="vertical-slider" id="eq-slider-7" min="-12" max="12" step="0.5" value="4" oninput="audioEngine.setBandGain(7, this.value)">
+          <input type="range" class="vertical-slider" id="eq-slider-7" min="-12" max="12" step="0.5" value="2.5" oninput="audioEngine.setBandGain(7, this.value)">
           <span class="eq-freq-label">4kHz</span>
         </div>
         <div class="eq-column">
-          <input type="range" class="vertical-slider" id="eq-slider-8" min="-12" max="12" step="0.5" value="6" oninput="audioEngine.setBandGain(8, this.value)">
+          <input type="range" class="vertical-slider" id="eq-slider-8" min="-12" max="12" step="0.5" value="3.5" oninput="audioEngine.setBandGain(8, this.value)">
           <span class="eq-freq-label">8kHz</span>
         </div>
         <div class="eq-column">
-          <input type="range" class="vertical-slider" id="eq-slider-9" min="-12" max="12" step="0.5" value="5" oninput="audioEngine.setBandGain(9, this.value)">
+          <input type="range" class="vertical-slider" id="eq-slider-9" min="-12" max="12" step="0.5" value="4.5" oninput="audioEngine.setBandGain(9, this.value)">
           <span class="eq-freq-label">16kHz</span>
         </div>
       </div>
@@ -1722,44 +1722,44 @@
         <div class="cinema-bass-boost-box">
           <div class="cinema-bass-header">
             <span>Sub-Bass Booster</span>
-            <span id="cinema-bass-boost-val" style="color: var(--primary);">+4 dB</span>
+            <span id="cinema-bass-boost-val" style="color: var(--primary);">+3 dB</span>
           </div>
-          <input type="range" id="cinema-bass-boost-slider" class="slider" min="0" max="16" value="4" step="1">
+          <input type="range" id="cinema-bass-boost-slider" class="slider" min="0" max="16" value="3" step="0.5">
         </div>
 
         <div class="cinema-bass-boost-box">
           <div class="cinema-bass-header">
             <span>3D Spatial Soundstage</span>
-            <span id="cinema-spatial-width-val" style="color: #06b6d4;">145% (3D Surround)</span>
+            <span id="cinema-spatial-width-val" style="color: #06b6d4;">135% (3D Surround)</span>
           </div>
-          <input type="range" id="cinema-spatial-width-slider" class="slider" min="0" max="200" value="145" step="5">
+          <input type="range" id="cinema-spatial-width-slider" class="slider" min="0" max="200" value="135" step="5">
         </div>
       </div>
 
       <!-- 10-Band Graphic Equalizer Sliders -->
       <div class="cinema-eq-bars-container">
         <div class="cinema-eq-column">
-          <input type="range" class="vertical-slider" id="cinema-eq-slider-0" min="-12" max="12" step="0.5" value="5">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-0" min="-12" max="12" step="0.5" value="3.5">
           <span class="eq-freq-label">32Hz</span>
         </div>
         <div class="cinema-eq-column">
-          <input type="range" class="vertical-slider" id="cinema-eq-slider-1" min="-12" max="12" step="0.5" value="6">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-1" min="-12" max="12" step="0.5" value="4">
           <span class="eq-freq-label">64Hz</span>
         </div>
         <div class="cinema-eq-column">
-          <input type="range" class="vertical-slider" id="cinema-eq-slider-2" min="-12" max="12" step="0.5" value="2">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-2" min="-12" max="12" step="0.5" value="1.5">
           <span class="eq-freq-label">125Hz</span>
         </div>
         <div class="cinema-eq-column">
-          <input type="range" class="vertical-slider" id="cinema-eq-slider-3" min="-12" max="12" step="0.5" value="-1">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-3" min="-12" max="12" step="0.5" value="-1.5">
           <span class="eq-freq-label">250Hz</span>
         </div>
         <div class="cinema-eq-column">
-          <input type="range" class="vertical-slider" id="cinema-eq-slider-4" min="-12" max="12" step="0.5" value="-2">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-4" min="-12" max="12" step="0.5" value="-1">
           <span class="eq-freq-label">500Hz</span>
         </div>
         <div class="cinema-eq-column">
-          <input type="range" class="vertical-slider" id="cinema-eq-slider-5" min="-12" max="12" step="0.5" value="0">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-5" min="-12" max="12" step="0.5" value="0.5">
           <span class="eq-freq-label">1kHz</span>
         </div>
         <div class="cinema-eq-column">
@@ -1767,15 +1767,15 @@
           <span class="eq-freq-label">2kHz</span>
         </div>
         <div class="cinema-eq-column">
-          <input type="range" class="vertical-slider" id="cinema-eq-slider-7" min="-12" max="12" step="0.5" value="4">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-7" min="-12" max="12" step="0.5" value="2.5">
           <span class="eq-freq-label">4kHz</span>
         </div>
         <div class="cinema-eq-column">
-          <input type="range" class="vertical-slider" id="cinema-eq-slider-8" min="-12" max="12" step="0.5" value="6">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-8" min="-12" max="12" step="0.5" value="3.5">
           <span class="eq-freq-label">8kHz</span>
         </div>
         <div class="cinema-eq-column">
-          <input type="range" class="vertical-slider" id="cinema-eq-slider-9" min="-12" max="12" step="0.5" value="5">
+          <input type="range" class="vertical-slider" id="cinema-eq-slider-9" min="-12" max="12" step="0.5" value="4.5">
           <span class="eq-freq-label">16kHz</span>
         </div>
       </div>
@@ -1784,10 +1784,10 @@
 
   <!-- Application Logic Scripts -->
   <script src="/js/audio-cache.js?v=4.72.0"></script>
-  <script src="/js/audio-engine.js?v=4.72.0"></script>
-  <script src="/js/yt-player.js?v=4.70.0"></script>
-  <script src="/js/taste-engine.js?v=4.69.0"></script>
+  <script src="/js/audio-engine.js?v=4.73.0"></script>
+  <script src="/js/yt-player.js?v=4.73.0"></script>
+  <script src="/js/taste-engine.js?v=4.73.0"></script>
   <script src="/js/suno-studio.js?v=4.69.0"></script>
-  <script src="/js/app.js?v=4.72.0"></script>
+  <script src="/js/app.js?v=4.73.0"></script>
 </body>
 </html>

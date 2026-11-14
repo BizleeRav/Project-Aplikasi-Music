@@ -8,6 +8,8 @@ class YTPlayerManager {
     this.player = null;
     this.isReady = false;
     this.isPlaying = false;
+    this._isStopped = true;
+    this._loadSeq = 0;
     this.currentTrack = null;
     this.progressInterval = null;
     this.onStateChangeCallback = null;
@@ -69,6 +71,7 @@ class YTPlayerManager {
       events: {
         onReady: () => {
           this.isReady = true;
+          this.installPlayGuard();
           console.log('YouTube Player API Ready.');
         },
         onStateChange: (event) => {
@@ -80,9 +83,32 @@ class YTPlayerManager {
         }
       }
     });
+    this.installPlayGuard();
+  }
+
+  /**
+   * Guard player.playVideo() so background watchdogs (e.g. legacy Android WebView bridge)
+   * cannot accidentally resume a stopped/paused YouTube video while switching tracks or using native audio.
+   */
+  installPlayGuard() {
+    if (!this.player || typeof this.player.playVideo !== 'function' || this.player._playGuardInstalled) return;
+    const rawPlayVideo = this.player.playVideo.bind(this.player);
+    this.player._rawPlayVideo = rawPlayVideo;
+    this.player.playVideo = () => {
+      if (this._isStopped || (window.app && window.app.currentAudioMode === 'native')) {
+        return;
+      }
+      return rawPlayVideo();
+    };
+    this.player._playGuardInstalled = true;
   }
 
   async handlePlaybackError(errorCode) {
+    if (this._isStopped || (window.app && window.app.currentAudioMode === 'native')) {
+      return;
+    }
+    const errSeq = this._loadSeq;
+
     // If not tried fallback yet and track has a title, attempt to find a playable alternative automatically
     if (this.currentTrack && !this.currentTrack._fallbackRetried && this.currentTrack.title) {
       this.currentTrack._fallbackRetried = true;
@@ -92,14 +118,17 @@ class YTPlayerManager {
         const query = `${this.currentTrack.title} ${this.currentTrack.artist || ''} official audio`;
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
         const data = await res.json();
+        if (this._isStopped || errSeq !== this._loadSeq || (window.app && window.app.currentAudioMode === 'native')) {
+          return;
+        }
         const candidateTracks = data.tracks || data.results || [];
 
-        if (data.success && candidateTracks.length > 0) {
+        if (data.success && candidateTracks.length > 0 && this.currentTrack) {
           const altTrack = candidateTracks.find(r => r.id !== this.currentTrack.id);
           if (altTrack) {
             console.log(`[YTPlayer] Found alternative: "${altTrack.title}" (${altTrack.id}), playing...`);
             this.currentTrack.id = altTrack.id;
-            this.loadAndPlay(this.currentTrack);
+            this.loadAndPlay(this.currentTrack, errSeq);
             return;
           }
         }
@@ -108,24 +137,37 @@ class YTPlayerManager {
       }
     }
 
+    if (this._isStopped || errSeq !== this._loadSeq || (window.app && window.app.currentAudioMode === 'native')) {
+      return;
+    }
+
     // If already retried or no alternative found, notify user and advance queue
     if (window.app && window.app.showToast) {
       window.app.showToast('Lagu ini memiliki batasan pemutaran, beralih ke lagu berikutnya...', 'warning');
     }
     if (window.app && window.app.playNext) {
-      setTimeout(() => window.app.playNext(), 1200);
+      setTimeout(() => {
+        if (!this._isStopped && errSeq === this._loadSeq && (!window.app || window.app.currentAudioMode !== 'native')) {
+          window.app.playNext();
+        }
+      }, 1200);
     }
   }
 
-  loadAndPlay(track) {
+  loadAndPlay(track, _seq) {
+    const seq = _seq !== undefined ? _seq : ++this._loadSeq;
+    if (seq !== this._loadSeq) return;
+
     this.currentTrack = track;
+    this._isStopped = false;
 
     if (!this.player || !this.isReady) {
-      setTimeout(() => this.loadAndPlay(track), 400);
+      setTimeout(() => this.loadAndPlay(track, seq), 400);
       return;
     }
 
     try {
+      this.installPlayGuard();
       const vidId = (track.resolvedStudioId && track.resolvedStudioId.length === 11) ? track.resolvedStudioId : track.id;
       this.player.loadVideoById({
         videoId: vidId,
@@ -165,7 +207,9 @@ class YTPlayerManager {
   }
 
   play() {
+    if (window.app && window.app.currentAudioMode === 'native') return;
     if (this.player && this.isReady) {
+      this._isStopped = false;
       this.isPlaying = true;
       if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = true;
       if (this.onStateChangeCallback) this.onStateChangeCallback(true);
@@ -175,12 +219,36 @@ class YTPlayerManager {
   }
 
   pause() {
+    this._loadSeq++;
+    this._isStopped = true;
     if (this.player && this.isReady) {
       this.isPlaying = false;
+      this._isBuffering = false;
       if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = false;
       if (this.onStateChangeCallback) this.onStateChangeCallback(false);
       this.syncAndroidPlayback(false);
       this.player.pauseVideo();
+    }
+  }
+
+  stop() {
+    this._loadSeq++;
+    this._isStopped = true;
+    this.isPlaying = false;
+    this._isBuffering = false;
+    this.currentTrack = null;
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = null;
+    }
+    if (window.audioEngine) window.audioEngine.isSimulatedVisualizer = false;
+    if (this.player) {
+      try {
+        if (typeof this.player.pauseVideo === 'function') this.player.pauseVideo();
+      } catch (_) {}
+      try {
+        if (typeof this.player.stopVideo === 'function') this.player.stopVideo();
+      } catch (_) {}
     }
   }
 
@@ -281,6 +349,21 @@ class YTPlayerManager {
   }
 
   handleStateChange(playerState) {
+    // Ignore late or rogue events when stopped or when native audio is active
+    if (this._isStopped || (window.app && window.app.currentAudioMode === 'native')) {
+      if (playerState === 1 || playerState === 3) {
+        try {
+          if (this.player && typeof this.player.pauseVideo === 'function') this.player.pauseVideo();
+        } catch (_) {}
+        try {
+          if (this.player && typeof this.player.stopVideo === 'function') this.player.stopVideo();
+        } catch (_) {}
+      }
+      this.isPlaying = false;
+      this._isBuffering = false;
+      return;
+    }
+
     // Reset clock baseline on state transitions
     const curRaw = (this.player && typeof this.player.getCurrentTime === 'function') ? (this.player.getCurrentTime() || 0) : 0;
     this._lastRawTime = curRaw;

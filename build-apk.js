@@ -122,8 +122,8 @@ public class BackgroundAudioWebView extends WebView {
 fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurasound.musichub"
-    android:versionCode="16"
-    android:versionName="1.3.12">
+    android:versionCode="17"
+    android:versionName="1.3.13">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -2131,7 +2131,7 @@ public class MainActivity extends Activity {
             + "  setInterval(function() {"
             + "    try {"
             + "      var info = getPlaybackInfo();"
-            + "      if (window.ytPlayer && window.ytPlayer.player && typeof window.ytPlayer.player.getPlayerState === 'function') {"
+            + "      if (window.ytPlayer && !window.ytPlayer._isStopped && (!window.app || window.app.currentAudioMode === 'yt') && window.ytPlayer.player && typeof window.ytPlayer.player.getPlayerState === 'function') {"
             + "        var state = window.ytPlayer.player.getPlayerState();"
             + "        if (state === 2 && info.isPlaying && !window.__userRequestedPause) {"
             + "          window.ytPlayer.player.playVideo();"
@@ -2259,9 +2259,9 @@ public class MainActivity extends Activity {
         if ("play_pause".equals(action)) {
             webView.evaluateJavascript("if (window.app && window.app.togglePlay) { window.app.togglePlay(); } else if (window.ytPlayer) { window.ytPlayer.togglePlay(); }", null);
         } else if ("play".equals(action)) {
-            webView.evaluateJavascript("window.__userRequestedPause = false; if (window.app && window.app.isPlaying === false) { window.app.togglePlay(); } else if (window.ytPlayer) { window.ytPlayer.play(); }", null);
+            webView.evaluateJavascript("window.__userRequestedPause = false; if (window.app && window.app.isPlaying === false) { window.app.togglePlay(); } else if (window.ytPlayer && (!window.app || window.app.currentAudioMode === 'yt')) { window.ytPlayer.play(); }", null);
         } else if ("pause".equals(action)) {
-            webView.evaluateJavascript("window.__userRequestedPause = true; if (window.app && window.app.isPlaying === true) { window.app.togglePlay(); } else if (window.ytPlayer) { window.ytPlayer.pause(); }", null);
+            webView.evaluateJavascript("window.__userRequestedPause = true; if (window.app && window.app.isPlaying === true) { window.app.togglePlay(); } else if (window.ytPlayer && (!window.app || window.app.currentAudioMode === 'yt')) { window.ytPlayer.pause(); }", null);
         } else if ("next".equals(action)) {
             webView.evaluateJavascript("if (window.app && window.app.playNext) { window.app.playNext(); }", null);
         } else if ("prev".equals(action)) {
