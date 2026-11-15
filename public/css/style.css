@@ -2282,7 +2282,7 @@ input::-ms-reveal {
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  z-index: 100;
+  z-index: 10050;
   display: none;
   align-items: center;
   justify-content: center;
@@ -2301,6 +2301,9 @@ input::-ms-reveal {
   padding: 32px;
   width: 100%;
   max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   text-align: center;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.7);
   position: relative;
@@ -2790,12 +2793,11 @@ input::-ms-reveal {
     display: none !important;
   }
 
-  /* When logged out on mobile, hide the avatar circle so the Google pill is prominent without clutter */
-  body:not(.user-logged-in) .ytm-profile-badge {
-    display: none !important;
-  }
-
+  /* Keep profile badge accessible on mobile even when not logged in to Google */
   .ytm-profile-badge {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     width: 36px !important;
     height: 36px !important;
     min-width: 36px !important;
@@ -2806,6 +2808,11 @@ input::-ms-reveal {
     cursor: pointer !important;
     position: relative !important;
     touch-action: manipulation !important;
+  }
+
+  .modal-profile-card {
+    padding: 22px 18px !important;
+    max-height: 88vh !important;
   }
 
   .ytm-avatar-circle {

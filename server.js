@@ -58,6 +58,8 @@ app.set('trust proxy', 1);
 // Security Suite: Modern HTTP Security Headers
 app.use(security.securityHeaders);
 
+const IS_SERVERLESS = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT || process.env.NOW_REGION);
+
 function getUnifiedDataDir() {
   if (process.env.AURASOUND_DATA_DIR && fs.existsSync(process.env.AURASOUND_DATA_DIR)) {
     return process.env.AURASOUND_DATA_DIR;
@@ -69,8 +71,7 @@ function getUnifiedDataDir() {
     }
     return mainDir;
   }
-  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT || process.env.NOW_REGION);
-  return (isServerless ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
+  return (IS_SERVERLESS ? path.join('/tmp', 'data') : path.join(__dirname, 'data'));
 }
 const DATA_DIR = getUnifiedDataDir();
 const AVATARS_DIR = path.join(DATA_DIR, 'avatars');
@@ -81,7 +82,15 @@ try {
 app.use(cors());
 
 // Security Suite: Safe default body limits (anti-memory exhaustion DoS)
-app.use(express.json({ limit: '2mb' }));
+// Allow up to 20mb specifically for /api/user/profile (base64 avatar uploads) before input sanitization
+const defaultJsonParser = express.json({ limit: '2mb' });
+const profileJsonParser = express.json({ limit: '20mb' });
+app.use((req, res, next) => {
+  if (req.path === '/api/user/profile') {
+    return profileJsonParser(req, res, next);
+  }
+  return defaultJsonParser(req, res, next);
+});
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Security Suite: Input Sanitization & Prototype Pollution Immunity
@@ -2187,24 +2196,37 @@ app.get('/api/user/profile', (req, res) => {
   }
 });
 
-// 3. Update user profile (name, avatar, lang) - allows 20mb payload only for base64 avatars
-app.post('/api/user/profile', express.json({ limit: '20mb' }), (req, res) => {
+// 3. Update user profile (name, avatar, lang) - 20mb JSON limit applied in middleware above
+app.post('/api/user/profile', (req, res) => {
   try {
-    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.headers['x-device-id'] || req.body.deviceId;
+    const userKey = req.headers['x-user-email'] || req.headers['x-user-id'] || req.body.email || req.body.userId || req.body.userKey || req.headers['x-device-id'] || req.body.deviceId;
     if (!userKey) {
       return res.status(400).json({ success: false, error: 'userKey diperlukan' });
     }
     let { name, avatar, lang, tasteProfile } = req.body;
 
-    // If an image was uploaded as Base64, save it permanently to disk with strict Path Traversal Guard!
-    if (avatar && typeof avatar === 'string' && avatar.startsWith('data:image/')) {
+    // If an image was uploaded as Base64, save it permanently to local disk (skip ephemeral /tmp rewrite on serverless when compact)
+    if (avatar && typeof avatar === 'string' && avatar.startsWith('data:image/') && !(IS_SERVERLESS && avatar.length <= 450000)) {
       try {
-        const matches = avatar.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        const matches = avatar.match(/^data:(image\/[a-zA-Z0-9.+_-]+);base64,(.+)$/i);
         if (matches && matches.length === 3) {
+          const mimeType = matches[1].toLowerCase();
+          const ext = mimeType.includes('jpeg') || mimeType.includes('jpg')
+            ? 'jpg'
+            : (mimeType.includes('webp') ? 'webp' : 'png');
           const buffer = Buffer.from(matches[2], 'base64');
           const cleanKey = security.sanitizeUserKey(userKey);
-          const avatarPath = path.join(AVATARS_DIR, `${cleanKey}.png`);
+          const avatarPath = path.join(AVATARS_DIR, `${cleanKey}.${ext}`);
           if (security.isSafePath(AVATARS_DIR, avatarPath)) {
+            // Remove older avatar extensions for this user so GET /api/user/avatar always serves the latest one
+            for (const oldExt of ['png', 'jpg', 'webp']) {
+              if (oldExt !== ext) {
+                const oldPath = path.join(AVATARS_DIR, `${cleanKey}.${oldExt}`);
+                if (security.isSafePath(AVATARS_DIR, oldPath) && fs.existsSync(oldPath)) {
+                  try { fs.unlinkSync(oldPath); } catch (e) {}
+                }
+              }
+            }
             fs.writeFileSync(avatarPath, buffer);
             avatar = `/api/user/avatar?userId=${encodeURIComponent(cleanKey)}&v=${Date.now()}`;
           }
@@ -2229,10 +2251,12 @@ app.get('/api/user/avatar', (req, res) => {
       return res.sendFile(path.join(__dirname, 'public', 'images', 'avatar.jpg'));
     }
     const cleanKey = security.sanitizeUserKey(userKey);
-    const avatarPath = path.join(AVATARS_DIR, `${cleanKey}.png`);
-    if (security.isSafePath(AVATARS_DIR, avatarPath) && fs.existsSync(avatarPath)) {
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      return res.sendFile(avatarPath);
+    for (const ext of ['png', 'jpg', 'webp']) {
+      const avatarPath = path.join(AVATARS_DIR, `${cleanKey}.${ext}`);
+      if (security.isSafePath(AVATARS_DIR, avatarPath) && fs.existsSync(avatarPath)) {
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.sendFile(avatarPath);
+      }
     }
     const user = userDb.getUser(userKey);
     if (user && user.avatar && user.avatar.startsWith('http') && !user.avatar.includes('/api/user/avatar')) {

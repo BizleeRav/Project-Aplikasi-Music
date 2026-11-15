@@ -802,6 +802,7 @@ import android.app.Activity;
 import android.app.Dialog;
 import android.app.DownloadManager;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -832,6 +833,7 @@ import android.view.WindowManager;
 import android.net.http.SslError;
 import android.webkit.CookieManager;
 import android.webkit.SslErrorHandler;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -871,6 +873,8 @@ public class MainActivity extends Activity {
     private Dialog sunoLoginDialog;
     private WebView loginWebView;
     private boolean isCapturingSunoToken = false;
+    private static final int FILE_CHOOSER_REQUEST_CODE = 2001;
+    private ValueCallback<Uri[]> filePathCallback;
     private WebView genWebView;
     private FrameLayout warmWebViewContainer;
     private LinearLayout warmWebViewCard;
@@ -970,7 +974,51 @@ public class MainActivity extends Activity {
             openExternalBrowser(url);
         });
 
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams fileChooserParams) {
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                }
+                filePathCallback = callback;
+
+                Intent intent = null;
+                try {
+                    if (fileChooserParams != null) {
+                        intent = fileChooserParams.createIntent();
+                    }
+                } catch (Exception e) {
+                    intent = null;
+                }
+
+                if (intent == null) {
+                    intent = new Intent(Intent.ACTION_GET_CONTENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("image/*");
+                } else if (intent.getType() == null || intent.getType().isEmpty()) {
+                    intent.setType("image/*");
+                }
+
+                try {
+                    startActivityForResult(Intent.createChooser(intent, "Pilih Foto Profil"), FILE_CHOOSER_REQUEST_CODE);
+                    return true;
+                } catch (Exception e) {
+                    try {
+                        Intent fallback = new Intent(Intent.ACTION_GET_CONTENT);
+                        fallback.addCategory(Intent.CATEGORY_OPENABLE);
+                        fallback.setType("image/*");
+                        startActivityForResult(Intent.createChooser(fallback, "Pilih Foto Profil"), FILE_CHOOSER_REQUEST_CODE);
+                        return true;
+                    } catch (Exception e2) {
+                        if (filePathCallback != null) {
+                            filePathCallback.onReceiveValue(null);
+                            filePathCallback = null;
+                        }
+                        return false;
+                    }
+                }
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -2056,6 +2104,8 @@ public class MainActivity extends Activity {
                     @Override
                     public void onReceive(Context context, Intent intent) {
                         try {
+                            long completedId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L);
+                            if (completedId != -1L && completedId != downloadId) return;
                             unregisterReceiver(this);
                             Uri fileUri = dm.getUriForDownloadedFile(downloadId);
                             if (fileUri != null) {
@@ -2067,11 +2117,17 @@ public class MainActivity extends Activity {
                             }
                         } catch (Exception e) {
                             e.printStackTrace();
+                            openExternalBrowser(apkUrl);
                         }
                     }
                 };
 
-                registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+                IntentFilter dlFilter = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
+                if (Build.VERSION.SDK_INT >= 33) {
+                    registerReceiver(onComplete, dlFilter, Context.RECEIVER_EXPORTED);
+                } else {
+                    registerReceiver(onComplete, dlFilter);
+                }
             } catch (Exception e) {
                 e.printStackTrace();
                 openExternalBrowser(apkUrl);
@@ -2541,6 +2597,33 @@ public class MainActivity extends Activity {
             webView.destroy();
         }
         super.onDestroy();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+            if (filePathCallback != null) {
+                Uri[] results = null;
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    String dataString = data.getDataString();
+                    ClipData clipData = data.getClipData();
+                    if (clipData != null && clipData.getItemCount() > 0) {
+                        results = new Uri[clipData.getItemCount()];
+                        for (int i = 0; i < clipData.getItemCount(); i++) {
+                            results[i] = clipData.getItemAt(i).getUri();
+                        }
+                    } else if (dataString != null) {
+                        results = new Uri[]{Uri.parse(dataString)};
+                    } else if (data.getData() != null) {
+                        results = new Uri[]{data.getData()};
+                    }
+                }
+                filePathCallback.onReceiveValue(results);
+                filePathCallback = null;
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     @Override

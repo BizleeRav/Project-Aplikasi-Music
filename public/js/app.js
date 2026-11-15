@@ -752,7 +752,10 @@ class App {
     if (this.currentUser && this.currentUser.email) {
       document.body.classList.add('user-logged-in');
       const displayName = this.currentUser.name || this.currentUser.email.split('@')[0];
-      const displayAvatar = this.currentUser.avatar || '/images/avatar.jpg';
+      const customAvatar = (this.userProfile?.avatar && this.userProfile.avatar !== '/images/avatar.jpg')
+        ? this.userProfile.avatar
+        : null;
+      const displayAvatar = customAvatar || this.currentUser.avatar || '/images/avatar.jpg';
 
       if (btnGoogleLogin) {
         btnGoogleLogin.title = `Akun Google: ${this.currentUser.email}`;
@@ -793,7 +796,8 @@ class App {
         googleBadgeDot.style.display = 'none';
       }
       if (topUserAvatar) {
-        topUserAvatar.src = '/images/avatar.jpg';
+        topUserAvatar.src = this.userProfile?.avatar || '/images/avatar.jpg';
+        topUserAvatar.onerror = () => { topUserAvatar.src = '/images/avatar.jpg'; };
       }
       if (activeCard) activeCard.style.display = 'none';
       if (loginOptions) loginOptions.style.display = 'block';
@@ -804,11 +808,7 @@ class App {
   }
 
   handleProfileBadgeClick() {
-    if (this.currentUser && this.currentUser.email) {
-      this.openProfileModal();
-    } else {
-      this.openGoogleLoginModal();
-    }
+    this.openProfileModal();
   }
 
   quickResumeLastAccount() {
@@ -877,10 +877,51 @@ class App {
   }
 
   openProfileModal() {
+    this.tempAvatarDataUrl = null;
     this.syncProfileUI();
     this.syncGoogleUI();
     const modal = document.getElementById('modal-profile');
     if (modal) modal.classList.add('active');
+  }
+
+  compressAvatarImage(file, maxSize = 512) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Gagal membaca file gambar'));
+      reader.onload = (ev) => {
+        const rawDataUrl = ev.target?.result;
+        if (!rawDataUrl || typeof rawDataUrl !== 'string') {
+          return reject(new Error('Data gambar kosong'));
+        }
+        const img = new Image();
+        img.onload = () => {
+          try {
+            let { width, height } = img;
+            if (!width || !height) return resolve(rawDataUrl);
+            if (width > maxSize || height > maxSize) {
+              const scale = Math.min(maxSize / width, maxSize / height);
+              width = Math.max(1, Math.round(width * scale));
+              height = Math.max(1, Math.round(height * scale));
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return resolve(rawDataUrl);
+            ctx.drawImage(img, 0, 0, width, height);
+            const hasAlpha = file.type === 'image/png' || file.type === 'image/webp';
+            const outMime = hasAlpha ? 'image/png' : 'image/jpeg';
+            const compressed = canvas.toDataURL(outMime, 0.88);
+            resolve(compressed && compressed.length < rawDataUrl.length ? compressed : rawDataUrl);
+          } catch (canvasErr) {
+            resolve(rawDataUrl);
+          }
+        };
+        img.onerror = () => resolve(rawDataUrl);
+        img.src = rawDataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   initProfile() {
@@ -2138,7 +2179,6 @@ class App {
     }
 
     // Modal Profile Settings
-    const profileBadge = document.getElementById('btn-profile-badge');
     const modalProfile = document.getElementById('modal-profile');
     const closeProfileBtn = document.getElementById('btn-close-profile');
     const avatarTrigger = document.getElementById('profile-avatar-trigger');
@@ -2149,13 +2189,6 @@ class App {
     const radioId = document.querySelector('input[name="app-language"][value="id"]');
     const radioEn = document.querySelector('input[name="app-language"][value="en"]');
     const formProfile = document.getElementById('form-profile');
-
-    if (profileBadge && modalProfile) {
-      profileBadge.addEventListener('click', () => {
-        this.syncProfileUI();
-        modalProfile.classList.add('active');
-      });
-    }
 
     const saveCurrentProfile = () => {
       const nameInput = document.getElementById('profile-input-name');
@@ -2201,7 +2234,12 @@ class App {
             lang: newLang,
             userKey
           })
-        }).then(res => res.json()).then(data => {
+        }).then(async (res) => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          return res.json();
+        }).then(data => {
           if (data && data.success && data.user && data.user.avatar) {
             this.userProfile.avatar = data.user.avatar;
             if (this.currentUser) {
@@ -2216,10 +2254,13 @@ class App {
             this.syncProfileUI();
             this.syncGoogleUI();
           }
-        }).catch(err => console.warn('Save profile to DB warning:', err));
+        }).catch(err => {
+          console.warn('Save profile to DB warning:', err);
+        });
       } catch (e) {}
 
       this.syncProfileUI();
+      this.syncGoogleUI();
       this.applyLanguage(newLang, true);
 
       // Instantly update any greeting titles currently in DOM
@@ -2239,50 +2280,69 @@ class App {
       this.showToast(newLang === 'en' ? `Profile saved: ${newName}! ✅` : `Profil tersimpan: ${newName}! ✅`, 'success');
     };
 
+    const closeProfileModalOrSave = () => {
+      const nameInput = document.getElementById('profile-input-name');
+      const hasNameChange = Boolean(nameInput && nameInput.value.trim() && nameInput.value.trim() !== this.userProfile.name);
+      const hasPhotoChange = Boolean(this.tempAvatarDataUrl);
+      if (hasNameChange || hasPhotoChange) {
+        saveCurrentProfile();
+      } else {
+        if (modalProfile) modalProfile.classList.remove('active');
+        this.tempAvatarDataUrl = null;
+      }
+    };
+
     if (closeProfileBtn && modalProfile) {
-      closeProfileBtn.addEventListener('click', () => {
-        const nameInput = document.getElementById('profile-input-name');
-        if (nameInput && nameInput.value.trim() && nameInput.value.trim() !== this.userProfile.name) {
-          saveCurrentProfile();
-        } else {
-          modalProfile.classList.remove('active');
-          this.tempAvatarDataUrl = null;
-        }
-      });
+      closeProfileBtn.addEventListener('click', closeProfileModalOrSave);
     }
 
     if (modalProfile) {
       modalProfile.addEventListener('click', (e) => {
         if (e.target === modalProfile) {
-          const nameInput = document.getElementById('profile-input-name');
-          if (nameInput && nameInput.value.trim() && nameInput.value.trim() !== this.userProfile.name) {
-            saveCurrentProfile();
-          } else {
-            modalProfile.classList.remove('active');
-            this.tempAvatarDataUrl = null;
-          }
+          closeProfileModalOrSave();
         }
       });
     }
 
     if (avatarInput) {
-      if (avatarTrigger) avatarTrigger.addEventListener('click', () => avatarInput.click());
-      if (btnTriggerAvatar) btnTriggerAvatar.addEventListener('click', () => avatarInput.click());
+      const openAvatarPicker = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        avatarInput.click();
+      };
+      if (avatarTrigger) avatarTrigger.addEventListener('click', openAvatarPicker);
+      if (btnTriggerAvatar) btnTriggerAvatar.addEventListener('click', openAvatarPicker);
 
-      avatarInput.addEventListener('change', (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (file) {
-          if (file.size > 3 * 1024 * 1024) {
-            this.showToast(this.userProfile?.lang === 'en' ? 'Image size is too large (max 3MB)' : 'Ukuran foto terlalu besar (maksimal 3MB)', 'error');
-            return;
-          }
-          const reader = new FileReader();
-          reader.onload = (loadEvent) => {
-            this.tempAvatarDataUrl = loadEvent.target.result;
-            const previewImg = document.getElementById('profile-preview-img');
-            if (previewImg) previewImg.src = this.tempAvatarDataUrl;
-          };
-          reader.readAsDataURL(file);
+      avatarInput.addEventListener('change', async (e) => {
+        const inputEl = e.target;
+        const file = inputEl.files && inputEl.files[0];
+        if (!file) return;
+
+        const isEn = this.userProfile?.lang === 'en';
+        const isImageMime = !file.type || file.type.startsWith('image/') || file.type === 'application/octet-stream';
+        const isImageExt = !file.name || /\.(jpe?g|png|webp|gif|bmp|heic|heif|avif)$/i.test(file.name) || !file.name.includes('.');
+        if (!isImageMime && !isImageExt) {
+          inputEl.value = '';
+          this.showToast(isEn ? 'Please choose a valid image file' : 'Silakan pilih file gambar yang valid', 'error');
+          return;
+        }
+        if (file.size > 20 * 1024 * 1024) {
+          inputEl.value = '';
+          this.showToast(isEn ? 'Image size is too large (max 20MB)' : 'Ukuran foto terlalu besar (maksimal 20MB)', 'error');
+          return;
+        }
+        try {
+          const dataUrl = await this.compressAvatarImage(file, 512);
+          this.tempAvatarDataUrl = dataUrl;
+          const previewImg = document.getElementById('profile-preview-img');
+          if (previewImg) previewImg.src = dataUrl;
+          this.showToast(isEn ? 'Photo selected — click Save Changes to apply' : 'Foto dipilih — klik Simpan Perubahan untuk menerapkan', 'info');
+        } catch (err) {
+          console.error('Avatar load error:', err);
+          this.showToast(isEn ? 'Failed to load selected image' : 'Gagal memuat foto yang dipilih', 'error');
+        } finally {
+          // Reset value AFTER reading so mobile WebView doesn't invalidate the File handle prematurely
+          inputEl.value = '';
         }
       });
     }

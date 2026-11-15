@@ -126,12 +126,22 @@ function loginOrRegisterUser({ email, name, avatar, provider = 'google', googleI
   const now = Date.now();
 
   if (user) {
-    // Existing user: update last login & info
+    // Existing user: update last login & info without overwriting custom profile photo/name with generic defaults
     user.lastLoginAt = now;
-    if (name && name.trim()) user.name = name.trim();
-    if (avatar && avatar.trim()) user.avatar = avatar.trim();
+    if (name && name.trim() && (!user.name || user.name === 'User')) {
+      user.name = name.trim();
+    }
+    if (avatar && avatar.trim()) {
+      const hasCustomAvatar = typeof user.avatar === 'string' && user.avatar.startsWith('/api/user/avatar');
+      const isGenericFallback = avatar.includes('unavatar.io') || avatar === '/images/avatar.jpg';
+      if (!hasCustomAvatar && !(user.avatar && isGenericFallback)) {
+        user.avatar = avatar.trim();
+      }
+    }
     if (googleId) user.googleId = googleId;
-    all[user.id || normKey] = user;
+    const storeKey = user.id || normKey;
+    user.id = storeKey;
+    all[storeKey] = user;
   } else {
     // New user registration
     const defaultName = cleanEmail ? (cleanEmail.split('@')[0].charAt(0).toUpperCase() + cleanEmail.split('@')[0].slice(1)) : 'User';
@@ -159,8 +169,27 @@ function loginOrRegisterUser({ email, name, avatar, provider = 'google', googleI
 
 function updateUserProfile(rawKey, updates = {}) {
   const all = getAllUsers();
-  const user = getUser(rawKey);
-  if (!user) return null;
+  let user = getUser(rawKey);
+  const normKey = normalizeUserKey(rawKey);
+  if (!user) {
+    if (!normKey) return null;
+    const now = Date.now();
+    const isEmail = String(rawKey).includes('@');
+    user = {
+      id: normKey,
+      email: isEmail ? String(rawKey).trim().toLowerCase() : '',
+      name: 'User',
+      avatar: '/images/avatar.jpg',
+      lang: 'id',
+      provider: isEmail ? 'google' : 'device',
+      googleId: null,
+      createdAt: now,
+      lastLoginAt: now,
+      favorites: [],
+      playHistory: [],
+      tasteProfile: null
+    };
+  }
 
   if (typeof updates.name === 'string' && updates.name.trim()) {
     user.name = updates.name.trim();
@@ -179,9 +208,13 @@ function updateUserProfile(rawKey, updates = {}) {
   }
 
   user.updatedAt = Date.now();
-  all[user.id] = user;
+  const storeKey = user.id || normKey;
+  user.id = storeKey;
+  all[storeKey] = user;
   persistToDisk();
-  setActiveSession(user);
+  if (user.email) {
+    setActiveSession(user);
+  }
   return user;
 }
 
