@@ -69,7 +69,7 @@ function attachSessionNetworkObserver(sunoSession) {
           if (!genNetworkState.cCheckStartedAt) {
             genNetworkState.cCheckStartedAt = Date.now();
           }
-        } else if (/\/api\/generate\b/i.test(u)) {
+        } else if (/\/api\/generate(?:[/?_-]|$)/i.test(u)) {
           isChallengeResolved = true;
           if (!genNetworkState.generateStartedAt) {
             genNetworkState.generateStartedAt = Date.now();
@@ -87,7 +87,7 @@ function attachSessionNetworkObserver(sunoSession) {
     try {
       if (genNetworkState.active && details.method === 'POST') {
         const u = details.url || '';
-        if (/\/api\/generate\b/i.test(u)) {
+        if (/\/api\/generate(?:[/?_-]|$)/i.test(u)) {
           genNetworkState.generateCompletedAt = Date.now();
           genNetworkState.generateStatusCode = details.statusCode || 200;
           console.log(`[Suno Warm Engine] POST /api/generate completed (HTTP ${genNetworkState.generateStatusCode}).`);
@@ -374,6 +374,313 @@ global.fetchSunoClipsByIds = async (ids) => {
 };
 
 /**
+ * Shared in-page selector logic to find ONLY real, visible Suno Create prompt/lyrics inputs
+ * (strictly excluding Cloudflare Turnstile's hidden <textarea name="cf-turnstile-response">).
+ */
+const VISIBLE_SUNO_INPUTS_FN = `
+  function getVisibleSunoInputs() {
+    const els = Array.from(document.querySelectorAll(
+      'textarea, div[aria-label="Lyrics editor"], .lyrics-editor-content, div[role="textbox"][contenteditable="true"]'
+    ));
+    return els.filter(el => {
+      const name = (el.getAttribute('name') || '').toLowerCase();
+      const id = (el.getAttribute('id') || '').toLowerCase();
+      const al = (el.getAttribute('aria-label') || '').toLowerCase();
+      const ph = (el.getAttribute('placeholder') || '').toLowerCase();
+      if (
+        name.includes('turnstile') || name.includes('cf-') || name.includes('captcha') ||
+        id.includes('turnstile') || id.includes('cf-') ||
+        al.includes('cowriter') || /\b(sound|script|tone)\b/.test(al) ||
+        ph.includes('search')
+      ) {
+        return false;
+      }
+      const st = window.getComputedStyle(el);
+      if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+      const r = el.getBoundingClientRect();
+      return r.width >= 60 && r.height >= 20;
+    });
+  }
+  function findSunoCreateButton() {
+    let createBtn = document.querySelector('button[aria-label="Create song"]');
+    if (!createBtn) {
+      const allBtns = Array.from(document.querySelectorAll('button')).filter(b => !b.closest('nav') && !b.closest('aside'));
+      createBtn = allBtns.find(b => {
+        const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+        return t === 'create' || t.startsWith('create (') || t.startsWith('create ');
+      });
+    }
+    return createBtn || null;
+  }
+`;
+
+/**
+ * Verify that Suno's Create workspace is genuinely mounted and hydrated (real visible input + Create button).
+ */
+async function isSunoCreateWorkspaceReady(win) {
+  if (!win || win.isDestroyed()) return false;
+  return win.webContents.executeJavaScript(`
+    (() => {
+      if (document.readyState !== 'complete') return false;
+      ${VISIBLE_SUNO_INPUTS_FN}
+      const inputs = getVisibleSunoInputs();
+      const createBtn = findSunoCreateButton();
+      if (!inputs.length || !createBtn) return false;
+      const btnRect = createBtn.getBoundingClientRect();
+      return btnRect.width > 0 && btnRect.height > 0;
+    })()
+  `).catch(() => false);
+}
+
+/**
+ * Check whether any real, visible Suno prompt/lyrics box currently has non-empty user text.
+ */
+async function hasVisibleSunoPromptInput(win) {
+  if (!win || win.isDestroyed()) return false;
+  return win.webContents.executeJavaScript(`
+    (() => {
+      ${VISIBLE_SUNO_INPUTS_FN}
+      return getVisibleSunoInputs().some(el => {
+        const val = typeof el.value === 'string' ? el.value : (el.innerText || el.textContent || '');
+        return val.trim().length > 0;
+      });
+    })()
+  `).catch(() => false);
+}
+
+/**
+ * Trigger the Create button via mouse + click event chain in background.
+ */
+async function triggerSunoCreateClick(win, { requireNonEmptyInput = false } = {}) {
+  if (!win || win.isDestroyed()) return { skipped: 'no_window' };
+  return win.webContents.executeJavaScript(`
+    (() => {
+      ${VISIBLE_SUNO_INPUTS_FN}
+      if (${JSON.stringify(Boolean(requireNonEmptyInput))}) {
+        const hasInput = getVisibleSunoInputs().some(el => {
+          const val = typeof el.value === 'string' ? el.value : (el.innerText || el.textContent || '');
+          return val.trim().length > 0;
+        });
+        if (!hasInput) {
+          return { skipped: 'empty_inputs' };
+        }
+      }
+      const createBtn = findSunoCreateButton();
+      if (!createBtn) return { error: 'Tombol Create tidak ditemukan.' };
+      if (createBtn.disabled) return { error: 'Tombol Create saat ini nonaktif (cek kuota kredit Suno Anda).' };
+      createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+      createBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+      createBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      createBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+      createBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      createBtn.click();
+      return { ok: true, clicked: true };
+    })()
+  `).catch(() => ({ skipped: 'error' }));
+}
+
+/**
+ * Fill Suno's Simple or Custom/Advanced Create form cleanly without touching Cloudflare Turnstile inputs.
+ */
+async function fillSunoCreateForm(genWin, { targetMode, cleanTitleText, cleanPromptText, cleanLyricsText, cleanTagsText, wantInstrumental }) {
+  await genWin.webContents.executeJavaScript(`
+    (() => {
+      try {
+        localStorage.removeItem('create_draft');
+        sessionStorage.removeItem('create_draft');
+      } catch (e) {}
+
+      ${VISIBLE_SUNO_INPUTS_FN}
+      const visibleInputs = getVisibleSunoInputs();
+      for (const el of visibleInputs) {
+        try {
+          el.focus();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('delete', false, null);
+          if (el instanceof HTMLTextAreaElement) {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+            if (setter) setter.call(el, '');
+            else el.value = '';
+            el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          }
+        } catch (e) {}
+      }
+
+      const allInputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
+      for (const inp of allInputs) {
+        try {
+          const nm = (inp.getAttribute('name') || '').toLowerCase();
+          if (nm.includes('turnstile') || nm.includes('cf-')) continue;
+          if ((inp.placeholder || '').toLowerCase().includes('search')) continue;
+          inp.focus();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('delete', false, null);
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+          if (setter) setter.call(inp, '');
+          else inp.value = '';
+          inp.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        } catch (e) {}
+      }
+    })()
+  `).catch(() => {});
+
+  if (targetMode === 'simple') {
+    const simpleParts = [];
+    if (cleanTitleText) {
+      simpleParts.push(`Title: ${cleanTitleText}`);
+    }
+    if (wantInstrumental) {
+      simpleParts.push('Instrumental only, no vocals.');
+    }
+    if (cleanPromptText) {
+      simpleParts.push(cleanPromptText);
+    }
+    if (cleanTagsText) {
+      simpleParts.push(`Style: ${cleanTagsText}`);
+    }
+    const simpleDescription = simpleParts.join('\n').slice(0, 2950);
+
+    const filledSimple = await genWin.webContents.executeJavaScript(`
+      (async () => {
+        ${VISIBLE_SUNO_INPUTS_FN}
+        function setNativeValue(el, val) {
+          if (!el) return false;
+          el.focus();
+          try {
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+          } catch (e) {}
+          const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          if (setter) setter.call(el, val);
+          else el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          return el.value === val;
+        }
+
+        const tabs = Array.from(document.querySelectorAll('[role="tab"], button, div[role="button"]'));
+        const simpleTab = tabs.find(b => (b.innerText || b.textContent || '').trim().toLowerCase() === 'simple');
+        if (simpleTab && simpleTab.getAttribute('aria-selected') !== 'true') {
+          simpleTab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+          simpleTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+          simpleTab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+          simpleTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+          simpleTab.click();
+          await new Promise(r => setTimeout(r, 300));
+        }
+
+        const tas = getVisibleSunoInputs().filter(t =>
+          t instanceof HTMLTextAreaElement && (t.getAttribute('aria-label') || '').toLowerCase() !== 'styles'
+        );
+        const promptBox = tas[0] || getVisibleSunoInputs()[0];
+        if (!promptBox) return { ok: false };
+
+        setNativeValue(promptBox, ${JSON.stringify(simpleDescription)});
+        return { ok: (promptBox.value || '').trim().length > 0, len: (promptBox.value || '').length };
+      })()
+    `);
+
+    if (!filledSimple || !filledSimple.ok) {
+      await genWin.webContents.executeJavaScript(`
+        (() => {
+          ${VISIBLE_SUNO_INPUTS_FN}
+          const ta = getVisibleSunoInputs()[0];
+          if (ta) {
+            ta.focus();
+            if (typeof ta.select === 'function') ta.select();
+          }
+        })()
+      `).catch(() => {});
+      await genWin.webContents.insertText(simpleDescription);
+    }
+  } else {
+    const lyricsToInsert = cleanLyricsText || cleanPromptText;
+    const effectiveTags = cleanTagsText || deriveTagsFromPrompt(cleanPromptText || cleanLyricsText, '');
+    const styleToInsert = effectiveTags.slice(0, 950);
+
+    await genWin.webContents.executeJavaScript(`
+      (async () => {
+        function setNativeValue(el, val) {
+          if (!el) return;
+          el.focus();
+          try {
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+          } catch (e) {}
+          const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          if (setter) setter.call(el, val);
+          else el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        }
+
+        const tabs = Array.from(document.querySelectorAll('[role="tab"], button, div[role="button"]'));
+        const advTab = tabs.find(b => {
+          const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
+          return txt === 'advanced' || txt === 'custom';
+        });
+        if (advTab && advTab.getAttribute('aria-selected') !== 'true') {
+          advTab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+          advTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+          advTab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
+          advTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+          advTab.click();
+          await new Promise(r => setTimeout(r, 300));
+        }
+
+        ${VISIBLE_SUNO_INPUTS_FN}
+        const styleBox = document.querySelector('textarea[aria-label="Styles"]') ||
+          getVisibleSunoInputs().find(t => {
+            const al = (t.getAttribute('aria-label') || '').toLowerCase();
+            const ph = (t.getAttribute('placeholder') || '').toLowerCase();
+            return t instanceof HTMLTextAreaElement && (al === 'styles' || ph.includes('style') || ph.includes('genre'));
+          });
+        if (styleBox) {
+          setNativeValue(styleBox, ${JSON.stringify(styleToInsert)});
+        }
+
+        const titleInput = document.querySelector('input[placeholder*="Song Title" i], input[placeholder*="Title" i], input[aria-label*="Title" i]');
+        if (titleInput) {
+          setNativeValue(titleInput, ${JSON.stringify(cleanTitleText)});
+        }
+
+        const lyricsBox = document.querySelector('div[aria-label="Lyrics editor"], .lyrics-editor-content, div[role="textbox"][contenteditable="true"]');
+        if (lyricsBox) {
+          lyricsBox.focus();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('delete', false, null);
+        }
+      })()
+    `);
+
+    if (lyricsToInsert) {
+      await genWin.webContents.insertText(lyricsToInsert);
+      await new Promise(r => setTimeout(r, 180));
+    }
+  }
+
+  // If an Instrumental toggle switch exists in the current tab, sync its state
+  await genWin.webContents.executeJavaScript(`
+    (() => {
+      const instrBtn = Array.from(document.querySelectorAll('[role="switch"], input[type="checkbox"]')).find(b => {
+        const txt = (b.innerText || b.getAttribute('aria-label') || b.name || '').toLowerCase();
+        return txt.includes('instrumental');
+      });
+      if (instrBtn) {
+        const isChecked = instrBtn.getAttribute('aria-checked') === 'true' || instrBtn.checked === true || instrBtn.getAttribute('data-state') === 'checked';
+        if (isChecked !== ${JSON.stringify(wantInstrumental)}) {
+          instrBtn.click();
+        }
+      }
+    })()
+  `).catch(() => {});
+}
+
+/**
  * Initialize or reuse the Singleton Pre-Warmed Persistent Suno Engine window.
  * Uses Desktop Studio dimensions (1050x680, >= 1024px) so Suno's Create split-pane
  * stays permanently mounted and never collapses into mobile My Workspace view!
@@ -387,9 +694,7 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
   if (sunoEngineWin && !sunoEngineWin.isDestroyed() && !forceReload) {
     const currentUrl = sunoEngineWin.webContents.getURL() || '';
     if (currentUrl.includes('suno.com/create') && !currentUrl.includes('/sign-in') && !currentUrl.includes('/login')) {
-      const mounted = await sunoEngineWin.webContents.executeJavaScript(`
-        Boolean(document.querySelector('textarea') || document.querySelector('button[aria-label="Create song"]'))
-      `).catch(() => false);
+      const mounted = await isSunoCreateWorkspaceReady(sunoEngineWin);
       if (mounted) {
         return sunoEngineWin;
       }
@@ -469,10 +774,10 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
         if (curUrl.includes('/sign-in') || curUrl.includes('/login')) {
           break;
         }
-        const ready = await sunoEngineWin.webContents.executeJavaScript(`
-          Boolean(document.querySelector('textarea') || document.querySelector('button[aria-label="Create song"]'))
-        `).catch(() => false);
+        const ready = await isSunoCreateWorkspaceReady(sunoEngineWin);
         if (ready) {
+          // Brief settle after initial render so React event handlers & Clerk auth hooks finish binding
+          await new Promise(r => setTimeout(r, 250));
           console.log('[Suno Warm Engine] Standby ready on suno.com/create!');
           break;
         }
@@ -737,21 +1042,17 @@ async function generateWithSunoBrowser({
       throw new Error('Akun Suno Anda belum login di aplikasi atau sesi telah berakhir. Silakan klik tombol "Hubungkan Akun Suno" di AuraSound dan login kembali.');
     }
 
-    // Ensure React Studio Create workspace is mounted
+    // Ensure React Studio Create workspace is mounted and interactive
     let pageReady = false;
     for (let i = 0; i < 20; i++) {
-      pageReady = await genWin.webContents.executeJavaScript(`
-        Boolean(document.querySelector('textarea') || document.querySelector('button[aria-label="Create song"]'))
-      `).catch(() => false);
+      pageReady = await isSunoCreateWorkspaceReady(genWin);
       if (pageReady) break;
       await new Promise(r => setTimeout(r, 300));
     }
 
     if (!pageReady) {
       genWin = await initWarmSunoEngine({ forceReload: true });
-      pageReady = await genWin.webContents.executeJavaScript(`
-        Boolean(document.querySelector('textarea') || document.querySelector('button[aria-label="Create song"]'))
-      `).catch(() => false);
+      pageReady = await isSunoCreateWorkspaceReady(genWin);
       if (!pageReady) {
         throw new Error('Halaman Suno tidak merespons. Pastikan perangkat terhubung ke internet.');
       }
@@ -809,208 +1110,17 @@ async function generateWithSunoBrowser({
         ));
 
     const targetMode = useCustomLyricsMode ? 'custom_lyrics' : 'simple';
+    const formFillOpts = {
+      targetMode,
+      cleanTitleText,
+      cleanPromptText,
+      cleanLyricsText,
+      cleanTagsText,
+      wantInstrumental
+    };
     console.log(`[Suno Warm Engine] Filling Suno Create form (mode: ${targetMode}, promptLen: ${cleanPromptText.length})...`);
 
-    // Reset previous inputs & remove any old drafts from Suno storage so genres/styles never leak
-    await genWin.webContents.executeJavaScript(`
-      (() => {
-        try {
-          localStorage.removeItem('create_draft');
-          sessionStorage.removeItem('create_draft');
-        } catch (e) {}
-
-        const allTextareas = Array.from(document.querySelectorAll('textarea'));
-        for (const ta of allTextareas) {
-          try {
-            ta.focus();
-            document.execCommand('selectAll', false, null);
-            document.execCommand('delete', false, null);
-            const proto = window.HTMLTextAreaElement.prototype;
-            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-            if (setter) setter.call(ta, '');
-            else ta.value = '';
-            ta.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-            ta.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-          } catch (e) {}
-        }
-
-        const allInputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
-        for (const inp of allInputs) {
-          try {
-            if ((inp.placeholder || '').toLowerCase().includes('search')) continue;
-            inp.focus();
-            document.execCommand('selectAll', false, null);
-            document.execCommand('delete', false, null);
-            const proto = window.HTMLInputElement.prototype;
-            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-            if (setter) setter.call(inp, '');
-            else inp.value = '';
-            inp.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-            inp.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-          } catch (e) {}
-        }
-
-        const lyricsEditors = Array.from(document.querySelectorAll('div[aria-label="Lyrics editor"], .lyrics-editor-content, div[role="textbox"][contenteditable="true"]'));
-        for (const ed of lyricsEditors) {
-          try {
-            ed.focus();
-            document.execCommand('selectAll', false, null);
-            document.execCommand('delete', false, null);
-          } catch (e) {}
-        }
-      })()
-    `).catch(() => {});
-
-    if (targetMode === 'simple') {
-      const simpleParts = [];
-      if (cleanTitleText) {
-        simpleParts.push(`Title: ${cleanTitleText}`);
-      }
-      if (wantInstrumental) {
-        simpleParts.push('Instrumental only, no vocals.');
-      }
-      if (cleanPromptText) {
-        simpleParts.push(cleanPromptText);
-      }
-      if (cleanTagsText) {
-        simpleParts.push(`Style: ${cleanTagsText}`);
-      }
-      const simpleDescription = simpleParts.join('\n').slice(0, 2950);
-
-      const filledSimple = await genWin.webContents.executeJavaScript(`
-        (async () => {
-          function setNativeValue(el, val) {
-            if (!el) return false;
-            el.focus();
-            try {
-              document.execCommand('selectAll', false, null);
-              document.execCommand('delete', false, null);
-            } catch (e) {}
-            const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-            if (setter) setter.call(el, val);
-            else el.value = val;
-            el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-            return el.value === val;
-          }
-
-          const tabs = Array.from(document.querySelectorAll('[role="tab"], button, div[role="button"]'));
-          const simpleTab = tabs.find(b => (b.innerText || b.textContent || '').trim().toLowerCase() === 'simple');
-          if (simpleTab && simpleTab.getAttribute('aria-selected') !== 'true') {
-            simpleTab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
-            simpleTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-            simpleTab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
-            simpleTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-            simpleTab.click();
-            await new Promise(r => setTimeout(r, 300));
-          }
-
-          const tas = Array.from(document.querySelectorAll('textarea')).filter(t => {
-            const al = (t.getAttribute('aria-label') || '').toLowerCase();
-            return !al.includes('cowriter') && !al.includes('sound') && !al.includes('script') && !al.includes('tone') && al !== 'styles';
-          });
-          const promptBox = tas[0] || document.querySelector('textarea');
-          if (!promptBox) return { ok: false };
-
-          setNativeValue(promptBox, ${JSON.stringify(simpleDescription)});
-          return { ok: promptBox.value.trim().length > 0, len: promptBox.value.length };
-        })()
-      `);
-
-      if (!filledSimple || !filledSimple.ok) {
-        await genWin.webContents.executeJavaScript(`
-          (() => {
-            const ta = document.querySelector('textarea');
-            if (ta) {
-              ta.focus();
-              ta.select();
-            }
-          })()
-        `).catch(() => {});
-        await genWin.webContents.insertText(simpleDescription);
-      }
-    } else {
-      const lyricsToInsert = cleanLyricsText || cleanPromptText;
-      const effectiveTags = cleanTagsText || deriveTagsFromPrompt(cleanPromptText || cleanLyricsText, '');
-      const styleToInsert = effectiveTags.slice(0, 950);
-
-      await genWin.webContents.executeJavaScript(`
-        (async () => {
-          function setNativeValue(el, val) {
-            if (!el) return;
-            el.focus();
-            try {
-              document.execCommand('selectAll', false, null);
-              document.execCommand('delete', false, null);
-            } catch (e) {}
-            const proto = el instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-            if (setter) setter.call(el, val);
-            else el.value = val;
-            el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-          }
-
-          const tabs = Array.from(document.querySelectorAll('[role="tab"], button, div[role="button"]'));
-          const advTab = tabs.find(b => {
-            const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
-            return txt === 'advanced' || txt === 'custom';
-          });
-          if (advTab && advTab.getAttribute('aria-selected') !== 'true') {
-            advTab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
-            advTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-            advTab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true }));
-            advTab.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-            advTab.click();
-            await new Promise(r => setTimeout(r, 300));
-          }
-
-          const styleBox = document.querySelector('textarea[aria-label="Styles"]') ||
-            Array.from(document.querySelectorAll('textarea')).find(t => {
-              const al = (t.getAttribute('aria-label') || '').toLowerCase();
-              const ph = (t.placeholder || '').toLowerCase();
-              return al === 'styles' || ph.includes('style') || ph.includes('genre');
-            });
-          if (styleBox) {
-            setNativeValue(styleBox, ${JSON.stringify(styleToInsert)});
-          }
-
-          const titleInput = document.querySelector('input[placeholder*="Song Title" i], input[placeholder*="Title" i], input[aria-label*="Title" i]');
-          if (titleInput) {
-            setNativeValue(titleInput, ${JSON.stringify(cleanTitleText)});
-          }
-
-          const lyricsBox = document.querySelector('div[aria-label="Lyrics editor"], .lyrics-editor-content, div[role="textbox"][contenteditable="true"]');
-          if (lyricsBox) {
-            lyricsBox.focus();
-            document.execCommand('selectAll', false, null);
-            document.execCommand('delete', false, null);
-          }
-        })()
-      `);
-
-      if (lyricsToInsert) {
-        await genWin.webContents.insertText(lyricsToInsert);
-        await new Promise(r => setTimeout(r, 180));
-      }
-    }
-
-    // If an Instrumental toggle switch exists in the current tab, sync its state
-    await genWin.webContents.executeJavaScript(`
-      (() => {
-        const instrBtn = Array.from(document.querySelectorAll('[role="switch"], input[type="checkbox"]')).find(b => {
-          const txt = (b.innerText || b.getAttribute('aria-label') || b.name || '').toLowerCase();
-          return txt.includes('instrumental');
-        });
-        if (instrBtn) {
-          const isChecked = instrBtn.getAttribute('aria-checked') === 'true' || instrBtn.checked === true || instrBtn.getAttribute('data-state') === 'checked';
-          if (isChecked !== ${JSON.stringify(wantInstrumental)}) {
-            instrBtn.click();
-          }
-        }
-      })()
-    `).catch(() => {});
+    await fillSunoCreateForm(genWin, formFillOpts);
 
     // Wait for existingClipIds snapshot & React input state commit
     await Promise.all([
@@ -1065,22 +1175,7 @@ async function generateWithSunoBrowser({
     genNetworkState.active = true;
 
     // Trigger Create click directly via DOM event chain (100% background compatible)
-    const clickedOk = await genWin.webContents.executeJavaScript(`
-      (() => {
-        const createBtn = document.querySelector('button[aria-label="Create song"]') ||
-          Array.from(document.querySelectorAll('button')).find(b => {
-            const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-            return !b.closest('nav') && !b.closest('aside') && (t === 'create' || t.startsWith('create ') || t.startsWith('create('));
-          });
-        if (!createBtn) return { error: 'Tombol Create tidak ditemukan.' };
-        if (createBtn.disabled) return { error: 'Tombol Create saat ini nonaktif (cek kuota kredit Suno Anda).' };
-        createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-        createBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-        createBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-        createBtn.click();
-        return { ok: true };
-      })()
-    `);
+    const clickedOk = await triggerSunoCreateClick(genWin);
 
     if (clickedOk && clickedOk.error) {
       throw new Error(clickedOk.error);
@@ -1092,6 +1187,8 @@ async function generateWithSunoBrowser({
     let lastJwt = null;
     let lastFeedPollMs = 0;
     let lastChallengeCheckMs = 0;
+    let lastActionMs = clickTimeMs;
+    let coldStartRetryCount = 0;
     let challengeWindowShown = false;
     isChallengeResolved = false;
     const maxTotalWaitMs = 120000;
@@ -1114,36 +1211,44 @@ async function generateWithSunoBrowser({
       }
 
       const elapsedMs = Date.now() - clickTimeMs;
+      const sinceLastActionMs = Date.now() - lastActionMs;
+
+      // Fast cold-start auto-retry: if initial click happened before React/Turnstile finished hydrating
+      // (no POST /api/generate, no /c/check, and no visible Turnstile popup after ~3.8s), re-submit cleanly.
+      if (
+        coldStartRetryCount < 2 &&
+        sinceLastActionMs >= 3800 &&
+        !genNetworkState.generateStartedAt &&
+        !genNetworkState.cCheckStartedAt &&
+        !challengeWindowShown &&
+        !isChallengeResolved
+      ) {
+        coldStartRetryCount++;
+        lastActionMs = Date.now();
+        const earlySnap = await pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, cleanUa);
+        if (Array.isArray(earlySnap.clips) && earlySnap.clips.length > 0) {
+          capturedClips = earlySnap.clips;
+          console.log(`[Suno Warm Engine] Captured ${capturedClips.length} authentic new Suno clips before cold-start retry!`);
+          break;
+        }
+        const hasVisibleInput = await hasVisibleSunoPromptInput(genWin);
+        console.log(`[Suno Warm Engine] Cold-start auto-retry #${coldStartRetryCount} (generateStartedAt=0, hasVisibleInput=${hasVisibleInput})...`);
+        if (!hasVisibleInput) {
+          await fillSunoCreateForm(genWin, formFillOpts);
+          await new Promise(r => setTimeout(r, 250));
+        }
+        await triggerSunoCreateClick(genWin);
+        lastFeedPollMs = 0;
+      }
 
       const resubmitCreateAfterChallenge = async () => {
         if (genNetworkState.generateStartedAt || genNetworkState.generateCompletedAt) return false;
-        const clickResult = await genWin.webContents.executeJavaScript(`
-          (() => {
-            const hasFormInput = Array.from(document.querySelectorAll('textarea')).some(t => {
-              const al = (t.getAttribute('aria-label') || '').toLowerCase();
-              if (al.includes('cowriter') || al.includes('sound') || al.includes('script') || al.includes('tone')) return false;
-              return (t.value || '').trim().length > 0;
-            });
-            if (!hasFormInput) {
-              return { skipped: 'empty_inputs' };
-            }
-            const createBtn = document.querySelector('button[aria-label="Create song"]') ||
-              Array.from(document.querySelectorAll('button')).find(b => {
-                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-                return !b.closest('nav') && !b.closest('aside') && (t === 'create' || t.startsWith('create ') || t.startsWith('create('));
-              });
-            if (!createBtn || createBtn.disabled) {
-              return { skipped: 'btn_unavailable' };
-            }
-            createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-            createBtn.click();
-            return { clicked: true };
-          })()
-        `).catch(() => ({ skipped: 'error' }));
-        if (clickResult && clickResult.skipped) {
-          console.log('[Suno Warm Engine] Skipped post-Turnstile re-click:', clickResult.skipped);
+        const clickResult = await triggerSunoCreateClick(genWin, { requireNonEmptyInput: true });
+        if (clickResult && (clickResult.skipped || clickResult.error)) {
+          console.log('[Suno Warm Engine] Skipped post-Turnstile re-click:', clickResult.skipped || clickResult.error);
           return false;
         }
+        lastActionMs = Date.now();
         return Boolean(clickResult && clickResult.clicked);
       };
 
