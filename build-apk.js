@@ -300,6 +300,25 @@ public class AndroidMediaBridge {
         }
         return ${APP_VERSION_CODE};
     }
+
+    @JavascriptInterface
+    public boolean isNativeDspActive() {
+        return activity != null && activity.isNativeDspActive();
+    }
+
+    @JavascriptInterface
+    public void applyNativeDsp(String gainsJson, double bassDb, double widthMult) {
+        if (activity != null) {
+            activity.applyNativeDsp(gainsJson, (float) bassDb, (float) widthMult);
+        }
+    }
+
+    @JavascriptInterface
+    public void setNativeDspBypass(boolean bypass) {
+        if (activity != null) {
+            activity.setNativeDspBypass(bypass);
+        }
+    }
 }
 `);
 
@@ -792,6 +811,10 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.media.AudioManager;
+import android.media.audiofx.BassBoost;
+import android.media.audiofx.DynamicsProcessing;
+import android.media.audiofx.Equalizer;
+import android.media.audiofx.Virtualizer;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.net.Uri;
@@ -831,6 +854,19 @@ public class MainActivity extends Activity {
     private static final String APP_URL = "https://project-aplikasi-music.vercel.app";
     private Handler bridgeHandler = new Handler(Looper.getMainLooper());
     private Runnable bridgeRunnable;
+
+    private DynamicsProcessing nativeDp = null;
+    private Equalizer nativeEq = null;
+    private BassBoost nativeBass = null;
+    private Virtualizer nativeVirtualizer = null;
+    private boolean nativeDspInitAttempted = false;
+    private boolean nativeDspReady = false;
+    private boolean nativeDspBypassed = true;
+    private float[] lastNativeGains = new float[]{4.5f, 5.5f, 2f, -2f, -1.5f, 1f, 3f, 3.5f, 4.5f, 5.5f};
+    private float lastNativeBass = 4f;
+    private float lastNativeWidth = 1.5f;
+    private static final float[] DP_CENTER_FREQS = new float[]{32f, 64f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 16000f};
+    private static final float[] DP_BAND_EDGES = new float[]{45f, 90f, 180f, 355f, 710f, 1400f, 2800f, 5600f, 11200f, 20000f};
 
     private Dialog sunoLoginDialog;
     private WebView loginWebView;
@@ -2314,8 +2350,184 @@ public class MainActivity extends Activity {
         // Foreground Service keeps the process active while app is minimized
     }
 
+    private synchronized void initNativeDspIfNeeded() {
+        if (nativeDspInitAttempted) return;
+        nativeDspInitAttempted = true;
+
+        if (Build.VERSION.SDK_INT >= 28) {
+            try {
+                DynamicsProcessing.Config.Builder builder = new DynamicsProcessing.Config.Builder(
+                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                    2,
+                    true, 10,
+                    false, 0,
+                    false, 0,
+                    true
+                );
+                builder.setPreferredFrameDuration(10.0f);
+                DynamicsProcessing.Config cfg = builder.build();
+                nativeDp = new DynamicsProcessing(0, 0, cfg);
+                DynamicsProcessing.Limiter limiter = new DynamicsProcessing.Limiter(
+                    true, true, 0, 2.0f, 80.0f, 10.0f, -1.5f, 0.0f
+                );
+                nativeDp.setLimiterAllChannelsTo(limiter);
+                nativeDspReady = true;
+            } catch (Throwable t) {
+                try { if (nativeDp != null) nativeDp.release(); } catch (Throwable ignore) {}
+                nativeDp = null;
+            }
+        }
+
+        if (nativeDp == null) {
+            try {
+                nativeEq = new Equalizer(0, 0);
+                nativeDspReady = true;
+            } catch (Throwable t) {
+                try { if (nativeEq != null) nativeEq.release(); } catch (Throwable ignore) {}
+                nativeEq = null;
+            }
+        }
+
+        try {
+            nativeBass = new BassBoost(0, 0);
+            if (!nativeBass.getStrengthSupported()) {
+                nativeBass.release();
+                nativeBass = null;
+            } else {
+                nativeDspReady = true;
+            }
+        } catch (Throwable t) {
+            try { if (nativeBass != null) nativeBass.release(); } catch (Throwable ignore) {}
+            nativeBass = null;
+        }
+
+        try {
+            nativeVirtualizer = new Virtualizer(0, 0);
+            if (!nativeVirtualizer.getStrengthSupported()) {
+                nativeVirtualizer.release();
+                nativeVirtualizer = null;
+            }
+        } catch (Throwable t) {
+            try { if (nativeVirtualizer != null) nativeVirtualizer.release(); } catch (Throwable ignore) {}
+            nativeVirtualizer = null;
+        }
+    }
+
+    public boolean isNativeDspActive() {
+        initNativeDspIfNeeded();
+        return nativeDspReady;
+    }
+
+    public void setNativeDspBypass(final boolean bypass) {
+        runOnUiThread(() -> {
+            nativeDspBypassed = bypass;
+            if (!bypass) {
+                initNativeDspIfNeeded();
+                applyNativeDspInternal();
+            } else {
+                try { if (nativeDp != null) nativeDp.setEnabled(false); } catch (Throwable ignore) {}
+                try { if (nativeEq != null) nativeEq.setEnabled(false); } catch (Throwable ignore) {}
+                try { if (nativeBass != null) nativeBass.setEnabled(false); } catch (Throwable ignore) {}
+                try { if (nativeVirtualizer != null) nativeVirtualizer.setEnabled(false); } catch (Throwable ignore) {}
+            }
+        });
+    }
+
+    public void applyNativeDsp(final String gainsJson, final float bassDb, final float widthMult) {
+        try {
+            if (gainsJson != null && gainsJson.startsWith("[")) {
+                org.json.JSONArray arr = new org.json.JSONArray(gainsJson);
+                int count = Math.min(10, arr.length());
+                for (int i = 0; i < count; i++) {
+                    lastNativeGains[i] = (float) arr.optDouble(i, 0.0);
+                }
+            }
+        } catch (Throwable ignore) {}
+        lastNativeBass = bassDb;
+        lastNativeWidth = widthMult;
+
+        runOnUiThread(() -> {
+            if (nativeDspBypassed) return;
+            initNativeDspIfNeeded();
+            applyNativeDspInternal();
+        });
+    }
+
+    private void applyNativeDspInternal() {
+        if (nativeDspBypassed) return;
+        try {
+            if (nativeDp != null && Build.VERSION.SDK_INT >= 28) {
+                for (int i = 0; i < 10; i++) {
+                    float g = lastNativeGains[i];
+                    if (i == 0) g += lastNativeBass * 0.55f;
+                    else if (i == 1) g += lastNativeBass * 0.42f;
+                    else if (i == 2) g += lastNativeBass * 0.14f;
+                    g = Math.max(-15.0f, Math.min(15.0f, g));
+                    DynamicsProcessing.EqBand band = new DynamicsProcessing.EqBand(true, DP_BAND_EDGES[i], g);
+                    nativeDp.setPreEqBandAllChannelsTo(i, band);
+                }
+                nativeDp.setEnabled(true);
+            } else if (nativeEq != null) {
+                short numBands = nativeEq.getNumberOfBands();
+                short[] range = nativeEq.getBandLevelRange();
+                short minLvl = range[0];
+                short maxLvl = range[1];
+                for (short b = 0; b < numBands; b++) {
+                    float centerHz = nativeEq.getCenterFreq(b) / 1000.0f;
+                    int nearestIdx = 0;
+                    float bestDiff = Math.abs(centerHz - DP_CENTER_FREQS[0]);
+                    for (int k = 1; k < DP_CENTER_FREQS.length; k++) {
+                        float diff = Math.abs(centerHz - DP_CENTER_FREQS[k]);
+                        if (diff < bestDiff) {
+                            bestDiff = diff;
+                            nearestIdx = k;
+                        }
+                    }
+                    float gDb = lastNativeGains[nearestIdx];
+                    if (nearestIdx == 0) gDb += lastNativeBass * 0.50f;
+                    else if (nearestIdx == 1) gDb += lastNativeBass * 0.35f;
+                    int mb = Math.round(gDb * 100.0f);
+                    short clamped = (short) Math.max(minLvl, Math.min(maxLvl, mb));
+                    nativeEq.setBandLevel(b, clamped);
+                }
+                nativeEq.setEnabled(true);
+            }
+        } catch (Throwable ignore) {}
+
+        try {
+            if (nativeBass != null) {
+                short strength = (short) Math.max(0, Math.min(1000, Math.round((lastNativeBass / 14.0f) * 1000.0f)));
+                nativeBass.setStrength(strength);
+                nativeBass.setEnabled(strength > 0);
+            }
+        } catch (Throwable ignore) {}
+
+        try {
+            if (nativeVirtualizer != null) {
+                short vStrength = lastNativeWidth > 1.0f
+                    ? (short) Math.max(0, Math.min(1000, Math.round((lastNativeWidth - 1.0f) * 900.0f)))
+                    : 0;
+                nativeVirtualizer.setStrength(vStrength);
+                nativeVirtualizer.setEnabled(vStrength > 0);
+            }
+        } catch (Throwable ignore) {}
+    }
+
+    private void releaseNativeDsp() {
+        try { if (nativeDp != null) { nativeDp.setEnabled(false); nativeDp.release(); } } catch (Throwable ignore) {}
+        try { if (nativeEq != null) { nativeEq.setEnabled(false); nativeEq.release(); } } catch (Throwable ignore) {}
+        try { if (nativeBass != null) { nativeBass.setEnabled(false); nativeBass.release(); } } catch (Throwable ignore) {}
+        try { if (nativeVirtualizer != null) { nativeVirtualizer.setEnabled(false); nativeVirtualizer.release(); } } catch (Throwable ignore) {}
+        nativeDp = null;
+        nativeEq = null;
+        nativeBass = null;
+        nativeVirtualizer = null;
+        nativeDspReady = false;
+    }
+
     @Override
     protected void onDestroy() {
+        releaseNativeDsp();
         if (bridgeRunnable != null) {
             bridgeHandler.removeCallbacks(bridgeRunnable);
         }

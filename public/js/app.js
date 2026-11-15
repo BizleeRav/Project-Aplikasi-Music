@@ -8040,6 +8040,11 @@ class App {
   async playTrack(track) {
     if (!track) return;
 
+    // Resume Web Audio Context synchronously during user gesture (crucial on Android WebView)
+    if (window.audioEngine && typeof window.audioEngine.resume === 'function') {
+      window.audioEngine.resume();
+    }
+
     if (track.id === 'mix-liked') {
       if (this.favorites && this.favorites.length > 0) {
         this.playTrackList(this.favorites, 0);
@@ -8165,7 +8170,12 @@ class App {
       this._currentBlobUrl = URL.createObjectURL(cachedBlob);
       this.currentAudioMode = 'native';
       if (window.ytPlayer) window.ytPlayer.stop();
-      if (window.audioEngine) window.audioEngine.resume();
+      if (window.audioEngine) {
+        if (typeof window.audioEngine.setAudioPlaybackMode === 'function') {
+          window.audioEngine.setAudioPlaybackMode('native');
+        }
+        window.audioEngine.resume();
+      }
 
       if (!this.queue || this.queue.length === 0) {
         this.queue = [track];
@@ -8203,6 +8213,9 @@ class App {
       if (window.ytPlayer) window.ytPlayer.stop();
 
       if (window.audioEngine) {
+        if (typeof window.audioEngine.setAudioPlaybackMode === 'function') {
+          window.audioEngine.setAudioPlaybackMode('native');
+        }
         window.audioEngine.resume();
       }
 
@@ -8249,6 +8262,9 @@ class App {
       // Plays immediately via MSE while capturing the exact same stream into IndexedDB (0 double-download!)
       if (window.ytPlayer) window.ytPlayer.stop();
       this.currentAudioMode = 'native';
+      if (window.audioEngine && typeof window.audioEngine.setAudioPlaybackMode === 'function') {
+        window.audioEngine.setAudioPlaybackMode('native');
+      }
 
       const streamUrl = `/api/stream-audio?id=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}`;
       this.playWithSingleStreamCapture(track, streamUrl);
@@ -8276,6 +8292,9 @@ class App {
     if (!track || this.currentTrack !== track || this.currentAudioMode === 'yt') return;
     console.warn('Direct audio stream error, falling back to YouTube player:', reason);
     this.currentAudioMode = 'yt';
+    if (window.audioEngine && typeof window.audioEngine.setAudioPlaybackMode === 'function') {
+      window.audioEngine.setAudioPlaybackMode('yt');
+    }
     if (this.nativeAudio) {
       this.nativeAudio.onerror = null;
       this.nativeAudio.pause();
@@ -8308,6 +8327,9 @@ class App {
       if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
     } else if (this.currentAudioMode === 'native') {
       textEl.textContent = isEn ? 'DSP Web Audio Engine Active (100% Live Filter)' : 'DSP Web Audio Engine Aktif (100% Termodifikasi)';
+      if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
+    } else if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.isNativeDspActive === 'function' && window.AuraSoundAndroid.isNativeDspActive()) {
+      textEl.textContent = isEn ? 'YouTube Music • Android Hardware DSP Active' : 'YouTube Music • Android Hardware DSP Aktif';
       if (dotEl) dotEl.className = 'status-indicator-dot dot-active';
     } else {
       textEl.textContent = isEn ? 'YouTube Music • Hi-Fi Direct Stream' : 'YouTube Music • Studio Hi-Fi';

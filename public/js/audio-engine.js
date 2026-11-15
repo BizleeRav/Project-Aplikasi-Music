@@ -48,12 +48,13 @@ class AudioEngine {
     this.cinemaPeaks = new Float32Array(54);
     this.cinemaPeakHold = new Int8Array(54);
 
-    // Default active DSP gains (aligned with optimized Dolby Atmos Enhancer)
-    this.activePresetName = 'dolby';
-    this.currentGains = [3.5, 4, 1.5, -1.5, -1, 0.5, 2, 2.5, 3.5, 4.5];
-    this.currentBass = 3;
-    this.spatialWidth = 1.35;
+    // Detect mobile device / Android APK (Desktop/Laptop settings remain 100% untouched)
+    this.isMobile = (typeof window !== 'undefined') && (
+      Boolean(window.AuraSoundAndroid) ||
+      (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''))
+    );
 
+    // Desktop / Laptop Presets (UNCHANGED)
     this.presets = {
       flat: {
         eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -96,6 +97,92 @@ class AudioEngine {
     // Quick Aliases for Bento & Home feed preset pills
     this.presets.bass = this.presets.bassHeavy;
     this.presets.club = this.presets.electronic;
+
+    // Mobile-Only Acoustic Profile (calibrated for smartphone speakers, IEMs & TWS drivers)
+    this.mobilePresets = {
+      flat: {
+        eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        bass: 0,
+        width: 1.0,
+        comp: { threshold: -6.0, ratio: 1.2, attack: 0.045, release: 0.22 }
+      },
+      dolby: {
+        eq: [4.5, 5.5, 2, -2, -1.5, 1, 3, 3.5, 4.5, 5.5],
+        bass: 4,
+        width: 1.50,
+        comp: { threshold: -11.0, ratio: 1.9, attack: 0.035, release: 0.18 }
+      },
+      nahimic: {
+        eq: [3, 5.5, 2.5, -2.5, -1.5, 1.5, 4, 4.5, 3.5, 3],
+        bass: 5,
+        width: 1.25,
+        comp: { threshold: -11.5, ratio: 2.0, attack: 0.032, release: 0.16 }
+      },
+      bassHeavy: {
+        eq: [6.5, 8, 4, -3, -2, 1, 2.5, 3, 3.5, 3],
+        bass: 8,
+        width: 1.12,
+        comp: { threshold: -10.5, ratio: 2.1, attack: 0.038, release: 0.17 }
+      },
+      vocal: {
+        eq: [-2, 0, 1.5, -2, 0.5, 3.5, 4.5, 3, 2.5, 3.5],
+        bass: 1,
+        width: 1.08,
+        comp: { threshold: -8.5, ratio: 1.6, attack: 0.028, release: 0.19 }
+      },
+      electronic: {
+        eq: [5.5, 7, 2.5, -2.5, -3, 0.5, 3.5, 4.5, 5, 5.5],
+        bass: 6.5,
+        width: 1.40,
+        comp: { threshold: -11.0, ratio: 2.0, attack: 0.032, release: 0.16 }
+      }
+    };
+    this.mobilePresets.bass = this.mobilePresets.bassHeavy;
+    this.mobilePresets.club = this.mobilePresets.electronic;
+
+    // Default active DSP gains (Desktop uses Laptop preset; Mobile uses Mobile Acoustic Profile)
+    const initPreset = this.isMobile ? this.mobilePresets.dolby : this.presets.dolby;
+    this.activePresetName = 'dolby';
+    this.currentGains = [...initPreset.eq];
+    this.currentBass = initPreset.bass;
+    this.spatialWidth = initPreset.width;
+    this.currentPlaybackMode = 'native';
+  }
+
+  getPresetTable() {
+    return this.isMobile ? this.mobilePresets : this.presets;
+  }
+
+  syncNativeAndroidDsp() {
+    if (!this.isMobile || typeof window === 'undefined') return;
+    const bridge = window.AuraSoundAndroid;
+    if (!bridge || typeof bridge.applyNativeDsp !== 'function') return;
+    try {
+      bridge.applyNativeDsp(
+        JSON.stringify(this.currentGains || []),
+        Number(this.currentBass || 0),
+        Number(this.spatialWidth || 1.0)
+      );
+    } catch (e) {}
+  }
+
+  setAudioPlaybackMode(mode) {
+    this.currentPlaybackMode = mode === 'yt' ? 'yt' : 'native';
+    if (!this.isMobile || typeof window === 'undefined') return;
+    const bridge = window.AuraSoundAndroid;
+    if (!bridge) return;
+    try {
+      if (this.currentPlaybackMode === 'yt') {
+        if (typeof bridge.setNativeDspBypass === 'function') {
+          bridge.setNativeDspBypass(false);
+        }
+        this.syncNativeAndroidDsp();
+      } else {
+        if (typeof bridge.setNativeDspBypass === 'function') {
+          bridge.setNativeDspBypass(true);
+        }
+      }
+    } catch (e) {}
   }
 
   // Smooth analog tape saturation curve to catch peaks without digital harshness
@@ -134,16 +221,22 @@ class AudioEngine {
 
       // 1. DUAL-STAGE SUB-BASS ENGINE (Deep Foundation + Punch Slam)
       // Produces deep chest-thumping subwoofer rumble without muddy boxiness or over-stacking
+      const subDeepFreq = this.isMobile ? 55 : 48;
+      const subDeepScale = this.isMobile ? 0.65 : 0.55;
+      const subPunchFreq = this.isMobile ? 92 : 88;
+      const subPunchQ = this.isMobile ? 1.65 : 1.85;
+      const subPunchScale = this.isMobile ? 0.58 : 0.42;
+
       this.subBassDeepNode = this.audioCtx.createBiquadFilter();
       this.subBassDeepNode.type = 'lowshelf';
-      this.subBassDeepNode.frequency.value = 48; // Deep 808 sub-bass foundation
-      this.subBassDeepNode.gain.value = this.currentBass * 0.55;
+      this.subBassDeepNode.frequency.value = subDeepFreq;
+      this.subBassDeepNode.gain.value = this.currentBass * subDeepScale;
 
       this.subBassPunchNode = this.audioCtx.createBiquadFilter();
       this.subBassPunchNode.type = 'peaking';
-      this.subBassPunchNode.frequency.value = 88; // Snappy kick drum punch
-      this.subBassPunchNode.Q.value = 1.85;
-      this.subBassPunchNode.gain.value = this.currentBass * 0.42;
+      this.subBassPunchNode.frequency.value = subPunchFreq;
+      this.subBassPunchNode.Q.value = subPunchQ;
+      this.subBassPunchNode.gain.value = this.currentBass * subPunchScale;
 
       // 2. 10-BAND PRECISION AUDIOPHILE EQ FILTERS (Constant-Q & Surgical Treble)
       this.eqFilters = this.frequencies.map((freq, index) => {
@@ -263,7 +356,8 @@ class AudioEngine {
       this.preGainNode.gain.value = this.computeHeadroomLinearGain();
 
       // 5. ADAPTIVE STUDIO BUS GLUE COMPRESSOR
-      const initComp = (this.presets[this.activePresetName] && this.presets[this.activePresetName].comp) || {
+      const presetTable = this.getPresetTable();
+      const initComp = (presetTable[this.activePresetName] && presetTable[this.activePresetName].comp) || {
         threshold: -12.0,
         ratio: 2.0,
         attack: 0.040,
@@ -330,6 +424,22 @@ class AudioEngine {
       this.isInitialized = true;
       console.log('AuraSound Full-Potential Studio DSP Engine initialized (Dual-Stage Bass, 3D Binaural, SSL Glue & Soft-Clipper).');
 
+      // Unlock AudioContext immediately on first user touch/click (critical for Android WebView DSP)
+      if (typeof document !== 'undefined' && !this._unlockBound) {
+        this._unlockBound = true;
+        const unlockAudio = () => {
+          this.resume();
+        };
+        ['touchstart', 'pointerdown', 'click', 'keydown'].forEach(evt => {
+          document.addEventListener(evt, unlockAudio, { passive: true });
+        });
+      }
+
+      // On mobile, sync sliders to Mobile Acoustic Profile defaults
+      if (this.isMobile) {
+        this.applyPreset(this.activePresetName || 'dolby');
+      }
+
       // Draw initial EQ curve
       setTimeout(() => this.drawEqCurve(), 100);
     } catch (err) {
@@ -339,8 +449,9 @@ class AudioEngine {
 
   resume() {
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
+      return this.audioCtx.resume().catch(() => {});
     }
+    return Promise.resolve();
   }
 
   getDuration() {
@@ -362,7 +473,10 @@ class AudioEngine {
     const posAvg = gains.length ? (posSum / gains.length) : 0;
     const bassEnergy = Math.max(0, this.currentBass || 0);
     const boostScore = bassEnergy * 0.26 + posAvg * 0.45 + maxPos * 0.14;
-    const attenDb = Math.min(3.2, boostScore * 0.85);
+    // Mobile speakers/TWS have lower system output headroom; preserve loudness while Desktop keeps exact 3.2dB cap
+    const attenDb = this.isMobile
+      ? Math.min(1.4, boostScore * 0.35)
+      : Math.min(3.2, boostScore * 0.85);
     return Math.pow(10, -attenDb / 20);
   }
 
@@ -384,6 +498,9 @@ class AudioEngine {
       this.eqFilters[bandIndex].gain.setTargetAtTime(val, now, 0.05);
     }
     this.updateHeadroomGain();
+    if (!this._batchUpdating && this.currentPlaybackMode === 'yt') {
+      this.syncNativeAndroidDsp();
+    }
     const s1 = document.getElementById(`eq-slider-${bandIndex}`);
     if (s1 && s1.value != val) s1.value = val;
     const s2 = document.getElementById(`cinema-eq-slider-${bandIndex}`);
@@ -394,18 +511,23 @@ class AudioEngine {
   setBassBoost(gainValue) {
     const val = parseFloat(gainValue);
     this.currentBass = val;
+    const subDeepScale = this.isMobile ? 0.65 : 0.55;
+    const subPunchScale = this.isMobile ? 0.58 : 0.42;
     if (this.audioCtx) {
       const now = this.audioCtx.currentTime || 0;
       if (this.subBassDeepNode) {
         this.subBassDeepNode.gain.cancelScheduledValues(now);
-        this.subBassDeepNode.gain.setTargetAtTime(val * 0.55, now, 0.05);
+        this.subBassDeepNode.gain.setTargetAtTime(val * subDeepScale, now, 0.05);
       }
       if (this.subBassPunchNode) {
         this.subBassPunchNode.gain.cancelScheduledValues(now);
-        this.subBassPunchNode.gain.setTargetAtTime(val * 0.42, now, 0.05);
+        this.subBassPunchNode.gain.setTargetAtTime(val * subPunchScale, now, 0.05);
       }
     }
     this.updateHeadroomGain();
+    if (!this._batchUpdating && this.currentPlaybackMode === 'yt') {
+      this.syncNativeAndroidDsp();
+    }
     ['bass-boost-slider', 'cinema-bass-boost-slider'].forEach(id => {
       const el = document.getElementById(id);
       if (el && el.value != val) el.value = val;
@@ -449,6 +571,9 @@ class AudioEngine {
         this.binauralDelayR.delayTime.setTargetAtTime(delayR, now, 0.05);
       }
     }
+    if (!this._batchUpdating && this.currentPlaybackMode === 'yt') {
+      this.syncNativeAndroidDsp();
+    }
     const pct = Math.round(val * 100);
     ['spatial-width-slider', 'cinema-spatial-width-slider'].forEach(id => {
       const el = document.getElementById(id);
@@ -470,7 +595,8 @@ class AudioEngine {
   }
 
   applyPreset(presetName) {
-    const preset = this.presets[presetName];
+    const presetTable = this.getPresetTable();
+    const preset = presetTable[presetName];
     if (!preset) return;
 
     this.activePresetName = presetName;
@@ -479,12 +605,17 @@ class AudioEngine {
     const bassVal = (typeof preset.bass === 'number') ? preset.bass : 0;
     const widthVal = (typeof preset.width === 'number') ? preset.width : 1.0;
 
-    values.forEach((val, idx) => {
-      this.setBandGain(idx, val);
-    });
+    this._batchUpdating = true;
+    try {
+      values.forEach((val, idx) => {
+        this.setBandGain(idx, val);
+      });
 
-    this.setBassBoost(bassVal);
-    this.setSpatialWidth(widthVal);
+      this.setBassBoost(bassVal);
+      this.setSpatialWidth(widthVal);
+    } finally {
+      this._batchUpdating = false;
+    }
 
     // Apply mode-specific adaptive Bus Glue Compressor dynamics
     if (this.glueCompressor && this.audioCtx && preset.comp) {
@@ -493,6 +624,10 @@ class AudioEngine {
       this.glueCompressor.ratio.setTargetAtTime(preset.comp.ratio, now, 0.06);
       this.glueCompressor.attack.setTargetAtTime(preset.comp.attack, now, 0.06);
       this.glueCompressor.release.setTargetAtTime(preset.comp.release, now, 0.06);
+    }
+
+    if (this.currentPlaybackMode === 'yt') {
+      this.syncNativeAndroidDsp();
     }
 
     // Sync Preset Buttons Active State in both main drawer and cinema modal
@@ -552,13 +687,16 @@ class AudioEngine {
     const padX = 20;
     const effWidth = width - padX * 2;
     const points = [];
+    const s0 = this.isMobile ? 0.65 : 0.55;
+    const s1 = this.isMobile ? 0.58 : 0.42;
+    const s2 = this.isMobile ? 0.22 : 0.14;
 
     for (let i = 0; i < count; i++) {
       const x = padX + (i / (count - 1)) * effWidth;
       let gain = this.currentGains[i] || 0;
-      if (i === 0) gain += (this.currentBass || 0) * 0.55;
-      else if (i === 1) gain += (this.currentBass || 0) * 0.42;
-      else if (i === 2) gain += (this.currentBass || 0) * 0.14;
+      if (i === 0) gain += (this.currentBass || 0) * s0;
+      else if (i === 1) gain += (this.currentBass || 0) * s1;
+      else if (i === 2) gain += (this.currentBass || 0) * s2;
 
       const clampedGain = Math.max(-18, Math.min(18, gain));
       const y = zeroY - (clampedGain / 18) * (height * 0.44);

@@ -1,13 +1,13 @@
 {
-  "version": "1.3.14",
+  "version": "1.3.15",
   "desktop": {
     "version": "1.1.3",
     "githubRepo": "https://github.com/BizleeRav/Project-Aplikasi-Music"
   },
   "android": {
-    "versionCode": 18,
-    "versionName": "1.3.14",
+    "versionCode": 19,
+    "versionName": "1.3.15",
     "apkUrl": "https://project-aplikasi-music.vercel.app/download/AuraSound.apk",
-    "notes": "Update v1.3.14: Perbaikan deteksi versi Android agar notifikasi pembaruan otomatis hilang setelah update selesai, plus Studio Audio DSP Equalizer terbaru."
+    "notes": "Update v1.3.15: Optimasi Audio DSP khusus HP (Android Hardware AudioFX DSP untuk YouTube IFrame, kalibrasi Sub-Bass & Headroom speaker/TWS HP, serta sinkronisasi AudioContext touch-unlock)."
   }
 }
