@@ -2918,6 +2918,21 @@ class App {
     return track;
   }
 
+  isAlignedLyricsComplete(parsedLyrics, rawLyricsText) {
+    if (!Array.isArray(parsedLyrics) || parsedLyrics.length === 0) return false;
+    if (!rawLyricsText || typeof rawLyricsText !== 'string') return true;
+    const expectedCount = rawLyricsText
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l =>
+        l.length > 0 &&
+        !/^\[[^\]]+\]$/.test(l) &&
+        !/^\((instrumental|guitar solo|solo|humming|interlude|outro|intro)[^)]*\)$/i.test(l)
+      ).length;
+    if (expectedCount < 8) return true;
+    return parsedLyrics.length >= Math.floor(expectedCount * 0.72);
+  }
+
   async renderCinemaLyrics(track, overrideDuration = null, forceRefresh = false) {
     if (!this.cinemaLyricsStream || !track) return;
     this.hydrateSunoTrack(track);
@@ -2944,7 +2959,7 @@ class App {
     const activeVideoId = playingYtId || track.id || track.videoId || '';
 
     // 1. If lyrics already cached in track instance for the active audio mode & videoId (and not forcing refresh)
-    if (!forceRefresh && track._lyricsEngineVersion === 'v84' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 &&
+    if (!forceRefresh && track._lyricsEngineVersion === 'v85' && track._parsedLyrics && Array.isArray(track._parsedLyrics) && track._parsedLyrics.length > 0 &&
         (!track._cachedForTrackId || track._cachedForTrackId === trackId) &&
         (!track._cachedForAudioMode || track._cachedForAudioMode === this.currentAudioMode) &&
         (!track._cachedForVideoId || track._cachedForVideoId === activeVideoId)) {
@@ -2972,6 +2987,7 @@ class App {
         : {};
 
       let wordSyncFound = false;
+      let incompleteAlignedBlocked = false;
 
       try {
         const alignRes = await fetch(`/api/suno/aligned-lyrics/${encodeURIComponent(track.id)}`, {
@@ -2979,7 +2995,24 @@ class App {
         });
         if (alignRes.ok) {
           const alignData = await alignRes.json();
-          if (alignData.found && Array.isArray(alignData.parsedLyrics) && alignData.parsedLyrics.length > 0) {
+          if (alignData.incompleteAlignedLyrics) {
+            incompleteAlignedBlocked = true;
+          }
+          if (!track.lyrics && alignData.fallbackLyrics) track.lyrics = alignData.fallbackLyrics;
+          if (!track.syncedLyrics && alignData.fallbackSyncedLyrics) track.syncedLyrics = alignData.fallbackSyncedLyrics;
+          if (!track.prompt && alignData.fallbackPrompt) track.prompt = alignData.fallbackPrompt;
+          if (!track.seconds && alignData.seconds) track.seconds = alignData.seconds;
+
+          const alignIsComplete = alignData.found &&
+            Array.isArray(alignData.parsedLyrics) &&
+            alignData.parsedLyrics.length > 0 &&
+            this.isAlignedLyricsComplete(alignData.parsedLyrics, track.lyrics);
+
+          if (!alignIsComplete && alignData.found && Array.isArray(alignData.parsedLyrics) && alignData.parsedLyrics.length > 0) {
+            incompleteAlignedBlocked = true;
+          }
+
+          if (alignIsComplete) {
             if (this.currentLyricsTrackId !== trackId) return;
 
             wordSyncFound = true;
@@ -2988,7 +3021,7 @@ class App {
             track._parsedLyrics = alignData.parsedLyrics;
             track._lyricsType = 'synced';
             track._hasWordSync = this.hasWordSync;
-            track._lyricsEngineVersion = 'v84';
+            track._lyricsEngineVersion = 'v85';
             track._cachedForTrackId = trackId;
 
             this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);
@@ -2996,16 +3029,12 @@ class App {
             this.updateActiveLyricsLine(curTime);
             return;
           }
-          if (!track.lyrics && alignData.fallbackLyrics) track.lyrics = alignData.fallbackLyrics;
-          if (!track.syncedLyrics && alignData.fallbackSyncedLyrics) track.syncedLyrics = alignData.fallbackSyncedLyrics;
-          if (!track.prompt && alignData.fallbackPrompt) track.prompt = alignData.fallbackPrompt;
-          if (!track.seconds && alignData.seconds) track.seconds = alignData.seconds;
         }
       } catch (alignErr) {
         console.warn('[Suno] Aligned lyrics fetch error, using structural fallback:', alignErr);
       }
 
-      // Fallback: If neural word-sync is unavailable, use structural aligner
+      // Fallback: If neural word-sync is unavailable or incomplete, use structural aligner
       const candidateSynced = (track.syncedLyrics && track.syncedLyrics.trim().length > 0)
         ? track.syncedLyrics
         : (track.lyrics_synced && track.lyrics_synced.trim().length > 0 ? track.lyrics_synced : '');
@@ -3028,14 +3057,14 @@ class App {
           track._parsedLyrics = parsed;
           track._lyricsType = candidateSynced ? 'synced' : 'suno_ai';
           track._hasWordSync = false; // Do NOT permanently lock word-sync cache
-          track._lyricsEngineVersion = 'v84';
+          track._lyricsEngineVersion = 'v85';
           track._cachedForTrackId = trackId;
           this.displayLyricsList(this.currentLyricsData, track._lyricsType, null, false, false);
           const curTime = this.getCurrentPlaybackTime();
           this.updateActiveLyricsLine(curTime);
 
           // Schedule background retry timer every 6 seconds (up to 8 attempts while playing this track)
-          if (!wordSyncFound && !this.sunoAlignRetryTimer) {
+          if (!wordSyncFound && !incompleteAlignedBlocked && !this.sunoAlignRetryTimer) {
             let retryAttempts = 0;
             this.sunoAlignRetryTimer = setInterval(async () => {
               retryAttempts++;
@@ -3053,7 +3082,16 @@ class App {
                 });
                 if (retryRes.ok) {
                   const retryData = await retryRes.json();
-                  if (retryData.found && Array.isArray(retryData.parsedLyrics) && retryData.parsedLyrics.length > 0) {
+                  if (retryData.incompleteAlignedLyrics) {
+                    clearInterval(this.sunoAlignRetryTimer);
+                    this.sunoAlignRetryTimer = null;
+                    return;
+                  }
+                  const retryComplete = retryData.found &&
+                    Array.isArray(retryData.parsedLyrics) &&
+                    retryData.parsedLyrics.length > 0 &&
+                    this.isAlignedLyricsComplete(retryData.parsedLyrics, track.lyrics);
+                  if (retryComplete) {
                     if (this.currentLyricsTrackId !== trackId) {
                       clearInterval(this.sunoAlignRetryTimer);
                       this.sunoAlignRetryTimer = null;
@@ -3067,7 +3105,7 @@ class App {
                     track._parsedLyrics = retryData.parsedLyrics;
                     track._lyricsType = 'synced';
                     track._hasWordSync = this.hasWordSync;
-                    track._lyricsEngineVersion = 'v84';
+                    track._lyricsEngineVersion = 'v85';
                     track._cachedForTrackId = trackId;
 
                     this.displayLyricsList(this.currentLyricsData, 'synced', null, false, this.hasWordSync);

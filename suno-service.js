@@ -2202,9 +2202,34 @@ function parseSunoAlignedLyricsResponse(data) {
 }
 
 /**
+ * Count non-header sung lyric lines in raw song lyrics text
+ */
+function countSingableLyricLines(lyricsText) {
+  if (!lyricsText || typeof lyricsText !== 'string') return 0;
+  return lyricsText
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l =>
+      l.length > 0 &&
+      !/^\[[^\]]+\]$/.test(l) &&
+      !/^\((instrumental|guitar solo|solo|humming|interlude|outro|intro)[^)]*\)$/i.test(l)
+    ).length;
+}
+
+/**
+ * Detect when Suno's forced-aligner silently dropped whole sections (e.g. Romaji Korean losing Verse 1 / Pre-Chorus)
+ */
+function isAlignedLyricsIncomplete(parsedLyrics, expectedLyrics) {
+  if (!Array.isArray(parsedLyrics) || parsedLyrics.length === 0) return true;
+  const expectedCount = countSingableLyricLines(expectedLyrics);
+  if (expectedCount < 8) return false;
+  return parsedLyrics.length < Math.floor(expectedCount * 0.72);
+}
+
+/**
  * Fetch Neural Word-by-Word Aligned Lyrics from Official Suno Feed
  */
-async function getAlignedLyrics(clipId, userToken = null) {
+async function getAlignedLyrics(clipId, userToken = null, options = {}) {
   if (!clipId) return null;
 
   let cleanJwt = (userToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
@@ -2247,6 +2272,16 @@ async function getAlignedLyrics(clipId, userToken = null) {
     const parsedLyrics = parseSunoAlignedLyricsResponse(res.data);
 
     if (Array.isArray(parsedLyrics) && parsedLyrics.length > 0) {
+      if (options?.expectedLyrics && isAlignedLyricsIncomplete(parsedLyrics, options.expectedLyrics)) {
+        const expectedCount = countSingableLyricLines(options.expectedLyrics);
+        console.warn(`[Suno Aligned Lyrics] Incomplete aligner output for clip ${clipId} (${parsedLyrics.length}/${expectedCount} lines). Falling back to full structured lyrics.`);
+        return {
+          found: false,
+          incomplete: true,
+          alignedCount: parsedLyrics.length,
+          expectedCount
+        };
+      }
       return {
         found: true,
         hasWordSync: true,
@@ -2282,5 +2317,7 @@ module.exports = {
   parseAlignedLyricsFallback,
   parseCjkAlignedLyrics,
   isNonSpacedCjkLyrics,
-  parseSunoAlignedLyricsResponse
+  parseSunoAlignedLyricsResponse,
+  countSingableLyricLines,
+  isAlignedLyricsIncomplete
 };

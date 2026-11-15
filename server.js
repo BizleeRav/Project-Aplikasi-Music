@@ -1340,7 +1340,9 @@ app.get('/api/suno/aligned-lyrics/:id', async (req, res) => {
     const creds = getEffectiveSunoCredentials(req);
     const allCreations = sunoService.getCreations();
     const trackMeta = allCreations.find(t => t.id === clipId);
-    const result = await sunoService.getAlignedLyrics(clipId, creds.key);
+    const result = await sunoService.getAlignedLyrics(clipId, creds.key, {
+      expectedLyrics: trackMeta?.lyrics || ''
+    });
     if (result && result.found && Array.isArray(result.parsedLyrics)) {
       // Run Multi-Lingual Romanizer (Japanese Romaji, Chinese Pinyin, Korean Romaja)
       const romanizer = getLyricsRomanizer();
@@ -1367,13 +1369,14 @@ app.get('/api/suno/aligned-lyrics/:id', async (req, res) => {
     if (trackMeta) {
       return res.json({
         found: false,
+        incompleteAlignedLyrics: Boolean(result?.incomplete),
         fallbackLyrics: trackMeta.lyrics || '',
         fallbackSyncedLyrics: trackMeta.syncedLyrics || trackMeta.lyrics_synced || '',
         fallbackPrompt: trackMeta.prompt || '',
         seconds: trackMeta.seconds || null
       });
     }
-    res.json({ found: false });
+    res.json({ found: false, incompleteAlignedLyrics: Boolean(result?.incomplete) });
   } catch (err) {
     res.status(500).json({ found: false, error: err.message });
   }

@@ -480,6 +480,20 @@ async function triggerSunoCreateClick(win, { requireNonEmptyInput = false } = {}
 }
 
 /**
+ * Read current Cloudflare Turnstile token value (or '' if absent/short).
+ */
+async function readTurnstileToken(win) {
+  if (!win || win.isDestroyed()) return '';
+  return win.webContents.executeJavaScript(`
+    (() => {
+      const tokenInput = document.querySelector('[name*="cf-turnstile-response"], [name="turnstile_token"]');
+      const val = (tokenInput && tokenInput.value) ? String(tokenInput.value).trim() : '';
+      return val.length > 20 ? val : '';
+    })()
+  `).catch(() => '');
+}
+
+/**
  * Fill Suno's Simple or Custom/Advanced Create form cleanly without touching Cloudflare Turnstile inputs.
  */
 async function fillSunoCreateForm(genWin, { targetMode, cleanTitleText, cleanPromptText, cleanLyricsText, cleanTagsText, wantInstrumental }) {
@@ -1174,6 +1188,8 @@ async function generateWithSunoBrowser({
     genNetworkState.generateStatusCode = 0;
     genNetworkState.active = true;
 
+    const initialTurnstileToken = await readTurnstileToken(genWin);
+
     // Trigger Create click directly via DOM event chain (100% background compatible)
     const clickedOk = await triggerSunoCreateClick(genWin);
 
@@ -1213,13 +1229,12 @@ async function generateWithSunoBrowser({
       const elapsedMs = Date.now() - clickTimeMs;
       const sinceLastActionMs = Date.now() - lastActionMs;
 
-      // Fast cold-start auto-retry: if initial click happened before React/Turnstile finished hydrating
-      // (no POST /api/generate, no /c/check, and no visible Turnstile popup after ~3.8s), re-submit cleanly.
+      // Fast cold-start / stalled-/c/check auto-retry: if initial click stalled while React/Turnstile hydrated
+      // or after invisible /api/c/check without any POST /api/generate after ~3.8s, re-submit safely.
       if (
         coldStartRetryCount < 2 &&
         sinceLastActionMs >= 3800 &&
         !genNetworkState.generateStartedAt &&
-        !genNetworkState.cCheckStartedAt &&
         !challengeWindowShown &&
         !isChallengeResolved
       ) {
@@ -1232,13 +1247,18 @@ async function generateWithSunoBrowser({
           break;
         }
         const hasVisibleInput = await hasVisibleSunoPromptInput(genWin);
-        console.log(`[Suno Warm Engine] Cold-start auto-retry #${coldStartRetryCount} (generateStartedAt=0, hasVisibleInput=${hasVisibleInput})...`);
-        if (!hasVisibleInput) {
-          await fillSunoCreateForm(genWin, formFillOpts);
-          await new Promise(r => setTimeout(r, 250));
+        if (!hasVisibleInput && genNetworkState.cCheckStartedAt > 0) {
+          // Form already cleared after /c/check -> never re-fill or re-click empty form
+          console.log('[Suno Warm Engine] Skipped retry: /c/check fired and prompt box is already empty.');
+        } else {
+          console.log(`[Suno Warm Engine] Cold-start auto-retry #${coldStartRetryCount} (generateStartedAt=0, cCheck=${Boolean(genNetworkState.cCheckStartedAt)}, hasVisibleInput=${hasVisibleInput})...`);
+          if (!hasVisibleInput && !genNetworkState.cCheckStartedAt) {
+            await fillSunoCreateForm(genWin, formFillOpts);
+            await new Promise(r => setTimeout(r, 250));
+          }
+          await triggerSunoCreateClick(genWin);
+          lastFeedPollMs = 0;
         }
-        await triggerSunoCreateClick(genWin);
-        lastFeedPollMs = 0;
       }
 
       const resubmitCreateAfterChallenge = async () => {
@@ -1257,28 +1277,29 @@ async function generateWithSunoBrowser({
       if ((nowMs - lastChallengeCheckMs) >= 400 && !genNetworkState.generateStartedAt) {
         lastChallengeCheckMs = nowMs;
 
-        // 1. Only auto-submit on Turnstile token if a visible challenge modal actually interrupted submission
-        if (challengeWindowShown && !isChallengeResolved) {
-          const turnstileStatus = await genWin.webContents.executeJavaScript(`
-            (() => {
-              const tokenInput = document.querySelector('[name*="cf-turnstile-response"], [name="turnstile_token"]');
-              if (tokenInput && tokenInput.value && tokenInput.value.length > 20) {
-                return { solved: true, token: tokenInput.value };
+        // 1. Auto-submit when a visible Turnstile modal finishes OR when a fresh invisible Turnstile token
+        // appears after click while prompt input is still non-empty and POST /api/generate has not fired.
+        if (!isChallengeResolved && (challengeWindowShown || sinceLastActionMs >= 1500)) {
+          const freshToken = await readTurnstileToken(genWin);
+          const tokenNewlySolved = Boolean(freshToken && (challengeWindowShown || freshToken !== initialTurnstileToken));
+
+          if (tokenNewlySolved && !isChallengeResolved) {
+            if (!challengeWindowShown) {
+              const snapBeforeResubmit = await pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, cleanUa);
+              if (Array.isArray(snapBeforeResubmit.clips) && snapBeforeResubmit.clips.length > 0) {
+                capturedClips = snapBeforeResubmit.clips;
+                console.log(`[Suno Warm Engine] Captured ${capturedClips.length} clips during Turnstile token check.`);
+                break;
               }
-              return { solved: false };
-            })()
-          `).catch(() => ({ solved: false }));
-
-          if (turnstileStatus && turnstileStatus.solved && !isChallengeResolved) {
-            isChallengeResolved = true;
-            console.log('[Suno Warm Engine] Turnstile verified successfully by user! Auto-hiding window & submitting song...');
-            hideEngineWindow();
-
-            // Reset clickTimeMs so the timeout countdown starts fresh from submission
-            clickTimeMs = Date.now();
-            lastFeedPollMs = 0;
-
-            await resubmitCreateAfterChallenge();
+            }
+            const submitted = await resubmitCreateAfterChallenge();
+            if (submitted || challengeWindowShown) {
+              isChallengeResolved = true;
+              console.log('[Suno Warm Engine] Turnstile verified! Auto-hiding window & submitting song...');
+              hideEngineWindow();
+              clickTimeMs = Date.now();
+              lastFeedPollMs = 0;
+            }
           }
         }
 

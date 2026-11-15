@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aurasound-v104';
+const CACHE_NAME = 'aurasound-v105';
 
 const IMAGE_CACHE = 'aurasound-images-v4';
 
