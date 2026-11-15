@@ -1993,6 +1993,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
 function parseAlignedWords(rawWords) {
   if (!Array.isArray(rawWords) || rawWords.length === 0) return [];
 
+  const hasWhitespaceInPayload = rawWords.some(item => typeof item?.word === 'string' && /[ \t]/.test(item.word));
   const lines = [];
   let currentWords = [];
   let currentSection = '';
@@ -2008,22 +2009,24 @@ function parseAlignedWords(rawWords) {
       rawStr = rawStr.replace(/\[.*?\]\s*/, '');
     }
 
+    const startsWithSpace = /^[ \t]/.test(rawStr);
     const endsWithNewline = /\n/.test(rawStr);
-    const hasTrailingSpace = /\s$/.test(rawStr);
+    const hasTrailingSpace = /[ \t]$/.test(rawStr);
     const cleanedText = rawStr.replace(/\r?\n+/g, '').trim();
 
     if (cleanedText.length > 0) {
       const prevWord = currentWords[currentWords.length - 1];
-      // Check if this is a contraction or continuation (e.g. "dawn’" + "s", or isolated punctuation)
-      const isContraction = prevWord && (
+      // Check if this is a contraction, punctuation, or intra-word continuation (e.g. "dawn’"+"s", "hamkke"+"라면")
+      const isContractionOrContinuation = prevWord && (
         prevWord.text.endsWith("'") ||
         prevWord.text.endsWith("’") ||
         /^[’'](s|t|re|ve|ll|d|m)$/i.test(cleanedText) ||
         (prevWord.text.match(/[’']$/) && /^[a-zA-Z]$/.test(cleanedText)) ||
-        /^[.,!?;:]+$/.test(cleanedText)
+        /^[.,!?;:]+$/.test(cleanedText) ||
+        (hasWhitespaceInPayload && !prevWord.trailingSpace && !startsWithSpace)
       );
 
-      if (isContraction) {
+      if (isContractionOrContinuation) {
         prevWord.text += cleanedText;
         prevWord.end = Math.max(prevWord.end, Math.round(item.end_s * 1000) / 1000);
         prevWord.trailingSpace = hasTrailingSpace;
@@ -2032,7 +2035,7 @@ function parseAlignedWords(rawWords) {
           text: cleanedText,
           begin: Math.round(item.start_s * 1000) / 1000,
           end: Math.round(item.end_s * 1000) / 1000,
-          trailingSpace: hasTrailingSpace
+          trailingSpace: hasWhitespaceInPayload ? hasTrailingSpace : true
         });
       }
     }
@@ -2076,13 +2079,20 @@ function parseAlignedLyricsFallback(rawLines) {
 
   return rawLines.map(l => {
     const cleanWords = [];
+    let prevEndedWithSpace = false;
     (l.words || []).forEach(w => {
       const rawText = w.text || '';
-      const isNewWord = rawText.startsWith(' ') || cleanWords.length === 0;
+      const startsWithSpace = /^[ \t]/.test(rawText);
+      const endsWithSpace = /[ \t]$/.test(rawText);
       const trimmed = rawText.trim();
-      if (!trimmed) return;
+      if (!trimmed) {
+        if (rawText.length > 0) prevEndedWithSpace = true;
+        return;
+      }
 
-      if (isNewWord || cleanWords.length === 0) {
+      const isNewWord = cleanWords.length === 0 || startsWithSpace || prevEndedWithSpace;
+
+      if (isNewWord) {
         cleanWords.push({
           text: trimmed,
           begin: Math.round(w.start_s * 1000) / 1000,
@@ -2094,6 +2104,7 @@ function parseAlignedLyricsFallback(rawLines) {
         last.text += trimmed;
         last.end = Math.max(last.end, Math.round(w.end_s * 1000) / 1000);
       }
+      prevEndedWithSpace = endsWithSpace;
     });
 
     if (cleanWords.length > 0) {
@@ -2139,6 +2150,58 @@ function parseCjkAlignedLyrics(rawLines) {
 }
 
 /**
+ * Detect whether lyrics are predominantly non-spaced CJK (Chinese Hanzi / Japanese Kana)
+ * vs space-delimited scripts (Latin, Romaji, Pinyin, Korean Hangul, or mixed Romaji+Hangul).
+ */
+function isNonSpacedCjkLyrics(rawLines) {
+  if (!Array.isArray(rawLines) || rawLines.length === 0) return false;
+  const fullTextWithoutTags = rawLines
+    .map(l => l.text || '')
+    .join(' ')
+    .replace(/\[[^\]]*\]/g, ' ');
+
+  const hanziKanaMatches = fullTextWithoutTags.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g) || [];
+  if (hanziKanaMatches.length === 0) return false;
+
+  const latinAndHangulMatches = fullTextWithoutTags.match(/[a-zA-Z\uac00-\ud7af]/g) || [];
+  return hanziKanaMatches.length >= latinAndHangulMatches.length;
+}
+
+/**
+ * Parse raw Suno aligned_lyrics/v2 response into UI-ready word-synced lines
+ */
+function parseSunoAlignedLyricsResponse(data) {
+  const rawLyrics = data?.aligned_lyrics || [];
+  const rawWords = data?.aligned_words || [];
+  const useCjkCharParser = isNonSpacedCjkLyrics(rawLyrics);
+
+  let parsedLyrics = [];
+
+  if (useCjkCharParser && rawLyrics.length > 0) {
+    // For Chinese Hanzi & Japanese Kanji/Kana: aligned_lyrics gives character-by-character real-time karaoke!
+    parsedLyrics = parseCjkAlignedLyrics(rawLyrics);
+  } else {
+    // For Latin/Romaji/Pinyin/English/Hangul/Mixed: aligned_words gives clean word-level alignment
+    if (Array.isArray(rawWords) && rawWords.length > 0) {
+      parsedLyrics = parseAlignedWords(rawWords);
+    }
+    if ((!parsedLyrics || parsedLyrics.length === 0) && rawLyrics.length > 0) {
+      parsedLyrics = parseAlignedLyricsFallback(rawLyrics);
+    }
+  }
+
+  // Filter out meta instrumental prompt instructions that aren't real sung lyrics
+  if (Array.isArray(parsedLyrics)) {
+    parsedLyrics = parsedLyrics.filter(l =>
+      !/^\s*\[(instrumental|guitar solo|solo|humming|interlude|outro|intro)[^\]]*\]\s*$/i.test(l.text) &&
+      !/^\s*\(instrumental[^)]*\)\s*$/i.test(l.text)
+    );
+  }
+
+  return parsedLyrics;
+}
+
+/**
  * Fetch Neural Word-by-Word Aligned Lyrics from Official Suno Feed
  */
 async function getAlignedLyrics(clipId, userToken = null) {
@@ -2181,32 +2244,7 @@ async function getAlignedLyrics(clipId, userToken = null) {
 
   try {
     const res = await axios.get(url, { headers, timeout: 10000 });
-    const rawLyrics = res.data?.aligned_lyrics || [];
-    const fullTextSample = rawLyrics.slice(0, 10).map(l => l.text || '').join(' ');
-    const isCjkScript = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(fullTextSample);
-
-    let parsedLyrics = [];
-
-    if (isCjkScript && rawLyrics.length > 0) {
-      // For Chinese Hanzi & Japanese Kanji/Kana: aligned_lyrics gives character-by-character real-time karaoke!
-      parsedLyrics = parseCjkAlignedLyrics(rawLyrics);
-    } else {
-      // For Latin/Romaji/Pinyin/English: aligned_words gives clean, whole-word alignment without BPE fragmentation
-      if (Array.isArray(res.data?.aligned_words) && res.data.aligned_words.length > 0) {
-        parsedLyrics = parseAlignedWords(res.data.aligned_words);
-      }
-      if ((!parsedLyrics || parsedLyrics.length === 0) && rawLyrics.length > 0) {
-        parsedLyrics = parseAlignedLyricsFallback(rawLyrics);
-      }
-    }
-
-    // Filter out meta instrumental prompt instructions that aren't real sung lyrics
-    if (Array.isArray(parsedLyrics)) {
-      parsedLyrics = parsedLyrics.filter(l =>
-        !/^\s*\[(instrumental|guitar solo|solo|humming|interlude|outro|intro)[^\]]*\]\s*$/i.test(l.text) &&
-        !/^\s*\(instrumental[^)]*\)\s*$/i.test(l.text)
-      );
-    }
+    const parsedLyrics = parseSunoAlignedLyricsResponse(res.data);
 
     if (Array.isArray(parsedLyrics) && parsedLyrics.length > 0) {
       return {
@@ -2239,5 +2277,10 @@ module.exports = {
   pickSoundForTheme,
   deriveTagsFromPrompt,
   syncOfficialFeed,
-  getAlignedLyrics
+  getAlignedLyrics,
+  parseAlignedWords,
+  parseAlignedLyricsFallback,
+  parseCjkAlignedLyrics,
+  isNonSpacedCjkLyrics,
+  parseSunoAlignedLyricsResponse
 };

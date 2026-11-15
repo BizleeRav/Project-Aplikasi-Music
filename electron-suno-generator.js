@@ -1056,7 +1056,7 @@ async function generateWithSunoBrowser({
       throw new Error('Tombol Create Suno saat ini nonaktif (pastikan kuota kredit akun Suno masih tersedia).');
     }
 
-    const clickTimeMs = Date.now();
+    let clickTimeMs = Date.now();
     genNetworkState.runStartMs = clickTimeMs;
     genNetworkState.cCheckStartedAt = 0;
     genNetworkState.generateStartedAt = 0;
@@ -1115,45 +1115,66 @@ async function generateWithSunoBrowser({
 
       const elapsedMs = Date.now() - clickTimeMs;
 
+      const resubmitCreateAfterChallenge = async () => {
+        if (genNetworkState.generateStartedAt || genNetworkState.generateCompletedAt) return false;
+        const clickResult = await genWin.webContents.executeJavaScript(`
+          (() => {
+            const hasFormInput = Array.from(document.querySelectorAll('textarea')).some(t => {
+              const al = (t.getAttribute('aria-label') || '').toLowerCase();
+              if (al.includes('cowriter') || al.includes('sound') || al.includes('script') || al.includes('tone')) return false;
+              return (t.value || '').trim().length > 0;
+            });
+            if (!hasFormInput) {
+              return { skipped: 'empty_inputs' };
+            }
+            const createBtn = document.querySelector('button[aria-label="Create song"]') ||
+              Array.from(document.querySelectorAll('button')).find(b => {
+                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                return !b.closest('nav') && !b.closest('aside') && (t === 'create' || t.startsWith('create ') || t.startsWith('create('));
+              });
+            if (!createBtn || createBtn.disabled) {
+              return { skipped: 'btn_unavailable' };
+            }
+            createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            createBtn.click();
+            return { clicked: true };
+          })()
+        `).catch(() => ({ skipped: 'error' }));
+        if (clickResult && clickResult.skipped) {
+          console.log('[Suno Warm Engine] Skipped post-Turnstile re-click:', clickResult.skipped);
+          return false;
+        }
+        return Boolean(clickResult && clickResult.clicked);
+      };
+
       // Check if Cloudflare Turnstile verification challenge modal is blocking
       const nowMs = Date.now();
       if ((nowMs - lastChallengeCheckMs) >= 400 && !genNetworkState.generateStartedAt) {
         lastChallengeCheckMs = nowMs;
 
-        // 1. Check if the user has solved the Turnstile verification
-        const turnstileStatus = await genWin.webContents.executeJavaScript(`
-          (() => {
-            const tokenInput = document.querySelector('[name*="cf-turnstile-response"], [name="turnstile_token"]');
-            if (tokenInput && tokenInput.value && tokenInput.value.length > 20) {
-              return { solved: true, token: tokenInput.value };
-            }
-            return { solved: false };
-          })()
-        `).catch(() => ({ solved: false }));
-
-        if (turnstileStatus && turnstileStatus.solved && !isChallengeResolved) {
-          isChallengeResolved = true;
-          console.log('[Suno Warm Engine] Turnstile verified successfully by user! Auto-hiding window & submitting song...');
-          hideEngineWindow();
-
-          // Reset clickTimeMs so the timeout countdown starts fresh from submission
-          clickTimeMs = Date.now();
-          lastFeedPollMs = 0;
-
-          // Auto-submit Create with verified token so song is generated immediately
-          await genWin.webContents.executeJavaScript(`
+        // 1. Only auto-submit on Turnstile token if a visible challenge modal actually interrupted submission
+        if (challengeWindowShown && !isChallengeResolved) {
+          const turnstileStatus = await genWin.webContents.executeJavaScript(`
             (() => {
-              const createBtn = document.querySelector('button[aria-label="Create song"]') ||
-                Array.from(document.querySelectorAll('button')).find(b => {
-                  const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-                  return !b.closest('nav') && !b.closest('aside') && (t === 'create' || t.startsWith('create ') || t.startsWith('create('));
-                });
-              if (createBtn && !createBtn.disabled) {
-                createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                createBtn.click();
+              const tokenInput = document.querySelector('[name*="cf-turnstile-response"], [name="turnstile_token"]');
+              if (tokenInput && tokenInput.value && tokenInput.value.length > 20) {
+                return { solved: true, token: tokenInput.value };
               }
+              return { solved: false };
             })()
-          `).catch(() => {});
+          `).catch(() => ({ solved: false }));
+
+          if (turnstileStatus && turnstileStatus.solved && !isChallengeResolved) {
+            isChallengeResolved = true;
+            console.log('[Suno Warm Engine] Turnstile verified successfully by user! Auto-hiding window & submitting song...');
+            hideEngineWindow();
+
+            // Reset clickTimeMs so the timeout countdown starts fresh from submission
+            clickTimeMs = Date.now();
+            lastFeedPollMs = 0;
+
+            await resubmitCreateAfterChallenge();
+          }
         }
 
         // 2. Detect visible Cloudflare Turnstile card to display ONLY the small verification box
@@ -1240,19 +1261,8 @@ async function generateWithSunoBrowser({
             clickTimeMs = Date.now();
             lastFeedPollMs = 0;
 
-            // Re-trigger Create click in case modal auto-closed upon success
-            await genWin.webContents.executeJavaScript(`
-              (() => {
-                const createBtn = document.querySelector('button[aria-label="Create song"]') ||
-                  Array.from(document.querySelectorAll('button')).find(b => {
-                    const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-                    return !b.closest('nav') && !b.closest('aside') && (t === 'create' || t.startsWith('create ') || t.startsWith('create('));
-                  });
-                if (createBtn && !createBtn.disabled) {
-                  createBtn.click();
-                }
-              })()
-            `).catch(() => {});
+            // Re-trigger Create click in case modal auto-closed upon success (only if inputs were not yet cleared)
+            await resubmitCreateAfterChallenge();
           }
         }
       }
