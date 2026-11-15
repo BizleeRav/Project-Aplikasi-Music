@@ -3,6 +3,17 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const PROJECT_ROOT = __dirname;
+const VERSION_FILE = path.join(PROJECT_ROOT, 'public', 'version.json');
+let APP_VERSION_CODE = 18;
+let APP_VERSION_NAME = '1.3.14';
+try {
+  const vData = JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8'));
+  if (vData && vData.android) {
+    if (Number.isInteger(vData.android.versionCode)) APP_VERSION_CODE = vData.android.versionCode;
+    if (vData.android.versionName) APP_VERSION_NAME = String(vData.android.versionName);
+  }
+} catch (e) {}
+
 const BUILD_DIR = path.join(PROJECT_ROOT, 'android-build');
 const SDK_DIR = 'C:\\Users\\Devod\\AppData\\Local\\Android\\Sdk';
 const BUILD_TOOLS = path.join(SDK_DIR, 'build-tools', '36.1.0');
@@ -122,8 +133,8 @@ public class BackgroundAudioWebView extends WebView {
 fs.writeFileSync(path.join(BUILD_DIR, 'AndroidManifest.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurasound.musichub"
-    android:versionCode="17"
-    android:versionName="1.3.13">
+    android:versionCode="${APP_VERSION_CODE}"
+    android:versionName="${APP_VERSION_NAME}">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -277,7 +288,17 @@ public class AndroidMediaBridge {
 
     @JavascriptInterface
     public int getAppVersionCode() {
-        return 16;
+        if (activity != null) {
+            try {
+                android.content.pm.PackageInfo pInfo = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    return (int) pInfo.getLongVersionCode();
+                } else {
+                    return pInfo.versionCode;
+                }
+            } catch (Exception e) {}
+        }
+        return ${APP_VERSION_CODE};
     }
 }
 `);
