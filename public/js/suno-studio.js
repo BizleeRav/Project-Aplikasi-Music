@@ -1184,6 +1184,110 @@ class SunoStudio {
     } catch (e) {}
   }
 
+  formatRawAndroidClips(rawClips) {
+    if (!Array.isArray(rawClips)) return [];
+    const reqTitle = (this._lastRequestedTitle || '').trim();
+    const reqTags = (this._lastRequestedTags || '').trim();
+    const reqPrompt = (this._lastRequestedPrompt || '').trim();
+    const validRawClips = rawClips.filter(c => c && !this.isPreviewTrack(c));
+
+    return validRawClips.slice(0, 2).map(c => {
+      let audioUrl = '';
+      if (Array.isArray(c.media_urls) && c.media_urls.length > 0) {
+        const validMedia = c.media_urls.find(m => m && m.url && !m.url.includes('/api/forbidden'));
+        if (validMedia) audioUrl = validMedia.url;
+      }
+      if (!audioUrl && c.audio_url && !c.audio_url.includes('/api/forbidden')) {
+        audioUrl = c.audio_url;
+      }
+      if (!audioUrl && c.id) {
+        audioUrl = `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${c.id}.m4a`;
+      }
+
+      const thumb = c.image_url || c.image_large_url || (c.id ? `https://cdn2.suno.ai/image_${c.id}.jpeg` : '/icons/icon.svg');
+      const rawDur = Number(c.metadata?.duration ?? c.duration);
+      const hasRealDur = Number.isFinite(rawDur) && rawDur > 0;
+      const durationSec = hasRealDur ? Math.round(rawDur) : 120;
+      const durationStr = hasRealDur
+        ? `${Math.floor(durationSec / 60)}:${Math.floor(durationSec % 60).toString().padStart(2, '0')}`
+        : 'Sedang dibuat...';
+      const genuineLyrics = (c.metadata?.prompt || '').trim();
+
+      return {
+        id: c.id,
+        title: (c.title && c.title.trim()) || reqTitle || 'Membuat Judul & Lirik...',
+        artist: 'Suno v6-mini (Akun Resmi)',
+        tags: (c.metadata?.tags && c.metadata.tags.trim()) || c.tags || reqTags || 'Suno AI',
+        prompt: c.metadata?.gpt_description_prompt || reqPrompt || '',
+        lyrics: genuineLyrics,
+        model: 'v6-mini',
+        status: c.status || 'submitted',
+        thumbnail: thumb,
+        audio_url: audioUrl,
+        duration: durationStr,
+        seconds: durationSec,
+        clipType: String((c.metadata || c.meta || {}).type || '').toLowerCase() || undefined,
+        type: 'suno',
+        created_at: 'Hari ini'
+      };
+    });
+  }
+
+  onAndroidClipStatus(clipsJson, freshToken) {
+    try {
+      if (freshToken && freshToken.length > 20) {
+        localStorage.setItem('aurasound_suno_key', freshToken);
+        localStorage.setItem('aurasound_suno_provider', 'suno_official');
+      }
+      const rawClips = typeof clipsJson === 'string' ? JSON.parse(clipsJson) : clipsJson;
+      const formatted = this.formatRawAndroidClips(Array.isArray(rawClips) ? rawClips : []);
+      if (this._androidStatusResolve) {
+        this._androidStatusResolve(formatted);
+        this._androidStatusResolve = null;
+      }
+    } catch (e) {
+      if (this._androidStatusResolve) {
+        this._androidStatusResolve([]);
+        this._androidStatusResolve = null;
+      }
+    }
+  }
+
+  async fetchClipStatusSmart(clipIds) {
+    const isAndroidOfficial = Boolean(
+      window.AuraSoundAndroid &&
+      typeof window.AuraSoundAndroid.fetchSunoClipsStatus === 'function' &&
+      this.getActiveProvider() === 'suno_official'
+    );
+
+    if (isAndroidOfficial) {
+      try {
+        const androidClips = await new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            if (this._androidStatusResolve === done) {
+              this._androidStatusResolve = null;
+              resolve([]);
+            }
+          }, 3000);
+          const done = (clips) => {
+            clearTimeout(timer);
+            resolve(Array.isArray(clips) ? clips : []);
+          };
+          this._androidStatusResolve = done;
+          window.AuraSoundAndroid.fetchSunoClipsStatus(clipIds.join(','));
+        });
+        if (androidClips.length > 0) {
+          return { success: true, clips: androidClips };
+        }
+      } catch (e) {}
+    }
+
+    const res = await fetch(`/api/suno/status?ids=${clipIds.join(',')}`, {
+      headers: this.getAuthHeaders()
+    });
+    return await res.json();
+  }
+
   onAndroidGenerationComplete(clipsJson, freshToken) {
     try {
       if (freshToken && freshToken.length > 20) {
@@ -1194,54 +1298,10 @@ class SunoStudio {
       if (!Array.isArray(rawClips) || rawClips.length === 0) {
         throw new Error('Tidak ada klip lagu yang dihasilkan dari Suno.');
       }
-      const validRawClips = rawClips.filter(c => c && !this.isPreviewTrack(c));
-      if (validRawClips.length === 0) {
+      const formattedClips = this.formatRawAndroidClips(rawClips);
+      if (formattedClips.length === 0) {
         throw new Error('Klip lagu utuh belum tersedia (hanya preview 1 menit). Silakan coba lagi.');
       }
-      const reqTitle = (this._lastRequestedTitle || '').trim();
-      const reqTags = (this._lastRequestedTags || '').trim();
-      const reqPrompt = (this._lastRequestedPrompt || '').trim();
-
-      const formattedClips = validRawClips.slice(0, 2).map(c => {
-        let audioUrl = '';
-        if (Array.isArray(c.media_urls) && c.media_urls.length > 0) {
-          const validMedia = c.media_urls.find(m => m && m.url && !m.url.includes('/api/forbidden'));
-          if (validMedia) audioUrl = validMedia.url;
-        }
-        if (!audioUrl && c.audio_url && !c.audio_url.includes('/api/forbidden')) {
-          audioUrl = c.audio_url;
-        }
-        if (!audioUrl && c.id) {
-          audioUrl = `https://d2lwuy8qc234o3.cloudfront.net/1/clip/${c.id}.m4a`;
-        }
-
-        const thumb = c.image_url || c.image_large_url || (c.id ? `https://cdn2.suno.ai/image_${c.id}.jpeg` : '/icons/icon.svg');
-        const rawDur = Number(c.metadata?.duration ?? c.duration);
-        const hasRealDur = Number.isFinite(rawDur) && rawDur > 0;
-        const durationSec = hasRealDur ? Math.round(rawDur) : 120;
-        const durationStr = hasRealDur
-          ? `${Math.floor(durationSec / 60)}:${Math.floor(durationSec % 60).toString().padStart(2, '0')}`
-          : 'Sedang dibuat...';
-        const genuineLyrics = (c.metadata?.prompt || '').trim();
-
-        return {
-          id: c.id,
-          title: (c.title && c.title.trim()) || reqTitle || 'Membuat Judul & Lirik...',
-          artist: 'Suno v6-mini (Akun Resmi)',
-          tags: (c.metadata?.tags && c.metadata.tags.trim()) || c.tags || reqTags || 'Suno AI',
-          prompt: c.metadata?.gpt_description_prompt || reqPrompt || '',
-          lyrics: genuineLyrics,
-          model: 'v6-mini',
-          status: c.status || 'submitted',
-          thumbnail: thumb,
-          audio_url: audioUrl,
-          duration: durationStr,
-          seconds: durationSec,
-          clipType: String((c.metadata || c.meta || {}).type || '').toLowerCase() || undefined,
-          type: 'suno',
-          created_at: 'Hari ini'
-        };
-      });
 
       this.saveLocalCreationsBackup(formattedClips);
       formattedClips.forEach(track => {
@@ -1509,10 +1569,7 @@ class SunoStudio {
     const bgTimer = setInterval(async () => {
       checks++;
       try {
-        const res = await fetch(`/api/suno/status?ids=${clipIds.join(',')}`, {
-          headers: this.getAuthHeaders()
-        });
-        const data = await res.json();
+        const data = await this.fetchClipStatusSmart(clipIds);
         if (data.success && Array.isArray(data.clips) && data.clips.length > 0) {
           this.applyUpdatedClipsToState(data.clips);
           if (data.clips.every(c => c.status === 'complete')) {
@@ -1530,30 +1587,33 @@ class SunoStudio {
   async pollClips(clipIds) {
     const statusText = document.getElementById('suno-status-text');
     let attempts = 0;
-    const intervalMs = 2500;
-    const maxAttempts = 56; // ~2.3 minutes at 2.5s intervals
+    const intervalMs = 1500;
+    const maxAttempts = 60; // up to 90s at 1.5s intervals
+    const pollStartMs = Date.now();
 
     return new Promise((resolve) => {
-      const interval = setInterval(async () => {
+      let finished = false;
+      const tick = async () => {
+        if (finished) return;
         attempts++;
+        const elapsedSec = Math.max(1, Math.round((Date.now() - pollStartMs) / 1000));
         if (statusText) {
-          statusText.textContent = `Rendering audio AI (${Math.round((attempts * intervalMs) / 1000)}s)...`;
+          statusText.textContent = `Rendering audio AI (${elapsedSec}s)...`;
         }
 
         try {
-          const res = await fetch(`/api/suno/status?ids=${clipIds.join(',')}`, {
-            headers: this.getAuthHeaders()
-          });
-          const data = await res.json();
+          const data = await this.fetchClipStatusSmart(clipIds);
 
           if (data.success && data.clips && data.clips.length > 0) {
             this.applyUpdatedClipsToState(data.clips);
 
             const activeClips = data.clips.filter(c => c && !this.isPreviewTrack(c));
             const allStreamReady = activeClips.length > 0 && activeClips.every(c => (c.status === 'complete' || c.status === 'streaming') && c.audio_url);
+            const anyStreamReady = activeClips.some(c => (c.status === 'complete' || c.status === 'streaming') && c.audio_url);
             const allFullyComplete = activeClips.length > 0 && activeClips.every(c => c.status === 'complete');
 
-            if (allStreamReady || attempts >= maxAttempts) {
+            if (allStreamReady || (anyStreamReady && (Date.now() - pollStartMs) >= 10000) || attempts >= maxAttempts) {
+              finished = true;
               clearInterval(interval);
               if (!allFullyComplete) {
                 this.finalizeClipsInBackground(clipIds);
@@ -1562,17 +1622,22 @@ class SunoStudio {
                 window.app.showToast('Lagu AI Anda siap diputar dan tersimpan di koleksi! 🎵', 'success');
               }
               resolve();
+              return;
             }
           }
         } catch (e) {
           console.warn('Poll error:', e);
         }
 
-        if (attempts >= maxAttempts) {
+        if (attempts >= maxAttempts && !finished) {
+          finished = true;
           clearInterval(interval);
           resolve();
         }
-      }, intervalMs);
+      };
+
+      const interval = setInterval(tick, intervalMs);
+      tick();
     });
   }
 
