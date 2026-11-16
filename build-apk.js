@@ -1560,6 +1560,9 @@ public class MainActivity extends Activity {
                     ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                     ws.setLoadWithOverviewMode(true);
                     ws.setUseWideViewPort(true);
+                    ws.setSupportZoom(true);
+                    ws.setBuiltInZoomControls(true);
+                    ws.setDisplayZoomControls(false);
                     // Native Android Chrome WebView UA matching Sec-CH-UA (never forge Windows Chrome/128!)
                     ws.setUserAgentString(getCleanWebViewUserAgent());
 
@@ -1756,6 +1759,9 @@ public class MainActivity extends Activity {
                         public void onPageFinished(WebView view, String url) {
                             super.onPageFinished(view, url);
                             if (url != null && url.contains("suno.com") && !url.contains("clerk.") && !url.contains("accounts.") && !url.contains("/login") && !url.contains("/sign-in")) {
+                                try {
+                                    view.evaluateJavascript("(function(){try{var vp=document.querySelector('meta[name=viewport]');if(!vp){vp=document.createElement('meta');vp.setAttribute('name','viewport');document.head.appendChild(vp);}vp.setAttribute('content','width=1100, initial-scale=0.35');}catch(e){}})();", null);
+                                } catch (Exception e) {}
                                 isGenWebViewReady = true;
                                 isGenWebViewLoading = false;
                                 refreshSunoTokenSilently();
@@ -1823,7 +1829,7 @@ public class MainActivity extends Activity {
                         + "    var tok = '';"
                         + "    try {"
                         + "      if (window.Clerk && window.Clerk.session && typeof window.Clerk.session.getToken === 'function') {"
-                        + "        var ct = await window.Clerk.session.getToken();"
+                        + "        var ct = await Promise.race([window.Clerk.session.getToken(), new Promise(function(r){ setTimeout(function(){ r(null); }, 1500); })]);"
                         + "        if (ct && ct.length > 20) tok = ct;"
                         + "      }"
                         + "    } catch(ce) {}"
@@ -1935,6 +1941,7 @@ public class MainActivity extends Activity {
             + "      return false;"
             + "    }"
             + "    async function getLiveTok() {"
+            + "      if (window.__cachedSunoTok && isTokFresh(window.__cachedSunoTok)) return window.__cachedSunoTok;"
             + "      try {"
             + "        if (window.Clerk && window.Clerk.session && typeof window.Clerk.session.getToken === 'function') {"
             + "          var ct = await Promise.race(["
@@ -1942,6 +1949,7 @@ public class MainActivity extends Activity {
             + "            new Promise(function(r) { setTimeout(function() { r(null); }, 1800); })"
             + "          ]);"
             + "          if (ct && typeof ct === 'string' && ct.length > 20) {"
+            + "            window.__cachedSunoTok = ct;"
             + "            document.cookie = '__session=' + ct + '; path=/; secure; samesite=lax';"
             + "            return ct;"
             + "          }"
@@ -1953,25 +1961,30 @@ public class MainActivity extends Activity {
             + "        var pt = parts[k].trim();"
             + "        if (pt.indexOf('__session=') === 0) {"
             + "          var ck = pt.substring(10).trim();"
-            + "          if (isTokFresh(ck)) return ck;"
+            + "          if (isTokFresh(ck)) { window.__cachedSunoTok = ck; return ck; }"
             + "          if (ck.length > 20 && !fallbackCk) fallbackCk = ck;"
             + "        }"
             + "      }"
             + "      if (window.AndroidSunoHost && typeof window.AndroidSunoHost.getFreshCookieToken === 'function') {"
             + "        var ht = window.AndroidSunoHost.getFreshCookieToken();"
-            + "        if (isTokFresh(ht)) return ht;"
+            + "        if (isTokFresh(ht)) { window.__cachedSunoTok = ht; return ht; }"
             + "        if (ht && ht.length > 20 && !fallbackCk) fallbackCk = ht;"
             + "      }"
             + "      return fallbackCk;"
             + "    }"
+            + "    try {"
+            + "      var vpMeta = document.querySelector('meta[name=viewport]');"
+            + "      if (!vpMeta) { vpMeta = document.createElement('meta'); vpMeta.setAttribute('name', 'viewport'); document.head.appendChild(vpMeta); }"
+            + "      vpMeta.setAttribute('content', 'width=1100, initial-scale=0.35');"
+            + "    } catch(vpe) {}"
             + "    function getVisibleSunoInputs() {"
             + "      var els = Array.from(document.querySelectorAll('textarea, .lyrics-editor-content, div[role=textbox], div[contenteditable=true]'));"
             + "      return els.filter(function(el) {"
             + "        var name = (el.getAttribute('name') || '').toLowerCase();"
             + "        var id = (el.getAttribute('id') || '').toLowerCase();"
-            + "        var al = (el.getAttribute('aria-label') || '').toLowerCase();"
+            + "        var al = (el.getAttribute('aria-label') || '').trim().toLowerCase();"
             + "        var ph = (el.getAttribute('placeholder') || '').toLowerCase();"
-            + "        if (name.includes('turnstile') || name.includes('cf-') || name.includes('captcha') || id.includes('turnstile') || id.includes('cf-') || al.includes('cowriter') || al.includes('sound') || al.includes('script') || al.includes('tone') || ph.includes('search')) {"
+            + "        if (name.includes('turnstile') || name.includes('cf-') || name.includes('captcha') || id.includes('turnstile') || id.includes('cf-') || al.includes('cowriter') || al === 'sound' || al === 'sounds' || al === 'script' || al === 'tone' || ph.includes('search')) {"
             + "          return false;"
             + "        }"
             + "        var st = window.getComputedStyle(el);"
@@ -2033,6 +2046,18 @@ public class MainActivity extends Activity {
             + "    var pMv = pModelRaw === 'v6' || pModelRaw === 'chirp-hawk' ? 'chirp-hawk' : (pModelRaw === 'v4' || pModelRaw === 'chirp-v4' ? 'chirp-v4' : (pModelRaw === 'v3.5' || pModelRaw === 'chirp-v3-5' ? 'chirp-v3-5' : 'chirp-goose'));"
             + "    reportProgress('Menghubungkan ke Suno AI...');"
             + "    var fastTok = await getLiveTok();"
+            + "    if (!isTokFresh(fastTok)) {"
+            + "      for (var cw = 0; cw < 8; cw++) {"
+            + "        if (window.Clerk && window.Clerk.loaded && window.Clerk.user === null) {"
+            + "          throw new Error('Sesi akun Suno di HP belum login. Silakan klik Hubungkan / Ganti Akun Suno.');"
+            + "        }"
+            + "        if (window.Clerk && window.Clerk.session) {"
+            + "          fastTok = await getLiveTok();"
+            + "          if (isTokFresh(fastTok)) break;"
+            + "        }"
+            + "        await new Promise(function(r) { setTimeout(r, 250); });"
+            + "      }"
+            + "    }"
             + "    if (fastTok && window.AndroidSunoHost && typeof window.AndroidSunoHost.onTokenRefreshed === 'function') {"
             + "      try { window.AndroidSunoHost.onTokenRefreshed(fastTok); } catch(e) {}"
             + "    }"
@@ -2106,10 +2131,13 @@ public class MainActivity extends Activity {
             + "      if (i > 0 && (i % 4 === 0)) {"
             + "        reportProgress('Menyiapkan Create Suno (' + Math.round(i * 0.3) + 's)...');"
             + "      }"
-            + "      if (i === 14 && inpsNow.length === 0) {"
+            + "      if (i === 12 && inpsNow.length === 0) {"
+            + "        if (window.Clerk && window.Clerk.loaded && !window.Clerk.user) {"
+            + "          throw new Error('Sesi akun Suno telah keluar. Silakan klik Ganti / Kelola Akun untuk login kembali.');"
+            + "        }"
             + "        var signInBtn = Array.from(document.querySelectorAll('button, a')).find(function(b) {"
             + "          var t = (b.innerText || b.textContent || '').trim().toLowerCase();"
-            + "          return t === 'sign in' || t === 'log in' || t.indexOf('continue with google') !== -1;"
+            + "          return t === 'sign in' || t === 'log in' || t === 'sign up' || t.indexOf('continue with google') !== -1 || t.indexOf('get started') !== -1;"
             + "        });"
             + "        if (signInBtn) {"
             + "          throw new Error('Sesi akun Suno telah keluar. Silakan klik Ganti / Kelola Akun untuk login kembali.');"
@@ -2126,7 +2154,10 @@ public class MainActivity extends Activity {
             + "        window.AndroidSunoHost.reloadAndRun(b64Reload);"
             + "        return;"
             + "      }"
-            + "      throw new Error('Halaman Create Suno belum siap (' + (window.location.pathname || '/') + ').');"
+            + "      var taCnt = document.querySelectorAll('textarea').length;"
+            + "      var ceCnt = document.querySelectorAll('[contenteditable=true], div[role=textbox]').length;"
+            + "      var btnCnt = document.querySelectorAll('button').length;"
+            + "      throw new Error('Halaman Create Suno belum siap (' + (window.location.pathname || '/') + ' ta=' + taCnt + ' ce=' + ceCnt + ' btn=' + btnCnt + ' w=' + window.innerWidth + ').');"
             + "    }"
             + "    if (!window.__sunoCreateSettled) {"
             + "      await new Promise(function(r) { setTimeout(r, 200); });"
