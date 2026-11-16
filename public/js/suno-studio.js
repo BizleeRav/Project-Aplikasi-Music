@@ -1273,6 +1273,23 @@ class SunoStudio {
     }
   }
 
+  isJwtFresh(tok) {
+    if (!tok || typeof tok !== 'string' || tok.trim().length <= 20) return false;
+    const clean = tok.trim();
+    if (!clean.startsWith('eyJ')) return true;
+    try {
+      const parts = clean.split('.');
+      if (parts.length >= 2) {
+        const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(atob(b64));
+        if (payload && payload.exp) {
+          return (payload.exp - 5) > (Date.now() / 1000);
+        }
+      }
+    } catch (e) {}
+    return false;
+  }
+
   async generateSong({ title, tags, prompt, make_instrumental, model = 'v6-mini' }) {
     if (this.isGenerating) return;
     this.isGenerating = true;
@@ -1306,13 +1323,16 @@ class SunoStudio {
         const savedJwt = (localStorage.getItem('aurasound_suno_key') || '').trim();
         const genStartedAtMs = Date.now();
         let fastPathAttempted = false;
-        // Fast path: check if direct HTTP generation is permitted (~250ms) before engaging WebView
-        if (savedJwt.length > 20) {
+        // Fast path: check if direct HTTP generation is permitted (~250ms) ONLY if JWT is still fresh
+        if (this.isJwtFresh(savedJwt)) {
           fastPathAttempted = true;
           try {
+            const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const fastTimer = ctrl ? setTimeout(() => ctrl.abort(), 4000) : null;
             const fastRes = await fetch('/api/suno/generate', {
               method: 'POST',
               headers: this.getAuthHeaders(),
+              signal: ctrl ? ctrl.signal : undefined,
               body: JSON.stringify({
                 title,
                 tags,
@@ -1321,13 +1341,16 @@ class SunoStudio {
                 model: model || 'v6-mini'
               })
             });
+            if (fastTimer) clearTimeout(fastTimer);
             const fastData = await fastRes.json();
             if (fastData && fastData.requires_client_engine) {
               fastPathAttempted = false;
             } else if (fastData && fastData.success && Array.isArray(fastData.data) && fastData.data.length > 0) {
               result = fastData;
             }
-          } catch (fastErr) {}
+          } catch (fastErr) {
+            fastPathAttempted = false;
+          }
         }
 
         if (!result) {

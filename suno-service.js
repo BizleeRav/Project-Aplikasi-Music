@@ -1221,6 +1221,23 @@ async function getApiKeyInfo(overrideKey = null, overrideProvider = null) {
   };
 }
 
+function isSunoJwtFresh(tok) {
+  if (!tok || typeof tok !== 'string' || tok.trim().length <= 20) return false;
+  const clean = tok.trim();
+  if (!clean.startsWith('eyJ')) return true;
+  try {
+    const parts = clean.split('.');
+    if (parts.length >= 2) {
+      const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+      if (payload && payload.exp) {
+        return (payload.exp - 5) > (Date.now() / 1000);
+      }
+    }
+  } catch (e) {}
+  return false;
+}
+
 function buildSunoOfficialHeaders(rawToken) {
   const cleanJwt = (rawToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
   const cleanUa = typeof global.getCleanNativeUserAgent === 'function'
@@ -1347,8 +1364,8 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
     );
     const customLyricsText = hasCustomLyrics ? (rawLyrics || rawPrompt) : '';
 
-    // Step 1A: Fast /api/c/check (~250ms) -> if required === false, generate via pure HTTP in ~1s (0 UI!)
-    if (officialToken && officialToken.length > 20) {
+    // Step 1A: Fast /api/c/check (~250ms) -> skip immediately if JWT is expired so we don't waste time on 401
+    if (isSunoJwtFresh(officialToken)) {
       let challengeRequired = true;
       try {
         const checkRes = await axios.post(
@@ -1356,7 +1373,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
           { ctype: 'generation' },
           {
             headers: buildSunoOfficialHeaders(officialToken),
-            timeout: 4000
+            timeout: 2500
           }
         );
         if (checkRes.data && checkRes.data.required === false) {
@@ -1405,7 +1422,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
             genPayload,
             {
               headers: buildSunoOfficialHeaders(officialToken),
-              timeout: 25000
+              timeout: 12000
             }
           );
 

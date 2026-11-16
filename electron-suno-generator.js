@@ -422,6 +422,7 @@ async function isSunoCreateWorkspaceReady(win) {
   return win.webContents.executeJavaScript(`
     (() => {
       if (document.readyState !== 'complete') return false;
+      if (window.Clerk && window.Clerk.loaded === false) return false;
       ${VISIBLE_SUNO_INPUTS_FN}
       const inputs = getVisibleSunoInputs();
       const createBtn = findSunoCreateButton();
@@ -790,8 +791,17 @@ async function initWarmSunoEngine({ forceReload = false } = {}) {
         }
         const ready = await isSunoCreateWorkspaceReady(sunoEngineWin);
         if (ready) {
-          // Brief settle after initial render so React event handlers & Clerk auth hooks finish binding
-          await new Promise(r => setTimeout(r, 250));
+          // Ensure Clerk session token is primed & React event handlers finish binding after cold hydration
+          await sunoEngineWin.webContents.executeJavaScript(`
+            (async () => {
+              try {
+                if (window.Clerk && window.Clerk.session && typeof window.Clerk.session.getToken === 'function') {
+                  await window.Clerk.session.getToken();
+                }
+              } catch (e) {}
+            })()
+          `).catch(() => {});
+          await new Promise(r => setTimeout(r, 600));
           console.log('[Suno Warm Engine] Standby ready on suno.com/create!');
           break;
         }
@@ -1229,35 +1239,57 @@ async function generateWithSunoBrowser({
       const elapsedMs = Date.now() - clickTimeMs;
       const sinceLastActionMs = Date.now() - lastActionMs;
 
-      // Fast cold-start / stalled-/c/check auto-retry: if initial click stalled while React/Turnstile hydrated
-      // or after invisible /api/c/check without any POST /api/generate after ~3.8s, re-submit safely.
+      // Fast cold-start / stalled-/c/check auto-retry: if initial click stalled while React/Clerk hydrated
+      // or after invisible /api/c/check without any POST /api/generate after ~3.2s, re-fill & re-submit safely.
       if (
-        coldStartRetryCount < 2 &&
-        sinceLastActionMs >= 3800 &&
+        coldStartRetryCount < 3 &&
+        sinceLastActionMs >= 3200 &&
         !genNetworkState.generateStartedAt &&
         !challengeWindowShown &&
         !isChallengeResolved
       ) {
-        coldStartRetryCount++;
-        lastActionMs = Date.now();
         const earlySnap = await pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, cleanUa);
         if (Array.isArray(earlySnap.clips) && earlySnap.clips.length > 0) {
           capturedClips = earlySnap.clips;
           console.log(`[Suno Warm Engine] Captured ${capturedClips.length} authentic new Suno clips before cold-start retry!`);
           break;
         }
-        const hasVisibleInput = await hasVisibleSunoPromptInput(genWin);
-        if (!hasVisibleInput && genNetworkState.cCheckStartedAt > 0) {
-          // Form already cleared after /c/check -> never re-fill or re-click empty form
-          console.log('[Suno Warm Engine] Skipped retry: /c/check fired and prompt box is already empty.');
-        } else {
-          console.log(`[Suno Warm Engine] Cold-start auto-retry #${coldStartRetryCount} (generateStartedAt=0, cCheck=${Boolean(genNetworkState.cCheckStartedAt)}, hasVisibleInput=${hasVisibleInput})...`);
-          if (!hasVisibleInput && !genNetworkState.cCheckStartedAt) {
-            await fillSunoCreateForm(genWin, formFillOpts);
-            await new Promise(r => setTimeout(r, 250));
+
+        const turnstileCheck = await checkInteractiveTurnstileModal(genWin);
+        if (!turnstileCheck.hasModal && !genNetworkState.generateStartedAt) {
+          coldStartRetryCount++;
+          lastActionMs = Date.now();
+          console.log(`[Suno Warm Engine] Cold-start auto-retry #${coldStartRetryCount} (generateStartedAt=0, cCheck=${Boolean(genNetworkState.cCheckStartedAt)})...`);
+
+          if (coldStartRetryCount === 3) {
+            // Last-resort self-heal: reload stale /create page once within the same first-click attempt
+            console.log('[Suno Warm Engine] Reloading /create workspace for clean React & Clerk hydration...');
+            genWin = await initWarmSunoEngine({ forceReload: true });
           }
-          await triggerSunoCreateClick(genWin);
+
+          await fillSunoCreateForm(genWin, formFillOpts);
+          await new Promise(r => setTimeout(r, 320));
+          let retryRes = await triggerSunoCreateClick(genWin);
+          if (retryRes && retryRes.error && retryRes.error.includes('nonaktif')) {
+            await new Promise(r => setTimeout(r, 450));
+            await triggerSunoCreateClick(genWin);
+          }
           lastFeedPollMs = 0;
+        }
+      }
+
+      // Fail fast if all retries + reload failed to trigger POST /api/generate and no Turnstile challenge is active
+      if (
+        coldStartRetryCount >= 3 &&
+        elapsedMs >= 28000 &&
+        !genNetworkState.generateStartedAt &&
+        !challengeWindowShown &&
+        !isChallengeResolved
+      ) {
+        const checkBeforeAbort = await checkInteractiveTurnstileModal(genWin);
+        if (!checkBeforeAbort.hasModal) {
+          console.warn('[Suno Warm Engine] Aborting pre-submit wait: POST /api/generate did not fire after 3 retries.');
+          break;
         }
       }
 
