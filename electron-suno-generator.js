@@ -613,8 +613,7 @@ async function fillSunoCreateForm(genWin, { targetMode, cleanTitleText, cleanPro
     }
   } else {
     const lyricsToInsert = cleanLyricsText || cleanPromptText;
-    const effectiveTags = cleanTagsText || deriveTagsFromPrompt(cleanPromptText || cleanLyricsText, '');
-    const styleToInsert = effectiveTags.slice(0, 950);
+    const styleToInsert = (cleanTagsText || '').slice(0, 950);
 
     await genWin.webContents.executeJavaScript(`
       (async () => {
@@ -654,7 +653,7 @@ async function fillSunoCreateForm(genWin, { targetMode, cleanTitleText, cleanPro
             const ph = (t.getAttribute('placeholder') || '').toLowerCase();
             return t instanceof HTMLTextAreaElement && (al === 'styles' || ph.includes('style') || ph.includes('genre'));
           });
-        if (styleBox) {
+        if (styleBox && ${JSON.stringify(Boolean(styleToInsert))}) {
           setNativeValue(styleBox, ${JSON.stringify(styleToInsert)});
         }
 

@@ -34,6 +34,9 @@ class SunoStudio {
   init() {
     this.checkApiStatus();
     this.fetchCreations(1, false);
+    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.prewarmSuno === 'function') {
+      try { window.AuraSoundAndroid.prewarmSuno(); } catch (e) {}
+    }
 
     // Listen for automatic token capture from Electron
     if (window.electronAPI && window.electronAPI.onSunoTokenCaptured) {
@@ -1272,6 +1275,14 @@ class SunoStudio {
     }
   }
 
+  onAndroidGenerationProgress(text) {
+    if (!text) return;
+    if (this._genTimer1) { clearTimeout(this._genTimer1); this._genTimer1 = null; }
+    if (this._genTimer2) { clearTimeout(this._genTimer2); this._genTimer2 = null; }
+    const statusText = document.getElementById('suno-status-text');
+    if (statusText) statusText.textContent = text;
+  }
+
   onAndroidGenerationError(errorMsg) {
     if (this._androidGenReject) {
       this._androidGenReject(new Error(errorMsg || 'Gagal membuat lagu via Suno.'));
@@ -1313,76 +1324,50 @@ class SunoStudio {
 
     if (generateBtn) generateBtn.disabled = true;
     if (statusBox) statusBox.style.display = 'flex';
-    if (statusText) statusText.textContent = 'Menganalisis konsep lirik & melodi (Suno v6-mini)...';
+    if (statusText) statusText.textContent = 'Menyiapkan Suno AI Studio...';
 
-    const timer1 = setTimeout(() => {
-      if (statusText) statusText.textContent = 'Mengaransemen progresi musik dengan Suno v6-mini...';
-    }, 1200);
+    const activeProvider = this.getActiveProvider();
+    const isAndroidClient = Boolean(window.AuraSoundAndroid && typeof window.AuraSoundAndroid.generateSunoSong === 'function');
 
-    const timer2 = setTimeout(() => {
-      if (statusText) statusText.textContent = 'Sintesis audio AI & mastering Suno v6-mini...';
-    }, 2400);
+    if (this._genTimer1) clearTimeout(this._genTimer1);
+    if (this._genTimer2) clearTimeout(this._genTimer2);
+    this._genTimer1 = null;
+    this._genTimer2 = null;
+
+    if (!(isAndroidClient && activeProvider === 'suno_official')) {
+      this._genTimer1 = setTimeout(() => {
+        if (statusText) statusText.textContent = 'Mengaransemen progresi musik dengan Suno v6-mini...';
+      }, 1200);
+
+      this._genTimer2 = setTimeout(() => {
+        if (statusText) statusText.textContent = 'Sintesis audio AI & mastering Suno v6-mini...';
+      }, 2400);
+    }
 
     try {
       let result = null;
-      const activeProvider = this.getActiveProvider();
-      const isAndroidClient = Boolean(window.AuraSoundAndroid && typeof window.AuraSoundAndroid.generateSunoSong === 'function');
 
       if (isAndroidClient && activeProvider === 'suno_official') {
-        const savedJwt = (localStorage.getItem('aurasound_suno_key') || '').trim();
         const genStartedAtMs = Date.now();
-        let fastPathAttempted = false;
-        // Fast path: check if direct HTTP generation is permitted (~250ms) ONLY if JWT is still fresh
-        if (this.isJwtFresh(savedJwt)) {
-          fastPathAttempted = true;
-          try {
-            const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-            const fastTimer = ctrl ? setTimeout(() => ctrl.abort(), 4000) : null;
-            const fastRes = await fetch('/api/suno/generate', {
-              method: 'POST',
-              headers: this.getAuthHeaders(),
-              signal: ctrl ? ctrl.signal : undefined,
-              body: JSON.stringify({
-                title,
-                tags,
-                prompt,
-                make_instrumental,
-                model: model || 'v6-mini'
-              })
-            });
-            if (fastTimer) clearTimeout(fastTimer);
-            const fastData = await fastRes.json();
-            if (fastData && fastData.requires_client_engine) {
-              fastPathAttempted = false;
-            } else if (fastData && fastData.success && Array.isArray(fastData.data) && fastData.data.length > 0) {
-              result = fastData;
-            }
-          } catch (fastErr) {
-            fastPathAttempted = false;
-          }
-        }
+        const pTrimmed = (prompt || '').trim();
+        const isCustomLyrics = !make_instrumental && this.isGenuineCustomLyrics(pTrimmed);
 
-        if (!result) {
-          const pTrimmed = (prompt || '').trim();
-          const isCustomLyrics = !make_instrumental && this.isGenuineCustomLyrics(pTrimmed);
-
-          const androidPayload = {
-            title: (title || '').trim(),
-            tags: (tags || '').trim(),
-            prompt: pTrimmed,
-            lyrics: isCustomLyrics ? pTrimmed : '',
-            make_instrumental: Boolean(make_instrumental),
-            model: model || 'v6-mini',
-            isCustomLyrics: Boolean(isCustomLyrics),
-            fastPathAttempted,
-            genStartedAtMs
-          };
-          result = await new Promise((resolve, reject) => {
-            this._androidGenResolve = resolve;
-            this._androidGenReject = reject;
-            window.AuraSoundAndroid.generateSunoSong(JSON.stringify(androidPayload));
-          });
-        }
+        const androidPayload = {
+          title: (title || '').trim(),
+          tags: (tags || '').trim(),
+          prompt: pTrimmed,
+          lyrics: isCustomLyrics ? pTrimmed : '',
+          make_instrumental: Boolean(make_instrumental),
+          model: model || 'v6-mini',
+          isCustomLyrics: Boolean(isCustomLyrics),
+          fastPathAttempted: false,
+          genStartedAtMs
+        };
+        result = await new Promise((resolve, reject) => {
+          this._androidGenResolve = resolve;
+          this._androidGenReject = reject;
+          window.AuraSoundAndroid.generateSunoSong(JSON.stringify(androidPayload));
+        });
       } else {
         const response = await fetch('/api/suno/generate', {
           method: 'POST',
@@ -1398,8 +1383,8 @@ class SunoStudio {
         result = await response.json();
       }
 
-      clearTimeout(timer1);
-      clearTimeout(timer2);
+      if (this._genTimer1) { clearTimeout(this._genTimer1); this._genTimer1 = null; }
+      if (this._genTimer2) { clearTimeout(this._genTimer2); this._genTimer2 = null; }
 
       if (!result || !result.success) {
         throw new Error(result?.error || 'Gagal membuat lagu via Suno AI.');
@@ -1432,8 +1417,8 @@ class SunoStudio {
         this.playClip(readyTrack, { openCinema: false });
       }
     } catch (err) {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
+      if (this._genTimer1) { clearTimeout(this._genTimer1); this._genTimer1 = null; }
+      if (this._genTimer2) { clearTimeout(this._genTimer2); this._genTimer2 = null; }
       console.error('Suno generation error:', err);
       if (window.app && window.app.showToast) {
         window.app.showToast(err.message, 'error');

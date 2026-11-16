@@ -287,6 +287,13 @@ public class AndroidMediaBridge {
     }
 
     @JavascriptInterface
+    public void prewarmSuno() {
+        if (activity != null) {
+            activity.prewarmSunoNow();
+        }
+    }
+
+    @JavascriptInterface
     public int getAppVersionCode() {
         if (activity != null) {
             try {
@@ -881,6 +888,7 @@ public class MainActivity extends Activity {
     private LinearLayout warmWebViewCard;
     private volatile boolean isSunoChallengeVisible = false;
     private volatile long lastAndroidGenStartedMs = 0L;
+    private volatile long lastAndroidCcheckStartedMs = 0L;
     private volatile boolean androidUserCancelled = false;
     private String pendingSunoPayloadJson = null;
     private boolean isGenWebViewReady = false;
@@ -920,7 +928,7 @@ public class MainActivity extends Activity {
 
         startPeriodicBridgeSync();
         startSunoTokenAutoRefresh();
-        bridgeHandler.postDelayed(() -> prewarmSunoIfLoggedIn(), 3500);
+        bridgeHandler.postDelayed(() -> prewarmSunoIfLoggedIn(), 1000);
     }
 
     private void requestAudioFocus() {
@@ -1522,6 +1530,14 @@ public class MainActivity extends Activity {
         } catch (Exception e) {}
     }
 
+    public void prewarmSunoNow() {
+        runOnUiThread(() -> {
+            if (genWebView == null && !isGenWebViewLoading) {
+                prewarmSunoIfLoggedIn();
+            }
+        });
+    }
+
     public void ensureWarmSunoWebView(final boolean forceReload) {
         runOnUiThread(() -> {
             try {
@@ -1548,7 +1564,17 @@ public class MainActivity extends Activity {
                     genWebView.addJavascriptInterface(new Object() {
                         @JavascriptInterface
                         public void onProgress(String text) {
-                            // Silent in background
+                            if (text == null || text.isEmpty()) return;
+                            runOnUiThread(() -> {
+                                if (webView != null) {
+                                    try {
+                                        byte[] data = text.getBytes("UTF-8");
+                                        String b64 = Base64.encodeToString(data, Base64.NO_WRAP);
+                                        String js = "(function() { try { var t = decodeURIComponent(escape(window.atob('" + b64 + "'))); if (window.sunoStudio && window.sunoStudio.onAndroidGenerationProgress) { window.sunoStudio.onAndroidGenerationProgress(t); } } catch(e) {} })();";
+                                        webView.evaluateJavascript(js, null);
+                                    } catch (Exception e) {}
+                                }
+                            });
                         }
 
                         @JavascriptInterface
@@ -1564,6 +1590,11 @@ public class MainActivity extends Activity {
                         @JavascriptInterface
                         public boolean hasGenerateStarted(long sinceMs) {
                             return lastAndroidGenStartedMs >= sinceMs;
+                        }
+
+                        @JavascriptInterface
+                        public boolean hasCcheckOrGenerateStarted(long sinceMs) {
+                            return lastAndroidGenStartedMs >= sinceMs || lastAndroidCcheckStartedMs >= sinceMs;
                         }
 
                         @JavascriptInterface
@@ -1672,9 +1703,10 @@ public class MainActivity extends Activity {
                             try {
                                 if (request != null && request.getUrl() != null && "POST".equalsIgnoreCase(request.getMethod())) {
                                     String reqUrl = request.getUrl().toString();
-                                    if (reqUrl.contains("/api/generate")) {
+                                    if (reqUrl.contains("/api/c/check") || reqUrl.contains("/c/check")) {
+                                        lastAndroidCcheckStartedMs = System.currentTimeMillis();
+                                    } else if (reqUrl.contains("/api/generate")) {
                                         lastAndroidGenStartedMs = System.currentTimeMillis();
-                                        hideSunoChallenge();
                                     }
                                 }
                             } catch (Exception e) {}
@@ -1730,6 +1762,7 @@ public class MainActivity extends Activity {
             try {
                 androidUserCancelled = false;
                 lastAndroidGenStartedMs = 0L;
+                lastAndroidCcheckStartedMs = 0L;
                 parkGenWebViewInBackground();
                 String curUrl = (genWebView != null) ? genWebView.getUrl() : null;
                 if (genWebView != null && isGenWebViewReady && curUrl != null && curUrl.contains("suno.com") && !curUrl.contains("/login") && !curUrl.contains("/sign-in")) {
@@ -1847,12 +1880,16 @@ public class MainActivity extends Activity {
             + "    function hasCreateControls() {"
             + "      return getVisibleSunoInputs().length > 0 && Boolean(findSunoCreateButton());"
             + "    }"
+            + "    function reportProgress(msg) {"
+            + "      try { if (window.AndroidSunoHost && typeof window.AndroidSunoHost.onProgress === 'function') window.AndroidSunoHost.onProgress(msg); } catch(e) {}"
+            + "    }"
+            + "    reportProgress('Menyiapkan halaman Create Suno...');"
             + "    if (!hasCreateControls()) {"
-            + "      var navItems = Array.from(document.querySelectorAll('a, button, [role=tab], div[role=button]'));"
+            + "      var navItems = Array.from(document.querySelectorAll('nav a, aside a, a'));"
             + "      var createNav = navItems.find(function(el) {"
             + "        var tx = (el.innerText || el.textContent || '').trim().toLowerCase();"
             + "        var hr = (el.getAttribute('href') || '').toLowerCase();"
-            + "        return tx === 'create' || hr === '/create' || hr.indexOf('/create?') === 0;"
+            + "        return hr === '/create' || hr.indexOf('/create?') === 0 || (tx === 'create' && (el.closest('nav') || el.closest('aside')));"
             + "      });"
             + "      if (createNav) { firePointerClick(createNav); }"
             + "    }"
@@ -1860,11 +1897,11 @@ public class MainActivity extends Activity {
             + "      if (window.__sunoGenActiveRunId !== runId) return;"
             + "      if (hasCreateControls() && isClerkReady()) break;"
             + "      if (i === 8 && !hasCreateControls()) {"
-            + "        var navItems2 = Array.from(document.querySelectorAll('a, button, [role=tab], div[role=button]'));"
+            + "        var navItems2 = Array.from(document.querySelectorAll('nav a, aside a, a'));"
             + "        var createNav2 = navItems2.find(function(el) {"
             + "          var tx = (el.innerText || el.textContent || '').trim().toLowerCase();"
             + "          var hr = (el.getAttribute('href') || '').toLowerCase();"
-            + "          return tx === 'create' || hr === '/create' || hr.indexOf('/create?') === 0;"
+            + "          return hr === '/create' || hr.indexOf('/create?') === 0 || (tx === 'create' && (el.closest('nav') || el.closest('aside')));"
             + "        });"
             + "        if (createNav2) { firePointerClick(createNav2); }"
             + "      }"
@@ -1881,7 +1918,7 @@ public class MainActivity extends Activity {
             + "    }"
             + "    if (!window.__sunoCreateSettled) {"
             + "      await getLiveTok();"
-            + "      await new Promise(function(r) { setTimeout(r, 650); });"
+            + "      await new Promise(function(r) { setTimeout(r, 250); });"
             + "      window.__sunoCreateSettled = true;"
             + "    }"
             + "    var freshToken = await getLiveTok();"
@@ -2024,17 +2061,8 @@ public class MainActivity extends Activity {
             + "          var ph = (t.getAttribute('placeholder') || '').toLowerCase();"
             + "          return t instanceof HTMLTextAreaElement && (al === 'styles' || ph.includes('style') || ph.includes('genre'));"
             + "        });"
-            + "        var effectiveTags = tagsText || (function() {"
-            + "          var p = (promptText + ' ' + lyricsText).toLowerCase();"
-            + "          if (p.includes('epic') || p.includes('choir') || p.includes('fantasy')) return 'Epic Fantasy Orchestral Choir, Cinematic Symphony';"
-            + "          if (p.includes('rock') || p.includes('metal')) return 'Emotional Symphonic Rock, Driving Guitars';"
-            + "          if (p.includes('koplo') || p.includes('dangdut')) return 'Dangdut Koplo Modern, Kendang Asik';"
-            + "          if (p.includes('ballad') || p.includes('piano')) return 'Acoustic Piano Ballad, Warm Melodic Vocal';"
-            + "          if (p.includes('lofi') || p.includes('chill')) return 'Lo-Fi Chill Beats, Relaxing Ambient Melodies';"
-            + "          return 'Indonesian Pop, Emotional Vocal, Studio Mix';"
-            + "        })();"
-            + "        if (styleBox) {"
-            + "          setNativeVal(styleBox, effectiveTags.slice(0, 950));"
+            + "        if (styleBox && tagsText) {"
+            + "          setNativeVal(styleBox, tagsText.slice(0, 950));"
             + "        }"
             + "        var titleInput = Array.from(document.querySelectorAll('input')).find(function(i) { var ph = (i.placeholder || i.getAttribute('aria-label') || '').toLowerCase(); return ph.includes('title') || ph.includes('judul'); });"
             + "        if (titleInput) {"
@@ -2101,13 +2129,23 @@ public class MainActivity extends Activity {
             + "      } catch(pe) {}"
             + "      return [];"
             + "    }"
-            + "    function hasVisibleTurnstileFrame() {"
-            + "      var frames = Array.from(document.querySelectorAll('iframe[src*=challenges], iframe[src*=turnstile]'));"
-            + "      return frames.some(function(f) {"
+            + "    function hasVisibleTurnstileModal() {"
+            + "      var frames = Array.from(document.querySelectorAll('iframe[src*=challenges], iframe[src*=turnstile], [data-sitekey]'));"
+            + "      var hasFrame = frames.some(function(f) {"
             + "        var st = window.getComputedStyle(f);"
             + "        if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;"
             + "        var r = f.getBoundingClientRect();"
             + "        return r.width >= 40 && r.height >= 20;"
+            + "      });"
+            + "      if (hasFrame) return true;"
+            + "      var overlays = Array.from(document.querySelectorAll('div.fixed.inset-0, [role=dialog]'));"
+            + "      return overlays.some(function(el) {"
+            + "        var st = window.getComputedStyle(el);"
+            + "        if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;"
+            + "        if (el.offsetWidth < 100 || el.offsetHeight < 100) return false;"
+            + "        var cls = String(el.className || '');"
+            + "        if (cls.indexOf('z-[1000]') !== -1) return true;"
+            + "        return Boolean(el.querySelector('iframe[src*=challenges], iframe[src*=turnstile], [data-sitekey]'));"
             + "      });"
             + "    }"
             + "    function readPageCreditError() {"
@@ -2117,11 +2155,18 @@ public class MainActivity extends Activity {
             + "        if (/insufficient credits|out of credits|not enough credits|upgrade your plan|daily limit/i.test(txt)) {"
             + "          return 'Kuota kredit akun Suno Anda tidak mencukupi untuk membuat lagu.';"
             + "        }"
+            + "        if (/too many requests|rate limit/i.test(txt)) {"
+            + "          return 'Terlalu banyak permintaan ke Suno. Tunggu beberapa detik lalu coba lagi.';"
+            + "        }"
+            + "        if (/content policy|moderation/i.test(txt)) {"
+            + "          return 'Prompt atau lirik ditolak oleh filter moderasi Suno.';"
+            + "        }"
             + "      }"
             + "      return null;"
             + "    }"
+            + "    reportProgress('Mengisi prompt ke Suno AI...');"
             + "    await fillSunoFormOnly();"
-            + "    await Promise.all([existingPromise, new Promise(function(r) { setTimeout(r, 320); })]);"
+            + "    await Promise.all([existingPromise, new Promise(function(r) { setTimeout(r, 250); })]);"
             + "    if (alreadyCreated.length >= 2) {"
             + "      if (window.AndroidSunoHost) window.AndroidSunoHost.onComplete(JSON.stringify(alreadyCreated.slice(0, 2)), await getLiveTok() || freshToken);"
             + "      return;"
@@ -2131,32 +2176,39 @@ public class MainActivity extends Activity {
             + "    var lastAttemptMs = clickTimeMs;"
             + "    var retryCount = 0;"
             + "    var challengeShown = false;"
+            + "    reportProgress('Mengirim permintaan ke Suno AI...');"
             + "    await clickSunoCreate();"
             + "    var captured = null;"
             + "    var lastPollMs = 0;"
-            + "    while ((Date.now() - clickTimeMs) < 65000) {"
+            + "    while ((Date.now() - clickTimeMs) < 60000) {"
             + "      await new Promise(function(r) { setTimeout(r, 200); });"
             + "      if (window.__sunoGenActiveRunId !== runId) return;"
             + "      if (window.AndroidSunoHost && window.AndroidSunoHost.isUserCancelled()) return;"
             + "      var elapsedMs = Date.now() - clickTimeMs;"
             + "      var genStarted = Boolean(window.AndroidSunoHost && typeof window.AndroidSunoHost.hasGenerateStarted === 'function' && window.AndroidSunoHost.hasGenerateStarted(attemptStartMs - 1000));"
-            + "      var turnstileVisible = hasVisibleTurnstileFrame();"
-            + "      if (!genStarted && turnstileVisible && !challengeShown && (Date.now() - lastAttemptMs) >= 1200) {"
+            + "      var cCheckOrGenStarted = Boolean(window.AndroidSunoHost && typeof window.AndroidSunoHost.hasCcheckOrGenerateStarted === 'function' && window.AndroidSunoHost.hasCcheckOrGenerateStarted(attemptStartMs - 1000));"
+            + "      var turnstileVisible = hasVisibleTurnstileModal();"
+            + "      if (!genStarted && turnstileVisible && !challengeShown && (Date.now() - lastAttemptMs) >= 1500) {"
             + "        challengeShown = true;"
+            + "        reportProgress('Menunggu verifikasi Suno (centang 1x)...');"
             + "        if (window.AndroidSunoHost && typeof window.AndroidSunoHost.onChallengeRequired === 'function') {"
             + "          window.AndroidSunoHost.onChallengeRequired();"
             + "        }"
-            + "      } else if (challengeShown && (!turnstileVisible || genStarted)) {"
+            + "      } else if (challengeShown && !turnstileVisible) {"
             + "        challengeShown = false;"
+            + "        reportProgress('Verifikasi selesai! Memproses lagu...');"
             + "        if (window.AndroidSunoHost && typeof window.AndroidSunoHost.onChallengeDismissed === 'function') {"
             + "          window.AndroidSunoHost.onChallengeDismissed();"
             + "        }"
+            + "        clickTimeMs = Date.now();"
+            + "        lastPollMs = 0;"
             + "        if (!genStarted) {"
-            + "          lastAttemptMs = Date.now();"
+            + "          attemptStartMs = Date.now();"
+            + "          lastAttemptMs = attemptStartMs;"
             + "          try { await clickSunoCreate(); } catch(ce2) {}"
             + "        }"
             + "      }"
-            + "      if (!genStarted && !challengeShown && retryCount < 3 && (Date.now() - lastAttemptMs) >= 3500) {"
+            + "      if (!cCheckOrGenStarted && !challengeShown && !turnstileVisible && retryCount < 1 && (Date.now() - lastAttemptMs) >= 8500) {"
             + "        var earlyHits = await pollFeedOnce(clickTimeMs);"
             + "        if (earlyHits.length >= 2 || (earlyHits.length >= 1 && elapsedMs > 8000)) {"
             + "          captured = earlyHits.slice(0, 2);"
@@ -2165,32 +2217,36 @@ public class MainActivity extends Activity {
             + "        var pageErrEarly = readPageCreditError();"
             + "        if (pageErrEarly) throw new Error(pageErrEarly);"
             + "        retryCount++;"
-            + "        lastAttemptMs = Date.now();"
-            + "        if (retryCount === 3 && !payload.__reloadedOnce && window.AndroidSunoHost && typeof window.AndroidSunoHost.reloadAndRun === 'function') {"
-            + "          payload.__reloadedOnce = true;"
-            + "          var reB64 = window.btoa(unescape(encodeURIComponent(JSON.stringify(payload))));"
-            + "          window.AndroidSunoHost.reloadAndRun(reB64);"
-            + "          return;"
-            + "        }"
+            + "        reportProgress('Mengirim ulang ke Suno AI...');"
             + "        await fillSunoFormOnly();"
-            + "        await new Promise(function(r) { setTimeout(r, 300); });"
+            + "        await new Promise(function(r) { setTimeout(r, 250); });"
             + "        attemptStartMs = Date.now();"
             + "        lastAttemptMs = attemptStartMs;"
             + "        await clickSunoCreate();"
             + "        lastPollMs = 0;"
             + "      }"
-            + "      if (retryCount >= 3 && !genStarted && !challengeShown && elapsedMs >= 25000) {"
+            + "      if (retryCount >= 1 && !cCheckOrGenStarted && !challengeShown && !turnstileVisible && elapsedMs >= 18000) {"
             + "        var finalCheck = await pollFeedOnce(clickTimeMs);"
             + "        if (finalCheck.length > 0) {"
             + "          captured = finalCheck.slice(0, 2);"
+            + "          break;"
+            + "        }"
+            + "        if (!payload.__reloadedOnce && window.AndroidSunoHost && typeof window.AndroidSunoHost.reloadAndRun === 'function') {"
+            + "          payload.__reloadedOnce = true;"
+            + "          var reB64 = window.btoa(unescape(encodeURIComponent(JSON.stringify(payload))));"
+            + "          window.AndroidSunoHost.reloadAndRun(reB64);"
+            + "          return;"
             + "        }"
             + "        break;"
             + "      }"
-            + "      if ((Date.now() - lastPollMs) >= 1400) {"
+            + "      if ((Date.now() - lastPollMs) >= 1200) {"
             + "        lastPollMs = Date.now();"
             + "        var newly = await pollFeedOnce(clickTimeMs);"
-            + "        if (newly.length >= 2 || (newly.length >= 1 && (Date.now() - clickTimeMs) > 10000)) {"
+            + "        if (newly.length >= 2 || (newly.length >= 1 && (Date.now() - clickTimeMs) > 7500)) {"
             + "          captured = newly.slice(0, 2);"
+            + "          if (challengeShown && window.AndroidSunoHost && typeof window.AndroidSunoHost.onChallengeDismissed === 'function') {"
+            + "            window.AndroidSunoHost.onChallengeDismissed();"
+            + "          }"
             + "          break;"
             + "        }"
             + "        var pageErr = readPageCreditError();"
