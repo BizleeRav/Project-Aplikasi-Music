@@ -1082,9 +1082,17 @@ async function generateWithSunoBrowser({
       }
     }
 
-    // Dismiss any leftover modal overlay from a previous cancelled attempt
+    // Ensure Clerk session JWT is freshly minted & remove any stale duplicate __session cookies before filling
     await genWin.webContents.executeJavaScript(`
-      (() => {
+      (async () => {
+        try {
+          if (window.Clerk && window.Clerk.session && typeof window.Clerk.session.getToken === 'function') {
+            const freshTok = await window.Clerk.session.getToken();
+            if (freshTok && freshTok.length > 20) {
+              document.cookie = '__session=' + freshTok + '; path=/; secure; samesite=lax';
+            }
+          }
+        } catch (e) {}
         const oldModal = Array.from(document.querySelectorAll('div.fixed.inset-0')).find(el => String(el.className || '').includes('z-[1000]'));
         if (oldModal) {
           oldModal.click();
@@ -1198,7 +1206,7 @@ async function generateWithSunoBrowser({
     genNetworkState.generateStatusCode = 0;
     genNetworkState.active = true;
 
-    const initialTurnstileToken = await readTurnstileToken(genWin);
+    let initialTurnstileToken = await readTurnstileToken(genWin);
 
     // Trigger Create click directly via DOM event chain (100% background compatible)
     const clickedOk = await triggerSunoCreateClick(genWin);
@@ -1309,13 +1317,13 @@ async function generateWithSunoBrowser({
       if ((nowMs - lastChallengeCheckMs) >= 400 && !genNetworkState.generateStartedAt) {
         lastChallengeCheckMs = nowMs;
 
-        // 1. Auto-submit when a visible Turnstile modal finishes OR when a fresh invisible Turnstile token
-        // appears after click while prompt input is still non-empty and POST /api/generate has not fired.
+        // 1. Auto-submit when a genuinely new Turnstile token appears after click
         if (!isChallengeResolved && (challengeWindowShown || sinceLastActionMs >= 1500)) {
           const freshToken = await readTurnstileToken(genWin);
-          const tokenNewlySolved = Boolean(freshToken && (challengeWindowShown || freshToken !== initialTurnstileToken));
+          const tokenNewlySolved = Boolean(freshToken && freshToken !== initialTurnstileToken);
 
           if (tokenNewlySolved && !isChallengeResolved) {
+            initialTurnstileToken = freshToken;
             if (!challengeWindowShown) {
               const snapBeforeResubmit = await pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, cleanUa);
               if (Array.isArray(snapBeforeResubmit.clips) && snapBeforeResubmit.clips.length > 0) {
@@ -1324,14 +1332,12 @@ async function generateWithSunoBrowser({
                 break;
               }
             }
-            const submitted = await resubmitCreateAfterChallenge();
-            if (submitted || challengeWindowShown) {
-              isChallengeResolved = true;
-              console.log('[Suno Warm Engine] Turnstile verified! Auto-hiding window & submitting song...');
-              hideEngineWindow();
-              clickTimeMs = Date.now();
-              lastFeedPollMs = 0;
-            }
+            challengeWindowShown = false;
+            console.log('[Suno Warm Engine] Turnstile token solved! Auto-hiding window & submitting song...');
+            hideEngineWindow();
+            await resubmitCreateAfterChallenge();
+            lastActionMs = Date.now();
+            lastFeedPollMs = 0;
           }
         }
 
@@ -1412,11 +1418,12 @@ async function generateWithSunoBrowser({
 
           if (!stillOpen) {
             console.log('[Suno Warm Engine] Turnstile challenge completed or dismissed. Auto-hiding window & submitting song...');
-            isChallengeResolved = true;
+            challengeWindowShown = false;
             hideEngineWindow();
 
-            // Reset clickTimeMs so the timeout countdown starts fresh from submission
+            // Reset timers so retry & timeout countdown start fresh from submission
             clickTimeMs = Date.now();
+            lastActionMs = Date.now();
             lastFeedPollMs = 0;
 
             // Re-trigger Create click in case modal auto-closed upon success (only if inputs were not yet cleared)

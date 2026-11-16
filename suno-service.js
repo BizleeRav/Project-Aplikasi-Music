@@ -1744,7 +1744,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
   const customUrl = config.suno_custom_url || '';
   const idsQuery = Array.isArray(ids) ? ids.join(',') : ids;
 
-  if (!apiKey && typeof global.getFreshSunoToken !== 'function') {
+  if (!apiKey && provider !== 'suno_official' && typeof global.getFreshSunoToken !== 'function') {
     return { success: true, clips: [] };
   }
 
@@ -1759,36 +1759,53 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
           } catch (e) {}
         }
 
-        if (!currentToken) {
-          return { success: true, clips: [] };
-        }
+        const idArray = (Array.isArray(ids) ? ids : String(ids || '').split(','))
+          .map(s => String(s || '').trim())
+          .filter(Boolean);
 
         let rawClips = [];
 
-        // Check if electron generator has helper to fetch clips
-        if (typeof global.fetchSunoClipsByIds === 'function') {
+        // 1. Check if Electron warm engine has same-origin helper to fetch clips
+        if (typeof global.fetchSunoClipsByIds === 'function' && idArray.length > 0) {
           try {
-            const electronClips = await global.fetchSunoClipsByIds(ids);
+            const electronClips = await global.fetchSunoClipsByIds(idArray);
             if (Array.isArray(electronClips) && electronClips.length > 0) {
               rawClips = electronClips;
             }
           } catch (e) {}
         }
 
-        if (!rawClips || rawClips.length === 0) {
+        // 2. Fast token-free public clip endpoint (works on Vercel & mobile even when 60s Clerk JWT expired!)
+        if ((!rawClips || rawClips.length === 0) && idArray.length > 0) {
+          try {
+            const clipPromises = idArray.map(cid =>
+              axios.get(`https://studio-api.prod.suno.com/api/clip/${encodeURIComponent(cid)}`, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+                  'Accept': 'application/json'
+                },
+                timeout: 6000
+              }).then(r => (r.data && r.data.id ? r.data : null)).catch(() => null)
+            );
+            const fetchedClips = (await Promise.all(clipPromises)).filter(Boolean);
+            if (fetchedClips.length > 0) {
+              rawClips = fetchedClips;
+            }
+          } catch (e) {}
+        }
+
+        // 3. Authenticated feed/v2 & feed/v3 fallback if token is valid
+        if ((!rawClips || rawClips.length === 0) && isSunoJwtFresh(currentToken)) {
           try {
             const res = await axios.get(`https://studio-api.prod.suno.com/api/feed/v2?ids=${idsQuery}`, {
               headers: buildSunoOfficialHeaders(currentToken),
-              timeout: 15000
+              timeout: 8000
             });
             rawClips = Array.isArray(res.data) ? res.data : (res.data?.clips || res.data?.data?.clips || []);
-          } catch (fetchErr) {
-            // will fallback below
-          }
+          } catch (fetchErr) {}
         }
 
-        // Fallback: POST feed/v3 if feed/v2 returned empty or failed
-        if (!rawClips || rawClips.length === 0) {
+        if ((!rawClips || rawClips.length === 0) && isSunoJwtFresh(currentToken)) {
           for (const feedUrl of ['https://studio-api.prod.suno.com/api/feed/v3', 'https://suno.com/a/api/feed/v3']) {
             try {
               const feedRes = await axios.post(feedUrl, {
@@ -1796,10 +1813,10 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
                 limit: 20
               }, {
                 headers: buildSunoOfficialHeaders(currentToken),
-                timeout: 10000
+                timeout: 8000
               });
               const allClips = feedRes.data?.clips || [];
-              const targetIds = new Set(Array.isArray(ids) ? ids : String(ids).split(','));
+              const targetIds = new Set(idArray);
               rawClips = allClips.filter(c => targetIds.has(c.id));
               if (rawClips.length > 0) break;
             } catch (e2) {}

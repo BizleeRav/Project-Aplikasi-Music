@@ -827,6 +827,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -875,9 +876,10 @@ public class MainActivity extends Activity {
     private boolean isCapturingSunoToken = false;
     private static final int FILE_CHOOSER_REQUEST_CODE = 2001;
     private ValueCallback<Uri[]> filePathCallback;
-    private WebView genWebView;
+    private BackgroundAudioWebView genWebView;
     private FrameLayout warmWebViewContainer;
     private LinearLayout warmWebViewCard;
+    private volatile boolean isSunoChallengeVisible = false;
     private volatile long lastAndroidGenStartedMs = 0L;
     private volatile boolean androidUserCancelled = false;
     private String pendingSunoPayloadJson = null;
@@ -1366,7 +1368,15 @@ public class MainActivity extends Activity {
     private void ensureWarmContainerMounted() {
         try {
             if (warmWebViewContainer == null) {
-                warmWebViewContainer = new FrameLayout(this);
+                warmWebViewContainer = new FrameLayout(this) {
+                    @Override
+                    public boolean dispatchTouchEvent(MotionEvent ev) {
+                        if (!isSunoChallengeVisible) {
+                            return false;
+                        }
+                        return super.dispatchTouchEvent(ev);
+                    }
+                };
                 warmWebViewContainer.setBackgroundColor(Color.parseColor("#D9070A12"));
                 warmWebViewContainer.setPadding(32, 64, 32, 64);
 
@@ -1423,7 +1433,8 @@ public class MainActivity extends Activity {
                 warmWebViewContainer.addView(warmWebViewCard, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-                warmWebViewContainer.setTranslationX(10000f);
+                isSunoChallengeVisible = false;
+                warmWebViewContainer.setTranslationX(0f);
                 warmWebViewContainer.setAlpha(0.01f);
                 warmWebViewContainer.setClickable(false);
 
@@ -1441,8 +1452,9 @@ public class MainActivity extends Activity {
     private void parkGenWebViewInBackground() {
         try {
             ensureWarmContainerMounted();
+            isSunoChallengeVisible = false;
             if (warmWebViewContainer != null) {
-                warmWebViewContainer.setTranslationX(10000f);
+                warmWebViewContainer.setTranslationX(0f);
                 warmWebViewContainer.setAlpha(0.01f);
                 warmWebViewContainer.setClickable(false);
             }
@@ -1456,6 +1468,7 @@ public class MainActivity extends Activity {
         runOnUiThread(() -> {
             try {
                 ensureWarmContainerMounted();
+                isSunoChallengeVisible = true;
                 if (warmWebViewContainer != null) {
                     warmWebViewContainer.setTranslationX(0f);
                     warmWebViewContainer.setAlpha(1.0f);
@@ -1469,8 +1482,9 @@ public class MainActivity extends Activity {
     public void hideSunoChallenge() {
         runOnUiThread(() -> {
             try {
+                isSunoChallengeVisible = false;
                 if (warmWebViewContainer != null) {
-                    warmWebViewContainer.setTranslationX(10000f);
+                    warmWebViewContainer.setTranslationX(0f);
                     warmWebViewContainer.setAlpha(0.01f);
                     warmWebViewContainer.setClickable(false);
                 }
@@ -1512,7 +1526,7 @@ public class MainActivity extends Activity {
         runOnUiThread(() -> {
             try {
                 if (genWebView == null) {
-                    genWebView = new WebView(this);
+                    genWebView = new BackgroundAudioWebView(this);
                     WebSettings ws = genWebView.getSettings();
                     ws.setJavaScriptEnabled(true);
                     ws.setDomStorageEnabled(true);
@@ -1750,26 +1764,44 @@ public class MainActivity extends Activity {
             + "    var NL = String.fromCharCode(10);"
             + "    var payload = {};"
             + "    try { payload = JSON.parse(decodeURIComponent(escape(window.atob(b64In)))); } catch(e) {}"
+            + "    function isTokFresh(jwt) {"
+            + "      if (!jwt || typeof jwt !== 'string' || jwt.length <= 20) return false;"
+            + "      try {"
+            + "        var sp = jwt.split('.');"
+            + "        if (sp.length >= 2) {"
+            + "          var b64 = sp[1].replace(/-/g, '+').replace(/_/g, '/');"
+            + "          var pl = JSON.parse(window.atob(b64));"
+            + "          if (pl && pl.exp) return (pl.exp - 5) > (Date.now() / 1000);"
+            + "        }"
+            + "      } catch(e) {}"
+            + "      return false;"
+            + "    }"
             + "    async function getLiveTok() {"
             + "      try {"
             + "        if (window.Clerk && window.Clerk.session && typeof window.Clerk.session.getToken === 'function') {"
             + "          var ct = await window.Clerk.session.getToken();"
-            + "          if (ct && typeof ct === 'string' && ct.length > 20) return ct;"
+            + "          if (ct && typeof ct === 'string' && ct.length > 20) {"
+            + "            document.cookie = '__session=' + ct + '; path=/; secure; samesite=lax';"
+            + "            return ct;"
+            + "          }"
             + "        }"
             + "      } catch(ce) {}"
             + "      var parts = (document.cookie || '').split(';');"
+            + "      var fallbackCk = '';"
             + "      for (var k = 0; k < parts.length; k++) {"
             + "        var pt = parts[k].trim();"
             + "        if (pt.indexOf('__session=') === 0) {"
             + "          var ck = pt.substring(10).trim();"
-            + "          if (ck.length > 20) return ck;"
+            + "          if (isTokFresh(ck)) return ck;"
+            + "          if (ck.length > 20 && !fallbackCk) fallbackCk = ck;"
             + "        }"
             + "      }"
             + "      if (window.AndroidSunoHost && typeof window.AndroidSunoHost.getFreshCookieToken === 'function') {"
             + "        var ht = window.AndroidSunoHost.getFreshCookieToken();"
-            + "        if (ht && ht.length > 20) return ht;"
+            + "        if (isTokFresh(ht)) return ht;"
+            + "        if (ht && ht.length > 20 && !fallbackCk) fallbackCk = ht;"
             + "      }"
-            + "      return '';"
+            + "      return fallbackCk;"
             + "    }"
             + "    function getVisibleSunoInputs() {"
             + "      var els = Array.from(document.querySelectorAll('textarea, .lyrics-editor-content, div[role=textbox], div[contenteditable=true]'));"
@@ -2796,7 +2828,7 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_BACK && warmWebViewContainer != null && warmWebViewContainer.getTranslationX() == 0f) {
+        if (keyCode == KeyEvent.KEYCODE_BACK && isSunoChallengeVisible) {
             androidUserCancelled = true;
             parkGenWebViewInBackground();
             if (webView != null) {

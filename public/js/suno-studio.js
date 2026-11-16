@@ -69,7 +69,16 @@ class SunoStudio {
   }
 
   getAuthHeaders() {
-    const key = localStorage.getItem('aurasound_suno_key') || '';
+    let key = localStorage.getItem('aurasound_suno_key') || '';
+    if ((!key || !this.isJwtFresh(key)) && window.AuraSoundAndroid && typeof window.AuraSoundAndroid.getSunoToken === 'function') {
+      try {
+        const nativeTok = (window.AuraSoundAndroid.getSunoToken() || '').trim();
+        if (nativeTok && nativeTok.length > 20) {
+          key = nativeTok;
+          localStorage.setItem('aurasound_suno_key', nativeTok);
+        }
+      } catch (e) {}
+    }
     let provider = localStorage.getItem('aurasound_suno_provider') || '';
     if (!provider) {
       provider = key.startsWith('eyJ') ? 'suno_official' : 'kie';
