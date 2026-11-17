@@ -188,30 +188,32 @@ async function createMainWindow() {
     app.quit();
   });
 
-  // Check for updates if electron-updater is installed
-  try {
-    const { autoUpdater } = require('electron-updater');
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
+  // Check for updates if electron-updater is installed and running in packaged .exe
+  if (app.isPackaged) {
+    try {
+      const { autoUpdater } = require('electron-updater');
+      autoUpdater.autoDownload = true;
+      autoUpdater.autoInstallOnAppQuit = true;
 
-    autoUpdater.on('error', (err) => {
-      console.warn('[AutoUpdater] Update check ignored:', err?.message || err);
-    });
+      autoUpdater.on('error', (err) => {
+        console.warn('[AutoUpdater] Update check ignored:', err?.message || err);
+      });
 
-    autoUpdater.on('update-available', (info) => {
-      if (mainWindow) mainWindow.webContents.send('update-available', info);
-    });
+      autoUpdater.on('update-available', (info) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-available', info);
+      });
 
-    autoUpdater.on('update-downloaded', (info) => {
-      if (mainWindow) mainWindow.webContents.send('update-downloaded', info);
-    });
+      autoUpdater.on('update-downloaded', (info) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-downloaded', info);
+      });
 
-    // Quietly check for updates in background
-    setTimeout(() => {
-      autoUpdater.checkForUpdatesAndNotify().catch(() => {});
-    }, 4000);
-  } catch (e) {
-    // electron-updater will be active in production builds
+      // Quietly check for updates in background
+      setTimeout(() => {
+        autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+      }, 4000);
+    } catch (e) {
+      console.warn('[AutoUpdater] Init failed:', e?.message || e);
+    }
   }
 }
 
@@ -467,9 +469,12 @@ ipcMain.handle('open-suno-login', async () => {
 });
 
 ipcMain.on('restart-app', () => {
+  if (typeof global.destroyWarmSunoEngine === 'function') {
+    global.destroyWarmSunoEngine();
+  }
   try {
     const { autoUpdater } = require('electron-updater');
-    autoUpdater.quitAndInstall();
+    autoUpdater.quitAndInstall(false, true);
   } catch (e) {
     app.relaunch();
     app.exit(0);
