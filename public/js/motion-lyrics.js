@@ -53,6 +53,16 @@
     return m + ':' + (r < 10 ? '0' : '') + r;
   }
 
+  function easeOutCubic(x) {
+    const t = Math.max(0, Math.min(1, x));
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function easeInOutSine(x) {
+    const t = Math.max(0, Math.min(1, x));
+    return -(Math.cos(Math.PI * t) - 1) / 2;
+  }
+
   class MotionLyricsEngine {
     constructor(options = {}) {
       this.stageEl = options.stageEl || null;
@@ -75,8 +85,17 @@
       this._lastActiveWordIdx = -2;
       this._lastSyncedVisKey = '';
       this._cachedWordEls = null;
-      this._lastWallTransformAt = 0;
+      this._cachedKineticWall = null;
+      this._fisheyeRefs = null;
       this._currentWords = [];
+
+      // Smooth damped interpolation state
+      this._lastPerfNow = 0;
+      this._wordGlows = [];
+      this._wordBranchGrow = [];
+      this._smoothLineProg = 0;
+      this._wallRx = 0;
+      this._wallRy = 0;
       this._camX = 0;
       this._camY = 0;
       this._dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -104,7 +123,8 @@
       this._lastFisheyeWordIdx = -2;
       this._lastSyncedVisKey = '';
       this._cachedWordEls = null;
-      this.syncRendererVisibility();
+      this._fisheyeRefs = null;
+      this.syncRendererVisibility(true);
     }
 
     getStyleConfig() {
@@ -133,6 +153,10 @@
       this._lastActiveWordIdx = -2;
       this._lastSyncedVisKey = '';
       this._cachedWordEls = null;
+      this._fisheyeRefs = null;
+      this._wordGlows = [];
+      this._wordBranchGrow = [];
+      this._smoothLineProg = 0;
       this._camX = 0;
       this._camY = 0;
     }
@@ -183,11 +207,6 @@
       this._canvasH = rect.height;
     }
 
-    /**
-     * Returns word timing segments for a lyric line.
-     * Uses real TTML/Suno word timestamps when available, or generates
-     * proportional synthetic timings for standard line-synced lyrics.
-     */
     getLineWords(lineIdx) {
       if (lineIdx < 0 || lineIdx >= this.lyrics.length) return [];
       const line = this.lyrics[lineIdx];
@@ -278,7 +297,6 @@
       if (syncTime < words[0].begin) {
         return { index: -1, progress: 0 };
       }
-      // Gap between words or after last word in line
       for (let i = words.length - 1; i >= 0; i--) {
         if (syncTime >= words[i].end) {
           return { index: i, progress: 1, inGap: true };
@@ -287,9 +305,46 @@
       return { index: -1, progress: 0 };
     }
 
+    updateSmoothWordStates(activeIdx, words, wordState, dt) {
+      if (activeIdx !== this._lastActiveIdx || this._wordGlows.length !== words.length) {
+        this._wordGlows = new Array(words.length).fill(0);
+        this._wordBranchGrow = new Array(words.length).fill(0);
+        this._smoothLineProg = 0;
+      }
+
+      const rate = Math.min(1, dt * 14);
+      const branchRate = Math.min(1, dt * 11);
+      const activeW = wordState.index;
+
+      for (let i = 0; i < words.length; i++) {
+        let targetGlow = 0;
+        let targetBranch = 0;
+        if (activeW >= 0) {
+          if (i < activeW) {
+            targetGlow = 0.72;
+            targetBranch = 1.0;
+          } else if (i === activeW) {
+            targetGlow = 0.35 + 0.65 * easeOutCubic(wordState.progress);
+            targetBranch = 0.25 + 0.75 * easeOutCubic(wordState.progress);
+          }
+        }
+        this._wordGlows[i] += (targetGlow - this._wordGlows[i]) * rate;
+        this._wordBranchGrow[i] += (targetBranch - this._wordBranchGrow[i]) * branchRate;
+      }
+
+      const rawLineProg = activeW < 0
+        ? 0
+        : Math.min(1, (activeW + easeInOutSine(wordState.progress)) / Math.max(1, words.length));
+      this._smoothLineProg += (rawLineProg - this._smoothLineProg) * Math.min(1, dt * 10);
+    }
+
     render(syncTime, activeIdx, options = {}) {
       if (!this.stageEl) return;
       try {
+        const nowPerf = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        const dt = this._lastPerfNow ? Math.min(0.1, Math.max(0.004, (nowPerf - this._lastPerfNow) / 1000)) : 0.016;
+        this._lastPerfNow = nowPerf;
+
         if (options.showRomaji !== undefined) {
           this.showRomaji = Boolean(options.showRomaji);
         }
@@ -305,10 +360,12 @@
         const words = activeIdx >= 0 ? this.getLineWords(activeIdx) : [];
         const wordState = activeIdx >= 0 ? this.findActiveWord(words, syncTime) : { index: -1, progress: 0 };
 
+        this.updateSmoothWordStates(activeIdx, words, wordState, dt);
+
         if (cfg.renderer === 'canvas') {
-          this.renderCanvasScene(syncTime, activeIdx, words, wordState);
+          this.renderCanvasScene(syncTime, activeIdx, words, wordState, dt);
         } else {
-          this.renderDomStyle(syncTime, activeIdx, words, wordState);
+          this.renderDomStyle(syncTime, activeIdx, words, wordState, dt);
         }
 
         this._lastActiveIdx = activeIdx;
@@ -340,12 +397,12 @@
     // =========================================================================
     // DOM RENDERERS (Kinetic, Fisheye, Spotlight, Codestyle, Messages, Notif, Payments)
     // =========================================================================
-    renderDomStyle(syncTime, activeIdx, words, wordState) {
+    renderDomStyle(syncTime, activeIdx, words, wordState, dt) {
       if (!this.domEl) return;
       const sig = `${this.style}|${this.trackKey}|${activeIdx}|${this.showRomaji ? 1 : 0}`;
 
       if (this.style === 'fisheye') {
-        this.renderFisheye(syncTime, activeIdx, words, wordState);
+        this.renderFisheye(syncTime, activeIdx, words, wordState, dt);
         return;
       }
 
@@ -356,10 +413,9 @@
         this._cachedWordEls = this.domEl.querySelectorAll('.motion-word');
         this._cachedKineticWall = (this.style === 'kinetic') ? this.domEl.querySelector('#motion-kinetic-wall') : null;
         this._lastDomWordIdx = -99;
-        this._lastDomWordPct = -1;
       }
 
-      this.updateDomWordProgress(syncTime, activeIdx, words, wordState);
+      this.updateDomWordProgress(syncTime, activeIdx, words, wordState, dt);
     }
 
     buildWordsMarkup(words, extraClass = '') {
@@ -381,7 +437,7 @@
       if (this.style === 'kinetic') {
         if (!line) {
           this.domEl.innerHTML = `
-            <div class="motion-kinetic-stage motion-wait-stage">
+            <div class="motion-kinetic-stage motion-wait-stage motion-smooth-enter">
               <div class="motion-wait-label">${escapeHtml(this.trackMeta.title)}</div>
               <div class="motion-wait-pulse"><span></span><span></span><span></span></div>
               ${nextLine ? `<div class="motion-wait-next">${escapeHtml(nextLine.text)}</div>` : ''}
@@ -390,7 +446,7 @@
           return;
         }
         this.domEl.innerHTML = `
-          <div class="motion-kinetic-stage">
+          <div class="motion-kinetic-stage motion-smooth-enter">
             <div class="motion-kinetic-wall" id="motion-kinetic-wall">
               <div class="motion-kinetic-line">${this.buildWordsMarkup(words, 'motion-kinetic-word')}</div>
               ${romajiHtml}
@@ -403,7 +459,7 @@
       if (this.style === 'spotlight') {
         if (!line) {
           this.domEl.innerHTML = `
-            <div class="motion-spotlight-stage">
+            <div class="motion-spotlight-stage motion-smooth-enter">
               <div class="motion-spot-dim">${escapeHtml(this.trackMeta.artist || 'AuraSound')}</div>
               <div class="motion-spot-main is-waiting">${escapeHtml(this.trackMeta.title)}</div>
               ${nextLine ? `<div class="motion-spot-dim">${escapeHtml(nextLine.text)}</div>` : ''}
@@ -413,12 +469,12 @@
         }
         this.domEl.innerHTML = `
           <div class="motion-spotlight-stage">
-            <div class="motion-spot-dim motion-spot-prev">${prevLine ? escapeHtml(prevLine.text) : ''}</div>
-            <div class="motion-spot-main">
+            <div class="motion-spot-dim motion-spot-prev">${prevLine ? escapeHtml(prevLine.text) : '&nbsp;'}</div>
+            <div class="motion-spot-main motion-smooth-enter">
               <div class="motion-spot-words">${this.buildWordsMarkup(words, 'motion-spot-word')}</div>
               ${romajiHtml}
             </div>
-            <div class="motion-spot-dim motion-spot-next">${nextLine ? escapeHtml(nextLine.text) : ''}</div>
+            <div class="motion-spot-dim motion-spot-next">${nextLine ? escapeHtml(nextLine.text) : '&nbsp;'}</div>
           </div>
         `;
         return;
@@ -439,8 +495,8 @@
               </div>
               <div class="motion-code-body">
                 <div class="mc-row mc-muted"><span class="mc-ln">01</span><span class="mc-comment">// ${escapeHtml(this.trackMeta.title)} — ${escapeHtml(this.trackMeta.artist)}</span></div>
-                <div class="mc-row mc-active"><span class="mc-ln">02</span><span class="mc-kw">await</span> <span class="mc-fn">vocals</span>.<span class="mc-prop">enter</span>();<span class="mc-cursor"></span></div>
-                ${nextLine ? `<div class="mc-row mc-muted"><span class="mc-ln">03</span><span class="mc-comment">// next: ${escapeHtml(nextLine.text)}</span></div>` : ''}
+                <div class="mc-row mc-active motion-smooth-enter"><span class="mc-ln">02</span><span class="mc-kw">await</span> <span class="mc-fn">vocals</span>.<span class="mc-prop">enter</span>();<span class="mc-cursor"></span></div>
+                <div class="mc-row mc-muted"><span class="mc-ln">03</span><span class="mc-comment">// next: ${escapeHtml(nextLine ? nextLine.text : 'ready')}</span></div>
               </div>
             </div>
           `;
@@ -455,7 +511,7 @@
             </div>
             <div class="motion-code-body">
               <div class="mc-row mc-muted"><span class="mc-ln">${pad(lineNum - 1)}</span><span class="mc-comment">// ${escapeHtml(prevText)}</span></div>
-              <div class="mc-row mc-active">
+              <div class="mc-row mc-active motion-smooth-enter">
                 <span class="mc-ln">${pad(lineNum)}</span>
                 <span class="mc-code-expr"><span class="mc-kw">const</span> <span class="mc-var">verse_${pad(lineNum)}</span> <span class="mc-op">=</span> <span class="mc-quote">"</span><span class="mc-word-stream">${this.buildWordsMarkup(words, 'mc-word')}</span><span class="mc-cursor"></span><span class="mc-quote">"</span>;</span>
               </div>
@@ -468,7 +524,7 @@
       }
 
       if (this.style === 'messages') {
-        const startIdx = Math.max(0, (activeIdx >= 0 ? activeIdx : 0) - 3);
+        const startIdx = Math.max(0, (activeIdx >= 0 ? activeIdx : 0) - 2);
         const endIdx = activeIdx >= 0 ? activeIdx : -1;
         let threadHtml = '';
 
@@ -485,7 +541,7 @@
             : '';
 
           threadHtml += `
-            <div class="msg-row ${sideCls} ${isCurrent ? 'is-current' : 'is-past'}" data-seek-time="${item.time}">
+            <div class="msg-row ${sideCls} ${isCurrent ? 'is-current motion-smooth-enter' : 'is-past'}" data-seek-time="${item.time}">
               <div class="msg-bubble">
                 <div class="msg-text">${content}</div>
                 ${subRomaji}
@@ -496,7 +552,7 @@
 
         if (activeIdx < 0) {
           threadHtml = `
-            <div class="msg-row is-in is-current">
+            <div class="msg-row is-in is-current motion-smooth-enter">
               <div class="msg-bubble msg-typing">
                 <span></span><span></span><span></span>
               </div>
@@ -536,7 +592,7 @@
               ? `<div class="notif-romaji">${escapeHtml(entry.item.romaji)}</div>`
               : '';
             return `
-              <div class="notif-card depth-${stackIdx} ${entry.isTop ? 'is-top' : ''}" data-seek-time="${entry.item.time}">
+              <div class="notif-card depth-${stackIdx} ${entry.isTop ? 'is-top motion-smooth-enter' : ''}" data-seek-time="${entry.item.time}">
                 <div class="notif-card-top">
                   <span class="notif-app">${escapeHtml(this.trackMeta.title)}</span>
                   <span class="notif-time">${entry.isTop ? 'now' : formatTime(entry.item.time)}</span>
@@ -547,7 +603,7 @@
             `;
           }).join('')
           : `
-            <div class="notif-card depth-0 is-top">
+            <div class="notif-card depth-0 is-top motion-smooth-enter">
               <div class="notif-card-top">
                 <span class="notif-app">${escapeHtml(this.trackMeta.title)}</span>
                 <span class="notif-time">now</span>
@@ -570,7 +626,7 @@
       if (this.style === 'payments') {
         const rows = [];
         if (activeIdx >= 0) {
-          for (let i = activeIdx; i >= Math.max(0, activeIdx - 3); i--) {
+          for (let i = activeIdx; i >= Math.max(0, activeIdx - 2); i--) {
             rows.push({ idx: i, item: this.lyrics[i], isTop: i === activeIdx });
           }
         }
@@ -582,7 +638,7 @@
               : escapeHtml(entry.item.text);
             const amt = ((entry.idx + 1) * 1.25).toFixed(2);
             return `
-              <div class="pay-row pos-${pos} ${entry.isTop ? 'is-top' : ''}" data-seek-time="${entry.item.time}">
+              <div class="pay-row pos-${pos} ${entry.isTop ? 'is-top motion-smooth-enter' : ''}" data-seek-time="${entry.item.time}">
                 <div class="pay-row-main">
                   <div class="pay-row-title">${content}</div>
                   <div class="pay-row-meta">${escapeHtml(this.trackMeta.artist || 'Track')} • ${formatTime(entry.item.time)}</div>
@@ -592,7 +648,7 @@
             `;
           }).join('')
           : `
-            <div class="pay-row pos-0 is-top">
+            <div class="pay-row pos-0 is-top motion-smooth-enter">
               <div class="pay-row-main">
                 <div class="pay-row-title">${escapeHtml(this.trackMeta.title)}</div>
                 <div class="pay-row-meta">Waiting for next lyric</div>
@@ -614,72 +670,112 @@
       }
     }
 
-    renderFisheye(syncTime, activeIdx, words, wordState) {
+    renderFisheye(syncTime, activeIdx, words, wordState, dt) {
       if (!this.domEl) return;
       const line = activeIdx >= 0 ? this.lyrics[activeIdx] : null;
-      if (!line || words.length === 0) {
-        const waitSig = `fisheye_wait_${this.trackKey}`;
-        if (this._lastRenderSignature !== waitSig) {
-          this._lastRenderSignature = waitSig;
-          this._lastFisheyeWordIdx = -2;
-          this.domEl.innerHTML = `
-            <div class="motion-fisheye-stage">
-              <div class="fe-lens-ring"></div>
-              <div class="fe-word fe-center is-waiting">${escapeHtml(this.trackMeta.title)}</div>
-              <div class="fe-context">${escapeHtml(this.trackMeta.artist || '')}</div>
-            </div>
-          `;
-        }
-        return;
-      }
+      const baseSig = `fisheye_shell|${this.trackKey}`;
 
-      const wIdx = wordState.index >= 0 ? wordState.index : 0;
-      const prevW = wIdx > 0 ? words[wIdx - 1].text : '';
-      const curW = words[wIdx] ? words[wIdx].text : '';
-      const nextW = (wIdx + 1 < words.length) ? words[wIdx + 1].text : '';
-      const sig = `fisheye|${this.trackKey}|${activeIdx}|${wIdx}`;
-
-      if (sig !== this._lastRenderSignature) {
-        this._lastRenderSignature = sig;
-        this._lastFisheyeWordIdx = wIdx;
-        const romaji = (this.showRomaji && line.romaji) ? `<div class="fe-romaji">${escapeHtml(line.romaji)}</div>` : '';
+      if (this._lastRenderSignature !== baseSig || !this._fisheyeRefs) {
+        this._lastRenderSignature = baseSig;
+        this._lastFisheyeWordIdx = -2;
         this.domEl.innerHTML = `
           <div class="motion-fisheye-stage">
             <div class="fe-lens-ring"></div>
             <div class="fe-stack">
-              <div class="fe-word fe-prev">${escapeHtml(prevW)}</div>
-              <div class="fe-word fe-center">${escapeHtml(curW)}</div>
-              <div class="fe-word fe-next">${escapeHtml(nextW)}</div>
+              <div class="fe-word fe-prev"></div>
+              <div class="fe-word fe-center"></div>
+              <div class="fe-word fe-next"></div>
             </div>
-            ${romaji}
-            <div class="fe-context">${escapeHtml(line.text)}</div>
+            <div class="fe-romaji"></div>
+            <div class="fe-context"></div>
           </div>
         `;
+        this._fisheyeRefs = {
+          prev: this.domEl.querySelector('.fe-prev'),
+          center: this.domEl.querySelector('.fe-center'),
+          next: this.domEl.querySelector('.fe-next'),
+          romaji: this.domEl.querySelector('.fe-romaji'),
+          context: this.domEl.querySelector('.fe-context'),
+          ring: this.domEl.querySelector('.fe-lens-ring')
+        };
       }
 
-      const centerEl = this.domEl.querySelector('.fe-center');
-      if (centerEl) {
-        const p = wordState.index >= 0 ? wordState.progress : 0;
-        const scale = 1.0 + Math.sin(Math.min(1, p) * Math.PI) * 0.14;
-        centerEl.style.transform = `scale(${scale.toFixed(3)})`;
+      const refs = this._fisheyeRefs;
+      if (!line || words.length === 0) {
+        if (this._lastFisheyeWordIdx !== -1) {
+          this._lastFisheyeWordIdx = -1;
+          refs.prev.textContent = '';
+          refs.center.textContent = this.trackMeta.title || 'AuraSound';
+          refs.center.classList.add('is-waiting');
+          refs.next.textContent = '';
+          refs.romaji.textContent = '';
+          refs.context.textContent = this.trackMeta.artist || '';
+        }
+        return;
+      }
+
+      refs.center.classList.remove('is-waiting');
+      const wIdx = wordState.index >= 0 ? wordState.index : 0;
+      const wordKey = `${activeIdx}_${wIdx}_${this.showRomaji ? 1 : 0}`;
+
+      if (this._lastFisheyeWordKey !== wordKey) {
+        this._lastFisheyeWordKey = wordKey;
+        const prevW = wIdx > 0 ? words[wIdx - 1].text : '\u00A0';
+        const curW = words[wIdx] ? words[wIdx].text : '\u00A0';
+        const nextW = (wIdx + 1 < words.length) ? words[wIdx + 1].text : '\u00A0';
+
+        refs.prev.textContent = prevW;
+        refs.center.textContent = curW;
+        refs.next.textContent = nextW;
+        refs.romaji.textContent = (this.showRomaji && line.romaji) ? line.romaji : '';
+        refs.context.textContent = line.text || '';
+
+        // Smooth optical spring glide on word change
+        if (typeof refs.center.animate === 'function') {
+          try {
+            refs.center.animate(
+              [
+                { transform: 'translate3d(0, 14px, 0) scale(0.86)', opacity: 0.35 },
+                { transform: 'translate3d(0, 0, 0) scale(1.04)', opacity: 1 }
+              ],
+              { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
+            );
+            refs.prev.animate(
+              [
+                { transform: 'translate3d(0, 10px, 0) scale(1.05)', opacity: 0.55 },
+                { transform: 'translate3d(0, 0, 0) scale(1)', opacity: 0.28 }
+              ],
+              { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
+            );
+          } catch (e) {}
+        }
+      }
+
+      const p = wordState.index >= 0 ? easeInOutSine(wordState.progress) : 0;
+      const ringScale = 1.0 + Math.sin(p * Math.PI) * 0.06;
+      if (refs.ring) {
+        refs.ring.style.transform = `scale3d(${ringScale.toFixed(3)}, ${ringScale.toFixed(3)}, 1)`;
       }
     }
 
-    updateDomWordProgress(syncTime, activeIdx, words, wordState) {
+    updateDomWordProgress(syncTime, activeIdx, words, wordState, dt) {
       if (!this.domEl) return;
 
-      // Lightweight 3D drift for Kinetic mode (desktop/capable GPUs, throttled & no CSS transition fighting)
+      // Smooth damped 3D drift for Kinetic mode on desktop
       if (this.style === 'kinetic' && this._cachedKineticWall && window.innerWidth > 768) {
-        const rx = Math.sin(syncTime * 0.7) * 4.5;
-        const ry = Math.cos(syncTime * 0.55) * 7;
-        this._cachedKineticWall.style.transform = `perspective(950px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
+        const targetRx = Math.sin(syncTime * 0.65) * 4.2;
+        const targetRy = Math.cos(syncTime * 0.5) * 6.5;
+        const lerpRate = Math.min(1, (dt || 0.016) * 8);
+        this._wallRx += (targetRx - this._wallRx) * lerpRate;
+        this._wallRy += (targetRy - this._wallRy) * lerpRate;
+        this._cachedKineticWall.style.transform = `perspective(950px) rotateX(${this._wallRx.toFixed(2)}deg) rotateY(${this._wallRy.toFixed(2)}deg)`;
       }
 
       const wordEls = this._cachedWordEls;
       if (!wordEls || wordEls.length === 0) return;
 
       const wIdx = wordState.index;
-      const pct = Math.round(wordState.progress * 100);
+      const pctFloat = (wordState.progress * 100).toFixed(1);
 
       if (wIdx !== this._lastDomWordIdx) {
         this._lastDomWordIdx = wIdx;
@@ -695,16 +791,14 @@
           } else if (i === wIdx) {
             el.classList.add('is-active');
             el.classList.remove('is-passed');
-            el.style.setProperty('--wp', `${pct}%`);
+            el.style.setProperty('--wp', `${pctFloat}%`);
           } else {
             el.classList.remove('is-active', 'is-passed');
             el.style.setProperty('--wp', '0%');
           }
         }
-        this._lastDomWordPct = pct;
-      } else if (wIdx >= 0 && wIdx < wordEls.length && pct !== this._lastDomWordPct) {
-        this._lastDomWordPct = pct;
-        wordEls[wIdx].style.setProperty('--wp', `${pct}%`);
+      } else if (wIdx >= 0 && wIdx < wordEls.length) {
+        wordEls[wIdx].style.setProperty('--wp', `${pctFloat}%`);
       }
     }
 
@@ -721,7 +815,7 @@
     // =========================================================================
     // CANVAS RENDERERS (Constellation, Branches, Web, Map)
     // =========================================================================
-    renderCanvasScene(syncTime, activeIdx, words, wordState) {
+    renderCanvasScene(syncTime, activeIdx, words, wordState, dt) {
       if (!this.canvasEl) return;
       if (this._canvasW < 20 || this._canvasH < 20) {
         this.resizeCanvas();
@@ -734,13 +828,13 @@
       ctx.clearRect(0, 0, this._canvasW, this._canvasH);
 
       if (this.style === 'constellation') {
-        this.drawConstellation(ctx, syncTime, activeIdx, words, wordState);
+        this.drawConstellation(ctx, syncTime, activeIdx, words, wordState, dt);
       } else if (this.style === 'branches') {
-        this.drawBranches(ctx, syncTime, activeIdx, words, wordState);
+        this.drawBranches(ctx, syncTime, activeIdx, words, wordState, dt);
       } else if (this.style === 'web') {
-        this.drawWeb(ctx, syncTime, activeIdx, words, wordState);
+        this.drawWeb(ctx, syncTime, activeIdx, words, wordState, dt);
       } else if (this.style === 'map') {
-        this.drawCityMap(ctx, syncTime, activeIdx, words, wordState);
+        this.drawCityMap(ctx, syncTime, activeIdx, words, wordState, dt);
       }
 
       ctx.restore();
@@ -751,9 +845,8 @@
       const h = this._canvasH;
       const rgb = this.palette.rgb;
 
-      // Ambient background stars
       for (const s of this._bgStars) {
-        const alpha = 0.14 + 0.28 * (0.5 + 0.5 * Math.sin(syncTime * s.speed + s.phase));
+        const alpha = 0.14 + 0.26 * (0.5 + 0.5 * Math.sin(syncTime * s.speed + s.phase));
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2);
@@ -784,52 +877,46 @@
       });
 
       const activeW = wordState.index;
+      const smoothProg = easeInOutSine(wordState.progress);
 
-      // Constellation connecting lines
       ctx.lineWidth = 1.6;
       for (let i = 0; i < nodes.length - 1; i++) {
         const a = nodes[i];
         const b = nodes[i + 1];
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+
         if (i < activeW) {
-          ctx.strokeStyle = `rgba(${rgb}, 0.72)`;
+          ctx.strokeStyle = `rgba(${rgb}, 0.75)`;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);
           ctx.stroke();
         } else if (i === activeW) {
-          const prog = Math.min(1, Math.max(0.05, wordState.progress));
-          ctx.strokeStyle = `rgba(255, 255, 255, 0.12)`;
+          const px = a.x + (b.x - a.x) * smoothProg;
+          const py = a.y + (b.y - a.y) * smoothProg;
+          ctx.strokeStyle = `rgba(${rgb}, 0.92)`;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
-
-          ctx.strokeStyle = `rgba(${rgb}, 0.9)`;
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(a.x + (b.x - a.x) * prog, a.y + (b.y - a.y) * prog);
-          ctx.stroke();
-        } else {
-          ctx.strokeStyle = `rgba(255, 255, 255, 0.08)`;
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
+          ctx.lineTo(px, py);
           ctx.stroke();
         }
       }
 
-      // Star nodes & labels
-      const fontSize = Math.max(12, Math.min(22, Math.round(w / 28)));
+      const fontSize = Math.max(12, Math.min(20, Math.round(w / 29)));
+      ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
       ctx.textAlign = 'center';
 
       nodes.forEach((n, i) => {
-        const isPast = activeW >= 0 && i < activeW;
-        const isCur = i === activeW;
-        const r = isCur ? 5.5 + Math.sin(wordState.progress * Math.PI) * 2.5 : (isPast ? 4 : 2.6);
+        const glow = this._wordGlows[i] || 0;
+        const r = 2.6 + glow * 3.8;
 
-        if (isCur || isPast) {
+        if (glow > 0.05) {
           const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 4.5);
-          grad.addColorStop(0, `rgba(${rgb}, ${isCur ? 0.65 : 0.3})`);
+          grad.addColorStop(0, `rgba(${rgb}, ${(glow * 0.65).toFixed(3)})`);
           grad.addColorStop(1, `rgba(${rgb}, 0)`);
           ctx.fillStyle = grad;
           ctx.beginPath();
@@ -837,16 +924,20 @@
           ctx.fill();
         }
 
-        ctx.fillStyle = isCur ? '#ffffff' : (isPast ? this.palette.primary : 'rgba(255, 255, 255, 0.25)');
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.25 + glow * 0.75).toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
         ctx.fill();
 
         const labelOffset = (i % 2 === 0) ? -16 : 24;
         const labelY = Math.max(20, Math.min(h - 14, n.y + labelOffset));
-        ctx.font = `${isCur ? '800' : '600'} ${isCur ? fontSize + 2 : fontSize}px Inter, system-ui, sans-serif`;
-        ctx.fillStyle = isCur ? '#ffffff' : (isPast ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.28)');
-        ctx.fillText(n.text, n.x, labelY);
+        const scale = 1 + glow * 0.08;
+        ctx.save();
+        ctx.translate(n.x, labelY);
+        ctx.scale(scale, scale);
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.28 + glow * 0.72).toFixed(3)})`;
+        ctx.fillText(n.text, 0, 0);
+        ctx.restore();
       });
 
       this.drawCanvasRomaji(ctx, w, h, activeIdx);
@@ -866,10 +957,7 @@
       const endX = w - startX;
       const midY = h * 0.52;
       const count = words.length;
-      const activeW = wordState.index;
-      const lineProgress = activeW < 0 ? 0 : Math.min(1, (activeW + wordState.progress) / Math.max(1, count));
 
-      // Base faint stem
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -877,16 +965,16 @@
       ctx.lineTo(endX, midY);
       ctx.stroke();
 
-      // Active growing stem
       ctx.strokeStyle = this.palette.primary;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(startX, midY);
-      ctx.lineTo(startX + (endX - startX) * lineProgress, midY);
+      ctx.lineTo(startX + (endX - startX) * this._smoothLineProg, midY);
       ctx.stroke();
 
       const fontSize = Math.max(12, Math.min(20, Math.round(w / 30)));
       const branchLen = Math.min(92, h * 0.24);
+      ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
       ctx.textAlign = 'center';
 
       words.forEach((word, i) => {
@@ -894,38 +982,39 @@
         const bx = startX + t * (endX - startX);
         const dir = (i % 2 === 0) ? -1 : 1;
         const tipY = midY + dir * branchLen;
-        const isPast = activeW >= 0 && i < activeW;
-        const isCur = i === activeW;
-        const grow = isPast ? 1 : (isCur ? Math.min(1, 0.25 + wordState.progress * 0.75) : 0);
+        const glow = this._wordGlows[i] || 0;
+        const grow = this._wordBranchGrow[i] || 0;
 
-        // Stem node
-        ctx.fillStyle = (isCur || isPast) ? this.palette.primary : 'rgba(255,255,255,0.2)';
+        ctx.fillStyle = `rgba(${rgb}, ${(0.22 + glow * 0.78).toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(bx, midY, isCur ? 4.5 : 3, 0, Math.PI * 2);
+        ctx.arc(bx, midY, 3 + glow * 1.8, 0, Math.PI * 2);
         ctx.fill();
 
-        // Bezier branch
-        const curTipY = midY + (tipY - midY) * (isPast || isCur ? grow : 1);
-        ctx.strokeStyle = isCur ? '#ffffff' : (isPast ? `rgba(${rgb}, 0.75)` : 'rgba(255, 255, 255, 0.08)');
-        ctx.lineWidth = isCur ? 2 : 1.3;
+        const curTipY = midY + (tipY - midY) * Math.max(0.15, grow);
+        ctx.strokeStyle = glow > 0.1
+          ? `rgba(${rgb}, ${(0.25 + glow * 0.75).toFixed(3)})`
+          : 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1.2 + glow * 1.1;
         ctx.beginPath();
         ctx.moveTo(bx, midY);
-        ctx.quadraticCurveTo(bx + 12, (midY + curTipY) / 2, bx, curTipY);
+        ctx.quadraticCurveTo(bx + 12 * Math.max(0.2, grow), (midY + curTipY) / 2, bx, curTipY);
         ctx.stroke();
 
-        // Tip dot
-        if (isCur || isPast) {
-          ctx.fillStyle = isCur ? '#ffffff' : this.palette.secondary;
+        if (glow > 0.05) {
+          ctx.fillStyle = `rgba(255, 255, 255, ${glow.toFixed(3)})`;
           ctx.beginPath();
-          ctx.arc(bx, curTipY, isCur ? 5 : 3.5, 0, Math.PI * 2);
+          ctx.arc(bx, curTipY, 2.5 + glow * 2.5, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        // Word label
-        const textY = tipY + dir * 18;
-        ctx.font = `${isCur ? '800' : '600'} ${isCur ? fontSize + 2 : fontSize}px Inter, system-ui, sans-serif`;
-        ctx.fillStyle = isCur ? '#ffffff' : (isPast ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.24)');
-        ctx.fillText(word.text, bx, Math.max(20, Math.min(h - 14, textY)));
+        const textY = Math.max(20, Math.min(h - 14, tipY + dir * 18));
+        const scale = 1 + glow * 0.08;
+        ctx.save();
+        ctx.translate(bx, textY);
+        ctx.scale(scale, scale);
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.25 + glow * 0.75).toFixed(3)})`;
+        ctx.fillText(word.text, 0, 0);
+        ctx.restore();
       });
 
       this.drawCanvasRomaji(ctx, w, h, activeIdx);
@@ -945,16 +1034,14 @@
       }
 
       const count = Math.max(3, words.length);
-      const activeW = wordState.index;
 
-      // Concentric web rings
       for (let rIdx = 1; rIdx <= 3; rIdx++) {
         const ringR = (maxR * rIdx) / 3;
         ctx.strokeStyle = `rgba(255, 255, 255, ${rIdx === 3 ? 0.1 : 0.06})`;
         ctx.lineWidth = 1;
         ctx.beginPath();
         for (let i = 0; i <= count; i++) {
-          const ang = (i / count) * Math.PI * 2 - Math.PI / 2 + syncTime * 0.06;
+          const ang = (i / count) * Math.PI * 2 - Math.PI / 2 + syncTime * 0.05;
           const px = cx + Math.cos(ang) * ringR;
           const py = cy + Math.sin(ang) * ringR;
           if (i === 0) ctx.moveTo(px, py);
@@ -964,57 +1051,60 @@
       }
 
       const fontSize = Math.max(12, Math.min(20, Math.round(w / 28)));
+      ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
       words.forEach((word, i) => {
-        const ang = (i / words.length) * Math.PI * 2 - Math.PI / 2 + syncTime * 0.06;
+        const ang = (i / words.length) * Math.PI * 2 - Math.PI / 2 + syncTime * 0.05;
         const px = cx + Math.cos(ang) * maxR;
         const py = cy + Math.sin(ang) * maxR;
-        const isPast = activeW >= 0 && i < activeW;
-        const isCur = i === activeW;
+        const glow = this._wordGlows[i] || 0;
 
-        ctx.strokeStyle = isCur
-          ? this.palette.primary
-          : (isPast ? `rgba(${rgb}, 0.55)` : 'rgba(255, 255, 255, 0.08)');
-        ctx.lineWidth = isCur ? 2.2 : 1;
+        ctx.strokeStyle = glow > 0.08
+          ? `rgba(${rgb}, ${(0.2 + glow * 0.8).toFixed(3)})`
+          : 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1 + glow * 1.4;
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.lineTo(px, py);
         ctx.stroke();
 
-        ctx.fillStyle = isCur ? '#ffffff' : (isPast ? this.palette.primary : 'rgba(255,255,255,0.22)');
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.22 + glow * 0.78).toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(px, py, isCur ? 5 : 3, 0, Math.PI * 2);
+        ctx.arc(px, py, 2.8 + glow * 2.6, 0, Math.PI * 2);
         ctx.fill();
 
         const labelR = maxR + 24;
-        const lx = cx + Math.cos(ang) * labelR;
-        const ly = cy + Math.sin(ang) * labelR;
-        ctx.font = `${isCur ? '800' : '600'} ${isCur ? fontSize + 2 : fontSize}px Inter, system-ui, sans-serif`;
-        ctx.fillStyle = isCur ? '#ffffff' : (isPast ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.26)');
-        ctx.fillText(word.text, Math.max(36, Math.min(w - 36, lx)), Math.max(18, Math.min(h - 18, ly)));
+        const lx = Math.max(36, Math.min(w - 36, cx + Math.cos(ang) * labelR));
+        const ly = Math.max(18, Math.min(h - 18, cy + Math.sin(ang) * labelR));
+        const scale = 1 + glow * 0.08;
+        ctx.save();
+        ctx.translate(lx, ly);
+        ctx.scale(scale, scale);
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.26 + glow * 0.74).toFixed(3)})`;
+        ctx.fillText(word.text, 0, 0);
+        ctx.restore();
       });
 
-      // Center core glow
       ctx.fillStyle = `rgba(${rgb}, 0.35)`;
       ctx.beginPath();
       ctx.arc(cx, cy, 6, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    drawCityMap(ctx, syncTime, activeIdx, words, wordState) {
+    drawCityMap(ctx, syncTime, activeIdx, words, wordState, dt) {
       const w = this._canvasW;
       const h = this._canvasH;
       const rgb = this.palette.rgb;
 
       const idx = Math.max(0, activeIdx);
-      const targetCamX = idx * 88;
+      const targetCamX = (idx + this._smoothLineProg * 0.35) * 88;
       const targetCamY = Math.sin(idx * 0.7) * 44;
-      this._camX += (targetCamX - this._camX) * 0.08;
-      this._camY += (targetCamY - this._camY) * 0.08;
+      const camLerp = Math.min(1, (dt || 0.016) * 6);
+      this._camX += (targetCamX - this._camX) * camLerp;
+      this._camY += (targetCamY - this._camY) * camLerp;
 
-      // Dark vector street grid
       const gridSize = 48;
       const offX = -(this._camX % gridSize);
       const offY = -(this._camY % gridSize);
@@ -1034,7 +1124,6 @@
         ctx.stroke();
       }
 
-      // Major avenues
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
       ctx.lineWidth = 2.5;
       const majSize = gridSize * 3;
@@ -1058,7 +1147,6 @@
         return;
       }
 
-      // Route path across pins around center
       const cx = w / 2;
       const cy = h * 0.44;
       const pins = [];
@@ -1087,7 +1175,7 @@
       pins.forEach(p => {
         const isCur = p.i === activeIdx;
         if (isCur) {
-          const pulse = 14 + Math.sin(syncTime * 4) * 4;
+          const pulse = 14 + Math.sin(syncTime * 3.6) * 3.5;
           ctx.fillStyle = `rgba(${rgb}, 0.25)`;
           ctx.beginPath();
           ctx.arc(p.x, p.y, pulse, 0, Math.PI * 2);
@@ -1099,20 +1187,18 @@
         ctx.fill();
       });
 
-      // Floating minimal HUD card at bottom of map canvas
       const cardW = Math.min(w - 32, 540);
       const cardH = 88;
       const cardX = (w - cardW) / 2;
       const cardY = h - cardH - 18;
 
-      ctx.fillStyle = 'rgba(10, 15, 28, 0.86)';
+      ctx.fillStyle = 'rgba(10, 15, 28, 0.88)';
       ctx.strokeStyle = `rgba(${rgb}, 0.35)`;
       ctx.lineWidth = 1;
       this.roundRect(ctx, cardX, cardY, cardW, cardH, 16);
       ctx.fill();
       ctx.stroke();
 
-      // Render active line words centered inside HUD card
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       const fontSize = Math.max(14, Math.min(20, Math.round(w / 28)));
@@ -1124,23 +1210,21 @@
         ? cardX + (cardW - lineWidth) / 2
         : cardX + 18;
       let cursorX = startTextX;
-      const textY = cardY + cardH * 0.48;
-      const activeW = wordState.index;
+      const textY = cardY + cardH * 0.56;
 
       for (let i = 0; i < words.length; i++) {
         const tok = words[i].text + (words[i].trailingSpace ? ' ' : '');
         const tw = ctx.measureText(tok).width;
         if (cursorX + tw > cardX + cardW - 14) break;
-        const isPast = activeW >= 0 && i < activeW;
-        const isCur = i === activeW;
-        ctx.fillStyle = isCur ? this.palette.primary : (isPast ? '#ffffff' : 'rgba(255, 255, 255, 0.34)');
+        const glow = this._wordGlows[i] || 0;
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.3 + glow * 0.7).toFixed(3)})`;
         ctx.fillText(tok, cursorX, textY);
         cursorX += tw;
       }
 
       ctx.font = '600 11px Inter, system-ui, sans-serif';
       ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
-      ctx.fillText(`${formatTime(syncTime)}  •  Stop ${activeIdx + 1} of ${this.lyrics.length}`, cardX + 18, cardY + 20);
+      ctx.fillText(`${formatTime(syncTime)}  •  Stop ${activeIdx + 1} of ${this.lyrics.length}`, cardX + 18, cardY + 22);
     }
 
     drawCanvasWaitLabel(ctx, w, h, title, artist) {
@@ -1181,4 +1265,3 @@
   MotionLyricsEngine.STYLES = MOTION_STYLES;
   global.MotionLyricsEngine = MotionLyricsEngine;
 })(window);
-

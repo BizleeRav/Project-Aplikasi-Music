@@ -2853,9 +2853,15 @@ class App {
     document.querySelectorAll('.motion-style-pill').forEach(pill => {
       const isAct = pill.getAttribute('data-motion-style') === activeStyle;
       pill.classList.toggle('active', isAct);
-      if (isAct && motionOn && pillsWrap) {
-        const targetLeft = Math.max(0, pill.offsetLeft - (pillsWrap.clientWidth - pill.offsetWidth) / 2);
-        pillsWrap.scrollLeft = targetLeft;
+      if (isAct && motionOn && pillsWrap && window.innerWidth <= 768) {
+        const pLeft = pill.offsetLeft;
+        const pRight = pLeft + pill.offsetWidth;
+        const vLeft = pillsWrap.scrollLeft;
+        const vRight = vLeft + pillsWrap.clientWidth;
+        if (pLeft < vLeft + 8 || pRight > vRight - 8) {
+          const targetLeft = Math.max(0, pLeft - (pillsWrap.clientWidth - pill.offsetWidth) / 2);
+          pillsWrap.scrollTo({ left: targetLeft, behavior: 'smooth' });
+        }
       }
     });
   }

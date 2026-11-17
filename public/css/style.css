@@ -12132,7 +12132,7 @@ body.music-playing .cinema-turntable-arm {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   padding: 2px 0 8px;
   margin-bottom: 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -12144,15 +12144,12 @@ body.music-playing .cinema-turntable-arm {
 .cinema-motion-pills {
   display: flex;
   align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  -webkit-overflow-scrolling: touch;
+  flex-wrap: wrap;
+  gap: 5px;
+  overflow: visible;
   flex: 1 1 auto;
   min-width: 0;
-  padding: 2px 2px;
+  padding: 2px 0;
 }
 
 .cinema-motion-pills::-webkit-scrollbar {
@@ -12164,13 +12161,15 @@ body.music-playing .cinema-turntable-arm {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #94a3b8;
-  font-size: 0.7rem;
+  font-size: 0.67rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: 9999px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              color 0.22s cubic-bezier(0.22, 1, 0.36, 1);
   white-space: nowrap;
 }
 
@@ -12278,11 +12277,30 @@ body.music-playing .cinema-turntable-arm {
   overflow: hidden;
 }
 
-/* Shared Motion Word Styling */
+/* Shared Motion Word Styling & Smooth Spring Animations */
+@keyframes motionSmoothEnter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.motion-smooth-enter {
+  animation: motionSmoothEnter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .motion-word {
   display: inline-block;
   color: rgba(255, 255, 255, 0.28);
-  transition: color 0.14s ease, opacity 0.14s ease;
+  transition: color 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+              text-shadow 0.3s ease;
+  will-change: transform, opacity;
 }
 
 .motion-word.has-space {
@@ -12290,11 +12308,19 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .motion-word.is-passed {
-  color: rgba(255, 255, 255, 0.94);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .motion-word.is-active {
-  color: #ffffff;
+  background: linear-gradient(
+    90deg,
+    #ffffff 0%,
+    #ffffff calc(var(--wp, 0%) - 14%),
+    rgba(255, 255, 255, 0.32) calc(var(--wp, 0%) + 14%),
+    rgba(255, 255, 255, 0.32) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   text-shadow: 0 0 18px var(--motion-glow);
 }
 
@@ -12347,20 +12373,20 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .motion-kinetic-word {
-  opacity: 0.2;
-  transform: translateY(10px) scale(0.94);
+  opacity: 0.22;
+  transform: translate3d(0, 10px, 0) scale(0.93);
 }
 
 .motion-kinetic-word.is-passed {
-  opacity: 0.92;
-  transform: translateY(0) scale(1);
+  opacity: 0.94;
+  transform: translate3d(0, 0, 0) scale(1);
 }
 
 .motion-kinetic-word.is-active {
   opacity: 1;
-  transform: translateY(-2px) scale(1.06);
+  transform: translate3d(0, -3px, 0) scale(1.05);
   color: #ffffff;
-  text-shadow: 0 0 26px var(--motion-glow);
+  text-shadow: 0 0 24px var(--motion-glow);
 }
 
 .motion-wait-stage {
@@ -12591,7 +12617,7 @@ body.music-playing .cinema-turntable-arm {
 .mc-quote { color: #fde68a; }
 
 .mc-word {
-  color: rgba(253, 230, 138, 0.22);
+  color: rgba(253, 230, 138, 0.24);
 }
 
 .mc-word.is-passed {
@@ -12599,7 +12625,15 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .mc-word.is-active {
-  color: #ffffff;
+  background: linear-gradient(
+    90deg,
+    #ffffff 0%,
+    #fde68a calc(var(--wp, 0%) - 14%),
+    rgba(253, 230, 138, 0.26) calc(var(--wp, 0%) + 14%),
+    rgba(253, 230, 138, 0.26) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   text-shadow: 0 0 12px var(--motion-glow);
 }
 
@@ -12617,15 +12651,16 @@ body.music-playing .cinema-turntable-arm {
   to { visibility: hidden; }
 }
 
-/* 5. MESSAGES (Native Thread UI) */
+/* 5. MESSAGES (Native Thread UI - Centered & Stable) */
 .motion-messages-wrap {
   width: 100%;
   max-width: 560px;
-  height: 100%;
+  max-height: 360px;
+  margin: auto;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  background: rgba(12, 16, 28, 0.72);
+  justify-content: space-between;
+  background: rgba(12, 16, 28, 0.76);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
   overflow: hidden;
@@ -12941,6 +12976,15 @@ body.music-playing .cinema-turntable-arm {
   .cinema-motion-bar {
     padding: 2px 0 6px !important;
     margin-bottom: 2px !important;
+  }
+
+  .cinema-motion-pills {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 6px !important;
   }
 
   .motion-style-pill {
