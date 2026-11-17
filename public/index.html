@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/icons/icon.png">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.75.0">
+  <link rel="stylesheet" href="/css/style.css?v=4.76.0">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
   <style>
     /* 100% Standalone Cross-Engine Clear Button Elimination (NEVER comma-separated to prevent syntax dropping) */
@@ -1594,6 +1594,11 @@
               <span>Sing-Along & Dynamic Lyrics</span>
             </div>
             <div class="cinema-lyrics-header-right">
+              <!-- Motion Lyrics Mode Toggle (Clean Text Pill) -->
+              <button id="btn-toggle-cinema-motion" class="cinema-motion-chip" type="button" title="Beralih ke Mode Lirik Motion">
+                <span class="motion-chip-label">Motion</span>
+              </button>
+
               <!-- Single Romaji Toggle Chip (Better Lyrics Style) -->
               <button id="btn-toggle-romaji" class="cinema-romaji-chip active" style="display: none;" title="Tampilkan / Sembunyikan Fonetik Romaji/Pinyin">
                 <span class="romaji-chip-icon">文A</span>
@@ -1603,6 +1608,25 @@
               <span id="cinema-lyrics-badge" class="cinema-lyrics-badge" style="display: none;">KARAOKE SYNC</span>
             </div>
           </div>
+
+          <!-- Motion Lyrics Style Picker Bar (Visible only when Motion Mode is ON) -->
+          <div id="cinema-motion-bar" class="cinema-motion-bar" style="display: none;" role="tablist" aria-label="Pilih Mode Animasi Lirik">
+            <div class="cinema-motion-pills" id="cinema-motion-pills">
+              <button type="button" class="motion-style-pill active" data-motion-style="kinetic">Kinetic</button>
+              <button type="button" class="motion-style-pill" data-motion-style="fisheye">Fisheye</button>
+              <button type="button" class="motion-style-pill" data-motion-style="spotlight">Spotlight</button>
+              <button type="button" class="motion-style-pill" data-motion-style="codestyle">Codestyle</button>
+              <button type="button" class="motion-style-pill" data-motion-style="constellation">Constellation</button>
+              <button type="button" class="motion-style-pill" data-motion-style="branches">Branches</button>
+              <button type="button" class="motion-style-pill" data-motion-style="web">Web</button>
+              <button type="button" class="motion-style-pill" data-motion-style="messages">Messages</button>
+              <button type="button" class="motion-style-pill" data-motion-style="notifications">Notifications</button>
+              <button type="button" class="motion-style-pill" data-motion-style="payments">Payments</button>
+              <button type="button" class="motion-style-pill" data-motion-style="map">Map</button>
+            </div>
+            <button type="button" id="btn-motion-stage-expand" class="motion-stage-expand-btn" title="Mode Layar Penuh">Full</button>
+          </div>
+
           <div class="cinema-lyrics-stream" id="cinema-lyrics-stream">
             <div id="cinema-lyrics-loading" class="cinema-lyrics-status" style="display: none;">
               <div class="cinema-lyrics-pulse-wave">
@@ -1624,6 +1648,13 @@
             </div>
             <div id="cinema-lyrics-fallback" class="cinema-lyrics-fallback" style="display: none; width: 100%;"></div>
           </div>
+
+          <!-- Motion Lyrics Stage (Canvas + Kinetic DOM Layers) -->
+          <div id="cinema-motion-stage" class="cinema-motion-stage" style="display: none;">
+            <canvas id="cinema-motion-canvas" class="cinema-motion-canvas"></canvas>
+            <div id="cinema-motion-dom" class="cinema-motion-dom"></div>
+          </div>
+
           <div class="cinema-lyrics-hint-bar">
             <!-- Lead-in countdown dots -->
             <div id="cinema-lead-in-dots" class="cinema-lead-in-dots" style="display: none;" title="Hitung mundur vokal masuk">
@@ -1788,6 +1819,7 @@
   <script src="/js/yt-player.js?v=4.73.0"></script>
   <script src="/js/taste-engine.js?v=4.73.0"></script>
   <script src="/js/suno-studio.js?v=4.69.0"></script>
-  <script src="/js/app.js?v=4.75.0"></script>
+  <script src="/js/motion-lyrics.js?v=1.0.0"></script>
+  <script src="/js/app.js?v=4.76.0"></script>
 </body>
 </html>

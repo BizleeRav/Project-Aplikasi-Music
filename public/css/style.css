@@ -12090,3 +12090,910 @@ body.music-playing .cinema-turntable-arm {
 
 
 
+
+/* ==========================================================================
+   STUDIO CINEMA MOTION LYRICS MODE (VERCI-STYLE KINETIC & NATIVE SCENES)
+   Clean, minimal, zero-icon pill controls & responsive multi-device layout
+   ========================================================================== */
+
+.cinema-motion-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #cbd5e1;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 3px 11px;
+  border-radius: 9999px;
+  cursor: pointer;
+  margin-right: 8px;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.cinema-motion-chip:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.cinema-motion-chip.active {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: #ffffff;
+  color: #090d16;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.25);
+}
+
+/* Motion Style Picker Bar (Visible only when Motion is active) */
+.cinema-motion-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 3;
+}
+
+.cinema-motion-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 2px;
+}
+
+.cinema-motion-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.motion-style-pill {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.motion-style-pill:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+}
+
+.motion-style-pill.active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.motion-stage-expand-btn {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.motion-stage-expand-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.motion-stage-expand-btn.active {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: #ffffff;
+  color: #090d16;
+}
+
+/* Desktop & General Motion Layout States */
+.studio-cinema-overlay.cinema-motion-active .cinema-canvas-wrap {
+  display: none !important;
+}
+
+.studio-cinema-overlay.cinema-motion-active .cinema-lyrics-hint-bar {
+  display: none !important;
+}
+
+.studio-cinema-overlay.cinema-motion-active.cinema-motion-full .cinema-stage {
+  grid-template-columns: 1fr;
+  max-width: 1120px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.studio-cinema-overlay.cinema-motion-active.cinema-motion-full .cinema-turntable-deck {
+  display: none !important;
+}
+
+/* Motion Stage Container */
+.cinema-motion-stage {
+  position: relative;
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 14px;
+  z-index: 2;
+  --motion-primary: #38bdf8;
+  --motion-secondary: #818cf8;
+  --motion-glow: rgba(56, 189, 248, 0.45);
+  --motion-rgb: 56, 189, 248;
+}
+
+.cinema-motion-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.cinema-motion-dom {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Shared Motion Word Styling */
+.motion-word {
+  display: inline-block;
+  color: rgba(255, 255, 255, 0.28);
+  transition: color 0.16s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, text-shadow 0.2s ease;
+}
+
+.motion-word.has-space {
+  margin-right: 0.26em;
+}
+
+.motion-word.is-passed {
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.motion-word.is-active {
+  color: #ffffff;
+  text-shadow: 0 0 18px var(--motion-glow);
+}
+
+.motion-romaji-sub {
+  margin-top: 12px;
+  font-size: clamp(0.85rem, 1.5vw, 1.05rem);
+  font-weight: 500;
+  color: rgba(203, 213, 225, 0.78);
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.motion-empty-state {
+  text-align: center;
+  padding: 24px;
+}
+
+.motion-empty-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.motion-empty-sub {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+/* 1. KINETIC (Ship 3D Drift Wall) */
+.motion-kinetic-stage {
+  width: 100%;
+  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.motion-kinetic-wall {
+  transition: transform 0.12s linear;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.motion-kinetic-line {
+  font-size: clamp(1.6rem, 3.6vw, 2.75rem);
+  font-weight: 900;
+  line-height: 1.28;
+  letter-spacing: -0.02em;
+}
+
+.motion-kinetic-word {
+  opacity: 0.2;
+  transform: translateY(10px) scale(0.94);
+}
+
+.motion-kinetic-word.is-passed {
+  opacity: 0.92;
+  transform: translateY(0) scale(1);
+}
+
+.motion-kinetic-word.is-active {
+  opacity: 1;
+  transform: translateY(-2px) scale(1.06);
+  color: #ffffff;
+  text-shadow: 0 0 26px var(--motion-glow);
+}
+
+.motion-wait-stage {
+  gap: 14px;
+}
+
+.motion-wait-label {
+  font-size: clamp(1.3rem, 2.8vw, 2rem);
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.motion-wait-pulse {
+  display: flex;
+  gap: 8px;
+}
+
+.motion-wait-pulse span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--motion-primary);
+  opacity: 0.35;
+  animation: motionWaitDot 1.2s infinite ease-in-out;
+}
+
+.motion-wait-pulse span:nth-child(2) { animation-delay: 0.2s; }
+.motion-wait-pulse span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes motionWaitDot {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
+.motion-wait-next {
+  font-size: 0.92rem;
+  color: rgba(148, 163, 184, 0.72);
+  max-width: 85%;
+}
+
+/* 2. FISHEYE (3-Word Lens Stack) */
+.motion-fisheye-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.fe-lens-ring {
+  position: absolute;
+  width: clamp(180px, 34vmin, 290px);
+  height: clamp(180px, 34vmin, 290px);
+  border-radius: 50%;
+  border: 1px solid rgba(var(--motion-rgb), 0.28);
+  background: radial-gradient(circle, rgba(var(--motion-rgb), 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.fe-stack {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.fe-word {
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fe-prev,
+.fe-next {
+  font-size: clamp(1.1rem, 2.2vw, 1.55rem);
+  color: rgba(255, 255, 255, 0.26);
+  filter: blur(0.6px);
+  min-height: 1.2em;
+}
+
+.fe-center {
+  font-size: clamp(2.1rem, 5.2vw, 3.8rem);
+  color: #ffffff;
+  text-shadow: 0 0 28px var(--motion-glow);
+}
+
+.fe-center.is-waiting {
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+}
+
+.fe-romaji {
+  position: relative;
+  z-index: 2;
+  margin-top: 14px;
+  font-size: 0.85rem;
+  color: var(--motion-primary);
+}
+
+.fe-context {
+  position: relative;
+  z-index: 2;
+  margin-top: 18px;
+  max-width: 85%;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: rgba(148, 163, 184, 0.72);
+}
+
+/* 3. SPOTLIGHT (Centered Editorial Stack) */
+.motion-spotlight-stage {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.motion-spot-dim {
+  font-size: clamp(0.95rem, 1.7vw, 1.2rem);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.24);
+  max-width: 90%;
+  min-height: 1.3em;
+}
+
+.motion-spot-main {
+  padding: 18px 24px;
+  border-radius: 20px;
+  background: radial-gradient(circle at center, rgba(var(--motion-rgb), 0.14), transparent 72%);
+}
+
+.motion-spot-words {
+  font-size: clamp(1.5rem, 3.2vw, 2.45rem);
+  font-weight: 800;
+  line-height: 1.32;
+}
+
+.motion-spot-word.is-active {
+  background: linear-gradient(90deg, #ffffff 0%, #ffffff var(--wp, 0%), rgba(255, 255, 255, 0.35) var(--wp, 0%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  transform: scale(1.03);
+}
+
+/* 4. CODESTYLE (IDE Syntax View) */
+.motion-code-window {
+  width: 100%;
+  max-width: 680px;
+  background: rgba(9, 13, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.motion-code-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.mc-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.mc-dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: block;
+}
+
+.mc-dots i:nth-child(1) { background: #ef4444; }
+.mc-dots i:nth-child(2) { background: #f59e0b; }
+.mc-dots i:nth-child(3) { background: #10b981; }
+
+.mc-filename {
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.motion-code-body {
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: clamp(0.84rem, 1.5vw, 1.05rem);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.mc-ln {
+  flex: 0 0 26px;
+  text-align: right;
+  color: rgba(100, 116, 139, 0.6);
+  user-select: none;
+  font-size: 0.78em;
+}
+
+.mc-comment { color: rgba(148, 163, 184, 0.55); }
+.mc-kw { color: #c084fc; font-weight: 700; }
+.mc-var { color: #38bdf8; }
+.mc-fn { color: #60a5fa; }
+.mc-prop { color: #34d399; }
+.mc-op { color: #94a3b8; }
+.mc-quote { color: #fde68a; }
+
+.mc-word {
+  color: rgba(253, 230, 138, 0.22);
+}
+
+.mc-word.is-passed {
+  color: #fde68a;
+}
+
+.mc-word.is-active {
+  color: #ffffff;
+  text-shadow: 0 0 12px var(--motion-glow);
+}
+
+.mc-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1.05em;
+  vertical-align: text-bottom;
+  margin-left: 3px;
+  background: #fb7185;
+  animation: mcBlink 0.9s steps(2, start) infinite;
+}
+
+@keyframes mcBlink {
+  to { visibility: hidden; }
+}
+
+/* 5. MESSAGES (Native Thread UI) */
+.motion-messages-wrap {
+  width: 100%;
+  max-width: 560px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(12, 16, 28, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.msg-header {
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.msg-contact {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.msg-sub {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.msg-thread {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.msg-row {
+  display: flex;
+  cursor: pointer;
+  animation: msgSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes msgSlideIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.msg-row.is-in { justify-content: flex-start; }
+.msg-row.is-out { justify-content: flex-end; }
+
+.msg-bubble {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: clamp(0.9rem, 1.6vw, 1.08rem);
+  font-weight: 600;
+  line-height: 1.38;
+}
+
+.msg-row.is-in .msg-bubble {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  border-bottom-left-radius: 6px;
+}
+
+.msg-row.is-out .msg-bubble {
+  background: rgba(var(--motion-rgb), 0.26);
+  border: 1px solid rgba(var(--motion-rgb), 0.45);
+  color: #ffffff;
+  border-bottom-right-radius: 6px;
+}
+
+.msg-row.is-past .msg-bubble {
+  opacity: 0.52;
+}
+
+.msg-romaji {
+  margin-top: 4px;
+  font-size: 0.75em;
+  color: rgba(203, 213, 225, 0.85);
+}
+
+.msg-typing {
+  display: inline-flex;
+  gap: 5px;
+  padding: 12px 16px;
+}
+
+.msg-typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  animation: motionWaitDot 1.1s infinite ease-in-out;
+}
+.msg-typing span:nth-child(2) { animation-delay: 0.18s; }
+.msg-typing span:nth-child(3) { animation-delay: 0.36s; }
+
+/* 6. NOTIFICATIONS (Lock-Screen Stack UI) */
+.motion-notif-wrap {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.notif-clock {
+  font-size: clamp(2.4rem, 5vw, 3.6rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.notif-date {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.notif-stack {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notif-card {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  animation: msgSlideIn 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.notif-card.is-top {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(var(--motion-rgb), 0.48);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.notif-card.depth-1 {
+  transform: scale(0.96);
+  opacity: 0.6;
+}
+
+.notif-card.depth-2 {
+  transform: scale(0.92);
+  opacity: 0.34;
+}
+
+.notif-card-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.notif-app {
+  color: var(--motion-primary);
+  max-width: 75%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-card-body {
+  font-size: clamp(0.95rem, 1.7vw, 1.15rem);
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.35;
+}
+
+.notif-romaji {
+  margin-top: 4px;
+  font-size: 0.76rem;
+  color: #cbd5e1;
+}
+
+/* 7. PAYMENTS (Transaction Feed UI) */
+.motion-pay-wrap {
+  width: 100%;
+  max-width: 500px;
+  background: rgba(10, 15, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 16px;
+}
+
+.pay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pay-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pay-total {
+  font-family: monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--motion-primary);
+}
+
+.pay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pay-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  animation: msgSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pay-row.is-top {
+  background: rgba(var(--motion-rgb), 0.14);
+  border-color: rgba(var(--motion-rgb), 0.42);
+}
+
+.pay-row.pos-1 { opacity: 0.65; }
+.pay-row.pos-2 { opacity: 0.42; }
+.pay-row.pos-3 { opacity: 0.24; }
+
+.pay-row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.pay-row-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.35;
+}
+
+.pay-row-meta {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.pay-row-amount {
+  flex: 0 0 auto;
+  font-family: monospace;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #34d399;
+}
+
+/* Tablet Layout Adjustments */
+@media (max-width: 960px) {
+  .motion-stage-expand-btn {
+    display: none !important;
+  }
+  .studio-cinema-overlay.cinema-motion-active .cinema-vinyl-wrap,
+  .studio-cinema-overlay.cinema-motion-active .cinema-badge-row {
+    display: none !important;
+  }
+  .studio-cinema-overlay.cinema-motion-active .cinema-turntable-deck {
+    padding: 4px 12px;
+    gap: 2px;
+  }
+}
+
+/* Mobile Layout Overrides (Placed after existing mobile overrides for clean specificity) */
+@media (max-width: 768px) {
+  .cinema-lyrics-header-left {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
+  }
+
+  .cinema-lyrics-header-left span {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .cinema-motion-chip {
+    height: 26px !important;
+    padding: 0 10px !important;
+    font-size: 0.68rem !important;
+    margin-right: 0 !important;
+  }
+
+  .cinema-motion-bar {
+    padding: 2px 0 6px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .motion-style-pill {
+    padding: 4px 11px !important;
+    font-size: 0.68rem !important;
+  }
+
+  .motion-stage-expand-btn {
+    display: none !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-turntable-deck {
+    margin: 0 !important;
+    padding: 0 6px 2px !important;
+    gap: 0 !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-vinyl-wrap,
+  .studio-cinema-overlay.cinema-motion-active .cinema-badge-row {
+    display: none !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-track-details {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    max-width: 100% !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-title {
+    font-size: 0.92rem !important;
+    max-width: 85vw !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-visual-lyrics-split {
+    height: auto !important;
+    flex: 1 1 0% !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-lyrics-hint-bar {
+    display: none !important;
+  }
+
+  .cinema-motion-dom {
+    padding: 10px !important;
+  }
+
+  .motion-kinetic-line {
+    font-size: clamp(1.35rem, 6vw, 1.9rem) !important;
+  }
+
+  .fe-center {
+    font-size: clamp(1.85rem, 8.5vw, 2.7rem) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .studio-cinema-overlay.cinema-motion-active .cinema-lyrics-badge {
+    display: none !important;
+  }
+}

@@ -240,6 +240,24 @@ class App {
     this.btnLyricsOffsetVal = document.getElementById('btn-lyrics-offset-val');
     this.btnLyricsOffsetPlus = document.getElementById('btn-lyrics-offset-plus');
     this.btnLyricsRefresh = document.getElementById('btn-lyrics-refresh');
+
+    // Cinema Motion Lyrics Mode (Verci-style word animation)
+    this.btnToggleCinemaMotion = document.getElementById('btn-toggle-cinema-motion');
+    this.cinemaMotionBar = document.getElementById('cinema-motion-bar');
+    this.cinemaMotionStage = document.getElementById('cinema-motion-stage');
+    this.cinemaMotionCanvas = document.getElementById('cinema-motion-canvas');
+    this.cinemaMotionDom = document.getElementById('cinema-motion-dom');
+    this.btnMotionStageExpand = document.getElementById('btn-motion-stage-expand');
+    this.isCinemaMotionMode = localStorage.getItem('aurasound_cinema_motion_mode') === 'true';
+    this.isMotionFullStage = localStorage.getItem('aurasound_cinema_motion_full') === 'true';
+    this.motionLyricsEngine = (typeof window.MotionLyricsEngine === 'function')
+      ? new window.MotionLyricsEngine({
+          stageEl: this.cinemaMotionStage,
+          canvasEl: this.cinemaMotionCanvas,
+          domEl: this.cinemaMotionDom,
+          onSeek: (t) => this.seekToTimestamp(t)
+        })
+      : null;
   }
 
   checkCleanReset() {
@@ -1803,6 +1821,28 @@ class App {
       this.btnToggleRomaji.addEventListener('click', () => this.toggleRomaji());
     }
 
+    // Motion Lyrics Mode Toggle & Style Picker (Cinema)
+    if (this.btnToggleCinemaMotion) {
+      this.btnToggleCinemaMotion.addEventListener('click', () => this.toggleCinemaMotionMode());
+    }
+    if (this.btnMotionStageExpand) {
+      this.btnMotionStageExpand.addEventListener('click', () => this.toggleMotionFullStage());
+    }
+    document.querySelectorAll('.motion-style-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const styleId = pill.getAttribute('data-motion-style');
+        if (styleId) this.setCinemaMotionStyle(styleId);
+      });
+    });
+    window.addEventListener('resize', () => {
+      if (this.isCinemaMotionMode && this.motionLyricsEngine) {
+        this.motionLyricsEngine.resizeCanvas();
+        this.motionLyricsEngine.render(this.getCurrentPlaybackTime(), this.activeLyricIdx, {
+          showRomaji: this.isRomajiEnabled
+        });
+      }
+    });
+
     if (this.btnLyricsRefresh) {
       this.btnLyricsRefresh.addEventListener('click', () => {
         if (this.currentTrack) {
@@ -2655,6 +2695,7 @@ class App {
     }
 
     this.syncCinemaTrackInfo();
+    this.applyCinemaMotionUI();
     this.updatePlayState(this.isPlayingState());
   }
 
@@ -2717,6 +2758,104 @@ class App {
         label.textContent = `${langName}: ${this.isRomajiEnabled ? 'ON' : 'OFF'}`;
       }
     }
+    if (this.isCinemaMotionMode && this.motionLyricsEngine) {
+      this.motionLyricsEngine.render(this.getCurrentPlaybackTime(), this.activeLyricIdx, {
+        showRomaji: this.isRomajiEnabled
+      });
+    }
+  }
+
+  toggleCinemaMotionMode() {
+    this.isCinemaMotionMode = !this.isCinemaMotionMode;
+    try {
+      localStorage.setItem('aurasound_cinema_motion_mode', String(this.isCinemaMotionMode));
+    } catch (e) {}
+    this.applyCinemaMotionUI();
+
+    if (this.isCinemaMotionMode && this.motionLyricsEngine) {
+      this.motionLyricsEngine.setTrack(this.currentTrack, this.currentLyricsData);
+      requestAnimationFrame(() => {
+        if (!this.motionLyricsEngine) return;
+        this.motionLyricsEngine.resizeCanvas();
+        this.motionLyricsEngine.render(this.getCurrentPlaybackTime(), this.activeLyricIdx, {
+          showRomaji: this.isRomajiEnabled
+        });
+      });
+    } else {
+      this.lastScrolledLyricIdx = -1;
+      const curActive = this.activeLyricIdx;
+      this.activeLyricIdx = -2;
+      this.updateActiveLyricsLine(this.getCurrentPlaybackTime());
+      if (curActive >= 0) {
+        this.lastScrolledLyricIdx = -1;
+      }
+    }
+  }
+
+  setCinemaMotionStyle(styleId) {
+    if (!this.motionLyricsEngine) return;
+    this.motionLyricsEngine.setStyle(styleId);
+    this.applyCinemaMotionUI();
+    this.motionLyricsEngine.resizeCanvas();
+    this.motionLyricsEngine.render(this.getCurrentPlaybackTime(), this.activeLyricIdx, {
+      showRomaji: this.isRomajiEnabled
+    });
+  }
+
+  toggleMotionFullStage() {
+    this.isMotionFullStage = !this.isMotionFullStage;
+    try {
+      localStorage.setItem('aurasound_cinema_motion_full', String(this.isMotionFullStage));
+    } catch (e) {}
+    this.applyCinemaMotionUI();
+    if (this.isCinemaMotionMode && this.motionLyricsEngine) {
+      setTimeout(() => {
+        if (!this.motionLyricsEngine) return;
+        this.motionLyricsEngine.resizeCanvas();
+        this.motionLyricsEngine.render(this.getCurrentPlaybackTime(), this.activeLyricIdx, {
+          showRomaji: this.isRomajiEnabled
+        });
+      }, 60);
+    }
+  }
+
+  applyCinemaMotionUI() {
+    const hasLyrics = Array.isArray(this.currentLyricsData) && this.currentLyricsData.length > 0;
+    const motionOn = Boolean(this.isCinemaMotionMode);
+    const showStage = motionOn && hasLyrics;
+
+    if (this.cinemaModal) {
+      this.cinemaModal.classList.toggle('cinema-motion-active', motionOn);
+      this.cinemaModal.classList.toggle('cinema-motion-full', motionOn && this.isMotionFullStage);
+    }
+    if (this.btnToggleCinemaMotion) {
+      this.btnToggleCinemaMotion.classList.toggle('active', motionOn);
+      this.btnToggleCinemaMotion.setAttribute('aria-pressed', String(motionOn));
+    }
+    if (this.cinemaMotionBar) {
+      this.cinemaMotionBar.style.display = motionOn ? 'flex' : 'none';
+    }
+    if (this.btnMotionStageExpand) {
+      this.btnMotionStageExpand.classList.toggle('active', this.isMotionFullStage);
+      this.btnMotionStageExpand.textContent = this.isMotionFullStage ? 'Split' : 'Full';
+    }
+    if (this.cinemaLyricsStream) {
+      this.cinemaLyricsStream.style.display = showStage ? 'none' : '';
+    }
+    if (this.cinemaMotionStage) {
+      this.cinemaMotionStage.style.display = showStage ? 'flex' : 'none';
+    }
+
+    const activeStyle = this.motionLyricsEngine ? this.motionLyricsEngine.style : 'kinetic';
+    document.querySelectorAll('.motion-style-pill').forEach(pill => {
+      const isAct = pill.getAttribute('data-motion-style') === activeStyle;
+      pill.classList.toggle('active', isAct);
+      if (isAct && motionOn && typeof pill.scrollIntoView === 'function') {
+        try {
+          pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        } catch (e) {}
+      }
+    });
   }
 
   isPlayingState() {
@@ -3001,6 +3140,7 @@ class App {
     this.lastScrolledLyricIdx = -1;
     this.currentLyricsData = [];
     this.lyricsAlignPending = false;
+    this.applyCinemaMotionUI();
     if (this.cinemaLeadInDots) {
       this.cinemaLeadInDots.style.display = 'none';
     }
@@ -3595,6 +3735,11 @@ class App {
         `;
       }).join('');
     }
+
+    if (this.motionLyricsEngine) {
+      this.motionLyricsEngine.setTrack(this.currentTrack, lines);
+    }
+    this.applyCinemaMotionUI();
   }
 
   getCurrentPlaybackTime() {
@@ -3768,6 +3913,30 @@ class App {
         }
         low = mid + 1;
       }
+    }
+
+    if (this.isCinemaMotionMode && this.motionLyricsEngine) {
+      if (activeIdx !== this.activeLyricIdx) {
+        this.activeLyricIdx = activeIdx;
+        this._lastLyricProgressHalf = false;
+        this.syncLyricsToMediaNotification(syncTime);
+      } else if (activeIdx >= 0 && this.currentLyricsData && this.currentLyricsData[activeIdx]) {
+        const curL = this.currentLyricsData[activeIdx];
+        if (curL.text && curL.text.length > 28) {
+          const lStart = curL.time || 0;
+          const lEnd = curL.endTime || (lStart + 4.5);
+          const lDur = Math.max(1.5, lEnd - lStart);
+          const isSecondHalf = (syncTime - lStart) / lDur > 0.45;
+          if (this._lastLyricProgressHalf !== isSecondHalf) {
+            this._lastLyricProgressHalf = isSecondHalf;
+            this.syncLyricsToMediaNotification(syncTime);
+          }
+        }
+      }
+      if (!this._isAppInBackground) {
+        this.motionLyricsEngine.render(syncTime, activeIdx, { showRomaji: this.isRomajiEnabled });
+      }
+      return;
     }
 
     // Apple Music Style Lead-in Countdown Dots (• • •) during intro and musical breaks
