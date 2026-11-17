@@ -1364,8 +1364,9 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
     );
     const customLyricsText = hasCustomLyrics ? (rawLyrics || rawPrompt) : '';
 
-    // Step 1A: Fast /api/c/check (~250ms) -> skip immediately if JWT is expired so we don't waste time on 401
-    if (isSunoJwtFresh(officialToken)) {
+    // Step 1A: Fast /api/c/check (~250ms) for headless/Vercel servers;
+    // when Electron warm browser is available, delegate directly so it uses genuine cf_clearance cookies!
+    if (isSunoJwtFresh(officialToken) && typeof global.generateWithSunoBrowser !== 'function') {
       let challengeRequired = true;
       try {
         const checkRes = await axios.post(

@@ -385,12 +385,12 @@ const VISIBLE_SUNO_INPUTS_FN = `
     return els.filter(el => {
       const name = (el.getAttribute('name') || '').toLowerCase();
       const id = (el.getAttribute('id') || '').toLowerCase();
-      const al = (el.getAttribute('aria-label') || '').toLowerCase();
+      const al = (el.getAttribute('aria-label') || '').trim().toLowerCase();
       const ph = (el.getAttribute('placeholder') || '').toLowerCase();
       if (
         name.includes('turnstile') || name.includes('cf-') || name.includes('captcha') ||
         id.includes('turnstile') || id.includes('cf-') ||
-        al.includes('cowriter') || /\b(sound|script|tone)\b/.test(al) ||
+        al.includes('cowriter') || al === 'sound' || al === 'sounds' || al === 'script' || al === 'tone' ||
         ph.includes('search')
       ) {
         return false;
@@ -404,10 +404,11 @@ const VISIBLE_SUNO_INPUTS_FN = `
   function findSunoCreateButton() {
     let createBtn = document.querySelector('button[aria-label="Create song"]');
     if (!createBtn) {
-      const allBtns = Array.from(document.querySelectorAll('button')).filter(b => !b.closest('nav') && !b.closest('aside'));
+      const allBtns = Array.from(document.querySelectorAll('button, div[role="button"]')).filter(b => !b.closest('nav') && !b.closest('aside'));
       createBtn = allBtns.find(b => {
-        const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-        return t === 'create' || t.startsWith('create (') || t.startsWith('create ');
+        const al = (b.getAttribute('aria-label') || '').trim().toLowerCase();
+        const t = (b.innerText || b.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        return al.includes('create song') || al === 'create' || t === 'create' || /^create(\s|\(|$|\d)/.test(t);
       });
     }
     return createBtn || null;
@@ -1082,13 +1083,17 @@ async function generateWithSunoBrowser({
     }
 
     // Ensure Clerk session JWT is freshly minted & remove any stale duplicate __session cookies before filling
-    await genWin.webContents.executeJavaScript(`
+    const mintedFastTok = await genWin.webContents.executeJavaScript(`
       (async () => {
         try {
           if (window.Clerk && window.Clerk.session && typeof window.Clerk.session.getToken === 'function') {
-            const freshTok = await window.Clerk.session.getToken();
-            if (freshTok && freshTok.length > 20) {
+            const freshTok = await Promise.race([
+              window.Clerk.session.getToken(),
+              new Promise(r => setTimeout(() => r(null), 1800))
+            ]);
+            if (freshTok && typeof freshTok === 'string' && freshTok.length > 20) {
               document.cookie = '__session=' + freshTok + '; path=/; secure; samesite=lax';
+              return freshTok;
             }
           }
         } catch (e) {}
@@ -1096,8 +1101,102 @@ async function generateWithSunoBrowser({
         if (oldModal) {
           oldModal.click();
         }
+        return null;
       })()
-    `).catch(() => {});
+    `).catch(() => null);
+
+    // Cleanly resolve clean user inputs without fake tags/titles
+    const cleanPromptText = (rawPrompt !== undefined ? rawPrompt : (prompt || '')).trim();
+    const cleanLyricsText = (rawLyrics !== undefined ? rawLyrics : (lyrics || '')).trim();
+    const cleanTagsText = (rawTags !== undefined ? rawTags : (tags || '')).trim();
+    const cleanTitleText = (rawTitle !== undefined ? rawTitle : (title || '')).trim();
+    const wantInstrumental = Boolean(make_instrumental);
+
+    const useCustomLyricsMode = typeof hasCustomLyrics === 'boolean'
+      ? (hasCustomLyrics && !wantInstrumental)
+      : (!wantInstrumental && (
+          (cleanLyricsText.length > 0 && !isPromptInstruction(cleanLyricsText)) ||
+          (cleanLyricsText.length === 0 && isGenuineCustomLyrics(cleanPromptText))
+        ));
+
+    const targetMode = useCustomLyricsMode ? 'custom_lyrics' : 'simple';
+
+    // Same-origin fast-path inside Electron Chromium (carries genuine cf_clearance + browser fingerprint)
+    const fastTok = mintedFastTok || await readLiveSessionJwt(sunoSession);
+    if (fastTok && fastTok.length > 20) {
+      const mRaw = String(model || 'v6-mini').trim().toLowerCase();
+      const mvKey = mRaw === 'v6' || mRaw === 'chirp-hawk' ? 'chirp-hawk'
+        : (mRaw === 'v4' || mRaw === 'chirp-v4' ? 'chirp-v4'
+          : (mRaw === 'v3.5' || mRaw === 'chirp-v3-5' ? 'chirp-v3-5' : 'chirp-goose'));
+
+      let genBody;
+      if (!useCustomLyricsMode) {
+        const sp = [];
+        if (cleanTitleText) sp.push(`Title: ${cleanTitleText}`);
+        if (wantInstrumental) sp.push('Instrumental only, no vocals.');
+        if (cleanPromptText) sp.push(cleanPromptText);
+        if (cleanTagsText) sp.push(`Style: ${cleanTagsText}`);
+        genBody = { gpt_description_prompt: sp.join('\n').slice(0, 2950), mv: mvKey, prompt: '', make_instrumental: wantInstrumental };
+      } else {
+        genBody = { prompt: cleanLyricsText || cleanPromptText, tags: cleanTagsText.slice(0, 950), title: cleanTitleText, mv: mvKey, make_instrumental: false };
+      }
+
+      const fastOutcome = await genWin.webContents.executeJavaScript(`
+        (async () => {
+          try {
+            const tok = ${JSON.stringify(fastTok)};
+            const chkCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const chkTimer = chkCtrl ? setTimeout(() => chkCtrl.abort(), 2500) : null;
+            const chkRes = await fetch('https://studio-api.prod.suno.com/api/c/check', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
+              signal: chkCtrl ? chkCtrl.signal : undefined,
+              body: JSON.stringify({ ctype: 'generation' })
+            });
+            if (chkTimer) clearTimeout(chkTimer);
+            if (!chkRes.ok) return { skipped: true };
+            const chkData = await chkRes.json();
+            if (!chkData || chkData.required !== false) return { skipped: true };
+
+            const genCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const genTimer = genCtrl ? setTimeout(() => genCtrl.abort(), 8000) : null;
+            const genRes = await fetch('https://studio-api.prod.suno.com/api/generate/v2/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
+              signal: genCtrl ? genCtrl.signal : undefined,
+              body: JSON.stringify(${JSON.stringify(genBody)})
+            });
+            if (genTimer) clearTimeout(genTimer);
+            if (genRes.status === 402) return { creditError: true };
+            if (!genRes.ok) return { skipped: true };
+            const gd = await genRes.json();
+            const gClips = gd?.clips || gd?.data?.clips || [];
+            return { clips: Array.isArray(gClips) ? gClips : [] };
+          } catch (e) {
+            return { skipped: true };
+          }
+        })()
+      `).catch(() => ({ skipped: true }));
+
+      if (fastOutcome?.creditError) {
+        throw new Error('Kuota kredit akun Suno Anda untuk hari ini telah habis.');
+      }
+      if (Array.isArray(fastOutcome?.clips) && fastOutcome.clips.length > 0) {
+        const cleanFastClips = fastOutcome.clips.filter(c => c && c.id && !isSunoPreviewClip(c));
+        if (cleanFastClips.length > 0) {
+          console.log(`[Suno Warm Engine] Same-origin fast-path succeeded (${cleanFastClips.length} clips)!`);
+          try {
+            const sunoService = require('./suno-service');
+            sunoService.saveConfig({ suno_api_key: fastTok, suno_provider: 'suno_official' });
+          } catch (e) {}
+          return {
+            success: true,
+            clips: cleanFastClips.slice(0, 2),
+            targetMode
+          };
+        }
+      }
+    }
 
     // Snapshot existing clip IDs IN PARALLEL while filling the form
     const existingClipsPromise = (async () => {
@@ -1126,21 +1225,6 @@ async function generateWithSunoBrowser({
       }
     })();
 
-    // Cleanly resolve clean user inputs without fake tags/titles
-    const cleanPromptText = (rawPrompt !== undefined ? rawPrompt : (prompt || '')).trim();
-    const cleanLyricsText = (rawLyrics !== undefined ? rawLyrics : (lyrics || '')).trim();
-    const cleanTagsText = (rawTags !== undefined ? rawTags : (tags || '')).trim();
-    const cleanTitleText = (rawTitle !== undefined ? rawTitle : (title || '')).trim();
-    const wantInstrumental = Boolean(make_instrumental);
-
-    const useCustomLyricsMode = typeof hasCustomLyrics === 'boolean'
-      ? (hasCustomLyrics && !wantInstrumental)
-      : (!wantInstrumental && (
-          (cleanLyricsText.length > 0 && !isPromptInstruction(cleanLyricsText)) ||
-          (cleanLyricsText.length === 0 && isGenuineCustomLyrics(cleanPromptText))
-        ));
-
-    const targetMode = useCustomLyricsMode ? 'custom_lyrics' : 'simple';
     const formFillOpts = {
       targetMode,
       cleanTitleText,
@@ -1156,20 +1240,14 @@ async function generateWithSunoBrowser({
     // Wait for existingClipIds snapshot & React input state commit
     await Promise.all([
       existingClipsPromise,
-      new Promise(r => setTimeout(r, 300))
+      new Promise(r => setTimeout(r, 250))
     ]);
 
     // Locate Create button coordinates for trusted click activation
     const locateCreateBtn = () => genWin.webContents.executeJavaScript(`
       (() => {
-        let createBtn = document.querySelector('button[aria-label="Create song"]');
-        if (!createBtn) {
-          const allBtns = Array.from(document.querySelectorAll('button')).filter(b => !b.closest('nav') && !b.closest('aside'));
-          createBtn = allBtns.find(b => {
-            const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-            return t === 'create' || t.startsWith('create (') || t.startsWith('create ');
-          });
-        }
+        ${VISIBLE_SUNO_INPUTS_FN}
+        const createBtn = findSunoCreateButton();
         if (!createBtn) return { error: 'Tombol Create tidak ditemukan di halaman Suno.' };
         createBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
         const rect = createBtn.getBoundingClientRect();
@@ -1236,8 +1314,14 @@ async function generateWithSunoBrowser({
       if (genNetworkState.generateStatusCode === 402) {
         throw new Error('Kuota kredit akun Suno Anda untuk hari ini telah habis.');
       }
-      if (genNetworkState.generateStatusCode === 401 || genNetworkState.generateStatusCode === 403) {
+      if (genNetworkState.generateStatusCode === 401) {
         throw new Error('Sesi akun Suno kedaluwarsa atau ditolak. Silakan klik Ganti / Kelola Akun untuk login ulang.');
+      }
+      if (genNetworkState.generateStatusCode === 403 && !challengeWindowShown) {
+        const modalCheck403 = await checkInteractiveTurnstileModal(genWin);
+        if (!modalCheck403.hasModal && (Date.now() - (genNetworkState.generateCompletedAt || Date.now())) >= 1500) {
+          throw new Error('Sesi akun Suno kedaluwarsa atau ditolak. Silakan klik Ganti / Kelola Akun untuk login ulang.');
+        }
       }
       if (genNetworkState.generateStatusCode >= 429 && genNetworkState.generateStatusCode < 500) {
         throw new Error('Terlalu banyak permintaan ke Suno dalam waktu singkat. Coba lagi beberapa detik.');
@@ -1246,11 +1330,12 @@ async function generateWithSunoBrowser({
       const elapsedMs = Date.now() - clickTimeMs;
       const sinceLastActionMs = Date.now() - lastActionMs;
 
-      // Fast cold-start / stalled-/c/check auto-retry: if initial click stalled while React/Clerk hydrated
-      // or after invisible /api/c/check without any POST /api/generate after ~3.2s, re-fill & re-submit safely.
+      // Safe cold-start auto-retry: only if NEITHER /api/c/check NOR /api/generate has fired after 8.5s
+      // (so we never interrupt an in-flight /api/c/check -> invisible Turnstile handshake!)
       if (
-        coldStartRetryCount < 3 &&
-        sinceLastActionMs >= 3200 &&
+        coldStartRetryCount < 1 &&
+        sinceLastActionMs >= 8500 &&
+        !genNetworkState.cCheckStartedAt &&
         !genNetworkState.generateStartedAt &&
         !challengeWindowShown &&
         !isChallengeResolved
@@ -1263,19 +1348,13 @@ async function generateWithSunoBrowser({
         }
 
         const turnstileCheck = await checkInteractiveTurnstileModal(genWin);
-        if (!turnstileCheck.hasModal && !genNetworkState.generateStartedAt) {
+        if (!turnstileCheck.hasModal && !genNetworkState.cCheckStartedAt && !genNetworkState.generateStartedAt) {
           coldStartRetryCount++;
           lastActionMs = Date.now();
-          console.log(`[Suno Warm Engine] Cold-start auto-retry #${coldStartRetryCount} (generateStartedAt=0, cCheck=${Boolean(genNetworkState.cCheckStartedAt)})...`);
-
-          if (coldStartRetryCount === 3) {
-            // Last-resort self-heal: reload stale /create page once within the same first-click attempt
-            console.log('[Suno Warm Engine] Reloading /create workspace for clean React & Clerk hydration...');
-            genWin = await initWarmSunoEngine({ forceReload: true });
-          }
+          console.log(`[Suno Warm Engine] Cold-start safe retry #${coldStartRetryCount} (no cCheck/generate after 8.5s)...`);
 
           await fillSunoCreateForm(genWin, formFillOpts);
-          await new Promise(r => setTimeout(r, 320));
+          await new Promise(r => setTimeout(r, 250));
           let retryRes = await triggerSunoCreateClick(genWin);
           if (retryRes && retryRes.error && retryRes.error.includes('nonaktif')) {
             await new Promise(r => setTimeout(r, 450));
@@ -1285,18 +1364,26 @@ async function generateWithSunoBrowser({
         }
       }
 
-      // Fail fast if all retries + reload failed to trigger POST /api/generate and no Turnstile challenge is active
+      // Reload once if retry also produced zero network activity after 18s
       if (
-        coldStartRetryCount >= 3 &&
-        elapsedMs >= 28000 &&
+        coldStartRetryCount >= 1 &&
+        elapsedMs >= 18000 &&
+        !genNetworkState.cCheckStartedAt &&
         !genNetworkState.generateStartedAt &&
         !challengeWindowShown &&
         !isChallengeResolved
       ) {
-        const checkBeforeAbort = await checkInteractiveTurnstileModal(genWin);
-        if (!checkBeforeAbort.hasModal) {
-          console.warn('[Suno Warm Engine] Aborting pre-submit wait: POST /api/generate did not fire after 3 retries.');
-          break;
+        const checkBeforeReload = await checkInteractiveTurnstileModal(genWin);
+        if (!checkBeforeReload.hasModal) {
+          console.warn('[Suno Warm Engine] No cCheck/generate after 18s; reloading /create workspace once...');
+          genWin = await initWarmSunoEngine({ forceReload: true });
+          await fillSunoCreateForm(genWin, formFillOpts);
+          await new Promise(r => setTimeout(r, 250));
+          await triggerSunoCreateClick(genWin);
+          lastActionMs = Date.now();
+          lastFeedPollMs = 0;
+          coldStartRetryCount++;
+          if (coldStartRetryCount > 2) break;
         }
       }
 
@@ -1313,7 +1400,7 @@ async function generateWithSunoBrowser({
 
       // Check if Cloudflare Turnstile verification challenge modal is blocking
       const nowMs = Date.now();
-      if ((nowMs - lastChallengeCheckMs) >= 400 && !genNetworkState.generateStartedAt) {
+      if ((nowMs - lastChallengeCheckMs) >= 400 && (!genNetworkState.generateStartedAt || genNetworkState.generateStatusCode === 403)) {
         lastChallengeCheckMs = nowMs;
 
         // 1. Auto-submit when a genuinely new Turnstile token appears after click
@@ -1383,7 +1470,7 @@ async function generateWithSunoBrowser({
             })()
           `).catch(() => null);
 
-          if (turnstileBox && turnstileBox.found && !genNetworkState.generateStartedAt) {
+          if (turnstileBox && turnstileBox.found && (!genNetworkState.generateStartedAt || genNetworkState.generateStatusCode === 403)) {
             challengeWindowShown = true;
             console.log(`[Suno Warm Engine] Cloudflare Turnstile card detected at (${turnstileBox.x}, ${turnstileBox.y}, ${turnstileBox.width}x${turnstileBox.height})! Clipping window to verify box only...`);
 
