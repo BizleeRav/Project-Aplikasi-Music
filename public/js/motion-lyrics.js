@@ -78,6 +78,7 @@
       this.showRomaji = true;
 
       this._wordCache = new WeakMap();
+      this._romajiWordCache = new WeakMap();
       this._bgStars = [];
       this._lastRenderSignature = '';
       this._lastFisheyeWordIdx = -2;
@@ -147,6 +148,7 @@
         this.stageEl.style.setProperty('--motion-rgb', this.palette.rgb);
       }
       this._wordCache = new WeakMap();
+      this._romajiWordCache = new WeakMap();
       this._lastRenderSignature = '';
       this._lastFisheyeWordIdx = -2;
       this._lastActiveIdx = -2;
@@ -230,6 +232,7 @@
             }
             return {
               text: w.text,
+              romaji: (typeof w.romaji === 'string' && w.romaji.trim()) ? w.romaji.trim() : '',
               begin: safeBegin,
               end: end,
               trailingSpace: w.trailingSpace !== false
@@ -257,6 +260,7 @@
           cursor = wEnd;
           return {
             text: tok,
+            romaji: '',
             begin: wBegin,
             end: Math.max(wBegin + 0.06, wEnd),
             trailingSpace: true
@@ -266,6 +270,75 @@
 
       this._wordCache.set(line, words);
       return words;
+    }
+
+    getLineRomajiWords(lineIdx) {
+      if (lineIdx < 0 || lineIdx >= this.lyrics.length) return [];
+      const line = this.lyrics[lineIdx];
+      if (!line || !line.romaji) return [];
+      const cached = this._romajiWordCache.get(line);
+      if (cached) return cached;
+
+      let rWords = [];
+      if (Array.isArray(line.romajiWords) && line.romajiWords.length > 0) {
+        rWords = line.romajiWords
+          .filter(w => w && typeof w.text === 'string' && w.text.length > 0)
+          .map((w, idx, arr) => {
+            const begin = Number(w.begin);
+            const safeBegin = Number.isFinite(begin) ? begin : line.time;
+            let end = Number(w.end);
+            if (!Number.isFinite(end) || end <= safeBegin) {
+              const nextW = arr[idx + 1];
+              end = nextW && Number.isFinite(Number(nextW.begin))
+                ? Math.max(safeBegin + 0.08, Number(nextW.begin))
+                : safeBegin + 0.28;
+            }
+            return {
+              text: w.text,
+              begin: safeBegin,
+              end: end,
+              trailingSpace: w.trailingSpace !== false
+            };
+          });
+      } else if (Array.isArray(line.words) && line.words.some(w => w && w.romaji)) {
+        rWords = line.words
+          .filter(w => w && (w.romaji || w.text))
+          .map(w => ({
+            text: (w.romaji || w.text || '').trim(),
+            begin: Number(w.begin) || line.time,
+            end: Number(w.end) || ((Number(w.begin) || line.time) + 0.25),
+            trailingSpace: w.trailingSpace !== false
+          }));
+      }
+
+      if (rWords.length === 0) {
+        const tokens = String(line.romaji).trim().split(/\s+/).filter(Boolean);
+        const nextLine = this.lyrics[lineIdx + 1];
+        const start = Number(line.time) || 0;
+        const rawEnd = line.endTime !== undefined
+          ? Number(line.endTime)
+          : (nextLine ? Number(nextLine.time) - 0.12 : start + 4.0);
+        const totalDur = Math.max(0.65, Math.min(8.5, rawEnd - start));
+        const totalWeight = tokens.reduce((acc, t) => acc + Math.max(2, t.length + 1), 0) || 1;
+        let cursor = start;
+
+        rWords = tokens.map((tok, i) => {
+          const weight = Math.max(2, tok.length + 1);
+          const slice = (weight / totalWeight) * totalDur;
+          const wBegin = cursor;
+          const wEnd = (i === tokens.length - 1) ? (start + totalDur) : (cursor + slice);
+          cursor = wEnd;
+          return {
+            text: tok,
+            begin: wBegin,
+            end: Math.max(wBegin + 0.06, wEnd),
+            trailingSpace: true
+          };
+        });
+      }
+
+      this._romajiWordCache.set(line, rWords);
+      return rWords;
     }
 
     findActiveWord(words, syncTime) {
@@ -411,8 +484,10 @@
         this._currentWords = words;
         this.buildDomForLine(activeIdx, words, syncTime);
         this._cachedWordEls = this.domEl.querySelectorAll('.motion-word');
+        this._cachedRomajiEls = this.domEl.querySelectorAll('.motion-romaji-word');
         this._cachedKineticWall = (this.style === 'kinetic') ? this.domEl.querySelector('#motion-kinetic-wall') : null;
         this._lastDomWordIdx = -99;
+        this._lastDomRomajiIdx = -99;
       }
 
       this.updateDomWordProgress(syncTime, activeIdx, words, wordState, dt);
@@ -426,12 +501,24 @@
       }).join('');
     }
 
+    buildRomajiWordsMarkup(lineIdx, extraClass = '') {
+      const rWords = this.getLineRomajiWords(lineIdx);
+      if (!rWords || rWords.length === 0) {
+        const line = this.lyrics[lineIdx];
+        return line && line.romaji ? escapeHtml(line.romaji) : '';
+      }
+      return rWords.map((w, i) => {
+        const space = w.trailingSpace ? ' has-space' : '';
+        return `<span class="motion-romaji-word ${extraClass}${space}" data-rwidx="${i}" style="--wp:0%">${escapeHtml(w.text)}</span>`;
+      }).join('');
+    }
+
     buildDomForLine(activeIdx, words, syncTime) {
       const line = activeIdx >= 0 ? this.lyrics[activeIdx] : null;
       const prevLine = activeIdx > 0 ? this.lyrics[activeIdx - 1] : null;
       const nextLine = (activeIdx >= 0 && activeIdx + 1 < this.lyrics.length) ? this.lyrics[activeIdx + 1] : (activeIdx === -1 && this.lyrics[0] ? this.lyrics[0] : null);
       const romajiHtml = (this.showRomaji && line && line.romaji)
-        ? `<div class="motion-romaji-sub">${escapeHtml(line.romaji)}</div>`
+        ? `<div class="motion-romaji-sub">${this.buildRomajiWordsMarkup(activeIdx)}</div>`
         : '';
 
       if (this.style === 'kinetic') {
@@ -536,8 +623,8 @@
           const content = isCurrent
             ? this.buildWordsMarkup(words, 'msg-word')
             : escapeHtml(item.text);
-          const subRomaji = (isCurrent && this.showRomaji && item.romaji)
-            ? `<div class="msg-romaji">${escapeHtml(item.romaji)}</div>`
+          const subRomaji = (this.showRomaji && item.romaji)
+            ? `<div class="msg-romaji">${isCurrent ? this.buildRomajiWordsMarkup(i) : escapeHtml(item.romaji)}</div>`
             : '';
 
           threadHtml += `
@@ -588,8 +675,8 @@
             const content = entry.isTop
               ? this.buildWordsMarkup(words, 'notif-word')
               : escapeHtml(entry.item.text);
-            const subR = (entry.isTop && this.showRomaji && entry.item.romaji)
-              ? `<div class="notif-romaji">${escapeHtml(entry.item.romaji)}</div>`
+            const subR = (this.showRomaji && entry.item.romaji)
+              ? `<div class="notif-romaji">${entry.isTop ? this.buildRomajiWordsMarkup(entry.idx) : escapeHtml(entry.item.romaji)}</div>`
               : '';
             return `
               <div class="notif-card depth-${stackIdx} ${entry.isTop ? 'is-top motion-smooth-enter' : ''}" data-seek-time="${entry.item.time}">
@@ -636,11 +723,15 @@
             const content = entry.isTop
               ? this.buildWordsMarkup(words, 'pay-word')
               : escapeHtml(entry.item.text);
+            const subRomaji = (this.showRomaji && entry.item.romaji)
+              ? `<div class="pay-row-romaji">${entry.isTop ? this.buildRomajiWordsMarkup(entry.idx) : escapeHtml(entry.item.romaji)}</div>`
+              : '';
             const amt = ((entry.idx + 1) * 1.25).toFixed(2);
             return `
               <div class="pay-row pos-${pos} ${entry.isTop ? 'is-top motion-smooth-enter' : ''}" data-seek-time="${entry.item.time}">
                 <div class="pay-row-main">
                   <div class="pay-row-title">${content}</div>
+                  ${subRomaji}
                   <div class="pay-row-meta">${escapeHtml(this.trackMeta.artist || 'Track')} • ${formatTime(entry.item.time)}</div>
                 </div>
                 <div class="pay-row-amount">+$${amt}</div>
@@ -800,6 +891,39 @@
       } else if (wIdx >= 0 && wIdx < wordEls.length) {
         wordEls[wIdx].style.setProperty('--wp', `${pctFloat}%`);
       }
+
+      // Sync Romaji word highlights independently if present
+      const romajiEls = this._cachedRomajiEls;
+      if (romajiEls && romajiEls.length > 0 && activeIdx >= 0) {
+        const rWords = this.getLineRomajiWords(activeIdx);
+        const rState = this.findActiveWord(rWords, syncTime);
+        const rIdx = rState.index;
+        const rPct = (rState.progress * 100).toFixed(1);
+
+        if (rIdx !== this._lastDomRomajiIdx) {
+          this._lastDomRomajiIdx = rIdx;
+          for (let i = 0; i < romajiEls.length; i++) {
+            const el = romajiEls[i];
+            if (rIdx < 0) {
+              el.classList.remove('is-active', 'is-passed');
+              el.style.setProperty('--wp', '0%');
+            } else if (i < rIdx) {
+              el.classList.add('is-passed');
+              el.classList.remove('is-active');
+              el.style.setProperty('--wp', '100%');
+            } else if (i === rIdx) {
+              el.classList.add('is-active');
+              el.classList.remove('is-passed');
+              el.style.setProperty('--wp', `${rPct}%`);
+            } else {
+              el.classList.remove('is-active', 'is-passed');
+              el.style.setProperty('--wp', '0%');
+            }
+          }
+        } else if (rIdx >= 0 && rIdx < romajiEls.length) {
+          romajiEls[rIdx].style.setProperty('--wp', `${rPct}%`);
+        }
+      }
     }
 
     bindSeekClicks() {
@@ -907,7 +1031,11 @@
       }
 
       const fontSize = Math.max(12, Math.min(20, Math.round(w / 29)));
-      ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
+      const romajiSubSize = Math.max(10, Math.round(fontSize * 0.64));
+      const rWords = this.showRomaji ? this.getLineRomajiWords(activeIdx) : [];
+      const hasPerWordRomaji = this.showRomaji && (
+        words.some(wd => Boolean(wd.romaji)) || (rWords.length === words.length && rWords.length > 0)
+      );
       ctx.textAlign = 'center';
 
       nodes.forEach((n, i) => {
@@ -929,18 +1057,27 @@
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
         ctx.fill();
 
-        const labelOffset = (i % 2 === 0) ? -16 : 24;
-        const labelY = Math.max(20, Math.min(h - 14, n.y + labelOffset));
+        const wordRomaji = hasPerWordRomaji ? (words[i].romaji || (rWords[i] ? rWords[i].text : '')) : '';
+        const isTop = (i % 2 === 0);
+        const labelOffset = isTop ? (wordRomaji ? -28 : -16) : 24;
+        const labelY = Math.max(22, Math.min(h - (wordRomaji ? 70 : 56), n.y + labelOffset));
         const scale = 1 + glow * 0.08;
+
         ctx.save();
         ctx.translate(n.x, labelY);
         ctx.scale(scale, scale);
+        ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
         ctx.fillStyle = `rgba(255, 255, 255, ${(0.28 + glow * 0.72).toFixed(3)})`;
         ctx.fillText(n.text, 0, 0);
+        if (wordRomaji) {
+          ctx.font = `600 ${romajiSubSize}px Inter, system-ui, sans-serif`;
+          ctx.fillStyle = `rgba(${rgb}, ${(0.42 + glow * 0.58).toFixed(3)})`;
+          ctx.fillText(wordRomaji, 0, Math.round(fontSize * 0.88));
+        }
         ctx.restore();
       });
 
-      this.drawCanvasRomaji(ctx, w, h, activeIdx);
+      this.drawCanvasRomaji(ctx, w, h, activeIdx, syncTime);
     }
 
     drawBranches(ctx, syncTime, activeIdx, words, wordState) {
@@ -953,9 +1090,11 @@
         return;
       }
 
+      const line = this.lyrics[activeIdx];
+      const hasRomajiBar = Boolean(this.showRomaji && line && line.romaji);
       const startX = Math.max(36, w * 0.08);
       const endX = w - startX;
-      const midY = h * 0.52;
+      const midY = hasRomajiBar ? h * 0.45 : h * 0.52;
       const count = words.length;
 
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
@@ -973,8 +1112,12 @@
       ctx.stroke();
 
       const fontSize = Math.max(12, Math.min(20, Math.round(w / 30)));
-      const branchLen = Math.min(92, h * 0.24);
-      ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
+      const romajiSubSize = Math.max(10, Math.round(fontSize * 0.64));
+      const branchLen = Math.min(84, h * (hasRomajiBar ? 0.19 : 0.23));
+      const rWords = this.showRomaji ? this.getLineRomajiWords(activeIdx) : [];
+      const hasPerWordRomaji = this.showRomaji && (
+        words.some(wd => Boolean(wd.romaji)) || (rWords.length === words.length && rWords.length > 0)
+      );
       ctx.textAlign = 'center';
 
       words.forEach((word, i) => {
@@ -1007,25 +1150,37 @@
           ctx.fill();
         }
 
-        const textY = Math.max(20, Math.min(h - 14, tipY + dir * 18));
+        const wordRomaji = hasPerWordRomaji ? (word.romaji || (rWords[i] ? rWords[i].text : '')) : '';
+        const textY = dir === -1
+          ? Math.max(20, tipY - (wordRomaji ? 28 : 14))
+          : Math.min(h - (hasRomajiBar ? 68 : 22), tipY + 24);
         const scale = 1 + glow * 0.08;
+
         ctx.save();
         ctx.translate(bx, textY);
         ctx.scale(scale, scale);
+        ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
         ctx.fillStyle = `rgba(255, 255, 255, ${(0.25 + glow * 0.75).toFixed(3)})`;
         ctx.fillText(word.text, 0, 0);
+        if (wordRomaji) {
+          ctx.font = `600 ${romajiSubSize}px Inter, system-ui, sans-serif`;
+          ctx.fillStyle = `rgba(${rgb}, ${(0.42 + glow * 0.58).toFixed(3)})`;
+          ctx.fillText(wordRomaji, 0, Math.round(fontSize * 0.88));
+        }
         ctx.restore();
       });
 
-      this.drawCanvasRomaji(ctx, w, h, activeIdx);
+      this.drawCanvasRomaji(ctx, w, h, activeIdx, syncTime);
     }
 
     drawWeb(ctx, syncTime, activeIdx, words, wordState) {
       const w = this._canvasW;
       const h = this._canvasH;
+      const line = activeIdx >= 0 ? this.lyrics[activeIdx] : null;
+      const hasRomajiBar = Boolean(this.showRomaji && line && line.romaji);
       const cx = w / 2;
-      const cy = h / 2;
-      const maxR = Math.min(w, h) * 0.36;
+      const cy = hasRomajiBar ? h * 0.44 : h * 0.5;
+      const maxR = Math.min(w, h) * (hasRomajiBar ? 0.29 : 0.35);
       const rgb = this.palette.rgb;
 
       if (activeIdx < 0 || words.length === 0) {
@@ -1050,8 +1205,12 @@
         ctx.stroke();
       }
 
-      const fontSize = Math.max(12, Math.min(20, Math.round(w / 28)));
-      ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
+      const fontSize = Math.max(12, Math.min(19, Math.round(w / 29)));
+      const romajiSubSize = Math.max(10, Math.round(fontSize * 0.62));
+      const rWords = this.showRomaji ? this.getLineRomajiWords(activeIdx) : [];
+      const hasPerWordRomaji = this.showRomaji && (
+        words.some(wd => Boolean(wd.romaji)) || (rWords.length === words.length && rWords.length > 0)
+      );
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
@@ -1076,14 +1235,23 @@
         ctx.fill();
 
         const labelR = maxR + 24;
-        const lx = Math.max(36, Math.min(w - 36, cx + Math.cos(ang) * labelR));
-        const ly = Math.max(18, Math.min(h - 18, cy + Math.sin(ang) * labelR));
+        const lx = Math.max(40, Math.min(w - 40, cx + Math.cos(ang) * labelR));
+        const maxLy = hasRomajiBar ? h - 72 : h - 22;
+        const ly = Math.max(20, Math.min(maxLy, cy + Math.sin(ang) * labelR));
         const scale = 1 + glow * 0.08;
+        const wordRomaji = hasPerWordRomaji ? (word.romaji || (rWords[i] ? rWords[i].text : '')) : '';
+
         ctx.save();
         ctx.translate(lx, ly);
         ctx.scale(scale, scale);
+        ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
         ctx.fillStyle = `rgba(255, 255, 255, ${(0.26 + glow * 0.74).toFixed(3)})`;
-        ctx.fillText(word.text, 0, 0);
+        ctx.fillText(word.text, 0, wordRomaji ? -5 : 0);
+        if (wordRomaji) {
+          ctx.font = `600 ${romajiSubSize}px Inter, system-ui, sans-serif`;
+          ctx.fillStyle = `rgba(${rgb}, ${(0.4 + glow * 0.6).toFixed(3)})`;
+          ctx.fillText(wordRomaji, 0, Math.round(fontSize * 0.68));
+        }
         ctx.restore();
       });
 
@@ -1091,6 +1259,8 @@
       ctx.beginPath();
       ctx.arc(cx, cy, 6, 0, Math.PI * 2);
       ctx.fill();
+
+      this.drawCanvasRomaji(ctx, w, h, activeIdx, syncTime);
     }
 
     drawCityMap(ctx, syncTime, activeIdx, words, wordState, dt) {
@@ -1187,13 +1357,15 @@
         ctx.fill();
       });
 
-      const cardW = Math.min(w - 32, 540);
-      const cardH = 88;
+      const line = this.lyrics[activeIdx];
+      const hasRomaji = Boolean(this.showRomaji && line && line.romaji);
+      const cardW = Math.min(w - 28, 540);
+      const cardH = hasRomaji ? 106 : 86;
       const cardX = (w - cardW) / 2;
-      const cardY = h - cardH - 18;
+      const cardY = h - cardH - 16;
 
-      ctx.fillStyle = 'rgba(10, 15, 28, 0.88)';
-      ctx.strokeStyle = `rgba(${rgb}, 0.35)`;
+      ctx.fillStyle = 'rgba(10, 15, 28, 0.9)';
+      ctx.strokeStyle = `rgba(${rgb}, 0.38)`;
       ctx.lineWidth = 1;
       this.roundRect(ctx, cardX, cardY, cardW, cardH, 16);
       ctx.fill();
@@ -1210,7 +1382,7 @@
         ? cardX + (cardW - lineWidth) / 2
         : cardX + 18;
       let cursorX = startTextX;
-      const textY = cardY + cardH * 0.56;
+      const textY = cardY + (hasRomaji ? 50 : cardH * 0.56);
 
       for (let i = 0; i < words.length; i++) {
         const tok = words[i].text + (words[i].trailingSpace ? ' ' : '');
@@ -1220,6 +1392,30 @@
         ctx.fillStyle = `rgba(255, 255, 255, ${(0.3 + glow * 0.7).toFixed(3)})`;
         ctx.fillText(tok, cursorX, textY);
         cursorX += tw;
+      }
+
+      if (hasRomaji) {
+        const rWords = this.getLineRomajiWords(activeIdx);
+        const rState = this.findActiveWord(rWords, syncTime);
+        const rFont = Math.max(11, Math.min(14, Math.round(fontSize * 0.7)));
+        ctx.font = `600 ${rFont}px Inter, system-ui, sans-serif`;
+        const fullRomaji = rWords.map(rw => rw.text).join(' ');
+        const rWidth = ctx.measureText(fullRomaji).width;
+        let rX = rWidth < cardW - 36 ? cardX + (cardW - rWidth) / 2 : cardX + 18;
+        const rY = cardY + 78;
+
+        for (let i = 0; i < rWords.length; i++) {
+          const rTok = rWords[i].text + (rWords[i].trailingSpace ? ' ' : '');
+          const rw = ctx.measureText(rTok).width;
+          if (rX + rw > cardX + cardW - 14) break;
+          const isPast = rState.index >= 0 && i < rState.index;
+          const isCur = i === rState.index;
+          ctx.fillStyle = isCur
+            ? '#ffffff'
+            : (isPast ? `rgba(${rgb}, 0.95)` : 'rgba(148, 163, 184, 0.55)');
+          ctx.fillText(rTok, rX, rY);
+          rX += rw;
+        }
       }
 
       ctx.font = '600 11px Inter, system-ui, sans-serif';
@@ -1240,15 +1436,59 @@
       }
     }
 
-    drawCanvasRomaji(ctx, w, h, activeIdx) {
+    drawCanvasRomaji(ctx, w, h, activeIdx, syncTime) {
       if (!this.showRomaji || activeIdx < 0) return;
       const line = this.lyrics[activeIdx];
       if (!line || !line.romaji) return;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.font = '600 13px Inter, system-ui, sans-serif';
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.82)';
-      ctx.fillText(line.romaji, w / 2, h - 14);
+
+      const rgb = this.palette.rgb;
+      const rWords = this.getLineRomajiWords(activeIdx);
+      const rState = this.findActiveWord(rWords, syncTime);
+      const fontSize = Math.max(12, Math.min(15, Math.round(w / 40)));
+      ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`;
+
+      const fullText = rWords.length > 0 ? rWords.map(rw => rw.text).join(' ') : line.romaji;
+      const textW = ctx.measureText(fullText).width;
+      const maxPillW = w - 28;
+      const pillW = Math.min(maxPillW, Math.max(120, textW + 28));
+      const pillH = fontSize + 16;
+      const pillX = (w - pillW) / 2;
+      const pillY = h - pillH - 12;
+
+      ctx.fillStyle = 'rgba(10, 15, 28, 0.78)';
+      ctx.strokeStyle = `rgba(${rgb}, 0.34)`;
+      ctx.lineWidth = 1;
+      this.roundRect(ctx, pillX, pillY, pillW, pillH, pillH / 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textBaseline = 'middle';
+      const centerY = pillY + pillH / 2;
+
+      if (rWords.length === 0 || textW > maxPillW - 28) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(226, 232, 240, 0.92)';
+        ctx.fillText(fullText, w / 2, centerY, maxPillW - 24);
+        return;
+      }
+
+      ctx.textAlign = 'left';
+      let cursorX = (w - textW) / 2;
+      for (let i = 0; i < rWords.length; i++) {
+        const tok = rWords[i].text + (rWords[i].trailingSpace ? ' ' : '');
+        const tw = ctx.measureText(tok).width;
+        const isPast = rState.index >= 0 && i < rState.index;
+        const isCur = i === rState.index;
+        if (isCur) {
+          ctx.fillStyle = '#ffffff';
+        } else if (isPast) {
+          ctx.fillStyle = `rgba(${rgb}, 0.95)`;
+        } else {
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.52)';
+        }
+        ctx.fillText(tok, cursorX, centerY);
+        cursorX += tw;
+      }
     }
 
     roundRect(ctx, x, y, width, height, radius) {

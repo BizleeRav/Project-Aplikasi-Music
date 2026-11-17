@@ -12333,6 +12333,25 @@ body.music-playing .cinema-turntable-arm {
   text-align: center;
 }
 
+.motion-romaji-word {
+  display: inline-block;
+  color: rgba(148, 163, 184, 0.45);
+  transition: color 0.22s ease, text-shadow 0.22s ease;
+}
+
+.motion-romaji-word.has-space {
+  margin-right: 0.28em;
+}
+
+.motion-romaji-word.is-passed {
+  color: var(--motion-primary);
+}
+
+.motion-romaji-word.is-active {
+  color: #ffffff;
+  text-shadow: 0 0 12px var(--motion-glow);
+}
+
 .motion-empty-state {
   text-align: center;
   padding: 24px;
@@ -12921,6 +12940,14 @@ body.music-playing .cinema-turntable-arm {
   font-weight: 700;
   color: #ffffff;
   line-height: 1.35;
+}
+
+.pay-row-romaji {
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: rgba(148, 163, 184, 0.8);
+  margin-top: 3px;
+  line-height: 1.3;
 }
 
 .pay-row-meta {
