@@ -73,6 +73,9 @@
       this._lastFisheyeWordIdx = -2;
       this._lastActiveIdx = -2;
       this._lastActiveWordIdx = -2;
+      this._lastSyncedVisKey = '';
+      this._cachedWordEls = null;
+      this._lastWallTransformAt = 0;
       this._currentWords = [];
       this._camX = 0;
       this._camY = 0;
@@ -99,6 +102,8 @@
       } catch (e) {}
       this._lastRenderSignature = '';
       this._lastFisheyeWordIdx = -2;
+      this._lastSyncedVisKey = '';
+      this._cachedWordEls = null;
       this.syncRendererVisibility();
     }
 
@@ -126,6 +131,8 @@
       this._lastFisheyeWordIdx = -2;
       this._lastActiveIdx = -2;
       this._lastActiveWordIdx = -2;
+      this._lastSyncedVisKey = '';
+      this._cachedWordEls = null;
       this._camX = 0;
       this._camY = 0;
     }
@@ -143,8 +150,12 @@
       }
     }
 
-    syncRendererVisibility() {
+    syncRendererVisibility(force = false) {
       const cfg = this.getStyleConfig();
+      const visKey = `${cfg.renderer}|${this.style}|1`;
+      if (!force && this._lastSyncedVisKey === visKey) return;
+      this._lastSyncedVisKey = visKey;
+
       if (this.canvasEl) {
         this.canvasEl.style.display = cfg.renderer === 'canvas' ? 'block' : 'none';
       }
@@ -278,32 +289,38 @@
 
     render(syncTime, activeIdx, options = {}) {
       if (!this.stageEl) return;
-      if (options.showRomaji !== undefined) {
-        this.showRomaji = Boolean(options.showRomaji);
+      try {
+        if (options.showRomaji !== undefined) {
+          this.showRomaji = Boolean(options.showRomaji);
+        }
+
+        if (!this.lyrics || this.lyrics.length === 0) {
+          this.renderEmptyState();
+          return;
+        }
+
+        const cfg = this.getStyleConfig();
+        this.syncRendererVisibility();
+
+        const words = activeIdx >= 0 ? this.getLineWords(activeIdx) : [];
+        const wordState = activeIdx >= 0 ? this.findActiveWord(words, syncTime) : { index: -1, progress: 0 };
+
+        if (cfg.renderer === 'canvas') {
+          this.renderCanvasScene(syncTime, activeIdx, words, wordState);
+        } else {
+          this.renderDomStyle(syncTime, activeIdx, words, wordState);
+        }
+
+        this._lastActiveIdx = activeIdx;
+        this._lastActiveWordIdx = wordState.index;
+      } catch (err) {
+        console.warn('[MotionLyrics] Render error:', err);
       }
-
-      if (!this.lyrics || this.lyrics.length === 0) {
-        this.renderEmptyState();
-        return;
-      }
-
-      const cfg = this.getStyleConfig();
-      this.syncRendererVisibility();
-
-      const words = activeIdx >= 0 ? this.getLineWords(activeIdx) : [];
-      const wordState = activeIdx >= 0 ? this.findActiveWord(words, syncTime) : { index: -1, progress: 0 };
-
-      if (cfg.renderer === 'canvas') {
-        this.renderCanvasScene(syncTime, activeIdx, words, wordState);
-      } else {
-        this.renderDomStyle(syncTime, activeIdx, words, wordState);
-      }
-
-      this._lastActiveIdx = activeIdx;
-      this._lastActiveWordIdx = wordState.index;
     }
 
     renderEmptyState() {
+      this._lastSyncedVisKey = 'empty';
+      this._cachedWordEls = null;
       if (this.canvasEl) this.canvasEl.style.display = 'none';
       if (this.domEl) {
         this.domEl.style.display = 'flex';
@@ -336,6 +353,10 @@
         this._lastRenderSignature = sig;
         this._currentWords = words;
         this.buildDomForLine(activeIdx, words, syncTime);
+        this._cachedWordEls = this.domEl.querySelectorAll('.motion-word');
+        this._cachedKineticWall = (this.style === 'kinetic') ? this.domEl.querySelector('#motion-kinetic-wall') : null;
+        this._lastDomWordIdx = -99;
+        this._lastDomWordPct = -1;
       }
 
       this.updateDomWordProgress(syncTime, activeIdx, words, wordState);
@@ -647,37 +668,43 @@
     updateDomWordProgress(syncTime, activeIdx, words, wordState) {
       if (!this.domEl) return;
 
-      // Subtle continuous 3D wall drift for Kinetic mode
-      if (this.style === 'kinetic') {
-        const wall = this.domEl.querySelector('#motion-kinetic-wall');
-        if (wall) {
-          const rx = Math.sin(syncTime * 0.7) * 5;
-          const ry = Math.cos(syncTime * 0.55) * 8;
-          wall.style.transform = `perspective(950px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
-        }
+      // Lightweight 3D drift for Kinetic mode (desktop/capable GPUs, throttled & no CSS transition fighting)
+      if (this.style === 'kinetic' && this._cachedKineticWall && window.innerWidth > 768) {
+        const rx = Math.sin(syncTime * 0.7) * 4.5;
+        const ry = Math.cos(syncTime * 0.55) * 7;
+        this._cachedKineticWall.style.transform = `perspective(950px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
       }
 
-      const wordEls = this.domEl.querySelectorAll('.motion-word');
+      const wordEls = this._cachedWordEls;
       if (!wordEls || wordEls.length === 0) return;
 
       const wIdx = wordState.index;
-      for (let i = 0; i < wordEls.length; i++) {
-        const el = wordEls[i];
-        if (wIdx < 0) {
-          el.classList.remove('is-active', 'is-passed');
-          el.style.setProperty('--wp', '0%');
-        } else if (i < wIdx) {
-          el.classList.add('is-passed');
-          el.classList.remove('is-active');
-          el.style.setProperty('--wp', '100%');
-        } else if (i === wIdx) {
-          el.classList.add('is-active');
-          el.classList.remove('is-passed');
-          el.style.setProperty('--wp', `${Math.round(wordState.progress * 100)}%`);
-        } else {
-          el.classList.remove('is-active', 'is-passed');
-          el.style.setProperty('--wp', '0%');
+      const pct = Math.round(wordState.progress * 100);
+
+      if (wIdx !== this._lastDomWordIdx) {
+        this._lastDomWordIdx = wIdx;
+        for (let i = 0; i < wordEls.length; i++) {
+          const el = wordEls[i];
+          if (wIdx < 0) {
+            el.classList.remove('is-active', 'is-passed');
+            el.style.setProperty('--wp', '0%');
+          } else if (i < wIdx) {
+            el.classList.add('is-passed');
+            el.classList.remove('is-active');
+            el.style.setProperty('--wp', '100%');
+          } else if (i === wIdx) {
+            el.classList.add('is-active');
+            el.classList.remove('is-passed');
+            el.style.setProperty('--wp', `${pct}%`);
+          } else {
+            el.classList.remove('is-active', 'is-passed');
+            el.style.setProperty('--wp', '0%');
+          }
         }
+        this._lastDomWordPct = pct;
+      } else if (wIdx >= 0 && wIdx < wordEls.length && pct !== this._lastDomWordPct) {
+        this._lastDomWordPct = pct;
+        wordEls[wIdx].style.setProperty('--wp', `${pct}%`);
       }
     }
 
@@ -696,7 +723,9 @@
     // =========================================================================
     renderCanvasScene(syncTime, activeIdx, words, wordState) {
       if (!this.canvasEl) return;
-      this.resizeCanvas();
+      if (this._canvasW < 20 || this._canvasH < 20) {
+        this.resizeCanvas();
+      }
       const ctx = this.canvasEl.getContext('2d');
       if (!ctx || this._canvasW < 20 || this._canvasH < 20) return;
 

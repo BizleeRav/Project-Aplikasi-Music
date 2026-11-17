@@ -2774,12 +2774,13 @@ class App {
 
     if (this.isCinemaMotionMode && this.motionLyricsEngine) {
       this.motionLyricsEngine.setTrack(this.currentTrack, this.currentLyricsData);
+      if (this.isPlaying && !this._lyricsSyncRaf && !this._isAppInBackground) {
+        this.startLyricsSyncLoop();
+      }
       requestAnimationFrame(() => {
         if (!this.motionLyricsEngine) return;
         this.motionLyricsEngine.resizeCanvas();
-        this.motionLyricsEngine.render(this.getCurrentPlaybackTime(), this.activeLyricIdx, {
-          showRomaji: this.isRomajiEnabled
-        });
+        this.updateActiveLyricsLine(this.getCurrentPlaybackTime());
       });
     } else {
       this.lastScrolledLyricIdx = -1;
@@ -2847,13 +2848,13 @@ class App {
     }
 
     const activeStyle = this.motionLyricsEngine ? this.motionLyricsEngine.style : 'kinetic';
+    const pillsWrap = document.getElementById('cinema-motion-pills');
     document.querySelectorAll('.motion-style-pill').forEach(pill => {
       const isAct = pill.getAttribute('data-motion-style') === activeStyle;
       pill.classList.toggle('active', isAct);
-      if (isAct && motionOn && typeof pill.scrollIntoView === 'function') {
-        try {
-          pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        } catch (e) {}
+      if (isAct && motionOn && pillsWrap) {
+        const targetLeft = Math.max(0, pill.offsetLeft - (pillsWrap.clientWidth - pill.offsetWidth) / 2);
+        pillsWrap.scrollLeft = targetLeft;
       }
     });
   }

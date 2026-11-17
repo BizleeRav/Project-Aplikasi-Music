@@ -12274,7 +12274,7 @@ body.music-playing .cinema-turntable-arm {
 .motion-word {
   display: inline-block;
   color: rgba(255, 255, 255, 0.28);
-  transition: color 0.16s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, text-shadow 0.2s ease;
+  transition: color 0.14s ease, opacity 0.14s ease;
 }
 
 .motion-word.has-space {
@@ -12328,8 +12328,6 @@ body.music-playing .cinema-turntable-arm {
 }
 
 .motion-kinetic-wall {
-  transition: transform 0.12s linear;
-  transform-style: preserve-3d;
   will-change: transform;
 }
 
@@ -12972,7 +12970,31 @@ body.music-playing .cinema-turntable-arm {
 
   .studio-cinema-overlay.cinema-motion-active .cinema-visual-lyrics-split {
     height: auto !important;
+    min-height: 0 !important;
     flex: 1 1 0% !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-lyrics-panel {
+    height: auto !important;
+    min-height: 0 !important;
+    flex: 1 1 0% !important;
+    contain: layout style !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-motion-stage {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  .cinema-motion-pills {
+    touch-action: pan-x !important;
+  }
+
+  .notif-card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(22, 28, 46, 0.94) !important;
   }
 
   .studio-cinema-overlay.cinema-motion-active .cinema-lyrics-hint-bar {
