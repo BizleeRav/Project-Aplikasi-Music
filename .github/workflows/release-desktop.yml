@@ -24,8 +24,15 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build and publish Windows installer
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win --publish always
+      - name: Build Windows installer
+        run: npx electron-builder --win --publish never
 
+      - name: Publish single GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/AuraSound-Setup-*.exe
+            release/AuraSound-Setup-*.exe.blockmap
+            release/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

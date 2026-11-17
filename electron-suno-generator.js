@@ -407,8 +407,8 @@ const VISIBLE_SUNO_INPUTS_FN = `
       const allBtns = Array.from(document.querySelectorAll('button, div[role="button"]')).filter(b => !b.closest('nav') && !b.closest('aside'));
       createBtn = allBtns.find(b => {
         const al = (b.getAttribute('aria-label') || '').trim().toLowerCase();
-        const t = (b.innerText || b.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-        return al.includes('create song') || al === 'create' || t === 'create' || /^create(\s|\(|$|\d)/.test(t);
+        const t = (b.innerText || b.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+        return al.includes('create song') || al === 'create' || t === 'create' || /^create(\\s|\\(|$|\\d)/.test(t);
       });
     }
     return createBtn || null;
@@ -422,7 +422,7 @@ async function isSunoCreateWorkspaceReady(win) {
   if (!win || win.isDestroyed()) return false;
   return win.webContents.executeJavaScript(`
     (() => {
-      if (document.readyState !== 'complete') return false;
+      if (document.readyState !== 'interactive' && document.readyState !== 'complete') return false;
       if (window.Clerk && window.Clerk.loaded === false) return false;
       ${VISIBLE_SUNO_INPUTS_FN}
       const inputs = getVisibleSunoInputs();
@@ -1066,23 +1066,7 @@ async function generateWithSunoBrowser({
       throw new Error('Akun Suno Anda belum login di aplikasi atau sesi telah berakhir. Silakan klik tombol "Hubungkan Akun Suno" di AuraSound dan login kembali.');
     }
 
-    // Ensure React Studio Create workspace is mounted and interactive
-    let pageReady = false;
-    for (let i = 0; i < 20; i++) {
-      pageReady = await isSunoCreateWorkspaceReady(genWin);
-      if (pageReady) break;
-      await new Promise(r => setTimeout(r, 300));
-    }
-
-    if (!pageReady) {
-      genWin = await initWarmSunoEngine({ forceReload: true });
-      pageReady = await isSunoCreateWorkspaceReady(genWin);
-      if (!pageReady) {
-        throw new Error('Halaman Suno tidak merespons. Pastikan perangkat terhubung ke internet.');
-      }
-    }
-
-    // Ensure Clerk session JWT is freshly minted & remove any stale duplicate __session cookies before filling
+    // Ensure Clerk session JWT is freshly minted & dismiss stale modals before attempting fast-path or form fill
     const mintedFastTok = await genWin.webContents.executeJavaScript(`
       (async () => {
         try {
@@ -1121,7 +1105,7 @@ async function generateWithSunoBrowser({
 
     const targetMode = useCustomLyricsMode ? 'custom_lyrics' : 'simple';
 
-    // Same-origin fast-path inside Electron Chromium (carries genuine cf_clearance + browser fingerprint)
+    // Same-origin fast-path inside Electron Chromium (runs before requiring DOM Create controls)
     const fastTok = mintedFastTok || await readLiveSessionJwt(sunoSession);
     if (fastTok && fastTok.length > 20) {
       const mRaw = String(model || 'v6-mini').trim().toLowerCase();
@@ -1195,6 +1179,26 @@ async function generateWithSunoBrowser({
             targetMode
           };
         }
+      }
+    }
+
+    // Fast-path required Turnstile or fell back: ensure React Studio Create workspace is mounted and interactive
+    let pageReady = false;
+    for (let i = 0; i < 20; i++) {
+      pageReady = await isSunoCreateWorkspaceReady(genWin);
+      if (pageReady) break;
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    if (!pageReady) {
+      genWin = await initWarmSunoEngine({ forceReload: true });
+      const reloadUrl = genWin.webContents.getURL() || '';
+      if (reloadUrl.includes('/sign-in') || reloadUrl.includes('/login')) {
+        throw new Error('Akun Suno Anda belum login di aplikasi atau sesi telah berakhir. Silakan klik tombol "Hubungkan Akun Suno" di AuraSound dan login kembali.');
+      }
+      pageReady = await isSunoCreateWorkspaceReady(genWin);
+      if (!pageReady) {
+        throw new Error('Halaman Suno tidak merespons. Pastikan perangkat terhubung ke internet.');
       }
     }
 
