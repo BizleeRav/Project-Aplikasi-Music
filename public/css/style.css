@@ -12213,6 +12213,14 @@ body.music-playing .cinema-turntable-arm {
 }
 
 /* Desktop & General Motion Layout States */
+.studio-cinema-overlay.cinema-motion-stage-open .cinema-lyrics-stream {
+  display: none !important;
+}
+
+.studio-cinema-overlay.cinema-motion-stage-open .cinema-motion-stage {
+  display: flex !important;
+}
+
 .studio-cinema-overlay.cinema-motion-active .cinema-canvas-wrap {
   display: none !important;
 }
@@ -12979,6 +12987,17 @@ body.music-playing .cinema-turntable-arm {
     min-height: 0 !important;
     flex: 1 1 0% !important;
     contain: layout style !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-stage-open .cinema-lyrics-stream {
+    display: none !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-stage-open .cinema-motion-stage {
+    display: flex !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: auto !important;
   }
 
   .studio-cinema-overlay.cinema-motion-active .cinema-motion-stage {

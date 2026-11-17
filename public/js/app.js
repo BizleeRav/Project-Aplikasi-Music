@@ -2827,6 +2827,7 @@ class App {
 
     if (this.cinemaModal) {
       this.cinemaModal.classList.toggle('cinema-motion-active', motionOn);
+      this.cinemaModal.classList.toggle('cinema-motion-stage-open', showStage);
       this.cinemaModal.classList.toggle('cinema-motion-full', motionOn && this.isMotionFullStage);
     }
     if (this.btnToggleCinemaMotion) {
