@@ -41,9 +41,11 @@ class YTPlayerManager {
     if (!container) {
       container = document.createElement('div');
       container.id = 'yt-player-wrapper';
-      container.style.position = 'absolute';
+      container.style.position = 'fixed';
+      container.style.top = '0px';
       container.style.width = '1px';
       container.style.height = '1px';
+      container.style.overflow = 'hidden';
       container.style.opacity = '0.01';
       container.style.pointerEvents = 'none';
       container.style.left = '-9999px';
