@@ -2783,6 +2783,12 @@ class App {
         if (window.audioEngine && typeof window.audioEngine.syncCinemaCanvasSize === 'function') {
           window.audioEngine.syncCinemaCanvasSize();
         }
+        if (this.isCinemaMotionMode && this.motionLyricsEngine) {
+          this.motionLyricsEngine.resizeCanvas();
+          this.motionLyricsEngine.render(this.getCurrentPlaybackTime(), this.activeLyricIdx, {
+            showRomaji: this.isRomajiEnabled
+          });
+        }
       }, 420);
 
       // Sync active DSP preset label & buttons

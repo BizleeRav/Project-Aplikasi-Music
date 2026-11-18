@@ -586,7 +586,7 @@
               </div>
               <div class="motion-code-body">
                 <div class="mc-row mc-muted"><span class="mc-ln">01</span><span class="mc-comment">// ${escapeHtml(this.trackMeta.title)} — ${escapeHtml(this.trackMeta.artist)}</span></div>
-                <div class="mc-row mc-active motion-smooth-enter"><span class="mc-ln">02</span><span class="mc-kw">await</span> <span class="mc-fn">vocals</span>.<span class="mc-prop">enter</span>();<span class="mc-cursor"></span></div>
+                <div class="mc-row mc-active"><span class="mc-ln">02</span><span class="mc-code-expr motion-smooth-enter"><span class="mc-kw">await</span> <span class="mc-fn">vocals</span>.<span class="mc-prop">enter</span>();<span class="mc-cursor"></span></span></div>
                 <div class="mc-row mc-muted"><span class="mc-ln">03</span><span class="mc-comment">// next: ${escapeHtml(nextLine ? nextLine.text : 'ready')}</span></div>
               </div>
             </div>
@@ -602,9 +602,9 @@
             </div>
             <div class="motion-code-body">
               <div class="mc-row mc-muted"><span class="mc-ln">${pad(lineNum - 1)}</span><span class="mc-comment">// ${escapeHtml(prevText)}</span></div>
-              <div class="mc-row mc-active motion-smooth-enter">
+              <div class="mc-row mc-active">
                 <span class="mc-ln">${pad(lineNum)}</span>
-                <span class="mc-code-expr"><span class="mc-kw">const</span> <span class="mc-var">verse_${pad(lineNum)}</span> <span class="mc-op">=</span> <span class="mc-quote">"</span><span class="mc-word-stream">${this.buildWordsMarkup(words, 'mc-word')}</span><span class="mc-cursor"></span><span class="mc-quote">"</span>;</span>
+                <span class="mc-code-expr motion-smooth-enter"><span class="mc-kw">const</span> <span class="mc-var">verse_${pad(lineNum)}</span> <span class="mc-op">=</span> <span class="mc-quote">"</span><span class="mc-word-stream">${this.buildWordsMarkup(words, 'mc-word')}</span><span class="mc-cursor"></span><span class="mc-quote">"</span>;</span>
               </div>
               ${romajiHtml ? `<div class="mc-row mc-romaji-row"><span class="mc-ln">  </span><span class="mc-comment">// ${escapeHtml(line.romaji)}</span></div>` : ''}
               <div class="mc-row mc-muted"><span class="mc-ln">${pad(lineNum + 1)}</span><span class="mc-comment">// ${escapeHtml(nextText)}</span></div>
@@ -632,7 +632,7 @@
             : '';
 
           threadHtml += `
-            <div class="msg-row ${sideCls} ${isCurrent ? 'is-current motion-smooth-enter' : 'is-past'}" data-seek-time="${item.time}">
+            <div class="msg-row ${sideCls} ${isCurrent ? 'is-current' : 'is-past'}" data-seek-time="${item.time}">
               <div class="msg-bubble">
                 <div class="msg-text">${content}</div>
                 ${subRomaji}
@@ -643,7 +643,7 @@
 
         if (activeIdx < 0) {
           threadHtml = `
-            <div class="msg-row is-in is-current motion-smooth-enter">
+            <div class="msg-row is-in is-current">
               <div class="msg-bubble msg-typing">
                 <span></span><span></span><span></span>
               </div>
@@ -683,7 +683,7 @@
               ? `<div class="notif-romaji">${entry.isTop ? this.buildRomajiWordsMarkup(entry.idx) : escapeHtml(entry.item.romaji)}</div>`
               : '';
             return `
-              <div class="notif-card depth-${stackIdx} ${entry.isTop ? 'is-top motion-smooth-enter' : ''}" data-seek-time="${entry.item.time}">
+              <div class="notif-card depth-${stackIdx} ${entry.isTop ? 'is-top' : ''}" data-seek-time="${entry.item.time}">
                 <div class="notif-card-top">
                   <span class="notif-app">${escapeHtml(this.trackMeta.title)}</span>
                   <span class="notif-time">${entry.isTop ? 'now' : formatTime(entry.item.time)}</span>
@@ -694,7 +694,7 @@
             `;
           }).join('')
           : `
-            <div class="notif-card depth-0 is-top motion-smooth-enter">
+            <div class="notif-card depth-0 is-top">
               <div class="notif-card-top">
                 <span class="notif-app">${escapeHtml(this.trackMeta.title)}</span>
                 <span class="notif-time">now</span>
@@ -732,7 +732,7 @@
               : '';
             const amt = ((entry.idx + 1) * 1.25).toFixed(2);
             return `
-              <div class="pay-row pos-${pos} ${entry.isTop ? 'is-top motion-smooth-enter' : ''}" data-seek-time="${entry.item.time}">
+              <div class="pay-row pos-${pos} ${entry.isTop ? 'is-top' : ''}" data-seek-time="${entry.item.time}">
                 <div class="pay-row-main">
                   <div class="pay-row-title">${content}</div>
                   ${subRomaji}
@@ -743,7 +743,7 @@
             `;
           }).join('')
           : `
-            <div class="pay-row pos-0 is-top motion-smooth-enter">
+            <div class="pay-row pos-0 is-top">
               <div class="pay-row-main">
                 <div class="pay-row-title">${escapeHtml(this.trackMeta.title)}</div>
                 <div class="pay-row-meta">Waiting for next lyric</div>
@@ -770,13 +770,13 @@
         const totalLines = String(this.lyrics.length).padStart(2, '0');
         if (!line) {
           this.domEl.innerHTML = `
-            <div class="motion-poster-sheet motion-smooth-enter">
+            <div class="motion-poster-sheet">
               <div class="poster-meta-top">
                 <span>${escapeHtml(this.trackMeta.artist || 'AURASOUND')}</span>
                 <span>00 / ${totalLines}</span>
               </div>
               <div class="poster-rule"></div>
-              <div class="poster-hero-wait">${escapeHtml(this.trackMeta.title)}</div>
+              <div class="poster-hero-wait motion-smooth-enter">${escapeHtml(this.trackMeta.title)}</div>
               <div class="poster-rule"></div>
               <div class="poster-meta-bot">LIVE EDITION</div>
             </div>
@@ -803,13 +803,13 @@
         }
 
         this.domEl.innerHTML = `
-          <div class="motion-poster-sheet motion-smooth-enter">
+          <div class="motion-poster-sheet">
             <div class="poster-meta-top">
               <span>${escapeHtml(this.trackMeta.artist || 'AURASOUND')}</span>
               <span>${lineNum} / ${totalLines}</span>
             </div>
             <div class="poster-rule"></div>
-            <div class="poster-tiers">${tiers.join('')}</div>
+            <div class="poster-tiers motion-smooth-enter">${tiers.join('')}</div>
             ${romajiHtml ? `<div class="poster-romaji">${this.buildRomajiWordsMarkup(activeIdx)}</div>` : ''}
             <div class="poster-rule"></div>
             <div class="poster-meta-bot">
@@ -846,10 +846,10 @@
           : `<div class="search-sugg-row is-end"><span class="search-sugg-text">${escapeHtml(this.trackMeta.title)}</span><span class="search-sugg-time">End</span></div>`;
 
         this.domEl.innerHTML = `
-          <div class="motion-search-wrap motion-smooth-enter">
+          <div class="motion-search-wrap">
             <div class="search-box">
               <div class="search-top-label">${escapeHtml(this.trackMeta.artist || 'Search')} • ${formatTime(syncTime)}</div>
-              <div class="search-input-line">${queryHtml}</div>
+              <div class="search-input-line motion-smooth-enter">${queryHtml}</div>
               ${romajiLine}
             </div>
             <div class="search-sugg-list">${suggHtml}</div>
@@ -922,16 +922,22 @@
         // Smooth optical spring glide on word change
         if (typeof refs.center.animate === 'function') {
           try {
-            refs.center.animate(
+            if (this._feCenterAnim) {
+              try { this._feCenterAnim.cancel(); } catch (e) {}
+            }
+            if (this._fePrevAnim) {
+              try { this._fePrevAnim.cancel(); } catch (e) {}
+            }
+            this._feCenterAnim = refs.center.animate(
               [
-                { transform: 'translate3d(0, 14px, 0) scale(0.86)', opacity: 0.35 },
-                { transform: 'translate3d(0, 0, 0) scale(1.04)', opacity: 1 }
+                { transform: 'translate3d(0, 12px, 0) scale(0.88)', opacity: 0.4 },
+                { transform: 'translate3d(0, 0, 0) scale(1)', opacity: 1 }
               ],
               { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
             );
-            refs.prev.animate(
+            this._fePrevAnim = refs.prev.animate(
               [
-                { transform: 'translate3d(0, 10px, 0) scale(1.05)', opacity: 0.55 },
+                { transform: 'translate3d(0, 8px, 0) scale(1.04)', opacity: 0.5 },
                 { transform: 'translate3d(0, 0, 0) scale(1)', opacity: 0.28 }
               ],
               { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
