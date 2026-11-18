@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aurasound-v115';
+const CACHE_NAME = 'aurasound-v116';
 
 const IMAGE_CACHE = 'aurasound-images-v4';
 
@@ -47,7 +47,7 @@ self.addEventListener('fetch', event => {
               }).catch(() => networkResponse);
             }
             return networkResponse;
-          }).catch(() => cachedResponse);
+          }).catch(() => cachedResponse || Response.error());
         });
       })
     );

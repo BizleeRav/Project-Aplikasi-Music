@@ -3,12 +3,61 @@
  * Handles Navigation, Search, Audio Playback Dispatcher, Queue, Favorites, Playlists, and Mobile QR Connect
  */
 
+// Multi-stage thumbnail fallback: original -> i.ytimg.com webp -> i.ytimg.com jpg -> supermix.jpg
+window.handleAuraThumbError = function (img, explicitId) {
+  if (!img || img.tagName !== 'IMG') return false;
+  const rawId = explicitId || img.dataset.ytId || img.closest?.('[data-track-id]')?.dataset?.trackId || '';
+  const ytMatch = /^[a-zA-Z0-9_-]{11}$/.test(rawId)
+    ? rawId
+    : (img.src.match(/\/vi(?:_webp)?\/([a-zA-Z0-9_-]{11})\//)?.[1] || '');
+  const step = parseInt(img.dataset.fbStep || '0', 10);
+
+  if (ytMatch && step === 0 && !img.src.includes(`i.ytimg.com/vi_webp/${ytMatch}/`)) {
+    img.dataset.fbStep = '1';
+    img.src = `https://i.ytimg.com/vi_webp/${ytMatch}/mqdefault.webp`;
+    return true;
+  }
+  if (ytMatch && step <= 1 && !img.src.includes(`i.ytimg.com/vi/${ytMatch}/`)) {
+    img.dataset.fbStep = '2';
+    img.src = `https://i.ytimg.com/vi/${ytMatch}/mqdefault.jpg`;
+    return true;
+  }
+
+  img.dataset.fbStep = '3';
+  img.onerror = null;
+  if (!img.src.endsWith('/images/supermix.jpg')) {
+    img.src = '/images/supermix.jpg';
+  }
+  return false;
+};
+
+window.setAuraThumbSrc = function (img, trackOrUrl, explicitId) {
+  if (!img) return;
+  const url = (typeof trackOrUrl === 'string' ? trackOrUrl : trackOrUrl?.thumbnail) || '/images/supermix.jpg';
+  const id = explicitId || (typeof trackOrUrl === 'object' ? trackOrUrl?.id : '') || '';
+  delete img.dataset.fbStep;
+  if (id) img.dataset.ytId = id;
+  else delete img.dataset.ytId;
+  img.onerror = () => window.handleAuraThumbError(img);
+  img.src = url;
+};
+
+// Capture-phase fallback before inline onerror="this.src='/images/supermix.jpg'" fires
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (!img || img.tagName !== 'IMG') return;
+  if (img.src && img.src.endsWith('/images/supermix.jpg')) return;
+  if (window.handleAuraThumbError(img)) {
+    e.stopPropagation();
+  }
+}, true);
+
 // Global safeguard: automatically intercept and replace 120x90 grey dummy YouTube 404 placeholder thumbnails
 document.addEventListener('load', (e) => {
   if (e.target && e.target.tagName === 'IMG') {
     const img = e.target;
     if (img.src && img.src.includes('ytimg.com') && img.naturalWidth === 120 && img.naturalHeight === 90) {
-      img.src = '/images/supermix.jpg';
+      window.handleAuraThumbError(img);
     }
   }
 }, true);
@@ -2977,8 +3026,7 @@ class App {
       this.cinemaArtist.innerHTML = this.renderArtistLinks(this.cleanArtistName(this.currentTrack.artist));
     }
     if (this.cinemaVinylThumb) {
-      this.cinemaVinylThumb.src = this.currentTrack.thumbnail || '/images/supermix.jpg';
-      this.cinemaVinylThumb.onerror = () => { this.cinemaVinylThumb.src = '/images/supermix.jpg'; };
+      window.setAuraThumbSrc(this.cinemaVinylThumb, this.currentTrack);
     }
     if (this.cinemaBtnFav) {
       const isFav = this.isFavorited(this.currentTrack.id);
@@ -8164,9 +8212,9 @@ class App {
   renderTrackGrid(tracks, container, key = 'trending') {
     this.registerTrackList(key, tracks);
     container.innerHTML = tracks.map((track, idx) => `
-      <div class="music-card" onclick="window.app.playFromRegistry('${key}', ${idx})">
+      <div class="music-card" data-track-id="${track.id}" onclick="window.app.playFromRegistry('${key}', ${idx})">
         <div class="card-thumb-wrapper">
-          <img src="${track.thumbnail}" alt="${track.title}" class="card-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+          <img src="${track.thumbnail}" alt="${track.title}" class="card-thumb" loading="lazy" onerror="window.handleAuraThumbError(this)">
           <div class="card-play-btn">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           </div>
@@ -8186,7 +8234,7 @@ class App {
     container.innerHTML = tracks.map((track, idx) => `
       <div class="track-row ${this.currentTrack?.id === track.id ? 'active' : ''}" data-track-id="${track.id}" data-index="${idx + 1}" onclick="window.app.playFromRegistry('${listKey}', ${idx})">
         <span class="track-number">${this.currentTrack?.id === track.id ? '▶' : idx + 1}</span>
-        <img src="${track.thumbnail}" alt="${track.title}" class="track-row-thumb" loading="lazy" onerror="this.src='/images/supermix.jpg'">
+        <img src="${track.thumbnail}" alt="${track.title}" class="track-row-thumb" loading="lazy" onerror="window.handleAuraThumbError(this)">
         <div class="track-row-details">
           <div class="track-row-title">
             ${track.title}
@@ -8295,23 +8343,11 @@ class App {
 
         if (this.playerTitle) this.playerTitle.textContent = track.title || 'Lagu';
         if (this.playerArtist) this.playerArtist.innerHTML = this.renderArtistLinks(track.artist || 'AuraSound');
-        if (this.playerThumb) {
-          this.playerThumb.src = track.thumbnail || '/images/supermix.jpg';
-          this.playerThumb.onerror = () => { this.playerThumb.src = '/images/supermix.jpg'; };
-        }
-        if (this.playerVinylLabelImg) {
-          this.playerVinylLabelImg.src = track.thumbnail || '/images/supermix.jpg';
-          this.playerVinylLabelImg.onerror = () => { this.playerVinylLabelImg.src = '/images/supermix.jpg'; };
-        }
+        window.setAuraThumbSrc(this.playerThumb, track);
+        window.setAuraThumbSrc(this.playerVinylLabelImg, track);
         const heroVinylThumb = document.querySelector('.aura-vinyl-label-thumb');
-        if (heroVinylThumb) {
-          heroVinylThumb.src = track.thumbnail || '/images/supermix.jpg';
-          heroVinylThumb.onerror = () => { heroVinylThumb.src = '/images/supermix.jpg'; };
-        }
-        if (this.cinemaVinylThumb) {
-          this.cinemaVinylThumb.src = track.thumbnail || '/images/supermix.jpg';
-          this.cinemaVinylThumb.onerror = () => { this.cinemaVinylThumb.src = '/images/supermix.jpg'; };
-        }
+        window.setAuraThumbSrc(heroVinylThumb, track);
+        window.setAuraThumbSrc(this.cinemaVinylThumb, track);
         if (this.badgeSourceText) {
           this.badgeSourceText.textContent = track.type === 'suno' ? 'SUNO AI • DSP' : 'YT MUSIC • 24-BIT';
         }
@@ -8618,18 +8654,9 @@ class App {
     // Update Player UI
     if (this.playerTitle) this.playerTitle.textContent = track.title;
     if (this.playerArtist) this.playerArtist.innerHTML = this.renderArtistLinks(track.artist || 'AuraSound');
-    if (this.playerThumb) {
-      this.playerThumb.src = track.thumbnail || '/images/supermix.jpg';
-      this.playerThumb.onerror = () => { this.playerThumb.src = '/images/supermix.jpg'; };
-    }
-    if (this.playerVinylLabelImg) {
-      this.playerVinylLabelImg.src = track.thumbnail || '/images/supermix.jpg';
-      this.playerVinylLabelImg.onerror = () => { this.playerVinylLabelImg.src = '/images/supermix.jpg'; };
-    }
-    if (this.cinemaVinylThumb) {
-      this.cinemaVinylThumb.src = track.thumbnail || '/images/supermix.jpg';
-      this.cinemaVinylThumb.onerror = () => { this.cinemaVinylThumb.src = '/images/supermix.jpg'; };
-    }
+    window.setAuraThumbSrc(this.playerThumb, track);
+    window.setAuraThumbSrc(this.playerVinylLabelImg, track);
+    window.setAuraThumbSrc(this.cinemaVinylThumb, track);
     if (this.badgeSourceText) {
       this.badgeSourceText.textContent = track.type === 'suno' ? 'SUNO AI • DSP' : (track.isSpotify ? 'SPOTIFY • 24-BIT' : 'YT MUSIC • 24-BIT');
     }
