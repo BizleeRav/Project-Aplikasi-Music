@@ -2775,9 +2775,15 @@ class App {
       if (this.cinemaVisCanvas && !this._cinemaVisInitialized) {
         window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
         this._cinemaVisInitialized = true;
-      } else if (window.audioEngine && typeof window.audioEngine.syncCinemaCanvasSize === 'function') {
+      } else if (typeof window.audioEngine.syncCinemaCanvasSize === 'function') {
         window.audioEngine.syncCinemaCanvasSize();
       }
+      // Re-sync after modal open transform transition (scale 0.97 -> 1) finishes
+      setTimeout(() => {
+        if (window.audioEngine && typeof window.audioEngine.syncCinemaCanvasSize === 'function') {
+          window.audioEngine.syncCinemaCanvasSize();
+        }
+      }, 420);
 
       // Sync active DSP preset label & buttons
       const labelNames = {
@@ -2851,7 +2857,12 @@ class App {
     }
     if (!this.isCinemaVisHidden && window.audioEngine && this.cinemaVisCanvas) {
       setTimeout(() => {
-        window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
+        if (!this._cinemaVisInitialized) {
+          window.audioEngine.setupCinemaVisualizer(this.cinemaVisCanvas);
+          this._cinemaVisInitialized = true;
+        } else if (typeof window.audioEngine.syncCinemaCanvasSize === 'function') {
+          window.audioEngine.syncCinemaCanvasSize();
+        }
       }, 60);
     }
   }
