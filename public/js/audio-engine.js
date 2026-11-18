@@ -1157,11 +1157,76 @@ class AudioEngine {
 
     return {
       barCount,
+      hasRealAudioSignal,
+      timeData: hasRealAudioSignal ? this._cinemaTimeData : null,
+      bufferLength,
       kickImpulse,
+      snareImpulse,
+      hihatImpulse,
+      vocalEnergy,
       bassEnergy: bassSum / 15,
       midEnergy: midSum / 21,
       trebleEnergy: trebleSum / 18
     };
+  }
+
+  /**
+   * Draws a single edge-tapered Aurora Ribbon curve with translucent silk fill and crisp neon stroke.
+   */
+  drawAuroraRibbonLayer(ctx, width, height, points, pointCount, strokeGrad, fillTopColor, fillBotColor, lineWidth, fillAlpha) {
+    const centerY = height / 2;
+
+    if (fillAlpha > 0) {
+      const fillGrad = ctx.createLinearGradient(0, 0, 0, height);
+      fillGrad.addColorStop(0, fillTopColor);
+      fillGrad.addColorStop(0.5, fillBotColor);
+      fillGrad.addColorStop(1, fillTopColor);
+
+      ctx.save();
+      ctx.globalAlpha = fillAlpha;
+      ctx.fillStyle = fillGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, centerY);
+      for (let i = 0; i < pointCount - 1; i++) {
+        const x1 = points[i * 2];
+        const y1 = points[i * 2 + 1];
+        const x2 = points[(i + 1) * 2];
+        const y2 = points[(i + 1) * 2 + 1];
+        ctx.quadraticCurveTo(x1, y1, (x1 + x2) * 0.5, (y1 + y2) * 0.5);
+      }
+      ctx.lineTo(width, centerY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const traceCurve = () => {
+      ctx.beginPath();
+      ctx.moveTo(points[0], points[1]);
+      for (let i = 1; i < pointCount - 1; i++) {
+        const cx = points[i * 2];
+        const cy = points[i * 2 + 1];
+        const nx = (cx + points[(i + 1) * 2]) * 0.5;
+        const ny = (cy + points[(i + 1) * 2 + 1]) * 0.5;
+        ctx.quadraticCurveTo(cx, cy, nx, ny);
+      }
+      ctx.lineTo(points[(pointCount - 1) * 2], points[(pointCount - 1) * 2 + 1]);
+    };
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.save();
+    ctx.globalAlpha = 0.24;
+    ctx.strokeStyle = strokeGrad;
+    ctx.lineWidth = lineWidth * 2.6;
+    traceCurve();
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.strokeStyle = strokeGrad;
+    ctx.lineWidth = lineWidth;
+    traceCurve();
+    ctx.stroke();
   }
 
   drawCinemaVisualizer() {
@@ -1203,7 +1268,20 @@ class AudioEngine {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const { isPlaying, songTime, isSinging } = this.getPlaybackContext();
-    const { barCount, kickImpulse } = this.computeCinemaAudioState(isPlaying, songTime, isSinging);
+    const audio = this.computeCinemaAudioState(isPlaying, songTime, isSinging);
+    const {
+      barCount,
+      hasRealAudioSignal,
+      timeData,
+      bufferLength,
+      kickImpulse,
+      snareImpulse,
+      hihatImpulse,
+      vocalEnergy,
+      bassEnergy,
+      midEnergy,
+      trebleEnergy
+    } = audio;
 
     if (mode === 'spectrum') {
       // 1. NEON PILLARS (54-Band Studio Spectrum with Floating Peak Hold Dots)
@@ -1245,92 +1323,223 @@ class AudioEngine {
         }
       }
     } else if (mode === 'waveform') {
-      // 2. MIRROR PULSE (Symmetrical Center-Expanding Studio Capsule Spectrum)
+      // 2. AURORA RIBBON (3 Flowing Edge-Tapered Silk Waves: Bass, Vocals, Treble)
       const centerY = height / 2;
-      const gap = 3;
-      const barWidth = Math.max(2, (width / barCount) - gap);
-      const radius = Math.min(barWidth / 2, 4);
+      const pointCount = 96;
+      if (!this._ribbonBassPts || this._ribbonBassPts.length !== pointCount * 2) {
+        this._ribbonBassPts = new Float32Array(pointCount * 2);
+        this._ribbonMidPts = new Float32Array(pointCount * 2);
+        this._ribbonHighPts = new Float32Array(pointCount * 2);
+      }
 
-      // Subtle glowing center horizon spine pulsing with kick drum
-      ctx.fillStyle = `rgba(56, 189, 248, ${isPlaying ? (0.14 + kickImpulse * 0.25) : 0.1})`;
-      ctx.fillRect(0, centerY - 0.5, width, 1);
+      const animT = isPlaying ? songTime : (Date.now() / 1000) * 0.55;
+      const maxAmp = height * 0.43;
 
-      const mirrorGrad = ctx.createLinearGradient(0, 0, 0, height);
-      mirrorGrad.addColorStop(0, '#ec4899');
-      mirrorGrad.addColorStop(0.26, '#8b5cf6');
-      mirrorGrad.addColorStop(0.45, '#06b6d4');
-      mirrorGrad.addColorStop(0.5, '#e0f2fe');
-      mirrorGrad.addColorStop(0.55, '#06b6d4');
-      mirrorGrad.addColorStop(0.74, '#8b5cf6');
-      mirrorGrad.addColorStop(1, '#ec4899');
+      for (let i = 0; i < pointCount; i++) {
+        const normX = i / (pointCount - 1);
+        const x = normX * width;
+        // Smooth edge tapering so ribbons anchor gracefully on left & right borders
+        const win = Math.pow(Math.sin(normX * Math.PI), 0.72);
 
-      for (let i = 0; i < barCount; i++) {
-        const pct = this.cinemaBars[i];
-        const halfH = Math.max(2.5, pct * (height * 0.44));
-        const x = i * (barWidth + gap) + gap;
+        let realWave = 0;
+        if (hasRealAudioSignal && timeData && bufferLength > 0) {
+          const tIdx = Math.min(bufferLength - 1, Math.floor(normX * bufferLength));
+          realWave = ((timeData[tIdx] - 128) / 128) * maxAmp * 0.85;
+        }
 
-        ctx.fillStyle = mirrorGrad;
+        // Layer A: Sub-Bass Silk Wave (slow, deep swell driven by kick & bassEnergy)
+        const bassAmp = isPlaying ? (0.28 + bassEnergy * 0.95 + kickImpulse * 0.35) * maxAmp * 0.72 : maxAmp * 0.14;
+        const bassY = centerY + win * (
+          Math.sin(normX * Math.PI * 3.0 - animT * 3.1) * bassAmp +
+          realWave * 0.35
+        );
+
+        // Layer B: Vocal / Mid Wave (expressive middle ribbon driven by vocalEnergy & snare)
+        const midAmp = isPlaying ? (0.22 + midEnergy * 0.9 + vocalEnergy * 0.5 + snareImpulse * 0.25) * maxAmp * 0.68 : maxAmp * 0.1;
+        const midY = centerY + win * (
+          Math.sin(normX * Math.PI * 5.2 + animT * 4.4) * Math.cos(normX * Math.PI * 2.0 - animT * 1.9) * midAmp +
+          realWave * 0.75
+        );
+
+        // Layer C: Treble Shimmer Wave (crisp higher-frequency ripple driven by hi-hats & trebleEnergy)
+        const highAmp = isPlaying ? (0.16 + trebleEnergy * 0.95 + hihatImpulse * 0.32) * maxAmp * 0.52 : maxAmp * 0.07;
+        const highY = centerY + win * (
+          Math.cos(normX * Math.PI * 8.5 - animT * 6.8) * Math.sin(normX * Math.PI * 3.2 + animT * 2.6) * highAmp -
+          realWave * 0.45
+        );
+
+        this._ribbonBassPts[i * 2] = x;
+        this._ribbonBassPts[i * 2 + 1] = Math.max(3, Math.min(height - 3, bassY));
+        this._ribbonMidPts[i * 2] = x;
+        this._ribbonMidPts[i * 2 + 1] = Math.max(3, Math.min(height - 3, midY));
+        this._ribbonHighPts[i * 2] = x;
+        this._ribbonHighPts[i * 2 + 1] = Math.max(3, Math.min(height - 3, highY));
+      }
+
+      // Subtle horizon line
+      const axisGrad = ctx.createLinearGradient(0, 0, width, 0);
+      axisGrad.addColorStop(0, 'rgba(16, 185, 129, 0)');
+      axisGrad.addColorStop(0.5, `rgba(56, 189, 248, ${isPlaying ? (0.22 + kickImpulse * 0.28) : 0.14})`);
+      axisGrad.addColorStop(1, 'rgba(236, 72, 153, 0)');
+      ctx.strokeStyle = axisGrad;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, centerY);
+      ctx.lineTo(width, centerY);
+      ctx.stroke();
+
+      const bassGrad = ctx.createLinearGradient(0, 0, width, 0);
+      bassGrad.addColorStop(0, '#10b981');
+      bassGrad.addColorStop(0.5, '#06b6d4');
+      bassGrad.addColorStop(1, '#38bdf8');
+      this.drawAuroraRibbonLayer(ctx, width, height, this._ribbonBassPts, pointCount, bassGrad, 'rgba(16, 185, 129, 0.35)', 'rgba(6, 182, 212, 0.08)', 2.1, isPlaying ? 0.26 : 0.12);
+
+      const midGrad = ctx.createLinearGradient(0, 0, width, 0);
+      midGrad.addColorStop(0, '#06b6d4');
+      midGrad.addColorStop(0.5, '#8b5cf6');
+      midGrad.addColorStop(1, '#c084fc');
+      this.drawAuroraRibbonLayer(ctx, width, height, this._ribbonMidPts, pointCount, midGrad, 'rgba(139, 92, 246, 0.36)', 'rgba(56, 189, 248, 0.08)', 2.3, isPlaying ? 0.28 : 0.12);
+
+      const highGrad = ctx.createLinearGradient(0, 0, width, 0);
+      highGrad.addColorStop(0, '#8b5cf6');
+      highGrad.addColorStop(0.5, '#ec4899');
+      highGrad.addColorStop(1, '#f472b6');
+      this.drawAuroraRibbonLayer(ctx, width, height, this._ribbonHighPts, pointCount, highGrad, 'rgba(236, 72, 153, 0.32)', 'rgba(168, 85, 247, 0.06)', 1.6, isPlaying ? 0.2 : 0.08);
+    } else if (mode === 'stars') {
+      // 3. SONIC HORIZON (3D Spatializer Beat Shockwaves, Stereo Pulse Core & Orbiting Harmonics)
+      const cx = width / 2;
+      const cy = height / 2;
+      const animT = isPlaying ? songTime : (Date.now() / 1000) * 0.5;
+
+      if (!this._sonicRipples) {
+        this._sonicRipples = [];
+        this._prevBassLevel = 0;
+        this._lastRippleMs = 0;
+      }
+
+      // Spawn expanding wide stereo shockwave rings on kick/snare/bass transients
+      const nowMs = performance.now();
+      const bassDelta = bassEnergy - (this._prevBassLevel || 0);
+      this._prevBassLevel = bassEnergy;
+      const hitDetected = isPlaying && (
+        (hasRealAudioSignal && bassDelta > 0.055 && bassEnergy > 0.25) ||
+        (!hasRealAudioSignal && (kickImpulse > 0.72 || snareImpulse > 0.68))
+      );
+
+      if (hitDetected && (nowMs - this._lastRippleMs) > 210) {
+        this._lastRippleMs = nowMs;
+        const isSnareHit = !hasRealAudioSignal && snareImpulse > kickImpulse;
+        this._sonicRipples.push({
+          progress: 0,
+          color: isSnareHit ? '#ec4899' : (this._sonicRipples.length % 2 === 0 ? '#06b6d4' : '#8b5cf6'),
+          strength: Math.min(1, 0.55 + Math.max(bassEnergy, kickImpulse, snareImpulse) * 0.55)
+        });
+        if (this._sonicRipples.length > 10) {
+          this._sonicRipples.shift();
+        }
+      }
+
+      // Subtle central stage ambient aura
+      const auraRx = Math.max(90, width * (0.28 + bassEnergy * 0.18));
+      const auraGrad = ctx.createRadialGradient(cx, cy, 4, cx, cy, auraRx);
+      auraGrad.addColorStop(0, `rgba(6, 182, 212, ${isPlaying ? (0.18 + kickImpulse * 0.2) : 0.08})`);
+      auraGrad.addColorStop(0.5, `rgba(139, 92, 246, ${isPlaying ? (0.09 + midEnergy * 0.12) : 0.03})`);
+      auraGrad.addColorStop(1, 'rgba(6, 10, 20, 0)');
+      ctx.fillStyle = auraGrad;
+      ctx.fillRect(0, 0, width, height);
+
+      // Update & draw expanding horizontal elliptical sonic shockwaves
+      for (let i = this._sonicRipples.length - 1; i >= 0; i--) {
+        const rp = this._sonicRipples[i];
+        rp.progress += isPlaying ? 0.021 : 0.014;
+        if (rp.progress >= 1) {
+          this._sonicRipples.splice(i, 1);
+          continue;
+        }
+        const ease = 1 - Math.pow(1 - rp.progress, 2.2);
+        const rx = Math.max(12, ease * (width * 0.49));
+        const ry = Math.max(4, Math.min(height * 0.45, (0.22 + ease * 0.78) * (height * 0.44) * rp.strength));
+        const alpha = (1 - rp.progress) * 0.72 * rp.strength;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = rp.color;
+        ctx.lineWidth = Math.max(1, (1 - rp.progress) * 2.4);
         ctx.beginPath();
-        ctx.roundRect(x, centerY - halfH, barWidth, halfH * 2, radius);
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Twin stereo laser horizon beams radiating left & right from the core
+      const beamSpan = width * (0.36 + (isPlaying ? (midEnergy * 0.14 + trebleEnergy * 0.08) : 0.04));
+      const beamGrad = ctx.createLinearGradient(cx - beamSpan, cy, cx + beamSpan, cy);
+      beamGrad.addColorStop(0, 'rgba(16, 185, 129, 0)');
+      beamGrad.addColorStop(0.25, '#06b6d4');
+      beamGrad.addColorStop(0.5, '#ffffff');
+      beamGrad.addColorStop(0.75, '#8b5cf6');
+      beamGrad.addColorStop(1, 'rgba(236, 72, 153, 0)');
+
+      ctx.save();
+      ctx.globalAlpha = isPlaying ? (0.35 + kickImpulse * 0.35) : 0.22;
+      ctx.strokeStyle = beamGrad;
+      ctx.lineWidth = isPlaying ? (2 + kickImpulse * 2.2) : 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - beamSpan, cy);
+      ctx.lineTo(cx + beamSpan, cy);
+      ctx.stroke();
+      ctx.restore();
+
+      // 6 Stereo Harmonic Orbit Nodes gliding across left/right spatial channels
+      const orbitCount = 6;
+      const orbitColors = ['#10b981', '#06b6d4', '#38bdf8', '#8b5cf6', '#c084fc', '#ec4899'];
+      for (let i = 0; i < orbitCount; i++) {
+        const dir = i % 2 === 0 ? 1 : -1;
+        const speed = 1.4 + i * 0.45;
+        const phase = animT * speed + i * 1.15;
+        const energy = isPlaying ? (i < 2 ? bassEnergy : (i < 4 ? midEnergy : trebleEnergy)) : 0.12;
+        const spreadX = (0.14 + (i / orbitCount) * 0.3 + energy * 0.12) * width;
+        const ox = cx + Math.sin(phase) * spreadX * dir;
+        const oy = cy + Math.cos(phase * 1.7) * (height * (0.18 + energy * 0.22));
+        const nodeR = 2.0 + energy * 2.6;
+
+        ctx.save();
+        ctx.globalAlpha = isPlaying ? (0.22 + energy * 0.3) : 0.15;
+        ctx.fillStyle = orbitColors[i];
+        ctx.beginPath();
+        ctx.arc(ox, oy, nodeR * 2.3, 0, Math.PI * 2);
         ctx.fill();
 
-        // Symmetrical top & bottom peak markers
-        const peakPct = this.cinemaPeaks[i];
-        if (peakPct > 0.12) {
-          const peakHalf = Math.min(height * 0.47, peakPct * (height * 0.44) + 3);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-          ctx.fillRect(x, Math.max(1, centerY - peakHalf), barWidth, 1.5);
-          ctx.fillRect(x, Math.min(height - 2.5, centerY + peakHalf - 1.5), barWidth, 1.5);
-        }
+        ctx.globalAlpha = isPlaying ? (0.75 + energy * 0.25) : 0.5;
+        ctx.fillStyle = energy > 0.55 ? '#ffffff' : orbitColors[i];
+        ctx.beginPath();
+        ctx.arc(ox, oy, nodeR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
-    } else if (mode === 'stars') {
-      // 3. LED MATRIX (Hi-Fi Segmented Hardware Equalizer Grid with Peak-Hold Caps)
-      const cols = 42;
-      const rows = 8;
-      const colGap = 4;
-      const rowGap = 2.5;
-      const padX = 4;
-      const padY = 4;
-      const cellW = Math.max(3, ((width - padX * 2) / cols) - colGap);
-      const cellH = Math.max(2.5, ((height - padY * 2) - rowGap * (rows - 1)) / rows);
 
-      const rowColors = [
-        '#10b981', // row 0 (bottom)
-        '#10b981', // row 1
-        '#06b6d4', // row 2
-        '#06b6d4', // row 3
-        '#38bdf8', // row 4
-        '#8b5cf6', // row 5
-        '#a855f7', // row 6
-        '#ec4899'  // row 7 (top)
-      ];
+      // Central Stereo Pulse Core (turntable-inspired concentric energy core)
+      const coreR = Math.max(4, 5 + (isPlaying ? (bassEnergy * 6 + kickImpulse * 4.5) : 1));
+      ctx.save();
+      ctx.globalAlpha = isPlaying ? (0.22 + kickImpulse * 0.28) : 0.14;
+      ctx.fillStyle = '#06b6d4';
+      ctx.beginPath();
+      ctx.arc(cx, cy, coreR * 2.1, 0, Math.PI * 2);
+      ctx.fill();
 
-      for (let c = 0; c < cols; c++) {
-        const bandIdx = Math.min(barCount - 1, Math.floor((c / cols) * barCount));
-        const pct = this.cinemaBars[bandIdx];
-        const peakPct = this.cinemaPeaks[bandIdx];
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(cx, cy, coreR * 1.3, 0, Math.PI * 2);
+      ctx.stroke();
 
-        const activeRows = Math.max(1, Math.round(pct * rows));
-        const peakRow = Math.min(rows - 1, Math.max(0, Math.round(peakPct * rows) - 1));
-        const x = padX + c * (cellW + colGap);
-
-        for (let r = 0; r < rows; r++) {
-          // r = 0 is bottom row, r = rows - 1 is top row
-          const y = height - padY - ((r + 1) * cellH) - (r * rowGap);
-
-          if (r < activeRows) {
-            ctx.fillStyle = rowColors[r];
-          } else if (r === peakRow && peakPct > 0.1) {
-            ctx.fillStyle = '#ffffff';
-          } else {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.045)';
-          }
-
-          ctx.beginPath();
-          ctx.roundRect(x, y, cellW, cellH, 1.5);
-          ctx.fill();
-        }
-      }
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, cy, coreR * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 }
