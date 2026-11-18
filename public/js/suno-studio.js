@@ -722,7 +722,14 @@ class SunoStudio {
    * Fetch user creations from server with pagination & search
    */
   async fetchCreations(page = 1, showToast = false, forceSync = false) {
-    if (this.isLoadingLibrary) return;
+    if (this.isLoadingLibrary) {
+      this._pendingFetch = {
+        page,
+        showToast: Boolean(showToast || this._pendingFetch?.showToast),
+        forceSync: Boolean(forceSync || this._pendingFetch?.forceSync)
+      };
+      return this._activeFetchPromise;
+    }
     this.isLoadingLibrary = true;
     this.currentPage = page;
 
@@ -738,55 +745,71 @@ class SunoStudio {
     if (pageIndicator) pageIndicator.textContent = page;
     if (prevBtn) prevBtn.disabled = page <= 1;
 
-    try {
-      const q = encodeURIComponent(this.librarySearchQuery || '');
-      const syncParam = forceSync ? '&sync=1' : '';
-      const res = await fetch(`/api/suno/creations?page=${page}&pageSize=12&q=${q}${syncParam}`, {
-        headers: this.getAuthHeaders()
-      });
-      const data = await res.json();
+    this._activeFetchPromise = (async () => {
+      try {
+        const q = encodeURIComponent(this.librarySearchQuery || '');
+        const syncParam = forceSync ? '&sync=1' : '';
+        const res = await fetch(`/api/suno/creations?page=${page}&pageSize=12&q=${q}${syncParam}`, {
+          headers: this.getAuthHeaders()
+        });
+        const data = await res.json();
 
-      if (data.success && Array.isArray(data.clips)) {
-        if (forceSync) {
-          this._lastLibrarySyncAt = Date.now();
-        }
-        const cleanServerClips = data.clips.filter(c => c && !this.isPreviewTrack(c));
-        const stored = localStorage.getItem('aurasound_local_creations');
-        let localList = stored ? JSON.parse(stored) : [];
-        localList = Array.isArray(localList) ? localList.filter(c => c && !this.isPreviewTrack(c)) : [];
-        if (localList.length > 0) {
-          const map = new Map();
-          cleanServerClips.forEach(c => map.set(c.id, c));
-          localList.forEach(c => { if (!map.has(c.id)) map.set(c.id, c); });
-          this.creations = Array.from(map.values());
+        if (data.success && Array.isArray(data.clips)) {
+          if (forceSync) {
+            this._lastLibrarySyncAt = Date.now();
+          }
+          const cleanServerClips = data.clips.filter(c => c && !this.isPreviewTrack(c));
+          const stored = localStorage.getItem('aurasound_local_creations');
+          let localList = stored ? JSON.parse(stored) : [];
+          localList = Array.isArray(localList) ? localList.filter(c => c && !this.isPreviewTrack(c)) : [];
+          if (page === 1 && !this.librarySearchQuery && localList.length > 0) {
+            const map = new Map();
+            cleanServerClips.forEach(c => map.set(c.id, c));
+            localList.forEach(c => { if (!map.has(c.id)) map.set(c.id, c); });
+            this.creations = Array.from(map.values()).sort((a, b) => {
+              const tA = a && a.rawCreatedAt ? new Date(a.rawCreatedAt).getTime() : 0;
+              const tB = b && b.rawCreatedAt ? new Date(b.rawCreatedAt).getTime() : 0;
+              const timeA = Number.isFinite(tA) ? tA : 0;
+              const timeB = Number.isFinite(tB) ? tB : 0;
+              if (timeA !== timeB) return timeB - timeA;
+              return 0;
+            });
+          } else {
+            this.creations = cleanServerClips;
+          }
+          this.saveLocalCreationsBackup(this.creations);
+          this.totalPages = data.totalPages || 1;
+          this.totalCreations = Math.max(data.totalCount || 0, this.creations.length);
+          this.hasMore = Boolean(data.hasMore);
+
+          if (nextBtn) nextBtn.disabled = !this.hasMore;
+          if (countBadge) countBadge.textContent = `${this.totalCreations}`;
+
+          this.renderCreations();
+          this.renderRecentPreview();
+
+          if (showToast && window.app && window.app.showToast) {
+            const isEn = (window.app?.userProfile?.lang === 'en');
+            window.app.showToast(isEn ? `Live Suno library synchronized (${this.totalCreations} songs)` : `Koleksi Suno tersinkronisasi (${this.totalCreations} lagu asli akun Anda)`, 'success');
+          }
         } else {
-          this.creations = cleanServerClips;
+          this.renderEmptyCreations('Belum ada lagu yang dibuat.');
         }
-        this.saveLocalCreationsBackup(this.creations);
-        this.totalPages = data.totalPages || 1;
-        this.totalCreations = Math.max(data.totalCount || 0, this.creations.length);
-        this.hasMore = Boolean(data.hasMore);
-
-        if (nextBtn) nextBtn.disabled = !this.hasMore;
-        if (countBadge) countBadge.textContent = `${this.totalCreations}`;
-
-        this.renderCreations();
-        this.renderRecentPreview();
-
-        if (showToast && window.app && window.app.showToast) {
-          const isEn = (window.app?.userProfile?.lang === 'en');
-          window.app.showToast(isEn ? `Live Suno library synchronized (${this.totalCreations} songs)` : `Koleksi Suno tersinkronisasi (${this.totalCreations} lagu asli akun Anda)`, 'success');
+      } catch (err) {
+        console.warn('Error fetching creations:', err);
+        this.renderEmptyCreations('Gagal memuat lagu buatan Anda.');
+      } finally {
+        this.isLoadingLibrary = false;
+        if (syncIcon) syncIcon.style.animation = '';
+        if (this._pendingFetch) {
+          const next = this._pendingFetch;
+          this._pendingFetch = null;
+          await this.fetchCreations(next.page, next.showToast, next.forceSync);
         }
-      } else {
-        this.renderEmptyCreations('Belum ada lagu yang dibuat.');
       }
-    } catch (err) {
-      console.warn('Error fetching creations:', err);
-      this.renderEmptyCreations('Gagal memuat lagu buatan Anda.');
-    } finally {
-      this.isLoadingLibrary = false;
-      if (syncIcon) syncIcon.style.animation = '';
-    }
+    })();
+
+    return this._activeFetchPromise;
   }
 
   async syncFromSunoAccount() {
@@ -1157,9 +1180,17 @@ class SunoStudio {
     const m = c.metadata || c.meta || {};
     const clipType = String(m.type || c.clipType || '').toLowerCase();
     const rawType = String(c.type || '').toLowerCase();
+    const status = String(c.status || '').toLowerCase();
+    const isInProgress = status === 'submitted' || status === 'queued' || status === 'streaming' || status === 'running' || status === 'generating';
+
     if (clipType === 'preview' || clipType === 'sample' || clipType === 'upsell') return true;
     if (rawType === 'preview' || rawType === 'sample' || rawType === 'upsell') return true;
-    if (c.isPreview === true || c.canRemix === false) return true;
+    if (c.isPreview === true) return true;
+
+    // Never reject still-generating/streaming clips based on partial duration or provisional can_remix flags
+    if (isInProgress) return false;
+
+    if (c.canRemix === false) return true;
     if (m.can_remix === false && clipType !== 'gen' && !m.is_remix) return true;
     const rawDur = Number(m.duration != null ? m.duration : (typeof c.duration === 'number' ? c.duration : NaN));
     if (Number.isFinite(rawDur) && rawDur > 0 && rawDur <= 65 && clipType !== 'gen') return true;
@@ -1462,6 +1493,10 @@ class SunoStudio {
       const clips = result.data || [];
       const clipIds = clips.map(c => c.id).filter(Boolean);
 
+      if (clips.length > 0) {
+        this.applyUpdatedClipsToState(clips);
+      }
+
       if (clipIds.length > 0 && !result.is_auto && !result.is_demo) {
         await this.pollClips(clipIds);
       } else {
@@ -1473,7 +1508,7 @@ class SunoStudio {
         }
       }
 
-      await this.fetchCreations(1, false);
+      await this.fetchCreations(1, false, activeProvider === 'suno_official');
       this.renderRecentPreview();
       await this.checkApiStatus();
 
@@ -1528,14 +1563,18 @@ class SunoStudio {
       } catch (le) {}
     }
 
-    for (const clip of validClips) {
-      const idx = this.creations.findIndex(c => c.id === clip.id);
+    for (const clip of [...validClips].reverse()) {
+      const normalizedClip = clip.rawCreatedAt ? clip : Object.assign({ rawCreatedAt: new Date().toISOString() }, clip);
+      const idx = this.creations.findIndex(c => c.id === normalizedClip.id);
       if (idx !== -1) {
-        this.creations[idx] = Object.assign({}, this.creations[idx], clip);
+        this.creations[idx] = Object.assign({}, this.creations[idx], normalizedClip);
       } else {
-        this.creations.unshift(clip);
+        this.creations.unshift(normalizedClip);
       }
     }
+    this.totalCreations = Math.max(this.totalCreations || 0, this.creations.length);
+    const countBadge = document.getElementById('suno-library-count-badge');
+    if (countBadge) countBadge.textContent = `${this.totalCreations}`;
     this.saveLocalCreationsBackup(validClips);
     this.renderCreations();
     this.renderRecentPreview();
@@ -1584,6 +1623,9 @@ class SunoStudio {
           this.applyUpdatedClipsToState(data.clips);
           if (data.clips.every(c => c.status === 'complete')) {
             clearInterval(bgTimer);
+            if (this.getActiveProvider() === 'suno_official') {
+              this.fetchCreations(1, false, true).catch(() => {});
+            }
             return;
           }
         }

@@ -901,7 +901,11 @@ function isSunoPreviewClip(c) {
   if (!c) return true;
   const m = c.metadata || c.meta || {};
   const tp = String(m.type || c.type || '').toLowerCase();
+  const status = String(c.status || '').toLowerCase();
+  const isInProgress = status === 'submitted' || status === 'queued' || status === 'streaming' || status === 'running' || status === 'generating';
+
   if (tp === 'preview' || tp === 'sample' || tp === 'upsell') return true;
+  if (isInProgress) return false;
   if (m.can_remix === false && tp !== 'gen' && !m.is_remix) return true;
   const dur = Number(m.duration != null ? m.duration : c.duration);
   if (Number.isFinite(dur) && dur > 0 && dur <= 65 && tp !== 'gen') return true;

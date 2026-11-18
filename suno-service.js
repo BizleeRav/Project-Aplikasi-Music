@@ -63,9 +63,17 @@ function isPreviewTrackOrClip(c) {
   const m = c.metadata || c.meta || {};
   const clipType = String(m.type || c.clipType || '').toLowerCase();
   const rawType = String(c.type || '').toLowerCase();
+  const status = String(c.status || '').toLowerCase();
+  const isInProgress = status === 'submitted' || status === 'queued' || status === 'streaming' || status === 'running' || status === 'generating';
+
   if (clipType === 'preview' || clipType === 'sample' || clipType === 'upsell') return true;
   if (rawType === 'preview' || rawType === 'sample' || rawType === 'upsell') return true;
-  if (c.isPreview === true || c.canRemix === false) return true;
+  if (c.isPreview === true) return true;
+
+  // Never reject still-generating/streaming clips based on partial duration or provisional can_remix flags
+  if (isInProgress) return false;
+
+  if (c.canRemix === false) return true;
   if (m.can_remix === false && clipType !== 'gen' && !m.is_remix) return true;
   const rawDur = Number(m.duration != null ? m.duration : (typeof c.duration === 'number' ? c.duration : NaN));
   if (Number.isFinite(rawDur) && rawDur > 0 && rawDur <= 65 && clipType !== 'gen') return true;
@@ -99,9 +107,11 @@ function getCreations(deviceId = null) {
 function sortCreationsNewestFirst(list) {
   if (!Array.isArray(list)) return list;
   return list.sort((a, b) => {
-    const timeA = a.rawCreatedAt ? new Date(a.rawCreatedAt).getTime() : 0;
-    const timeB = b.rawCreatedAt ? new Date(b.rawCreatedAt).getTime() : 0;
-    if (timeA && timeB && timeA !== timeB) return timeB - timeA;
+    const tA = a && a.rawCreatedAt ? new Date(a.rawCreatedAt).getTime() : 0;
+    const tB = b && b.rawCreatedAt ? new Date(b.rawCreatedAt).getTime() : 0;
+    const timeA = Number.isFinite(tA) ? tA : 0;
+    const timeB = Number.isFinite(tB) ? tB : 0;
+    if (timeA !== timeB) return timeB - timeA;
     return 0;
   });
 }
@@ -227,6 +237,7 @@ function addCreation(track, deviceId = null) {
       prompt: track.prompt || prev.prompt || '',
       lyrics: (track.lyrics && track.lyrics.trim()) ? track.lyrics : (prev.lyrics || ''),
       deviceId: track.deviceId || prev.deviceId || deviceId || undefined,
+      rawCreatedAt: track.rawCreatedAt || prev.rawCreatedAt || new Date().toISOString(),
       created_at: prev.created_at || track.created_at || 'Hari ini'
     };
     list[existingIdx] = merged;
@@ -236,6 +247,9 @@ function addCreation(track, deviceId = null) {
 
   if (deviceId && !track.deviceId) {
     track.deviceId = deviceId;
+  }
+  if (!track.rawCreatedAt) {
+    track.rawCreatedAt = new Date().toISOString();
   }
   list.unshift(track);
   saveCreations(list);
@@ -1834,7 +1848,9 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
         const existingList = getCreations();
         const formatted = (rawClips || []).map(c => {
           if (isPreviewTrackOrClip(c)) {
-            if (c && c.id) deleteCreation(c.id);
+            if (c && c.id && String(c.status || '').toLowerCase() === 'complete') {
+              deleteCreation(c.id);
+            }
             return { id: c.id, isPreview: true, status: c.status || 'complete' };
           }
           const existing = existingList.find(x => x.id === c.id);
@@ -1869,6 +1885,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
             duration: durationStr,
             seconds: durationSec,
             type: 'suno',
+            rawCreatedAt: c.created_at || existing?.rawCreatedAt || new Date().toISOString(),
             created_at: existing?.created_at || 'Hari ini'
           };
           if (existing || c.title || genuineLyrics || ((c.status === 'complete' || c.status === 'streaming') && audioUrl)) {
