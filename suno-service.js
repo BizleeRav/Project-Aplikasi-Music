@@ -19,6 +19,7 @@ function getUnifiedDataDir() {
 const DATA_DIR = getUnifiedDataDir();
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const CREATIONS_FILE = path.join(DATA_DIR, 'suno-creations.json');
+const DELETED_FILE = path.join(DATA_DIR, 'suno-deleted.json');
 
 // Ensure writable paths exist
 try {
@@ -28,10 +29,38 @@ try {
   } else if (!fs.existsSync(CREATIONS_FILE)) {
     fs.writeFileSync(CREATIONS_FILE, '[]', 'utf8');
   }
+  if (!fs.existsSync(DELETED_FILE)) {
+    fs.writeFileSync(DELETED_FILE, '[]', 'utf8');
+  }
   if (!fs.existsSync(CONFIG_FILE) && fs.existsSync(path.join(__dirname, 'config.json'))) {
     fs.copyFileSync(path.join(__dirname, 'config.json'), CONFIG_FILE);
   }
 } catch (e) {}
+
+function getDeletedIdsSet() {
+  if (!fs.existsSync(DELETED_FILE)) return new Set();
+  try {
+    const raw = JSON.parse(fs.readFileSync(DELETED_FILE, 'utf8'));
+    return new Set(Array.isArray(raw) ? raw.filter(Boolean).map(String) : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function markCreationDeleted(id) {
+  if (!id) return;
+  try {
+    const set = getDeletedIdsSet();
+    if (!set.has(String(id))) {
+      set.add(String(id));
+      const dir = path.dirname(DELETED_FILE);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(DELETED_FILE, JSON.stringify([...set].slice(-1000), null, 2), 'utf8');
+    }
+  } catch (e) {
+    console.error('Error saving deleted Suno IDs:', e);
+  }
+}
 
 // Helper to get or save configuration
 function getConfig() {
@@ -92,7 +121,8 @@ function getCreations(deviceId = null) {
   if (fs.existsSync(CREATIONS_FILE)) {
     try {
       const data = JSON.parse(fs.readFileSync(CREATIONS_FILE, 'utf8'));
-      const list = (Array.isArray(data) ? data : []).filter(t => t && !isPreviewTrackOrClip(t));
+      const deletedSet = getDeletedIdsSet();
+      const list = (Array.isArray(data) ? data : []).filter(t => t && !deletedSet.has(String(t.id)) && !isPreviewTrackOrClip(t));
       if (deviceId) {
         return list.filter(t => !t.deviceId || t.deviceId === deviceId);
       }
@@ -195,7 +225,8 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
     }
 
     if (Array.isArray(clips) && clips.length > 0) {
-      const validClips = clips.filter(c => !isPreviewTrackOrClip(c));
+      const deletedSet = getDeletedIdsSet();
+      const validClips = clips.filter(c => c && c.id && !deletedSet.has(String(c.id)) && !isPreviewTrackOrClip(c));
       const formatted = validClips.map(c => formatOfficialClipTrack(c, {
         rawTitle: c.title,
         rawTags: c.metadata?.tags || c.tags,
@@ -223,6 +254,7 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
 
 function addCreation(track, deviceId = null) {
   if (!track || !track.id || isPreviewTrackOrClip(track)) return null;
+  if (getDeletedIdsSet().has(String(track.id))) return null;
   const list = getCreations(); // load all
   const existingIdx = list.findIndex(t => t.id === track.id);
   if (existingIdx !== -1) {
@@ -256,7 +288,10 @@ function addCreation(track, deviceId = null) {
   return track;
 }
 
-function deleteCreation(id) {
+function deleteCreation(id, { recordDeleted = true } = {}) {
+  if (recordDeleted && id) {
+    markCreationDeleted(id);
+  }
   const list = getCreations();
   const filtered = list.filter(t => t.id !== id);
   saveCreations(filtered);
@@ -1849,7 +1884,7 @@ async function checkSunoStatus(ids, customApiKey = null, customProvider = null, 
         const formatted = (rawClips || []).map(c => {
           if (isPreviewTrackOrClip(c)) {
             if (c && c.id && String(c.status || '').toLowerCase() === 'complete') {
-              deleteCreation(c.id);
+              deleteCreation(c.id, { recordDeleted: false });
             }
             return { id: c.id, isPreview: true, status: c.status || 'complete' };
           }

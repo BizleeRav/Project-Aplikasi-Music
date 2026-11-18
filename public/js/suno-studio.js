@@ -758,10 +758,11 @@ class SunoStudio {
           if (forceSync) {
             this._lastLibrarySyncAt = Date.now();
           }
-          const cleanServerClips = data.clips.filter(c => c && !this.isPreviewTrack(c));
+          const deletedIds = this.getDeletedIdsSet();
+          const cleanServerClips = data.clips.filter(c => c && !deletedIds.has(String(c.id)) && !this.isPreviewTrack(c));
           const stored = localStorage.getItem('aurasound_local_creations');
           let localList = stored ? JSON.parse(stored) : [];
-          localList = Array.isArray(localList) ? localList.filter(c => c && !this.isPreviewTrack(c)) : [];
+          localList = Array.isArray(localList) ? localList.filter(c => c && !deletedIds.has(String(c.id)) && !this.isPreviewTrack(c)) : [];
           if (page === 1 && !this.librarySearchQuery && localList.length > 0) {
             const map = new Map();
             cleanServerClips.forEach(c => map.set(c.id, c));
@@ -779,7 +780,9 @@ class SunoStudio {
           }
           this.saveLocalCreationsBackup(this.creations);
           this.totalPages = data.totalPages || 1;
-          this.totalCreations = Math.max(data.totalCount || 0, this.creations.length);
+          const clientFilteredCount = Math.max(0, data.clips.length - cleanServerClips.length);
+          const adjustedServerTotal = Math.max(0, (data.totalCount || 0) - clientFilteredCount);
+          this.totalCreations = Math.max(adjustedServerTotal, this.creations.length);
           this.hasMore = Boolean(data.hasMore);
 
           if (nextBtn) nextBtn.disabled = !this.hasMore;
@@ -910,7 +913,7 @@ class SunoStudio {
               <a href="${downloadHref}" download="${safeTitle}.m4a" class="suno-btn-icon" title="${isEn ? 'Download Audio File' : 'Unduh File Audio'}" target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               </a>
-              <button class="suno-btn-icon btn-delete" onclick="window.sunoStudio.deleteSong('${track.id}', '${safeTitle}')" title="${isEn ? 'Delete from Library' : 'Hapus dari Koleksi'}">
+              <button class="suno-btn-icon btn-delete" onclick="window.sunoStudio.deleteSong('${this.escapeHtml(track.id)}')" title="${isEn ? 'Delete from Library' : 'Hapus dari Koleksi'}">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
             </div>
@@ -1061,8 +1064,39 @@ class SunoStudio {
     }
   }
 
-  async deleteSong(clipId, title) {
-    if (!confirm(`Hapus lagu "${title}" dari koleksi buatan Anda?`)) return;
+  getDeletedIdsSet() {
+    try {
+      const raw = localStorage.getItem('aurasound_deleted_suno_ids');
+      const arr = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(arr) ? arr.filter(Boolean).map(String) : []);
+    } catch (e) {
+      return new Set();
+    }
+  }
+
+  markDeletedId(clipId) {
+    if (!clipId) return;
+    try {
+      const set = this.getDeletedIdsSet();
+      set.add(String(clipId));
+      localStorage.setItem('aurasound_deleted_suno_ids', JSON.stringify([...set].slice(-1000)));
+    } catch (e) {}
+  }
+
+  async deleteSong(clipId, title = '') {
+    const matched = Array.isArray(this.creations) ? this.creations.find(c => c && c.id === clipId) : null;
+    const resolvedTitle = (title || matched?.title || 'Lagu ini').trim();
+    if (!confirm(`Hapus lagu "${resolvedTitle}" dari koleksi buatan Anda?`)) return;
+
+    this.markDeletedId(clipId);
+    if (Array.isArray(this.creations)) {
+      this.creations = this.creations.filter(c => c && c.id !== clipId);
+    }
+    this.totalCreations = Math.max(0, (this.totalCreations || 1) - 1, this.creations ? this.creations.length : 0);
+    const countBadge = document.getElementById('suno-library-count-badge');
+    if (countBadge) countBadge.textContent = `${this.totalCreations}`;
+    this.renderCreations();
+    this.renderRecentPreview();
 
     try {
       try {
@@ -1070,19 +1104,19 @@ class SunoStudio {
         if (stored) {
           const list = JSON.parse(stored);
           if (Array.isArray(list)) {
-            localStorage.setItem('aurasound_local_creations', JSON.stringify(list.filter(c => c.id !== clipId)));
+            localStorage.setItem('aurasound_local_creations', JSON.stringify(list.filter(c => c && c.id !== clipId)));
           }
         }
       } catch (le) {}
 
-      const res = await fetch(`/api/suno/creations/${clipId}`, { 
+      const res = await fetch(`/api/suno/creations/${encodeURIComponent(clipId)}`, { 
         method: 'DELETE',
         headers: this.getAuthHeaders()
       });
       const data = await res.json();
       if (data.success) {
         if (window.app && window.app.showToast) {
-          window.app.showToast(`Lagu "${title}" berhasil dihapus dari koleksi.`, 'info');
+          window.app.showToast(`Lagu "${resolvedTitle}" berhasil dihapus dari koleksi.`, 'info');
         }
         await this.fetchCreations(this.currentPage, false);
       }
@@ -1204,12 +1238,13 @@ class SunoStudio {
 
   saveLocalCreationsBackup(newClips) {
     try {
+      const deletedIds = this.getDeletedIdsSet();
       const stored = localStorage.getItem('aurasound_local_creations');
       let list = stored ? JSON.parse(stored) : [];
-      list = Array.isArray(list) ? list.filter(c => c && !this.isPreviewTrack(c)) : [];
+      list = Array.isArray(list) ? list.filter(c => c && !deletedIds.has(String(c.id)) && !this.isPreviewTrack(c)) : [];
       const set = new Set(list.map(c => c.id));
       for (const nc of (newClips || [])) {
-        if (!nc || !nc.id || this.isPreviewTrack(nc)) continue;
+        if (!nc || !nc.id || deletedIds.has(String(nc.id)) || this.isPreviewTrack(nc)) continue;
         if (!set.has(nc.id)) {
           list.unshift(nc);
           set.add(nc.id);
@@ -1538,10 +1573,12 @@ class SunoStudio {
   applyUpdatedClipsToState(clips) {
     if (!Array.isArray(clips) || clips.length === 0) return;
 
+    const deletedIds = this.getDeletedIdsSet();
     const previewIds = new Set();
     const validClips = [];
     for (const clip of clips) {
       if (!clip || !clip.id) continue;
+      if (deletedIds.has(String(clip.id))) continue;
       if (this.isPreviewTrack(clip)) {
         previewIds.add(clip.id);
       } else {
