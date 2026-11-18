@@ -129,6 +129,7 @@
       this._lastSyncedVisKey = '';
       this._cachedWordEls = null;
       this._fisheyeRefs = null;
+      this._tunerNeedleX = undefined;
       this.syncRendererVisibility(true);
     }
 
@@ -163,6 +164,7 @@
       this._wordGlows = [];
       this._wordBranchGrow = [];
       this._smoothLineProg = 0;
+      this._tunerNeedleX = undefined;
       this._camX = 0;
       this._camY = 0;
     }
@@ -1411,7 +1413,7 @@
       ctx.beginPath();
       for (let x = 0; x <= w; x += 4) {
         const nx = x / Math.max(1, w);
-        let y = baseY + Math.sin(nx * Math.PI * 2.2 + syncTime * 1.8) * 14;
+        let y = baseY + Math.sin(nx * Math.PI * 2.2 - syncTime * 1.1) * 12;
         if (activeNormX >= 0) {
           const dist = Math.abs(nx - activeNormX);
           const peak = Math.exp(-(dist * dist) / 0.008) * (16 + Math.sin(wordState.progress * Math.PI) * 10);
@@ -1422,8 +1424,9 @@
       }
       ctx.stroke();
 
-      const fontSize = Math.max(12, Math.min(20, Math.round(w / 28)));
-      const romajiSubSize = Math.max(10, Math.round(fontSize * 0.64));
+      const densityScale = count >= 7 ? Math.max(0.74, 1 - (count - 6) * 0.06) : 1;
+      const fontSize = Math.max(11, Math.min(20, Math.round((w / 28) * densityScale)));
+      const romajiSubSize = Math.max(9, Math.round(fontSize * 0.64));
       const rWords = this.showRomaji ? this.getLineRomajiWords(activeIdx) : [];
       const hasPerWordRomaji = this.showRomaji && (
         words.some(wd => Boolean(wd.romaji)) || (rWords.length === words.length && rWords.length > 0)
@@ -1432,10 +1435,10 @@
 
       words.forEach((word, i) => {
         const t = count === 1 ? 0.5 : i / (count - 1);
-        const wx = padX + t * usableW;
+        const wx = Math.max(36, Math.min(w - 36, padX + t * usableW));
         const nx = wx / Math.max(1, w);
         const glow = this._wordGlows[i] || 0;
-        const waveY = baseY + Math.sin(nx * Math.PI * 2.2 + syncTime * 1.8) * 14 - glow * 22;
+        const waveY = baseY + Math.sin(nx * Math.PI * 2.2 - syncTime * 1.1) * 12 - glow * 22;
 
         if (glow > 0.06) {
           const grad = ctx.createRadialGradient(wx, waveY, 0, wx, waveY, 22);
@@ -1472,12 +1475,11 @@
       this.drawCanvasRomaji(ctx, w, h, activeIdx, syncTime);
     }
 
-    drawTunerDial(ctx, syncTime, activeIdx, words, wordState) {
+    drawTunerDial(ctx, syncTime, activeIdx, words, wordState, dt) {
       const w = this._canvasW;
       const h = this._canvasH;
       const rgb = this.palette.rgb;
       const cx = w / 2;
-      const cy = h * 0.48;
 
       if (activeIdx < 0 || words.length === 0) {
         this.drawCanvasWaitLabel(ctx, w, h, this.trackMeta.title, this.trackMeta.artist);
@@ -1486,92 +1488,105 @@
 
       const line = this.lyrics[activeIdx];
       const hasRomajiBar = Boolean(this.showRomaji && line && line.romaji);
-      const dialY = hasRomajiBar ? h * 0.52 : h * 0.56;
-      const spacing = Math.max(88, Math.min(138, w * 0.22));
+      const dialY = hasRomajiBar ? h * 0.5 : h * 0.54;
+      const padX = Math.max(38, w * 0.1);
+      const usableW = Math.max(60, w - padX * 2);
+      const count = words.length;
       const activeW = wordState.index >= 0 ? wordState.index : 0;
-      const targetFocal = activeW + (wordState.index >= 0 ? easeInOutSine(wordState.progress) * 0.35 : 0);
-      if (this._tunerPos === undefined || activeIdx !== this._lastActiveIdx) {
-        this._tunerPos = targetFocal;
-      } else {
-        this._tunerPos += (targetFocal - this._tunerPos) * 0.16;
-      }
 
-      // Precision horizontal scale & tick marks moving with dial
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      // Stationary horizontal frequency scale & tick marks (never shifts offscreen left)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(24, dialY);
-      ctx.lineTo(w - 24, dialY);
+      ctx.moveTo(padX - 12, dialY);
+      ctx.lineTo(w - padX + 12, dialY);
       ctx.stroke();
 
-      const tickStep = 18;
-      const tickOffset = -((this._tunerPos * spacing) % tickStep);
-      for (let x = 24 + tickOffset; x < w - 24; x += tickStep) {
-        if (x < 24) continue;
-        const isMajor = Math.round((x - tickOffset) / tickStep) % 5 === 0;
+      const tickStep = 14;
+      const startTick = cx - Math.floor((usableW / 2 + 12) / tickStep) * tickStep;
+      const endTick = cx + Math.floor((usableW / 2 + 12) / tickStep) * tickStep;
+      for (let x = startTick, stepIdx = 0; x <= endTick; x += tickStep, stepIdx++) {
+        const isMajor = Math.abs(Math.round((x - cx) / tickStep)) % 5 === 0;
         const th = isMajor ? 14 : 7;
-        ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.08)';
+        ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.24)' : 'rgba(255, 255, 255, 0.09)';
         ctx.beginPath();
         ctx.moveTo(x, dialY - th / 2);
         ctx.lineTo(x, dialY + th / 2);
         ctx.stroke();
       }
 
-      // Center vertical reticle needle
-      const needleGrad = ctx.createLinearGradient(0, dialY - 64, 0, dialY + 34);
+      // Smooth gliding tuner reticle needle tracking active word across stationary dial
+      const targetFrac = count === 1 ? 0.5 : activeW / (count - 1);
+      const targetNeedleX = padX + targetFrac * usableW;
+      if (this._tunerNeedleX === undefined || activeIdx !== this._lastActiveIdx) {
+        this._tunerNeedleX = targetNeedleX;
+      } else {
+        this._tunerNeedleX += (targetNeedleX - this._tunerNeedleX) * Math.min(1, (dt || 0.016) * 14);
+      }
+      const needleX = this._tunerNeedleX;
+
+      const needleGrad = ctx.createLinearGradient(0, dialY - 58, 0, dialY + 58);
       needleGrad.addColorStop(0, `rgba(${rgb}, 0)`);
       needleGrad.addColorStop(0.5, `rgba(${rgb}, 0.95)`);
       needleGrad.addColorStop(1, `rgba(${rgb}, 0)`);
       ctx.strokeStyle = needleGrad;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(cx, dialY - 64);
-      ctx.lineTo(cx, dialY + 34);
+      ctx.moveTo(needleX, dialY - 58);
+      ctx.lineTo(needleX, dialY + 58);
       ctx.stroke();
 
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.arc(cx, dialY, 4, 0, Math.PI * 2);
+      ctx.arc(needleX, dialY, 4.2, 0, Math.PI * 2);
       ctx.fill();
 
-      // Sliding word markers along the tuner scale
-      const fontSize = Math.max(15, Math.min(26, Math.round(w / 22)));
-      const romajiSubSize = Math.max(10, Math.round(fontSize * 0.56));
+      // Fixed-position word markers cleanly anchored across the dial
+      const densityScale = count >= 6 ? Math.max(0.72, 1 - (count - 5) * 0.06) : 1;
+      const fontSize = Math.max(12, Math.min(22, Math.round((w / 26) * densityScale)));
+      const romajiSubSize = Math.max(9, Math.round(fontSize * 0.6));
       const rWords = this.showRomaji ? this.getLineRomajiWords(activeIdx) : [];
       const hasPerWordRomaji = this.showRomaji && (
         words.some(wd => Boolean(wd.romaji)) || (rWords.length === words.length && rWords.length > 0)
       );
+      const stagger = count >= 4;
       ctx.textAlign = 'center';
 
       words.forEach((word, i) => {
-        const wx = cx + (i - this._tunerPos) * spacing;
-        if (wx < -80 || wx > w + 80) return;
+        const t = count === 1 ? 0.5 : i / (count - 1);
+        const wx = Math.max(38, Math.min(w - 38, padX + t * usableW));
+        const glow = this._wordGlows[i] || 0;
+        const isTop = !stagger || (i % 2 === 0);
+        const labelY = isTop ? Math.max(46, dialY - 34) : Math.min(h - (hasRomajiBar ? 74 : 26), dialY + 38);
 
-        const distNorm = Math.min(1, Math.abs(wx - cx) / Math.max(120, w * 0.42));
-        const focus = Math.max(0, 1 - distNorm);
-        const alpha = 0.2 + focus * 0.8;
-        const scale = 0.86 + focus * 0.24;
+        ctx.fillStyle = `rgba(${rgb}, ${(0.22 + glow * 0.78).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(wx, dialY, 2.5 + glow * 1.6, 0, Math.PI * 2);
+        ctx.fill();
+
+        const alpha = 0.28 + glow * 0.72;
+        const scale = 0.94 + glow * 0.14;
         const wordRomaji = hasPerWordRomaji ? (word.romaji || (rWords[i] ? rWords[i].text : '')) : '';
 
         ctx.save();
-        ctx.translate(wx, dialY - 34);
+        ctx.translate(wx, labelY);
         ctx.scale(scale, scale);
-        ctx.font = `${focus > 0.65 ? '900' : '700'} ${fontSize}px Inter, system-ui, sans-serif`;
+        ctx.font = `${glow > 0.55 ? '900' : '700'} ${fontSize}px Inter, system-ui, sans-serif`;
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
         ctx.fillText(word.text, 0, 0);
         if (wordRomaji) {
           ctx.font = `600 ${romajiSubSize}px Inter, system-ui, sans-serif`;
-          ctx.fillStyle = `rgba(${rgb}, ${(0.25 + focus * 0.75).toFixed(3)})`;
+          ctx.fillStyle = `rgba(${rgb}, ${(0.3 + glow * 0.7).toFixed(3)})`;
           ctx.fillText(wordRomaji, 0, Math.round(fontSize * 0.86));
         }
         ctx.restore();
       });
 
-      // Subtle line counter badge at top-center of dial
+      // Subtle line counter badge centered at top
       ctx.font = '700 11px ui-monospace, SFMono-Regular, monospace';
       ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
       ctx.textAlign = 'center';
-      ctx.fillText(`${formatTime(syncTime)}  •  ${String(activeIdx + 1).padStart(2, '0')} / ${String(this.lyrics.length).padStart(2, '0')}`, cx, Math.max(24, dialY - 96));
+      ctx.fillText(`${formatTime(syncTime)}  •  ${String(activeIdx + 1).padStart(2, '0')} / ${String(this.lyrics.length).padStart(2, '0')}`, cx, Math.max(20, dialY - 82));
 
       this.drawCanvasRomaji(ctx, w, h, activeIdx, syncTime);
     }
@@ -1580,17 +1595,13 @@
       const w = this._canvasW;
       const h = this._canvasH;
       const rgb = this.palette.rgb;
+      const cx = w / 2;
+      const cy = h * 0.42;
 
-      const idx = Math.max(0, activeIdx);
-      const targetCamX = (idx + this._smoothLineProg * 0.35) * 88;
-      const targetCamY = Math.sin(idx * 0.7) * 44;
-      const camLerp = Math.min(1, (dt || 0.016) * 6);
-      this._camX += (targetCamX - this._camX) * camLerp;
-      this._camY += (targetCamY - this._camY) * camLerp;
-
+      // Stationary centered coordinate grid (does not drift left)
       const gridSize = 48;
-      const offX = -(this._camX % gridSize);
-      const offY = -(this._camY % gridSize);
+      const offX = cx % gridSize;
+      const offY = cy % gridSize;
 
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.lineWidth = 1;
@@ -1607,11 +1618,11 @@
         ctx.stroke();
       }
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
-      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.085)';
+      ctx.lineWidth = 2;
       const majSize = gridSize * 3;
-      const mOffX = -(this._camX % majSize);
-      const mOffY = -(this._camY % majSize);
+      const mOffX = cx % majSize;
+      const mOffY = cy % majSize;
       for (let x = mOffX; x < w; x += majSize) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -1630,20 +1641,22 @@
         return;
       }
 
-      const cx = w / 2;
-      const cy = h * 0.44;
+      // Centered symmetric waypoint window around active line
       const pins = [];
-      const minI = Math.max(0, activeIdx - 3);
+      const minI = Math.max(0, activeIdx - 2);
       const maxI = Math.min(this.lyrics.length - 1, activeIdx + 2);
+      const span = Math.max(1, maxI - minI);
+      const stepX = Math.min(82, (w - 96) / span);
+      const midSlot = (maxI + minI) / 2;
 
       for (let i = minI; i <= maxI; i++) {
-        const px = cx + (i * 88 - this._camX);
-        const py = cy + (Math.sin(i * 0.7) * 44 - this._camY);
+        const px = cx + (i - midSlot) * stepX;
+        const py = cy + Math.sin(i * 0.85) * 34;
         pins.push({ i, x: px, y: py });
       }
 
       if (pins.length > 1) {
-        ctx.strokeStyle = `rgba(${rgb}, 0.7)`;
+        ctx.strokeStyle = `rgba(${rgb}, 0.65)`;
         ctx.lineWidth = 3;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -1673,9 +1686,32 @@
       const line = this.lyrics[activeIdx];
       const hasRomaji = Boolean(this.showRomaji && line && line.romaji);
       const cardW = Math.min(w - 28, 540);
-      const cardH = hasRomaji ? 106 : 86;
+      const fontSize = Math.max(13, Math.min(19, Math.round(w / 29)));
+      ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
+
+      // Wrap words into up to 2 centered rows so long lines stay centered and never clip
+      const maxRowW = Math.max(80, cardW - 36);
+      const textRows = [];
+      let curRow = [];
+      let curRowW = 0;
+      for (let i = 0; i < words.length; i++) {
+        const tok = words[i].text + (i < words.length - 1 ? ' ' : '');
+        const tw = ctx.measureText(tok).width;
+        if (curRow.length > 0 && curRowW + tw > maxRowW && textRows.length === 0) {
+          textRows.push({ items: curRow, width: curRowW });
+          curRow = [{ idx: i, text: words[i].text, tok, tw }];
+          curRowW = tw;
+        } else {
+          curRow.push({ idx: i, text: words[i].text, tok, tw });
+          curRowW += tw;
+        }
+      }
+      if (curRow.length > 0) textRows.push({ items: curRow, width: curRowW });
+
+      const twoRows = textRows.length > 1;
+      const cardH = (twoRows ? 24 : 0) + (hasRomaji ? 104 : 84);
       const cardX = (w - cardW) / 2;
-      const cardY = h - cardH - 16;
+      const cardY = h - cardH - 14;
 
       ctx.fillStyle = 'rgba(10, 15, 28, 0.9)';
       ctx.strokeStyle = `rgba(${rgb}, 0.38)`;
@@ -1686,54 +1722,56 @@
 
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      const fontSize = Math.max(14, Math.min(20, Math.round(w / 28)));
       ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
 
-      const fullLine = words.map(wItem => wItem.text).join(' ');
-      const lineWidth = ctx.measureText(fullLine).width;
-      const startTextX = lineWidth < cardW - 36
-        ? cardX + (cardW - lineWidth) / 2
-        : cardX + 18;
-      let cursorX = startTextX;
-      const textY = cardY + (hasRomaji ? 50 : cardH * 0.56);
-
-      for (let i = 0; i < words.length; i++) {
-        const tok = words[i].text + (words[i].trailingSpace ? ' ' : '');
-        const tw = ctx.measureText(tok).width;
-        if (cursorX + tw > cardX + cardW - 14) break;
-        const glow = this._wordGlows[i] || 0;
-        ctx.fillStyle = `rgba(255, 255, 255, ${(0.3 + glow * 0.7).toFixed(3)})`;
-        ctx.fillText(tok, cursorX, textY);
-        cursorX += tw;
-      }
+      const firstRowY = cardY + (hasRomaji ? 44 : (twoRows ? 46 : cardH * 0.56));
+      const rowStepY = fontSize + 6;
+      textRows.forEach((row, rIdx) => {
+        const rWidth = row.items.reduce((s, it) => s + it.tw, 0);
+        let cursorX = cardX + Math.max(16, (cardW - rWidth) / 2);
+        const ry = firstRowY + rIdx * rowStepY;
+        for (const it of row.items) {
+          if (cursorX > cardX + cardW - 14) break;
+          const glow = this._wordGlows[it.idx] || 0;
+          ctx.fillStyle = `rgba(255, 255, 255, ${(0.3 + glow * 0.7).toFixed(3)})`;
+          ctx.fillText(it.tok, cursorX, ry);
+          cursorX += it.tw;
+        }
+      });
 
       if (hasRomaji) {
         const rWords = this.getLineRomajiWords(activeIdx);
         const rState = this.findActiveWord(rWords, syncTime);
-        const rFont = Math.max(11, Math.min(14, Math.round(fontSize * 0.7)));
+        const rFont = Math.max(10, Math.min(13, Math.round(fontSize * 0.7)));
         ctx.font = `600 ${rFont}px Inter, system-ui, sans-serif`;
         const fullRomaji = rWords.map(rw => rw.text).join(' ');
         const rWidth = ctx.measureText(fullRomaji).width;
-        let rX = rWidth < cardW - 36 ? cardX + (cardW - rWidth) / 2 : cardX + 18;
-        const rY = cardY + 78;
-
-        for (let i = 0; i < rWords.length; i++) {
-          const rTok = rWords[i].text + (rWords[i].trailingSpace ? ' ' : '');
-          const rw = ctx.measureText(rTok).width;
-          if (rX + rw > cardX + cardW - 14) break;
-          const isPast = rState.index >= 0 && i < rState.index;
-          const isCur = i === rState.index;
-          ctx.fillStyle = isCur
-            ? '#ffffff'
-            : (isPast ? `rgba(${rgb}, 0.95)` : 'rgba(148, 163, 184, 0.55)');
-          ctx.fillText(rTok, rX, rY);
-          rX += rw;
+        const rY = cardY + cardH - 18;
+        if (rWidth > cardW - 32) {
+          ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
+          ctx.fillText(fullRomaji, cardX + cardW / 2, rY, cardW - 32);
+        } else {
+          ctx.textAlign = 'left';
+          let rX = cardX + (cardW - rWidth) / 2;
+          for (let i = 0; i < rWords.length; i++) {
+            const rTok = rWords[i].text + (rWords[i].trailingSpace ? ' ' : '');
+            const rw = ctx.measureText(rTok).width;
+            const isPast = rState.index >= 0 && i < rState.index;
+            const isCur = i === rState.index;
+            ctx.fillStyle = isCur
+              ? '#ffffff'
+              : (isPast ? `rgba(${rgb}, 0.95)` : 'rgba(148, 163, 184, 0.55)');
+            ctx.fillText(rTok, rX, rY);
+            rX += rw;
+          }
         }
       }
 
+      ctx.textAlign = 'center';
       ctx.font = '600 11px Inter, system-ui, sans-serif';
       ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
-      ctx.fillText(`${formatTime(syncTime)}  •  Stop ${activeIdx + 1} of ${this.lyrics.length}`, cardX + 18, cardY + 22);
+      ctx.fillText(`${formatTime(syncTime)}  •  Stop ${activeIdx + 1} of ${this.lyrics.length}`, cardX + cardW / 2, cardY + 20);
     }
 
     drawCanvasWaitLabel(ctx, w, h, title, artist) {
