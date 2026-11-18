@@ -12297,16 +12297,24 @@ body.music-playing .cinema-turntable-arm {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  overflow: clip;
   z-index: 3;
 }
 
 .cinema-motion-pills {
+  position: relative;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 5px;
   overflow: visible;
   flex: 1 1 auto;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   padding: 2px 0;
 }
@@ -13473,17 +13481,36 @@ body.music-playing .cinema-turntable-arm {
     max-width: 85vw !important;
   }
 
+  .studio-cinema-overlay.cinema-motion-active,
+  .studio-cinema-overlay.cinema-motion-active .cinema-stage {
+    width: 100% !important;
+    max-width: 100vw !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    overflow: clip !important;
+  }
+
   .studio-cinema-overlay.cinema-motion-active .cinema-visual-lyrics-split {
     height: auto !important;
     min-height: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     flex: 1 1 0% !important;
+    overflow: hidden !important;
+    overflow: clip !important;
   }
 
   .studio-cinema-overlay.cinema-motion-active .cinema-lyrics-panel {
     height: auto !important;
     min-height: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     flex: 1 1 0% !important;
     contain: layout style !important;
+    overflow: hidden !important;
+    overflow: clip !important;
   }
 
   .studio-cinema-overlay.cinema-motion-stage-open .cinema-lyrics-stream {
@@ -13494,13 +13521,23 @@ body.music-playing .cinema-turntable-arm {
     display: flex !important;
     flex: 1 1 0% !important;
     min-height: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     height: auto !important;
+    overflow: hidden !important;
+    overflow: clip !important;
   }
 
   .studio-cinema-overlay.cinema-motion-active .cinema-motion-stage {
     flex: 1 1 0% !important;
     min-height: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     height: auto !important;
+    overflow: hidden !important;
+    overflow: clip !important;
   }
 
   .cinema-motion-pills {
@@ -13519,6 +13556,11 @@ body.music-playing .cinema-turntable-arm {
 
   .cinema-motion-dom {
     padding: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    overflow: clip !important;
   }
 
   .motion-kinetic-line {

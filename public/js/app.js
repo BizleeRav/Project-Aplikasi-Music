@@ -2988,6 +2988,13 @@ class App {
 
     const activeStyle = this.motionLyricsEngine ? this.motionLyricsEngine.style : 'kinetic';
     const pillsWrap = document.getElementById('cinema-motion-pills');
+    const motionBar = document.getElementById('cinema-motion-bar');
+    const lyricsPanel = document.getElementById('cinema-lyrics-panel');
+    const splitWrap = lyricsPanel ? lyricsPanel.parentElement : null;
+    const cinemaStage = splitWrap ? splitWrap.parentElement : null;
+    [this.cinemaModal, cinemaStage, splitWrap, lyricsPanel, motionBar, this.cinemaMotionStage, this.cinemaMotionDom].forEach(el => {
+      if (el && el.scrollLeft) el.scrollLeft = 0;
+    });
     document.querySelectorAll('.motion-style-pill').forEach(pill => {
       const isAct = pill.getAttribute('data-motion-style') === activeStyle;
       pill.classList.toggle('active', isAct);
@@ -4568,9 +4575,10 @@ class App {
     }, { passive: true });
 
     // 2. Smooth Auto-Center Scroll for Horizontal Filter & Preset Chips
+    // Note: .motion-style-pill is centered strictly within #cinema-motion-pills by applyCinemaMotionUI()
     document.addEventListener('click', (e) => {
       if (window.innerWidth > 768) return;
-      const chip = e.target && e.target.closest ? e.target.closest('.ytm-chip, .motion-style-pill, .tag-chip, .search-filter-pill') : null;
+      const chip = e.target && e.target.closest ? e.target.closest('.ytm-chip, .tag-chip, .search-filter-pill') : null;
       if (chip && typeof chip.scrollIntoView === 'function') {
         try {
           chip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
