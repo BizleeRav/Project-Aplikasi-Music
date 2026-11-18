@@ -10,13 +10,17 @@
     { id: 'kinetic', label: 'Kinetic', renderer: 'dom' },
     { id: 'fisheye', label: 'Fisheye', renderer: 'dom' },
     { id: 'spotlight', label: 'Spotlight', renderer: 'dom' },
+    { id: 'poster', label: 'Poster', renderer: 'dom' },
     { id: 'codestyle', label: 'Codestyle', renderer: 'dom' },
     { id: 'constellation', label: 'Constellation', renderer: 'canvas' },
     { id: 'branches', label: 'Branches', renderer: 'canvas' },
     { id: 'web', label: 'Web', renderer: 'canvas' },
+    { id: 'wave', label: 'Wave', renderer: 'canvas' },
+    { id: 'tuner', label: 'Tuner', renderer: 'canvas' },
     { id: 'messages', label: 'Messages', renderer: 'dom' },
     { id: 'notifications', label: 'Notifications', renderer: 'dom' },
     { id: 'payments', label: 'Payments', renderer: 'dom' },
+    { id: 'search', label: 'Search', renderer: 'dom' },
     { id: 'map', label: 'Map', renderer: 'canvas' }
   ];
 
@@ -758,6 +762,100 @@
           </div>
         `;
         this.bindSeekClicks();
+        return;
+      }
+
+      if (this.style === 'poster') {
+        const lineNum = activeIdx >= 0 ? String(activeIdx + 1).padStart(2, '0') : '--';
+        const totalLines = String(this.lyrics.length).padStart(2, '0');
+        if (!line) {
+          this.domEl.innerHTML = `
+            <div class="motion-poster-sheet motion-smooth-enter">
+              <div class="poster-meta-top">
+                <span>${escapeHtml(this.trackMeta.artist || 'AURASOUND')}</span>
+                <span>00 / ${totalLines}</span>
+              </div>
+              <div class="poster-rule"></div>
+              <div class="poster-hero-wait">${escapeHtml(this.trackMeta.title)}</div>
+              <div class="poster-rule"></div>
+              <div class="poster-meta-bot">LIVE EDITION</div>
+            </div>
+          `;
+          return;
+        }
+
+        // Partition words into contrasting typographic poster tiers (hero vs tight sub-tier)
+        const tiers = [];
+        let cursor = 0;
+        let tierIdx = 0;
+        while (cursor < words.length) {
+          const remaining = words.length - cursor;
+          const take = tierIdx % 2 === 0 ? Math.min(remaining, 2) : Math.min(remaining, 3);
+          const sliceHtml = words.slice(cursor, cursor + take).map((w, j) => {
+            const wIndex = cursor + j;
+            const space = w.trailingSpace ? ' has-space' : '';
+            return `<span class="motion-word poster-word${space}" data-widx="${wIndex}" style="--wp:0%">${escapeHtml(w.text)}</span>`;
+          }).join('');
+          const cls = (tierIdx % 2 === 0) ? 'poster-tier is-hero' : 'poster-tier is-editorial';
+          tiers.push(`<div class="${cls}">${sliceHtml}</div>`);
+          cursor += take;
+          tierIdx++;
+        }
+
+        this.domEl.innerHTML = `
+          <div class="motion-poster-sheet motion-smooth-enter">
+            <div class="poster-meta-top">
+              <span>${escapeHtml(this.trackMeta.artist || 'AURASOUND')}</span>
+              <span>${lineNum} / ${totalLines}</span>
+            </div>
+            <div class="poster-rule"></div>
+            <div class="poster-tiers">${tiers.join('')}</div>
+            ${romajiHtml ? `<div class="poster-romaji">${this.buildRomajiWordsMarkup(activeIdx)}</div>` : ''}
+            <div class="poster-rule"></div>
+            <div class="poster-meta-bot">
+              <span>${escapeHtml(this.trackMeta.title)}</span>
+              <span>${formatTime(line.time)}</span>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      if (this.style === 'search') {
+        const suggestions = [];
+        const startNext = activeIdx >= 0 ? activeIdx + 1 : 0;
+        for (let i = startNext; i < Math.min(this.lyrics.length, startNext + 3); i++) {
+          suggestions.push(this.lyrics[i]);
+        }
+
+        const queryHtml = line
+          ? `<span class="search-query-words">${this.buildWordsMarkup(words, 'search-word')}</span><span class="search-caret"></span>`
+          : `<span class="search-placeholder">${escapeHtml(this.trackMeta.title)} — ${escapeHtml(this.trackMeta.artist || 'Ready')}</span><span class="search-caret"></span>`;
+
+        const romajiLine = (this.showRomaji && line && line.romaji)
+          ? `<div class="search-romaji">${this.buildRomajiWordsMarkup(activeIdx)}</div>`
+          : '';
+
+        const suggHtml = suggestions.length > 0
+          ? suggestions.map(sItem => `
+              <div class="search-sugg-row" data-seek-time="${sItem.time}">
+                <span class="search-sugg-text">${escapeHtml(sItem.text)}</span>
+                <span class="search-sugg-time">${formatTime(sItem.time)}</span>
+              </div>
+            `).join('')
+          : `<div class="search-sugg-row is-end"><span class="search-sugg-text">${escapeHtml(this.trackMeta.title)}</span><span class="search-sugg-time">End</span></div>`;
+
+        this.domEl.innerHTML = `
+          <div class="motion-search-wrap motion-smooth-enter">
+            <div class="search-box">
+              <div class="search-top-label">${escapeHtml(this.trackMeta.artist || 'Search')} • ${formatTime(syncTime)}</div>
+              <div class="search-input-line">${queryHtml}</div>
+              ${romajiLine}
+            </div>
+            <div class="search-sugg-list">${suggHtml}</div>
+          </div>
+        `;
+        this.bindSeekClicks();
       }
     }
 
@@ -957,6 +1055,10 @@
         this.drawBranches(ctx, syncTime, activeIdx, words, wordState, dt);
       } else if (this.style === 'web') {
         this.drawWeb(ctx, syncTime, activeIdx, words, wordState, dt);
+      } else if (this.style === 'wave') {
+        this.drawWaveRibbon(ctx, syncTime, activeIdx, words, wordState, dt);
+      } else if (this.style === 'tuner') {
+        this.drawTunerDial(ctx, syncTime, activeIdx, words, wordState, dt);
       } else if (this.style === 'map') {
         this.drawCityMap(ctx, syncTime, activeIdx, words, wordState, dt);
       }
@@ -1259,6 +1361,211 @@
       ctx.beginPath();
       ctx.arc(cx, cy, 6, 0, Math.PI * 2);
       ctx.fill();
+
+      this.drawCanvasRomaji(ctx, w, h, activeIdx, syncTime);
+    }
+
+    drawWaveRibbon(ctx, syncTime, activeIdx, words, wordState) {
+      const w = this._canvasW;
+      const h = this._canvasH;
+      const rgb = this.palette.rgb;
+
+      if (activeIdx < 0 || words.length === 0) {
+        this.drawCanvasWaitLabel(ctx, w, h, this.trackMeta.title, this.trackMeta.artist);
+        return;
+      }
+
+      const line = this.lyrics[activeIdx];
+      const hasRomajiBar = Boolean(this.showRomaji && line && line.romaji);
+      const baseY = hasRomajiBar ? h * 0.46 : h * 0.52;
+      const padX = Math.max(36, w * 0.08);
+      const usableW = Math.max(60, w - padX * 2);
+      const count = words.length;
+      const activeW = wordState.index;
+
+      // Secondary harmonic echo ribbon
+      ctx.strokeStyle = `rgba(${rgb}, 0.16)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += 6) {
+        const nx = x / Math.max(1, w);
+        const y = baseY + Math.sin(nx * Math.PI * 2.4 - syncTime * 1.4) * 18;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Primary fluid wave ribbon reacting softly to active word peak
+      const activeNormX = activeW >= 0
+        ? (padX + ((count === 1 ? 0.5 : activeW / (count - 1)) * usableW)) / Math.max(1, w)
+        : -1;
+
+      ctx.strokeStyle = `rgba(${rgb}, 0.72)`;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += 4) {
+        const nx = x / Math.max(1, w);
+        let y = baseY + Math.sin(nx * Math.PI * 2.2 + syncTime * 1.8) * 14;
+        if (activeNormX >= 0) {
+          const dist = Math.abs(nx - activeNormX);
+          const peak = Math.exp(-(dist * dist) / 0.008) * (16 + Math.sin(wordState.progress * Math.PI) * 10);
+          y -= peak;
+        }
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      const fontSize = Math.max(12, Math.min(20, Math.round(w / 28)));
+      const romajiSubSize = Math.max(10, Math.round(fontSize * 0.64));
+      const rWords = this.showRomaji ? this.getLineRomajiWords(activeIdx) : [];
+      const hasPerWordRomaji = this.showRomaji && (
+        words.some(wd => Boolean(wd.romaji)) || (rWords.length === words.length && rWords.length > 0)
+      );
+      ctx.textAlign = 'center';
+
+      words.forEach((word, i) => {
+        const t = count === 1 ? 0.5 : i / (count - 1);
+        const wx = padX + t * usableW;
+        const nx = wx / Math.max(1, w);
+        const glow = this._wordGlows[i] || 0;
+        const waveY = baseY + Math.sin(nx * Math.PI * 2.2 + syncTime * 1.8) * 14 - glow * 22;
+
+        if (glow > 0.06) {
+          const grad = ctx.createRadialGradient(wx, waveY, 0, wx, waveY, 22);
+          grad.addColorStop(0, `rgba(${rgb}, ${(glow * 0.55).toFixed(3)})`);
+          grad.addColorStop(1, `rgba(${rgb}, 0)`);
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(wx, waveY, 22, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.28 + glow * 0.72).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(wx, waveY, 2.5 + glow * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        const wordRomaji = hasPerWordRomaji ? (word.romaji || (rWords[i] ? rWords[i].text : '')) : '';
+        const textY = Math.max(24, waveY - (wordRomaji ? 32 : 20));
+        const scale = 1 + glow * 0.08;
+        ctx.save();
+        ctx.translate(wx, textY);
+        ctx.scale(scale, scale);
+        ctx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${(0.28 + glow * 0.72).toFixed(3)})`;
+        ctx.fillText(word.text, 0, 0);
+        if (wordRomaji) {
+          ctx.font = `600 ${romajiSubSize}px Inter, system-ui, sans-serif`;
+          ctx.fillStyle = `rgba(${rgb}, ${(0.42 + glow * 0.58).toFixed(3)})`;
+          ctx.fillText(wordRomaji, 0, Math.round(fontSize * 0.88));
+        }
+        ctx.restore();
+      });
+
+      this.drawCanvasRomaji(ctx, w, h, activeIdx, syncTime);
+    }
+
+    drawTunerDial(ctx, syncTime, activeIdx, words, wordState) {
+      const w = this._canvasW;
+      const h = this._canvasH;
+      const rgb = this.palette.rgb;
+      const cx = w / 2;
+      const cy = h * 0.48;
+
+      if (activeIdx < 0 || words.length === 0) {
+        this.drawCanvasWaitLabel(ctx, w, h, this.trackMeta.title, this.trackMeta.artist);
+        return;
+      }
+
+      const line = this.lyrics[activeIdx];
+      const hasRomajiBar = Boolean(this.showRomaji && line && line.romaji);
+      const dialY = hasRomajiBar ? h * 0.52 : h * 0.56;
+      const spacing = Math.max(88, Math.min(138, w * 0.22));
+      const activeW = wordState.index >= 0 ? wordState.index : 0;
+      const targetFocal = activeW + (wordState.index >= 0 ? easeInOutSine(wordState.progress) * 0.35 : 0);
+      if (this._tunerPos === undefined || activeIdx !== this._lastActiveIdx) {
+        this._tunerPos = targetFocal;
+      } else {
+        this._tunerPos += (targetFocal - this._tunerPos) * 0.16;
+      }
+
+      // Precision horizontal scale & tick marks moving with dial
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(24, dialY);
+      ctx.lineTo(w - 24, dialY);
+      ctx.stroke();
+
+      const tickStep = 18;
+      const tickOffset = -((this._tunerPos * spacing) % tickStep);
+      for (let x = 24 + tickOffset; x < w - 24; x += tickStep) {
+        if (x < 24) continue;
+        const isMajor = Math.round((x - tickOffset) / tickStep) % 5 === 0;
+        const th = isMajor ? 14 : 7;
+        ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.08)';
+        ctx.beginPath();
+        ctx.moveTo(x, dialY - th / 2);
+        ctx.lineTo(x, dialY + th / 2);
+        ctx.stroke();
+      }
+
+      // Center vertical reticle needle
+      const needleGrad = ctx.createLinearGradient(0, dialY - 64, 0, dialY + 34);
+      needleGrad.addColorStop(0, `rgba(${rgb}, 0)`);
+      needleGrad.addColorStop(0.5, `rgba(${rgb}, 0.95)`);
+      needleGrad.addColorStop(1, `rgba(${rgb}, 0)`);
+      ctx.strokeStyle = needleGrad;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, dialY - 64);
+      ctx.lineTo(cx, dialY + 34);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, dialY, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Sliding word markers along the tuner scale
+      const fontSize = Math.max(15, Math.min(26, Math.round(w / 22)));
+      const romajiSubSize = Math.max(10, Math.round(fontSize * 0.56));
+      const rWords = this.showRomaji ? this.getLineRomajiWords(activeIdx) : [];
+      const hasPerWordRomaji = this.showRomaji && (
+        words.some(wd => Boolean(wd.romaji)) || (rWords.length === words.length && rWords.length > 0)
+      );
+      ctx.textAlign = 'center';
+
+      words.forEach((word, i) => {
+        const wx = cx + (i - this._tunerPos) * spacing;
+        if (wx < -80 || wx > w + 80) return;
+
+        const distNorm = Math.min(1, Math.abs(wx - cx) / Math.max(120, w * 0.42));
+        const focus = Math.max(0, 1 - distNorm);
+        const alpha = 0.2 + focus * 0.8;
+        const scale = 0.86 + focus * 0.24;
+        const wordRomaji = hasPerWordRomaji ? (word.romaji || (rWords[i] ? rWords[i].text : '')) : '';
+
+        ctx.save();
+        ctx.translate(wx, dialY - 34);
+        ctx.scale(scale, scale);
+        ctx.font = `${focus > 0.65 ? '900' : '700'} ${fontSize}px Inter, system-ui, sans-serif`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
+        ctx.fillText(word.text, 0, 0);
+        if (wordRomaji) {
+          ctx.font = `600 ${romajiSubSize}px Inter, system-ui, sans-serif`;
+          ctx.fillStyle = `rgba(${rgb}, ${(0.25 + focus * 0.75).toFixed(3)})`;
+          ctx.fillText(wordRomaji, 0, Math.round(fontSize * 0.86));
+        }
+        ctx.restore();
+      });
+
+      // Subtle line counter badge at top-center of dial
+      ctx.font = '700 11px ui-monospace, SFMono-Regular, monospace';
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.75)';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${formatTime(syncTime)}  •  ${String(activeIdx + 1).padStart(2, '0')} / ${String(this.lyrics.length).padStart(2, '0')}`, cx, Math.max(24, dialY - 96));
 
       this.drawCanvasRomaji(ctx, w, h, activeIdx, syncTime);
     }
