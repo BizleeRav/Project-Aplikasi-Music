@@ -203,6 +203,11 @@ class App {
     this.currentTimeEl = document.getElementById('current-time');
     this.durationEl = document.getElementById('duration-time');
     this.volumeSlider = document.getElementById('volume-slider');
+    this.volumeGroup = document.getElementById('player-volume-group');
+    this.volumePopover = document.getElementById('volume-popover');
+    this.volumePopoverSlider = document.getElementById('volume-popover-slider');
+    this.volumePopoverPct = document.getElementById('volume-popover-pct');
+    this.volumePopoverMuteBtn = document.getElementById('btn-volume-popover-mute');
     this.playerThumb = document.getElementById('player-thumb');
     this.playerTitle = document.getElementById('player-title');
     this.playerArtist = document.getElementById('player-artist');
@@ -1755,18 +1760,67 @@ class App {
       });
     }
 
-    // Volume Mute Button & Slider with dynamic track fill
+    // Volume Control Popover & Sliders (klik ikon volume untuk buka panel kontrol, bukan langsung mute)
+    const setPopoverOpen = (open) => {
+      if (!this.volumePopover) return;
+      this.volumePopover.classList.toggle('open', open);
+      this.volumePopover.setAttribute('aria-hidden', open ? 'false' : 'true');
+    };
+
     if (this.volumeBtn) {
-      this.volumeBtn.addEventListener('click', () => this.toggleMute());
+      this.volumeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.volumePopover) {
+          setPopoverOpen(!this.volumePopover.classList.contains('open'));
+        } else {
+          this.toggleMute();
+        }
+      });
     }
-    if (this.volumeSlider) {
-      this.volumeSlider.addEventListener('input', (e) => {
+
+    const bindVolumeSlider = (sliderEl) => {
+      if (!sliderEl) return;
+      sliderEl.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
         this.setVolumeLevel(val / 100);
       });
-      // Initial volume fill state
-      this.volumeSlider.style.setProperty('--vol-pct', `${this.volumeSlider.value}%`);
+      sliderEl.style.setProperty('--vol-pct', `${sliderEl.value}%`);
+    };
+    bindVolumeSlider(this.volumeSlider);
+    bindVolumeSlider(this.volumePopoverSlider);
+
+    const stepVolume = (deltaPct) => {
+      const currentPct = parseFloat(this.volumeSlider ? this.volumeSlider.value : 100) || 0;
+      const nextPct = Math.max(0, Math.min(100, currentPct + deltaPct));
+      if (nextPct > 0) this.lastVolume = nextPct / 100;
+      this.setVolumeLevel(nextPct / 100);
+    };
+
+    const btnVolDown = document.getElementById('btn-volume-down');
+    const btnVolUp = document.getElementById('btn-volume-up');
+    if (btnVolDown) btnVolDown.addEventListener('click', () => stepVolume(-5));
+    if (btnVolUp) btnVolUp.addEventListener('click', () => stepVolume(5));
+    if (this.volumePopoverMuteBtn) {
+      this.volumePopoverMuteBtn.addEventListener('click', () => this.toggleMute());
     }
+
+    if (this.volumeGroup) {
+      this.volumeGroup.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        stepVolume(e.deltaY < 0 ? 5 : -5);
+      }, { passive: false });
+    }
+
+    document.addEventListener('click', (e) => {
+      if (this.volumePopover && this.volumePopover.classList.contains('open')) {
+        if (this.volumeGroup && !this.volumeGroup.contains(e.target)) {
+          setPopoverOpen(false);
+        }
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') setPopoverOpen(false);
+    });
 
     // Favorite Button in Player Bar
     const favBtn = document.getElementById('player-fav-btn');
@@ -9256,6 +9310,13 @@ class App {
       this.volumeSlider.value = pct;
       this.volumeSlider.style.setProperty('--vol-pct', `${pct}%`);
     }
+    if (this.volumePopoverSlider) {
+      this.volumePopoverSlider.value = pct;
+      this.volumePopoverSlider.style.setProperty('--vol-pct', `${pct}%`);
+    }
+    if (this.volumePopoverPct) {
+      this.volumePopoverPct.textContent = `${pct}%`;
+    }
     if (this.nativeAudio) this.nativeAudio.volume = clamped;
     if (window.ytPlayer) window.ytPlayer.setVolume(pct);
 
@@ -9263,6 +9324,13 @@ class App {
     this.isMuted = isMute;
     if (this.volumeIconHigh) this.volumeIconHigh.style.display = isMute ? 'none' : 'block';
     if (this.volumeIconMuted) this.volumeIconMuted.style.display = isMute ? 'block' : 'none';
+    if (this.volumePopoverMuteBtn) {
+      const isEn = (localStorage.getItem('aurasound_lang') || 'id') === 'en';
+      this.volumePopoverMuteBtn.classList.toggle('is-muted', isMute);
+      this.volumePopoverMuteBtn.textContent = isMute
+        ? (isEn ? 'Unmute Sound' : 'Nyalakan Suara (Unmute)')
+        : (isEn ? 'Mute Sound' : 'Bisukan (Mute)');
+    }
     this.persistPlaybackState();
   }
 

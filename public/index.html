@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/icons/icon.png">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.80.3">
+  <link rel="stylesheet" href="/css/style.css?v=4.80.4">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
   <style>
     /* 100% Standalone Cross-Engine Clear Button Elimination (NEVER comma-separated to prevent syntax dropping) */
@@ -245,7 +245,7 @@
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
               <span class="about-title">About</span>
             </div>
-            <span class="about-version-badge" id="about-app-version">v1.1.17</span>
+            <span class="about-version-badge" id="about-app-version">v1.1.18</span>
           </div>
           <div class="about-credit">Made By Deverick A.K.A Bizlee</div>
         </div>
@@ -701,13 +701,28 @@
         </button>
 
         <!-- Volume Wrapper -->
-        <div class="player-volume-group">
-          <button id="volume-icon-btn" class="volume-btn" title="Bisukan / Nyalakan Suara">
+        <div class="player-volume-group" id="player-volume-group">
+          <button id="volume-icon-btn" class="volume-btn" title="Atur Volume">
             <svg id="volume-icon-high" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
             <svg id="volume-icon-muted" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="display: none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
           </button>
           <div class="volume-slider-wrap">
-            <input type="range" id="volume-slider" class="volume-range-slider" min="0" max="100" value="100">
+            <input type="range" id="volume-slider" class="volume-range-slider" min="0" max="100" value="100" aria-label="Volume">
+          </div>
+
+          <div class="volume-popover" id="volume-popover" aria-hidden="true">
+            <div class="volume-popover-header">
+              <span class="volume-popover-title" id="volume-popover-title">Volume</span>
+              <span class="volume-popover-pct" id="volume-popover-pct">100%</span>
+            </div>
+            <div class="volume-popover-slider-row">
+              <button type="button" class="volume-step-btn" id="btn-volume-down" title="Turunkan Volume">-</button>
+              <input type="range" id="volume-popover-slider" class="volume-range-slider volume-popover-range" min="0" max="100" value="100" aria-label="Atur Volume">
+              <button type="button" class="volume-step-btn" id="btn-volume-up" title="Naikkan Volume">+</button>
+            </div>
+            <button type="button" class="volume-popover-mute-btn" id="btn-volume-popover-mute">
+              Bisukan (Mute)
+            </button>
           </div>
         </div>
       </div>
@@ -1818,6 +1833,6 @@
   <script src="/js/taste-engine.js?v=4.73.0"></script>
   <script src="/js/suno-studio.js?v=4.69.0"></script>
   <script src="/js/motion-lyrics.js?v=1.0.3"></script>
-  <script src="/js/app.js?v=4.80.2"></script>
+  <script src="/js/app.js?v=4.80.3"></script>
 </body>
 </html>
