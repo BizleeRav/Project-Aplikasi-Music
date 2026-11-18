@@ -901,6 +901,166 @@ app.get('/api/home/album/:id/more', async (req, res) => {
   }
 });
 
+const artistCatalogCache = new Map(); // normalizedArtist -> { artistInfo, tracks, hasOfficialPlaylist, timestamp }
+const ARTIST_CATALOG_TTL_MS = 2 * 60 * 60 * 1000;
+
+function extractPrimaryArtistName(rawArtist, rawTitle = '') {
+  const cleaned = cleanLyricsTrackInfo(rawTitle || '', rawArtist || '');
+  let candidate = (cleaned.artist || rawArtist || '')
+    .replace(/\s*-\s*Topic$/i, '')
+    .replace(/\s*VEVO$/i, '')
+    .trim();
+
+  if (!candidate || LABEL_CHANNEL_REGEX.test(candidate) || /^(?:unknown\s*artist|aurasound|various\s*artists)$/i.test(candidate)) {
+    return '';
+  }
+
+  // Split collaborations ("Artist A, Artist B", "Artist A feat. B", "Artist A ft. B")
+  candidate = candidate.split(/\s*(?:,|;|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*/i)[0].trim();
+
+  // For slash channels like "Ayase / YOASOBI", prefer the right-hand artist if left is producer/label or keep full if short
+  if (candidate.includes(' / ') && !/^k\/da$/i.test(candidate)) {
+    const parts = candidate.split(' / ').map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      candidate = parts[parts.length - 1];
+    }
+  }
+  return candidate;
+}
+
+function isStrictArtistMatch(targetArtist, trackArtist, trackTitle = '') {
+  if (!targetArtist) return false;
+  const targetKeywords = targetArtist.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
+  const art = (trackArtist || '').toLowerCase();
+  const tit = (trackTitle || '').toLowerCase();
+  if (targetKeywords.length === 0) {
+    return art.includes(targetArtist.toLowerCase());
+  }
+  const matchesArtist = targetKeywords.some(kw => art.includes(kw));
+  const matchesTitleFeat = /feat|ft\.|with|x\s/i.test(tit) && targetKeywords.some(kw => tit.includes(kw));
+  return matchesArtist || matchesTitleFeat;
+}
+
+function getTitleVariants(title, artist = '') {
+  const variants = new Set();
+  const add = (s) => {
+    const k = homeData.normalizeTrackKey ? homeData.normalizeTrackKey(s, artist) : normalizeForCompare(s);
+    if (k && k.length >= 2) variants.add(k);
+  };
+  add(title);
+  // Also extract bilingual parts (e.g. "アイドル - Idol", "夜に駆ける (Racing into the Night)")
+  const parts = String(title || '').split(/\s+[-–—/]\s+|\s*[()（）「」『』【】]\s*/);
+  for (const p of parts) {
+    const trimmed = p.trim();
+    if (trimmed.length >= 2) add(trimmed);
+  }
+  return variants;
+}
+
+function isSameSongVariant(titleA, titleB, artist = '') {
+  const varsA = getTitleVariants(titleA, artist);
+  const varsB = getTitleVariants(titleB, artist);
+  for (const v of varsA) {
+    if (varsB.has(v)) return true;
+  }
+  return false;
+}
+
+async function fetchArtistOfficialCatalog(rawArtistName) {
+  const artistName = (rawArtistName || '').replace(/\s*-\s*Topic$/i, '').trim();
+  if (!artistName) {
+    return { artistInfo: { name: '', subtitle: '', avatar: '/images/supermix.jpg', banner: '' }, allOfficialTracks: [], hasOfficialPlaylist: false };
+  }
+
+  const cacheKey = normalizeForCompare(artistName) || artistName.toLowerCase();
+  const cached = artistCatalogCache.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp < ARTIST_CATALOG_TTL_MS)) {
+    return cached.data;
+  }
+
+  const yt = await getInnertube();
+  let artistInfo = {
+    name: artistName,
+    subtitle: 'Artis Terverifikasi',
+    avatar: '/images/supermix.jpg',
+    banner: ''
+  };
+
+  let allOfficialTracks = [];
+  let hasOfficialPlaylist = false;
+
+  if (yt && yt.music) {
+    try {
+      const searchRes = await yt.music.search(artistName);
+      const card = searchRes.contents?.find(c => c.type === 'MusicCardShelf');
+      if (card) {
+        if (card.title?.text) artistInfo.name = card.title.text;
+        if (card.subtitle?.text) artistInfo.subtitle = card.subtitle.text;
+        const rawThumb = card.thumbnail?.contents?.[0]?.url;
+        if (rawThumb) {
+          artistInfo.avatar = rawThumb.includes('googleusercontent.com')
+            ? rawThumb.replace(/=w\d+-h\d+[^"]*/, '=w400-h400-l85-rw')
+            : rawThumb;
+          artistInfo.banner = artistInfo.avatar;
+        }
+
+        const artistBrowseId = card.title?.endpoint?.payload?.browseId || card.on_tap?.payload?.browseId;
+        if (artistBrowseId) {
+          try {
+            const artistChannel = await yt.music.getArtist(artistBrowseId);
+            const topSongsShelf = artistChannel.sections?.find(sec =>
+              sec.type === 'MusicShelf' || /top songs|songs|lagu/i.test(sec.title?.text || sec.header?.title?.text || '')
+            );
+
+            const playlistBrowseId = topSongsShelf?.endpoint?.payload?.browseId;
+            if (playlistBrowseId) {
+              const pl = await yt.music.getPlaylist(playlistBrowseId);
+              if (pl && Array.isArray(pl.items) && pl.items.length > 0) {
+                hasOfficialPlaylist = true;
+                allOfficialTracks = pl.items.map(item => {
+                  const rawItemThumb = item.thumbnails?.[0]?.url || item.thumbnail?.contents?.[0]?.url || artistInfo.avatar || '/images/supermix.jpg';
+                  const hiresThumb = rawItemThumb.includes('googleusercontent.com')
+                    ? rawItemThumb.replace(/=w\d+-h\d+[^"]*/, '=w226-h226-l85-rw')
+                    : (rawItemThumb.includes('ytimg.com') ? rawItemThumb.replace(/\/vi\/([^/]+)\/(?:hqdefault|mqdefault|sddefault|maxresdefault)\.jpg.*/i, '/vi_webp/$1/mqdefault.webp') : rawItemThumb);
+                  const itemArtist = Array.isArray(item.artists)
+                    ? item.artists.map(a => a.name).join(', ')
+                    : (typeof item.author === 'string' ? item.author : artistInfo.name);
+                  const durationStr = typeof item.duration === 'string' ? item.duration : (item.duration?.text || '3:30');
+
+                  return {
+                    id: item.id,
+                    title: item.title || 'Unknown Title',
+                    artist: itemArtist || artistInfo.name,
+                    duration: durationStr,
+                    thumbnail: hiresThumb,
+                    type: 'youtube',
+                    isOfficial: true,
+                    tag: 'OFFICIAL',
+                    source: 'ytmusic'
+                  };
+                }).filter(t => t.id);
+              }
+            }
+          } catch (chanErr) {
+            console.warn('Artist official playlist fetch warning:', chanErr.message);
+          }
+        }
+      }
+    } catch (metaErr) {
+      console.warn('Artist metadata fetch warning:', metaErr.message);
+    }
+  }
+
+  const data = { artistInfo, allOfficialTracks, hasOfficialPlaylist };
+  if (allOfficialTracks.length > 0) {
+    artistCatalogCache.set(cacheKey, { data, timestamp: Date.now() });
+    if (artistCatalogCache.size > 200) {
+      artistCatalogCache.delete(artistCatalogCache.keys().next().value);
+    }
+  }
+  return data;
+}
+
 // 2.65 Dedicated Artist Showcase & Songs API (Pure Discography & Strict Artist Filtering)
 app.get('/api/artist/:name', async (req, res) => {
   const rawArtistName = (req.params.name || '').trim();
@@ -908,118 +1068,28 @@ app.get('/api/artist/:name', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Artist name required' });
   }
 
-  // Clean - Topic or extraneous characters
   const artistName = rawArtistName.replace(/\s*-\s*Topic$/i, '').trim();
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.max(10, Math.min(50, parseInt(req.query.limit) || 20));
 
   try {
-    const yt = await getInnertube();
-    let artistInfo = {
-      name: artistName,
-      subtitle: 'Artis Terverifikasi',
-      avatar: '/images/supermix.jpg',
-      banner: ''
-    };
-
-    let allOfficialTracks = [];
-    let hasOfficialPlaylist = false;
-
-    // 1. Fetch Artist Metadata Card & Official Top Songs from YouTube Music
-    if (yt && yt.music) {
-      try {
-        const searchRes = await yt.music.search(artistName);
-        const card = searchRes.contents?.find(c => c.type === 'MusicCardShelf');
-        if (card) {
-          if (card.title?.text) artistInfo.name = card.title.text;
-          if (card.subtitle?.text) artistInfo.subtitle = card.subtitle.text;
-          const rawThumb = card.thumbnail?.contents?.[0]?.url;
-          if (rawThumb) {
-            artistInfo.avatar = rawThumb.includes('googleusercontent.com')
-              ? rawThumb.replace(/=w\d+-h\d+[^"]*/, '=w400-h400-l85-rw')
-              : rawThumb;
-            artistInfo.banner = artistInfo.avatar;
-          }
-
-          // Check if artist has an official channel browseId
-          const artistBrowseId = card.title?.endpoint?.payload?.browseId || card.on_tap?.payload?.browseId;
-          if (artistBrowseId) {
-            try {
-              const artistChannel = await yt.music.getArtist(artistBrowseId);
-              // Find Top Songs shelf
-              const topSongsShelf = artistChannel.sections?.find(sec => 
-                sec.type === 'MusicShelf' || /top songs|songs|lagu/i.test(sec.title?.text || sec.header?.title?.text || '')
-              );
-
-              const playlistBrowseId = topSongsShelf?.endpoint?.payload?.browseId;
-              if (playlistBrowseId) {
-                const pl = await yt.music.getPlaylist(playlistBrowseId);
-                if (pl && Array.isArray(pl.items) && pl.items.length > 0) {
-                  hasOfficialPlaylist = true;
-                  allOfficialTracks = pl.items.map(item => {
-                    const rawItemThumb = item.thumbnails?.[0]?.url || item.thumbnail?.contents?.[0]?.url || artistInfo.avatar || '/images/supermix.jpg';
-                    const hiresThumb = rawItemThumb.includes('googleusercontent.com')
-                      ? rawItemThumb.replace(/=w\d+-h\d+[^"]*/, '=w226-h226-l85-rw')
-                      : (rawItemThumb.includes('ytimg.com') ? rawItemThumb.replace(/\/vi\/([^/]+)\/(?:hqdefault|mqdefault|sddefault|maxresdefault)\.jpg.*/i, '/vi_webp/$1/mqdefault.webp') : rawItemThumb);
-                    const itemArtist = Array.isArray(item.artists)
-                      ? item.artists.map(a => a.name).join(', ')
-                      : (typeof item.author === 'string' ? item.author : artistInfo.name);
-                    const durationStr = typeof item.duration === 'string' ? item.duration : (item.duration?.text || '3:30');
-
-                    return {
-                      id: item.id,
-                      title: item.title || 'Unknown Title',
-                      artist: itemArtist || artistInfo.name,
-                      duration: durationStr,
-                      thumbnail: hiresThumb,
-                      type: 'youtube',
-                      isOfficial: true,
-                      tag: 'OFFICIAL'
-                    };
-                  });
-                }
-              }
-            } catch (chanErr) {
-              console.warn('Artist official playlist fetch warning:', chanErr.message);
-            }
-          }
-        }
-      } catch (metaErr) {
-        console.warn('Artist metadata fetch warning:', metaErr.message);
-      }
-    }
+    const { artistInfo, allOfficialTracks, hasOfficialPlaylist } = await fetchArtistOfficialCatalog(artistName);
 
     let paginatedTracks = [];
     let hasMore = false;
 
-    // Helper to strictly test if a song belongs to this artist
-    const targetKeywords = artistInfo.name.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
-    const isStrictArtist = (trackArtist, trackTitle) => {
-      const art = (trackArtist || '').toLowerCase();
-      const tit = (trackTitle || '').toLowerCase();
-      if (targetKeywords.length === 0) {
-        return art.includes(artistInfo.name.toLowerCase());
-      }
-      const matchesArtist = targetKeywords.some(kw => art.includes(kw));
-      const matchesTitleFeat = /feat|ft\.|with|x\s/i.test(tit) && targetKeywords.some(kw => tit.includes(kw));
-      return matchesArtist || matchesTitleFeat;
-    };
-
     if (hasOfficialPlaylist && allOfficialTracks.length > 0) {
-      // 100% pure official discography from the artist's verified channel
-      const filtered = allOfficialTracks.filter(t => isStrictArtist(t.artist, t.title));
+      const filtered = allOfficialTracks.filter(t => isStrictArtistMatch(artistInfo.name, t.artist, t.title));
       const startIdx = (page - 1) * limit;
       paginatedTracks = filtered.slice(startIdx, startIdx + limit);
       hasMore = filtered.length > startIdx + limit;
     } else {
-      // Fallback: search and strictly filter out non-artist tracks
       let rawTracks = await searchYouTubeMusicSongs(artistName, 50, page);
       if ((!rawTracks || rawTracks.length === 0) && page === 1) {
         rawTracks = await searchYouTubeMusicSongs(`${artistName} songs`, 50, 1);
       }
 
-      // Strictly filter to only tracks performed by this artist
-      const strictlyFiltered = (rawTracks || []).filter(t => isStrictArtist(t.artist, t.title));
+      const strictlyFiltered = (rawTracks || []).filter(t => isStrictArtistMatch(artistInfo.name, t.artist, t.title));
       paginatedTracks = strictlyFiltered.slice(0, limit);
       hasMore = strictlyFiltered.length >= limit;
     }
@@ -1040,6 +1110,165 @@ app.get('/api/artist/:name', async (req, res) => {
   } catch (error) {
     console.error('Error fetching artist details:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 2.66 Single-Track Auto-Radio & Related Up-Next API (Same Artist Majority First -> Related Tracks)
+app.get('/api/track/related', async (req, res) => {
+  const videoId = String(req.query.id || '').trim();
+  const rawTitle = String(req.query.title || '').trim();
+  const rawArtist = String(req.query.artist || '').trim();
+  const isExtend = req.query.extend === '1' || req.query.extend === 'true';
+  const limit = Math.max(6, Math.min(24, parseInt(req.query.limit, 10) || 16));
+
+  const excludeIds = new Set(
+    String(req.query.excludeIds || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+  );
+  if (videoId) excludeIds.add(videoId);
+
+  const excludeTitles = String(req.query.excludeTitles || '')
+    .split('||')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if (!videoId && !rawTitle && !rawArtist) {
+    return res.status(400).json({ success: false, error: 'Track id, title, or artist is required' });
+  }
+
+  try {
+    let primaryArtist = extractPrimaryArtistName(rawArtist, rawTitle);
+    const seedTitle = rawTitle || '';
+    const wantsAltVersion = /\b(karaoke|cover|remix|dj|instrumental|piano|sped up|slowed|live|acoustic|nightcore)\b/i.test(seedTitle);
+
+    // Fetch YouTube Music UpNext and Artist Official Catalog concurrently
+    const [upNextData, initialCatalog] = await Promise.all([
+      (videoId && videoId.length === 11) ? tasteFeed.getUpNextDetailed(videoId, 38) : Promise.resolve({ seedArtist: '', tracks: [] }),
+      primaryArtist ? fetchArtistOfficialCatalog(primaryArtist) : Promise.resolve({ artistInfo: { name: '' }, allOfficialTracks: [], hasOfficialPlaylist: false })
+    ]);
+
+    let artistCatalog = initialCatalog;
+    const canonicalFromUpNext = extractPrimaryArtistName(upNextData?.seedArtist || '', seedTitle);
+    if (canonicalFromUpNext && (!primaryArtist || normalizeForCompare(canonicalFromUpNext) !== normalizeForCompare(primaryArtist))) {
+      // If UpNext revealed a cleaner canonical artist (e.g. channel was label/producer), fetch that artist's catalog
+      if (!artistCatalog.allOfficialTracks.length || LABEL_CHANNEL_REGEX.test(rawArtist)) {
+        primaryArtist = canonicalFromUpNext;
+        artistCatalog = await fetchArtistOfficialCatalog(primaryArtist);
+      }
+    }
+
+    let artistPool = artistCatalog.allOfficialTracks || [];
+    if (primaryArtist && artistPool.length < 6) {
+      const searchPool = await searchYouTubeMusicSongs(primaryArtist, 25, 1);
+      const filteredSearch = searchPool.filter(t => isStrictArtistMatch(primaryArtist, t.artist, t.title));
+      artistPool = [...artistPool, ...filteredSearch];
+    }
+
+    const upNextTracks = upNextData?.tracks || [];
+    const seenIds = new Set(excludeIds);
+    const seenTitleSamples = [seedTitle, ...excludeTitles].filter(Boolean);
+
+    const isEligibleTrack = (t) => {
+      if (!t || !t.id || !t.title) return false;
+      if (seenIds.has(t.id)) return false;
+
+      if (!wantsAltVersion) {
+        const isKnockoff = /\b(karaoke|originally performed by|tribute to|piano version|piano karaoke|instrumental version|music box|sped up|slowed|nightcore|tribute)\b/i.test(t.title);
+        if (isKnockoff) return false;
+        if (applyVersionMismatchPenalty(100, t.title, seedTitle) <= 0) return false;
+      }
+
+      for (const prevTitle of seenTitleSamples) {
+        if (isSameSongVariant(t.title, prevTitle, primaryArtist || t.artist)) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    const markAccepted = (t) => {
+      seenIds.add(t.id);
+      seenTitleSamples.push(t.title);
+    };
+
+    const sameArtistCandidates = [];
+    const relatedOtherCandidates = [];
+
+    // Collect UpNext tracks first so YouTube Music's strong track-to-track affinity stays high
+    for (const t of upNextTracks) {
+      if (!isEligibleTrack(t)) continue;
+      markAccepted(t);
+      if (primaryArtist && isStrictArtistMatch(primaryArtist, t.artist, t.title)) {
+        sameArtistCandidates.push({ ...t, relationType: 'same-artist' });
+      } else {
+        relatedOtherCandidates.push({ ...t, relationType: 'related' });
+      }
+    }
+
+    // Add artist catalog songs (lightly shuffled beyond top 2 so repeated plays feel fresh)
+    const filteredCatalog = [];
+    for (const t of artistPool) {
+      if (!isEligibleTrack(t)) continue;
+      if (primaryArtist && !isStrictArtistMatch(primaryArtist, t.artist, t.title)) continue;
+      markAccepted(t);
+      filteredCatalog.push({ ...t, relationType: 'same-artist' });
+    }
+    const shuffledCatalog = tasteFeed.generateHypermix
+      ? [...filteredCatalog.slice(0, 2), ...filteredCatalog.slice(2).sort(() => Math.random() - 0.5)]
+      : filteredCatalog;
+    sameArtistCandidates.push(...shuffledCatalog);
+
+    // Fallback if relatedOtherCandidates is empty (e.g. non-11-char ID or empty UpNext)
+    if (relatedOtherCandidates.length === 0 && primaryArtist) {
+      const simTracks = await searchYouTubeMusicSongs(`${primaryArtist} mix`, 15, 1);
+      for (const t of simTracks) {
+        if (!isEligibleTrack(t)) continue;
+        markAccepted(t);
+        if (isStrictArtistMatch(primaryArtist, t.artist, t.title)) {
+          sameArtistCandidates.push({ ...t, relationType: 'same-artist' });
+        } else {
+          relatedOtherCandidates.push({ ...t, relationType: 'related' });
+        }
+      }
+    }
+
+    // Build queue: majority same artist first (first 4 songs same artist), then 2:1 interleave
+    const queueTracks = [];
+    let sIdx = 0;
+    let rIdx = 0;
+
+    if (!isExtend) {
+      const initialLeadCount = Math.min(4, sameArtistCandidates.length);
+      while (sIdx < initialLeadCount && queueTracks.length < limit) {
+        queueTracks.push(sameArtistCandidates[sIdx++]);
+      }
+    }
+
+    while (queueTracks.length < limit && (sIdx < sameArtistCandidates.length || rIdx < relatedOtherCandidates.length)) {
+      const burstSame = isExtend ? 1 : 2;
+      for (let i = 0; i < burstSame && sIdx < sameArtistCandidates.length && queueTracks.length < limit; i++) {
+        queueTracks.push(sameArtistCandidates[sIdx++]);
+      }
+      if (rIdx < relatedOtherCandidates.length && queueTracks.length < limit) {
+        queueTracks.push(relatedOtherCandidates[rIdx++]);
+      }
+      if (sIdx >= sameArtistCandidates.length && rIdx < relatedOtherCandidates.length && queueTracks.length < limit) {
+        queueTracks.push(relatedOtherCandidates[rIdx++]);
+      }
+    }
+
+    res.json({
+      success: true,
+      seedArtist: primaryArtist || rawArtist || '',
+      sameArtistCount: queueTracks.filter(t => t.relationType === 'same-artist').length,
+      relatedCount: queueTracks.filter(t => t.relationType === 'related').length,
+      tracks: queueTracks
+    });
+  } catch (error) {
+    console.warn('Track related error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to resolve related tracks' });
   }
 });
 

@@ -163,6 +163,13 @@ class App {
     this.repeatMode = 'off'; // 'off' | 'all' | 'one'
     this.isMuted = false;
     this.lastVolume = 1.0;
+    this.queueMode = 'collection'; // 'collection' | 'single-radio'
+    this.radioSeedTrack = null;
+    this._radioFetchSeq = 0;
+    this._radioFetchPromise = null;
+    this._radioAbortController = null;
+    this._radioExtendInFlight = false;
+    this._relatedTrackCache = new Map();
 
     try { this.initElements(); } catch (e) { console.error('Error initializing elements:', e); }
     try { this.initGoogleAuth(); } catch (e) { console.error('Error initializing google auth:', e); }
@@ -5501,7 +5508,7 @@ class App {
             <h2 class="aura-modern-section-title">${isEn ? 'Songs Related to Your Music' : 'Lagu yang Berkaitan dengan Musikmu'}</h2>
           </div>
           <div class="ytm-section-actions">
-            <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('related-picks', 0)">
+            <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('related-picks', 0, { playAll: true })">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
               ${isEn ? 'Play All' : 'Putar Semua'}
             </button>
@@ -5780,7 +5787,7 @@ class App {
             </div>
 
             <div class="aura-hero-actions">
-              <button class="aura-btn-hero-primary" onclick="window.app.playFromRegistry('ytm-quick-picks', 0)">
+              <button class="aura-btn-hero-primary" onclick="window.app.playFromRegistry('ytm-quick-picks', 0, { playAll: true })">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 <span>${isEn ? 'Play My Custom Mix' : 'Putar Mix Personalku'}</span>
               </button>
@@ -5798,7 +5805,7 @@ class App {
           </div>
 
           <div class="aura-hero-right">
-            <div class="aura-turntable-card" onclick="window.app.playFromRegistry('ytm-quick-picks', 0)">
+            <div class="aura-turntable-card" onclick="window.app.playFromRegistry('ytm-quick-picks', 0, { playAll: true })">
               <div class="aura-turntable-chassis">
                 <div class="aura-vinyl-record ${isAudioPlaying ? 'is-spinning' : ''}">
                   <div class="aura-vinyl-grooves"></div>
@@ -5836,7 +5843,7 @@ class App {
                 <h2 class="aura-modern-section-title">${shelf.title}</h2>
               </div>
               <div class="ytm-section-actions">
-                <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('${shelfKey}', 0)">
+                <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('${shelfKey}', 0, { playAll: true })">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                   ${isEn ? 'Play All' : 'Putar Semua'}
                 </button>
@@ -5896,7 +5903,7 @@ class App {
               <h2 class="aura-modern-section-title">${isEn ? 'Quick Music Picks For You' : 'Resonansi Cepat Genre Pilihanmu'}</h2>
             </div>
             <div class="ytm-section-actions">
-              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-quick-picks', 0)">
+              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-quick-picks', 0, { playAll: true })">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 ${isEn ? 'Play All' : 'Putar Semua'}
               </button>
@@ -5962,7 +5969,7 @@ class App {
 
         <div class="aura-bento-grid">
           <!-- Pod 1: My Custom Mix -->
-          <div class="aura-bento-card aura-bento-supermix" onclick="window.app.playFromRegistry('ytm-quick-picks', 0)">
+          <div class="aura-bento-card aura-bento-supermix" onclick="window.app.playFromRegistry('ytm-quick-picks', 0, { playAll: true })">
             <div class="aura-bento-bg" style="background-image: url('${heroThumb}');"></div>
             <div class="aura-bento-mesh"></div>
             <div class="aura-bento-top">
@@ -5981,7 +5988,7 @@ class App {
                 ${feed.tasteSummary ? `Selera Pilihan: ${feed.tasteSummary}` : 'Diramu secara real-time berdasarkan genre dan vibe kesukaanmu.'}
               </p>
               <div class="aura-bento-actions">
-                <button class="aura-btn-circle-play" onclick="event.stopPropagation(); window.app.playFromRegistry('ytm-quick-picks', 0)" title="Putar Sekarang">
+                <button class="aura-btn-circle-play" onclick="event.stopPropagation(); window.app.playFromRegistry('ytm-quick-picks', 0, { playAll: true })" title="Putar Sekarang">
                   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 </button>
                 <span class="aura-bento-action-label">${isEn ? 'Play Custom Station →' : 'Putar Stasiun Personal →'}</span>
@@ -6051,7 +6058,7 @@ class App {
               <h2 class="aura-modern-section-title">${isEn ? 'Related Tracks For You' : 'Lagu yang Berkaitan dengan Musikmu'}</h2>
             </div>
             <div class="ytm-section-actions">
-              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('related-picks', 0)">
+              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('related-picks', 0, { playAll: true })">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 ${isEn ? 'Play All' : 'Putar Semua'}
               </button>
@@ -6140,7 +6147,7 @@ class App {
               <h2 class="aura-modern-section-title">${feed.moodShelf.title}</h2>
             </div>
             <div class="ytm-section-actions">
-              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('${moodShelfKey}', 0)">
+              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('${moodShelfKey}', 0, { playAll: true })">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 ${isEn ? 'Play All' : 'Putar Semua'}
               </button>
@@ -6487,7 +6494,7 @@ class App {
               <h2 class="aura-modern-section-title">${isEn ? 'Quick Music Picks' : 'Resonansi Musik Cepat'}</h2>
             </div>
             <div class="ytm-section-actions">
-              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-quick-picks', 0)">
+              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-quick-picks', 0, { playAll: true })">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 ${isEn ? 'Play All' : 'Putar Semua'}
               </button>
@@ -6615,7 +6622,7 @@ class App {
               <h2 class="aura-modern-section-title">${isEn ? 'Official Music Videos & Top Hits' : 'Video Musik Resmi & Hit Teratas'}</h2>
             </div>
             <div class="ytm-section-actions">
-              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-covers', 0)">
+              <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-covers', 0, { playAll: true })">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                 ${isEn ? 'Play All' : 'Putar Semua'}
               </button>
@@ -6835,7 +6842,7 @@ class App {
             <h2 class="aura-modern-section-title">${isEn ? 'Resonance' : 'Resonansi'}: ${moodData.title}</h2>
           </div>
           <div class="ytm-section-actions">
-            <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-mood-quick', 0)">
+            <button class="aura-pill-btn-primary" onclick="window.app.playFromRegistry('ytm-mood-quick', 0, { playAll: true })">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
               ${isEn ? 'Play All' : 'Putar Semua'}
             </button>
@@ -8055,10 +8062,31 @@ class App {
     this.trackListRegistry[key] = tracks;
   }
 
-  playFromRegistry(key, index) {
+  isCollectionRegistryKey(key) {
+    if (!key || typeof key !== 'string') return false;
+    return (
+      key.startsWith('album-') ||
+      key.startsWith('pl-') ||
+      key.startsWith('artist-') ||
+      key === 'liked-music' ||
+      key === 'favorites' ||
+      key === 'mockup-deck' ||
+      key === 'mockup-showcase'
+    );
+  }
+
+  playFromRegistry(key, index, options = {}) {
     const list = this.trackListRegistry?.[key] || [];
-    if (list[index]) {
+    const track = list[index];
+    if (!track) return;
+
+    const isCollection = Boolean(options && options.playAll) || this.isCollectionRegistryKey(key);
+    const isNonRadioTrack = track.type === 'suno' || track.type === 'local' || track.id === 'dsp-test-demo' || track.id === 'mix-liked';
+
+    if (isCollection || isNonRadioTrack) {
       this.playTrackList(list, index);
+    } else {
+      this.playSingleTrackWithRelatedRadio(track);
     }
   }
 
@@ -8137,6 +8165,8 @@ class App {
         currentTrack: this.currentTrack,
         queue: Array.isArray(this.queue) ? this.queue.slice(0, 50) : [],
         queueIndex: typeof this.queueIndex === 'number' ? this.queueIndex : 0,
+        queueMode: this.queueMode || 'collection',
+        radioSeedTrack: this.radioSeedTrack || null,
         currentTime: this.nativeAudio ? (this.nativeAudio.currentTime || 0) : 0,
         duration: this.nativeAudio ? (this.nativeAudio.duration || 0) : 0,
         volume: typeof this.lastVolume === 'number' ? this.lastVolume : 1.0,
@@ -8197,6 +8227,8 @@ class App {
       if (Array.isArray(state.queue) && state.queue.length > 0) {
         this.queue = state.queue;
         this.queueIndex = typeof state.queueIndex === 'number' ? state.queueIndex : 0;
+        this.queueMode = state.queueMode === 'single-radio' ? 'single-radio' : 'collection';
+        this.radioSeedTrack = state.radioSeedTrack || null;
       }
 
       // Restore track UI without auto-playing audio immediately
@@ -8241,8 +8273,134 @@ class App {
     }
   }
 
+  cancelRelatedRadioFetch() {
+    this._radioFetchSeq = (this._radioFetchSeq || 0) + 1;
+    this._radioFetchPromise = null;
+    this._radioExtendInFlight = false;
+    if (this._radioAbortController) {
+      try { this._radioAbortController.abort(); } catch (_) {}
+      this._radioAbortController = null;
+    }
+  }
+
+  cleanRadioTitleKey(title) {
+    return (title || '')
+      .toLowerCase()
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  playSingleTrackWithRelatedRadio(track) {
+    if (!track) return;
+    this.cancelRelatedRadioFetch();
+    this.queueMode = 'single-radio';
+    this.radioSeedTrack = track;
+    this.queue = [track];
+    this.queueIndex = 0;
+    this.persistPlaybackState();
+    this.playTrack(track);
+  }
+
+  async fetchAndPopulateRelatedQueue(seedTrack, radioSeq, options = {}) {
+    if (!seedTrack || radioSeq !== this._radioFetchSeq || this.queueMode !== 'single-radio') return [];
+    const isExtend = Boolean(options.extend);
+    if (isExtend && this._radioExtendInFlight) return [];
+    if (isExtend) this._radioExtendInFlight = true;
+
+    const appendUniqueTracks = (incoming) => {
+      if (radioSeq !== this._radioFetchSeq || this.queueMode !== 'single-radio') return [];
+      const existingIds = new Set((this.queue || []).map(t => t.id || t.videoId).filter(Boolean));
+      const existingTitles = new Set((this.queue || []).map(t => this.cleanRadioTitleKey(t.title)).filter(k => k.length >= 2));
+
+      const added = [];
+      for (const t of (incoming || [])) {
+        if (!t || !t.id || !t.title) continue;
+        if (existingIds.has(t.id)) continue;
+        const tk = this.cleanRadioTitleKey(t.title);
+        if (tk.length >= 2 && existingTitles.has(tk)) continue;
+        existingIds.add(t.id);
+        if (tk.length >= 2) existingTitles.add(tk);
+        this.queue.push(t);
+        added.push(t);
+      }
+      if (added.length > 0) {
+        this.persistPlaybackState();
+        if (this.isOnWifiConnection()) {
+          this.scheduleWifiPreCache(3500);
+        }
+      }
+      return added;
+    };
+
+    const cacheKey = `${seedTrack.id || ''}::${(seedTrack.artist || '').toLowerCase()}::${this.cleanRadioTitleKey(seedTrack.title)}`;
+    if (!isExtend && this._relatedTrackCache && this._relatedTrackCache.has(cacheKey)) {
+      const cached = this._relatedTrackCache.get(cacheKey);
+      return appendUniqueTracks(cached);
+    }
+
+    const abortCtrl = new AbortController();
+    this._radioAbortController = abortCtrl;
+
+    const runFetch = async () => {
+      try {
+        const excludeIds = (this.queue || []).map(t => t.id || t.videoId).filter(Boolean).slice(-40).join(',');
+        const excludeTitles = (this.queue || []).map(t => t.title).filter(Boolean).slice(-15).join('||');
+        const params = new URLSearchParams({
+          id: seedTrack.id || '',
+          title: seedTrack.title || '',
+          artist: seedTrack.artist || '',
+          limit: '16',
+          excludeIds,
+          excludeTitles
+        });
+        if (isExtend) params.set('extend', '1');
+
+        const res = await fetch(`/api/track/related?${params.toString()}`, { signal: abortCtrl.signal });
+        if (!res.ok) return [];
+        const data = await res.json();
+        if (radioSeq !== this._radioFetchSeq || this.queueMode !== 'single-radio') return [];
+
+        const tracks = Array.isArray(data.tracks) ? data.tracks : [];
+        if (!isExtend && tracks.length > 0 && this._relatedTrackCache) {
+          this._relatedTrackCache.set(cacheKey, tracks);
+          if (this._relatedTrackCache.size > 60) {
+            this._relatedTrackCache.delete(this._relatedTrackCache.keys().next().value);
+          }
+        }
+        return appendUniqueTracks(tracks);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.warn('[SingleRadio] Failed to fetch related tracks:', err.message);
+        }
+        return [];
+      } finally {
+        if (this._radioAbortController === abortCtrl) {
+          this._radioAbortController = null;
+        }
+        if (isExtend) this._radioExtendInFlight = false;
+      }
+    };
+
+    const promise = runFetch();
+    this._radioFetchPromise = promise;
+    try {
+      return await promise;
+    } finally {
+      if (this._radioFetchPromise === promise) {
+        this._radioFetchPromise = null;
+      }
+    }
+  }
+
   playTrackList(tracks, startIndex = 0) {
     if (!Array.isArray(tracks) || tracks.length === 0) return;
+
+    this.cancelRelatedRadioFetch();
+    this.queueMode = 'collection';
+    this.radioSeedTrack = null;
 
     // Directly preserve the exact tracks array and exact clicked index
     this.queue = [...tracks];
@@ -8351,6 +8509,19 @@ class App {
         console.warn('Spotify on-demand resolve error:', spErr);
       }
       if (this._playTrackSeq !== playSeq) return;
+    }
+
+    // In Single-Track Auto-Radio mode, populate related up-next tracks in the background (once per radio session)
+    if (
+      this.queueMode === 'single-radio' &&
+      this.radioSeedTrack === track &&
+      this._radioInitialFetchedSeq !== this._radioFetchSeq &&
+      track.type !== 'suno' &&
+      track.type !== 'local' &&
+      track.id !== 'dsp-test-demo'
+    ) {
+      this._radioInitialFetchedSeq = this._radioFetchSeq;
+      this.fetchAndPopulateRelatedQueue(track, this._radioFetchSeq);
     }
 
     this.hydrateSunoTrack(track);
@@ -9092,12 +9263,42 @@ class App {
     this.persistPlaybackState();
   }
 
-  playNext() {
+  async playNext() {
     if (this.queue.length === 0) return;
 
     // Repeat one single track
     if (this.repeatMode === 'one' && this.currentTrack) {
       this.playTrack(this.currentTrack);
+      return;
+    }
+
+    // Single-Track Auto-Radio mode: play curated same-artist-first -> related sequence & auto-extend
+    if (this.queueMode === 'single-radio') {
+      if (this.queueIndex >= this.queue.length - 1) {
+        if (this._radioFetchPromise) {
+          try { await this._radioFetchPromise; } catch (_) {}
+        }
+        if (this.queueIndex >= this.queue.length - 1) {
+          const seed = this.currentTrack || this.radioSeedTrack;
+          if (seed && seed.type !== 'suno' && seed.type !== 'local') {
+            await this.fetchAndPopulateRelatedQueue(seed, this._radioFetchSeq, { extend: true });
+          }
+        }
+      }
+
+      if (this.queueIndex < this.queue.length - 1) {
+        this.queueIndex++;
+        const nextTrack = this.queue[this.queueIndex];
+        this.playTrack(nextTrack);
+
+        if (this.queue.length - 1 - this.queueIndex <= 2 && nextTrack && nextTrack.type !== 'suno' && nextTrack.type !== 'local') {
+          this.fetchAndPopulateRelatedQueue(nextTrack, this._radioFetchSeq, { extend: true });
+        }
+        return;
+      }
+
+      this.queueIndex = 0;
+      this.playTrack(this.queue[0]);
       return;
     }
 

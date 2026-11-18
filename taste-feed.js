@@ -46,29 +46,34 @@ function shuffleArray(arr) {
 
 /**
  * Fetches authentic YouTube Music "Up Next" related tracks based on a video ID.
- * Returns up to 20 algorithmic recommendations from similar artists and vibes.
+ * Returns { seedArtist, tracks } preserving YouTube Music's relevance order.
  */
-async function getUpNextTracks(videoId, max = 15) {
-  if (!videoId || typeof videoId !== 'string') return [];
+async function getUpNextDetailed(videoId, max = 35) {
+  if (!videoId || typeof videoId !== 'string') return { seedArtist: '', tracks: [] };
   const cleanId = videoId.replace(/.*(?:v=|youtu\.be\/)/, '').split('&')[0];
-  if (!cleanId || cleanId.length !== 11) return [];
+  if (!cleanId || cleanId.length !== 11) return { seedArtist: '', tracks: [] };
 
-  const cacheKey = `upnext_${cleanId}`;
+  const cacheKey = `upnext_detailed_${cleanId}`;
   if (feedCache.has(cacheKey)) {
     const entry = feedCache.get(cacheKey);
     if (Date.now() - entry.timestamp < CACHE_TTL_MS) {
-      return shuffleArray(entry.tracks).slice(0, max);
+      return {
+        seedArtist: entry.seedArtist || '',
+        tracks: entry.tracks.slice(0, max)
+      };
     }
   }
 
   try {
     const yt = await getInnertube();
-    if (!yt || !yt.music) return [];
+    if (!yt || !yt.music) return { seedArtist: '', tracks: [] };
 
     const upNext = await yt.music.getUpNext(cleanId);
     const contents = upNext?.contents || [];
+    const seedItem = contents[0];
+    const seedArtist = (seedItem?.artists || []).map(a => a.name).filter(Boolean).join(', ');
     // Skip item 0 which is the song itself
-    const candidateItems = contents.slice(1, Math.max(max + 10, 25));
+    const candidateItems = contents.slice(1, Math.max(max + 10, 40));
 
     const tracks = candidateItems.map(item => {
       const id = item.id || item.video_id;
@@ -99,12 +104,21 @@ async function getUpNextTracks(videoId, max = 15) {
       };
     }).filter(t => t && t.id && t.title);
 
-    feedCache.set(cacheKey, { tracks, timestamp: Date.now() });
-    return shuffleArray(tracks).slice(0, max);
+    feedCache.set(cacheKey, { seedArtist, tracks, timestamp: Date.now() });
+    return { seedArtist, tracks: tracks.slice(0, max) };
   } catch (e) {
     console.warn(`UpNext fetch error for ${cleanId}:`, e.message);
-    return [];
+    return { seedArtist: '', tracks: [] };
   }
+}
+
+/**
+ * Fetches authentic YouTube Music "Up Next" related tracks based on a video ID.
+ * Returns shuffled algorithmic recommendations from similar artists and vibes.
+ */
+async function getUpNextTracks(videoId, max = 15) {
+  const { tracks } = await getUpNextDetailed(videoId, Math.max(max + 10, 25));
+  return shuffleArray(tracks).slice(0, max);
 }
 
 function cleanSlug(str = '') {
@@ -855,6 +869,7 @@ async function generateHypermix({ history = [], favorites = [], importedPlaylist
 module.exports = {
   GENRES,
   MOODS,
+  getUpNextDetailed,
   getUpNextTracks,
   generatePersonalizedFeed,
   generateHypermix
