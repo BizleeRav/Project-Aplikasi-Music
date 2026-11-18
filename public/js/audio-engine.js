@@ -798,10 +798,6 @@ class AudioEngine {
     if (!this.cinemaCanvas) return;
     this.cinemaCanvasCtx = this.cinemaCanvas.getContext('2d');
 
-    if (!this.stardustParticles || this.stardustParticles.length === 0) {
-      this.initStardustParticles();
-    }
-
     const resize = () => {
       if (!this.cinemaCanvas) return;
       const rect = this.cinemaCanvas.getBoundingClientRect();
@@ -836,35 +832,6 @@ class AudioEngine {
     if (typeof ResizeObserver !== 'undefined') {
       this._cinemaResizeObserver = new ResizeObserver(() => resize());
       this._cinemaResizeObserver.observe(this.cinemaCanvas);
-    }
-  }
-
-  initStardustParticles() {
-    const bandCount = 54;
-    const totalStars = 84;
-    this.stardustParticles = [];
-    for (let i = 0; i < totalStars; i++) {
-      const band = Math.min(bandCount - 1, Math.floor((i / totalStars) * bandCount));
-      const bandRatio = band / (bandCount - 1);
-      // Match studio spectrum palette from sub-bass (emerald/cyan) -> vocals (violet) -> treble (pink/white)
-      let color = '#06b6d4';
-      if (bandRatio < 0.25) {
-        color = i % 2 === 0 ? '#10b981' : '#06b6d4';
-      } else if (bandRatio < 0.65) {
-        color = i % 3 === 0 ? '#38bdf8' : '#8b5cf6';
-      } else {
-        color = i % 4 === 0 ? '#ffffff' : '#ec4899';
-      }
-
-      this.stardustParticles.push({
-        band,
-        xNorm: Math.min(0.985, Math.max(0.015, ((band + 0.5) / bandCount) + (Math.random() - 0.5) * 0.025)),
-        baseY: 0.24 + Math.random() * 0.64,
-        driftX: (Math.random() - 0.5) * 0.0007,
-        size: 1.3 + Math.random() * 1.9,
-        phase: Math.random() * Math.PI * 2,
-        color
-      });
     }
   }
 
@@ -1174,6 +1141,15 @@ class AudioEngine {
       }
 
       const val = this.cinemaBars[i];
+      if (val >= this.cinemaPeaks[i]) {
+        this.cinemaPeaks[i] = val;
+        this.cinemaPeakHold[i] = 10;
+      } else if (this.cinemaPeakHold[i] > 0) {
+        this.cinemaPeakHold[i]--;
+      } else {
+        this.cinemaPeaks[i] = Math.max(val, this.cinemaPeaks[i] - 0.022);
+      }
+
       if (i <= 14) bassSum += val;
       else if (i <= 35) midSum += val;
       else trebleSum += val;
@@ -1181,33 +1157,11 @@ class AudioEngine {
 
     return {
       barCount,
-      hasRealAudioSignal,
-      timeData: hasRealAudioSignal ? this._cinemaTimeData : null,
-      bufferLength,
       kickImpulse,
-      snareImpulse,
-      hihatImpulse,
-      vocalEnergy,
       bassEnergy: bassSum / 15,
       midEnergy: midSum / 21,
       trebleEnergy: trebleSum / 18
     };
-  }
-
-  /**
-   * Draws a smooth cubic/quadratic curve through an array of (x, y) points.
-   */
-  strokeSmoothCurve(ctx, points, count) {
-    if (count < 2) return;
-    ctx.moveTo(points[0], points[1]);
-    for (let i = 1; i < count - 1; i++) {
-      const cx = points[i * 2];
-      const cy = points[i * 2 + 1];
-      const nx = (cx + points[(i + 1) * 2]) * 0.5;
-      const ny = (cy + points[(i + 1) * 2 + 1]) * 0.5;
-      ctx.quadraticCurveTo(cx, cy, nx, ny);
-    }
-    ctx.lineTo(points[(count - 1) * 2], points[(count - 1) * 2 + 1]);
   }
 
   drawCinemaVisualizer() {
@@ -1249,8 +1203,7 @@ class AudioEngine {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const { isPlaying, songTime, isSinging } = this.getPlaybackContext();
-    const audio = this.computeCinemaAudioState(isPlaying, songTime, isSinging);
-    const { barCount, hasRealAudioSignal, timeData, bufferLength, kickImpulse, snareImpulse, hihatImpulse, bassEnergy, midEnergy, trebleEnergy } = audio;
+    const { barCount, kickImpulse } = this.computeCinemaAudioState(isPlaying, songTime, isSinging);
 
     if (mode === 'spectrum') {
       // 1. NEON PILLARS (54-Band Studio Spectrum with Floating Peak Hold Dots)
@@ -1274,22 +1227,12 @@ class AudioEngine {
         ctx.roundRect(x, y, barWidth, barHeight, [3, 3, 0, 0]);
         ctx.fill();
 
-        if (pct >= this.cinemaPeaks[i]) {
-          this.cinemaPeaks[i] = pct;
-          this.cinemaPeakHold[i] = 10;
-        } else if (this.cinemaPeakHold[i] > 0) {
-          this.cinemaPeakHold[i]--;
-        } else {
-          this.cinemaPeaks[i] = Math.max(pct, this.cinemaPeaks[i] - 0.022);
-        }
-
         const peakPct = this.cinemaPeaks[i];
         if (peakPct > 0.08) {
           const peakY = Math.max(3, height - (peakPct * height * 0.92) - 4);
           const dotX = x + barWidth / 2;
           const dotR = Math.min(barWidth / 2, 2.2);
 
-          // Layered halo circle (avoids GPU shadowBlur corruption on Windows laptops)
           ctx.fillStyle = 'rgba(6, 182, 212, 0.35)';
           ctx.beginPath();
           ctx.arc(dotX, peakY, dotR * 2.1, 0, Math.PI * 2);
@@ -1302,235 +1245,91 @@ class AudioEngine {
         }
       }
     } else if (mode === 'waveform') {
-      // 2. CYBER WAVE (Mirrored Audio-Reactive Spectrum Ribbon & Beat Oscilloscope)
+      // 2. MIRROR PULSE (Symmetrical Center-Expanding Studio Capsule Spectrum)
       const centerY = height / 2;
-      const pointCount = barCount;
-      if (!this._waveTopPts || this._waveTopPts.length !== pointCount * 2) {
-        this._waveTopPts = new Float32Array(pointCount * 2);
-        this._waveBotPts = new Float32Array(pointCount * 2);
-      }
+      const gap = 3;
+      const barWidth = Math.max(2, (width / barCount) - gap);
+      const radius = Math.min(barWidth / 2, 4);
 
-      const topPts = this._waveTopPts;
-      const botPts = this._waveBotPts;
-      const maxHalfH = height * 0.44;
-      const animT = isPlaying ? songTime : (Date.now() / 1000) * 0.7;
+      // Subtle glowing center horizon spine pulsing with kick drum
+      ctx.fillStyle = `rgba(56, 189, 248, ${isPlaying ? (0.14 + kickImpulse * 0.25) : 0.1})`;
+      ctx.fillRect(0, centerY - 0.5, width, 1);
 
-      for (let i = 0; i < pointCount; i++) {
-        const normX = i / (pointCount - 1);
-        const x = normX * width;
-        const bandEnergy = this.cinemaBars[i];
+      const mirrorGrad = ctx.createLinearGradient(0, 0, 0, height);
+      mirrorGrad.addColorStop(0, '#ec4899');
+      mirrorGrad.addColorStop(0.26, '#8b5cf6');
+      mirrorGrad.addColorStop(0.45, '#06b6d4');
+      mirrorGrad.addColorStop(0.5, '#e0f2fe');
+      mirrorGrad.addColorStop(0.55, '#06b6d4');
+      mirrorGrad.addColorStop(0.74, '#8b5cf6');
+      mirrorGrad.addColorStop(1, '#ec4899');
 
-        let waveOffset = 0;
-        if (hasRealAudioSignal && timeData && bufferLength > 0) {
-          const tIdx = Math.min(bufferLength - 1, Math.floor(normX * bufferLength));
-          const sample = (timeData[tIdx] - 128) / 128; // -1..1
-          waveOffset = sample * maxHalfH * 0.55;
-        } else if (isPlaying) {
-          const carrier = Math.sin(normX * Math.PI * 5 - animT * 7.5) * 0.45 +
-                          Math.cos(normX * Math.PI * 9 + animT * 4.2) * 0.25 + 0.3;
-          waveOffset = carrier * bandEnergy * maxHalfH * 0.55;
-        } else {
-          waveOffset = Math.sin(normX * Math.PI * 3 + animT * 2.2) * height * 0.04;
+      for (let i = 0; i < barCount; i++) {
+        const pct = this.cinemaBars[i];
+        const halfH = Math.max(2.5, pct * (height * 0.44));
+        const x = i * (barWidth + gap) + gap;
+
+        ctx.fillStyle = mirrorGrad;
+        ctx.beginPath();
+        ctx.roundRect(x, centerY - halfH, barWidth, halfH * 2, radius);
+        ctx.fill();
+
+        // Symmetrical top & bottom peak markers
+        const peakPct = this.cinemaPeaks[i];
+        if (peakPct > 0.12) {
+          const peakHalf = Math.min(height * 0.47, peakPct * (height * 0.44) + 3);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.fillRect(x, Math.max(1, centerY - peakHalf), barWidth, 1.5);
+          ctx.fillRect(x, Math.min(height - 2.5, centerY + peakHalf - 1.5), barWidth, 1.5);
         }
-
-        // Mirrored envelope tightly locked to each frequency band's energy
-        const envAmp = isPlaying
-          ? Math.max(2.5, bandEnergy * maxHalfH * (0.72 + kickImpulse * 0.28))
-          : 2.5 + Math.abs(Math.sin(normX * Math.PI * 2 + animT)) * 3;
-
-        const topY = Math.max(3, Math.min(height - 3, centerY - envAmp + waveOffset * 0.45));
-        const botY = Math.max(3, Math.min(height - 3, centerY + envAmp + waveOffset * 0.45));
-
-        topPts[i * 2] = x;
-        topPts[i * 2 + 1] = topY;
-        botPts[i * 2] = x;
-        botPts[i * 2 + 1] = botY;
       }
-
-      const ribbonGrad = ctx.createLinearGradient(0, 0, width, 0);
-      ribbonGrad.addColorStop(0, '#10b981');
-      ribbonGrad.addColorStop(0.35, '#06b6d4');
-      ribbonGrad.addColorStop(0.7, '#8b5cf6');
-      ribbonGrad.addColorStop(1, '#ec4899');
-
-      // Filled translucent spectrum ribbon between top & bottom wave contours
-      ctx.save();
-      ctx.globalAlpha = isPlaying ? (0.18 + bassEnergy * 0.22) : 0.12;
-      ctx.fillStyle = ribbonGrad;
-      ctx.beginPath();
-      ctx.moveTo(topPts[0], topPts[1]);
-      for (let i = 1; i < pointCount - 1; i++) {
-        const cx = topPts[i * 2];
-        const cy = topPts[i * 2 + 1];
-        const nx = (cx + topPts[(i + 1) * 2]) * 0.5;
-        const ny = (cy + topPts[(i + 1) * 2 + 1]) * 0.5;
-        ctx.quadraticCurveTo(cx, cy, nx, ny);
-      }
-      ctx.lineTo(topPts[(pointCount - 1) * 2], topPts[(pointCount - 1) * 2 + 1]);
-      for (let i = pointCount - 1; i >= 1; i--) {
-        const cx = botPts[i * 2];
-        const cy = botPts[i * 2 + 1];
-        const px = (cx + botPts[(i - 1) * 2]) * 0.5;
-        const py = (cy + botPts[(i - 1) * 2 + 1]) * 0.5;
-        ctx.quadraticCurveTo(cx, cy, px, py);
-      }
-      ctx.lineTo(botPts[0], botPts[1]);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-
-      // Subtle beat-reactive center horizon pulse
-      ctx.strokeStyle = `rgba(56, 189, 248, ${isPlaying ? (0.18 + kickImpulse * 0.35) : 0.12})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, centerY);
-      ctx.lineTo(width, centerY);
-      ctx.stroke();
-
-      // Upper Neon Wave (layered outer glow + crisp core, zero shadowBlur)
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.save();
-      ctx.globalAlpha = 0.28;
-      ctx.strokeStyle = ribbonGrad;
-      ctx.lineWidth = 5.5;
-      ctx.beginPath();
-      this.strokeSmoothCurve(ctx, topPts, pointCount);
-      ctx.stroke();
-      ctx.restore();
-
-      ctx.strokeStyle = ribbonGrad;
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      this.strokeSmoothCurve(ctx, topPts, pointCount);
-      ctx.stroke();
-
-      // Lower Mirror Harmonics Wave
-      const lowerGrad = ctx.createLinearGradient(0, 0, width, 0);
-      lowerGrad.addColorStop(0, '#06b6d4');
-      lowerGrad.addColorStop(0.45, '#8b5cf6');
-      lowerGrad.addColorStop(1, '#ec4899');
-
-      ctx.save();
-      ctx.globalAlpha = 0.22;
-      ctx.strokeStyle = lowerGrad;
-      ctx.lineWidth = 4.5;
-      ctx.beginPath();
-      this.strokeSmoothCurve(ctx, botPts, pointCount);
-      ctx.stroke();
-      ctx.restore();
-
-      ctx.strokeStyle = lowerGrad;
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      this.strokeSmoothCurve(ctx, botPts, pointCount);
-      ctx.stroke();
     } else if (mode === 'stars') {
-      // 3. STARDUST PULSE (Frequency-Mapped & Beat-Locked Constellation Nebula)
-      if (!this.stardustParticles) this.initStardustParticles();
+      // 3. LED MATRIX (Hi-Fi Segmented Hardware Equalizer Grid with Peak-Hold Caps)
+      const cols = 42;
+      const rows = 8;
+      const colGap = 4;
+      const rowGap = 2.5;
+      const padX = 4;
+      const padY = 4;
+      const cellW = Math.max(3, ((width - padX * 2) / cols) - colGap);
+      const cellH = Math.max(2.5, ((height - padY * 2) - rowGap * (rows - 1)) / rows);
 
-      const animT = isPlaying ? songTime : (Date.now() / 1000) * 0.5;
+      const rowColors = [
+        '#10b981', // row 0 (bottom)
+        '#10b981', // row 1
+        '#06b6d4', // row 2
+        '#06b6d4', // row 3
+        '#38bdf8', // row 4
+        '#8b5cf6', // row 5
+        '#a855f7', // row 6
+        '#ec4899'  // row 7 (top)
+      ];
 
-      // Soft bottom nebula mist driven by Bass / Mid / Treble energy
-      const mistGrad = ctx.createLinearGradient(0, height, 0, height * 0.25);
-      mistGrad.addColorStop(0, `rgba(6, 182, 212, ${isPlaying ? (0.08 + bassEnergy * 0.22) : 0.05})`);
-      mistGrad.addColorStop(0.55, `rgba(139, 92, 246, ${isPlaying ? (0.04 + midEnergy * 0.14) : 0.02})`);
-      mistGrad.addColorStop(1, 'rgba(6, 10, 20, 0)');
-      ctx.fillStyle = mistGrad;
-      ctx.fillRect(0, height * 0.25, width, height * 0.75);
+      for (let c = 0; c < cols; c++) {
+        const bandIdx = Math.min(barCount - 1, Math.floor((c / cols) * barCount));
+        const pct = this.cinemaBars[bandIdx];
+        const peakPct = this.cinemaPeaks[bandIdx];
 
-      const starCount = this.stardustParticles.length;
-      if (!this._starScreenCoords || this._starScreenCoords.length !== starCount * 2) {
-        this._starScreenCoords = new Float32Array(starCount * 2);
-        this._starEnergies = new Float32Array(starCount);
-      }
+        const activeRows = Math.max(1, Math.round(pct * rows));
+        const peakRow = Math.min(rows - 1, Math.max(0, Math.round(peakPct * rows) - 1));
+        const x = padX + c * (cellW + colGap);
 
-      for (let idx = 0; idx < starCount; idx++) {
-        const p = this.stardustParticles[idx];
-        const bandVal = this.cinemaBars[p.band] || 0.05;
+        for (let r = 0; r < rows; r++) {
+          // r = 0 is bottom row, r = rows - 1 is top row
+          const y = height - padY - ((r + 1) * cellH) - (r * rowGap);
 
-        // Horizontal drift gently accelerated by band energy
-        p.xNorm += p.driftX * (isPlaying ? (0.8 + bandVal * 2.4) : 0.35);
-        if (p.xNorm < 0.01) p.xNorm = 0.99;
-        if (p.xNorm > 0.99) p.xNorm = 0.01;
-
-        // Band-specific beat punch (low=kick, mid=vocal/snare, high=hi-hat)
-        let bandPunch = 0;
-        if (p.band <= 14) bandPunch = kickImpulse * 0.35;
-        else if (p.band <= 35) bandPunch = snareImpulse * 0.25 + midEnergy * 0.2;
-        else bandPunch = hihatImpulse * 0.3 + trebleEnergy * 0.2;
-
-        const energy = isPlaying ? Math.min(1, bandVal * 0.85 + bandPunch) : 0.08;
-        const px = p.xNorm * width;
-        // Stars surge upward when their frequency band hits!
-        const lift = isPlaying ? (energy * height * 0.52) : (Math.sin(animT * 1.6 + p.phase) * 3);
-        const floatY = Math.sin(animT * 2.4 + p.phase) * (isPlaying ? 3.5 : 1.8);
-        const py = Math.max(6, Math.min(height - 6, (p.baseY * height) - lift * 0.55 + floatY));
-
-        this._starScreenCoords[idx * 2] = px;
-        this._starScreenCoords[idx * 2 + 1] = py;
-        this._starEnergies[idx] = energy;
-      }
-
-      // Beat-synced constellation filaments linking adjacent energized stars
-      ctx.lineWidth = 1;
-      for (let i = 0; i < starCount - 1; i++) {
-        const e1 = this._starEnergies[i];
-        const e2 = this._starEnergies[i + 1];
-        if (e1 > 0.32 && e2 > 0.32) {
-          const x1 = this._starScreenCoords[i * 2];
-          const y1 = this._starScreenCoords[i * 2 + 1];
-          const x2 = this._starScreenCoords[(i + 1) * 2];
-          const y2 = this._starScreenCoords[(i + 1) * 2 + 1];
-          const distSq = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
-          if (distSq < 5600) {
-            const linkAlpha = Math.min(0.45, ((e1 + e2) * 0.5 - 0.25) * 0.75);
-            ctx.strokeStyle = `rgba(56, 189, 248, ${linkAlpha.toFixed(3)})`;
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
+          if (r < activeRows) {
+            ctx.fillStyle = rowColors[r];
+          } else if (r === peakRow && peakPct > 0.1) {
+            ctx.fillStyle = '#ffffff';
+          } else {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.045)';
           }
-        }
-      }
 
-      // Draw layered glowing stars (soft outer halo + crisp bright core, zero shadowBlur)
-      for (let idx = 0; idx < starCount; idx++) {
-        const p = this.stardustParticles[idx];
-        const px = this._starScreenCoords[idx * 2];
-        const py = this._starScreenCoords[idx * 2 + 1];
-        const energy = this._starEnergies[idx];
-
-        const coreR = Math.max(1.1, p.size * (0.75 + energy * 1.35));
-        const haloR = coreR * (2.2 + energy * 1.4);
-
-        ctx.save();
-        ctx.globalAlpha = isPlaying ? (0.14 + energy * 0.32) : 0.14;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(px, py, haloR, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.globalAlpha = isPlaying ? (0.65 + energy * 0.35) : 0.55;
-        ctx.fillStyle = energy > 0.62 ? '#ffffff' : p.color;
-        ctx.beginPath();
-        ctx.arc(px, py, coreR, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Crisp 4-point sparkle cross on strong rhythmic peaks
-        if (isPlaying && energy > 0.56) {
-          const flareLen = coreR * (2.6 + energy * 1.8);
-          ctx.globalAlpha = Math.min(0.75, (energy - 0.5) * 1.6);
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.moveTo(px - flareLen, py);
-          ctx.lineTo(px + flareLen, py);
-          ctx.moveTo(px, py - flareLen);
-          ctx.lineTo(px, py + flareLen);
-          ctx.stroke();
+          ctx.roundRect(x, y, cellW, cellH, 1.5);
+          ctx.fill();
         }
-        ctx.restore();
       }
     }
   }
