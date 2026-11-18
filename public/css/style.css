@@ -3914,7 +3914,7 @@ input::-ms-reveal {
   }
 
   .cinema-controls-row {
-    gap: 12px !important;
+    gap: 8px !important;
     justify-content: space-around !important;
   }
 
@@ -8787,10 +8787,11 @@ body.music-playing .cinema-turntable-arm {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 22px;
+  gap: 18px;
 }
 
 .cinema-ctrl-btn {
+  position: relative;
   background: transparent;
   border: none;
   color: #94a3b8;
@@ -8817,6 +8818,23 @@ body.music-playing .cinema-turntable-arm {
 .cinema-ctrl-btn.active svg {
   fill: #ef4444;
   stroke: #ef4444;
+}
+
+#cinema-btn-repeat.active,
+#cinema-btn-shuffle.active {
+  color: #38bdf8;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.45));
+}
+
+#cinema-btn-repeat.active svg,
+#cinema-btn-shuffle.active svg {
+  fill: none;
+  stroke: #38bdf8;
+}
+
+.cinema-ctrl-btn .repeat-badge {
+  top: 4px;
+  right: 4px;
 }
 
 .cinema-play-orb {

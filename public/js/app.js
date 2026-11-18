@@ -243,6 +243,8 @@ class App {
     this.shuffleBtn = document.getElementById('btn-shuffle');
     this.repeatBtn = document.getElementById('btn-repeat');
     this.repeatBadge = document.querySelector('#btn-repeat .repeat-badge');
+    this.cinemaRepeatBtn = document.getElementById('cinema-btn-repeat');
+    this.cinemaRepeatBadge = document.querySelector('#cinema-btn-repeat .repeat-badge');
     this.volumeBtn = document.getElementById('volume-icon-btn');
     this.volumeIconHigh = document.getElementById('volume-icon-high');
     this.volumeIconMuted = document.getElementById('volume-icon-muted');
@@ -1356,7 +1358,9 @@ class App {
       const nextBtn = document.getElementById('next-btn');
       if (nextBtn) nextBtn.title = isEn ? 'Next' : 'Berikutnya';
       const btnRepeat = document.getElementById('btn-repeat');
-      if (btnRepeat) btnRepeat.title = isEn ? 'Repeat' : 'Ulangi Lagu (Repeat)';
+      if (btnRepeat) btnRepeat.title = isEn ? 'Repeat Song / Queue' : 'Ulangi Lagu (Repeat)';
+      const cinemaBtnRepeat = document.getElementById('cinema-btn-repeat');
+      if (cinemaBtnRepeat) cinemaBtnRepeat.title = isEn ? 'Repeat Song / Queue' : 'Ulangi Lagu (Repeat)';
       const specBezel = document.querySelector('.player-spectrum-bezel');
       if (specBezel) specBezel.title = isEn ? 'Real-Time Frequency Spectrum Visualizer' : 'Visualizer Spektrum Frekuensi Real-Time';
       const cinemaOpenBtn = document.getElementById('btn-open-cinema');
@@ -1364,7 +1368,7 @@ class App {
       const toggleEqBtn = document.getElementById('btn-toggle-eq');
       if (toggleEqBtn) toggleEqBtn.title = isEn ? 'Audio DSP Equalizer (Dolby & Nahimic)' : 'Audio DSP Equalizer (Dolby & Nahimic)';
       const volIconBtn = document.getElementById('volume-icon-btn');
-      if (volIconBtn) volIconBtn.title = isEn ? 'Mute / Unmute Volume' : 'Bisukan / Nyalakan Suara';
+      if (volIconBtn) volIconBtn.title = isEn ? 'Adjust Volume' : 'Atur Volume';
 
       // 10. Studio Cinema Modal Tooltips & Text
       const cinemaTrackTitle = document.getElementById('cinema-track-title');
@@ -2003,6 +2007,9 @@ class App {
     }
     if (this.cinemaBtnNext) {
       this.cinemaBtnNext.addEventListener('click', () => this.playNext());
+    }
+    if (this.cinemaRepeatBtn) {
+      this.cinemaRepeatBtn.addEventListener('click', () => this.toggleRepeat());
     }
     if (this.cinemaBtnFav) {
       this.cinemaBtnFav.addEventListener('click', (e) => {
@@ -8322,10 +8329,7 @@ class App {
       }
       if (state.repeatMode && state.repeatMode !== 'off') {
         this.repeatMode = state.repeatMode;
-        if (this.repeatBtn) this.repeatBtn.classList.add('active');
-        if (this.repeatBadge) {
-          this.repeatBadge.textContent = state.repeatMode === 'one' ? '1' : '∞';
-        }
+        this.syncRepeatUI();
       }
 
       // Restore queue
@@ -9296,23 +9300,42 @@ class App {
     this.showToast(this.isShuffle ? 'Acak Lagu (Shuffle) Aktif 🔀' : 'Acak Lagu Dinonaktifkan', 'info');
   }
 
+  /** Synchronize repeat button state and badge across main bar and Studio Cinema. */
+  syncRepeatUI() {
+    const mode = this.repeatMode || 'off';
+    const isActive = mode !== 'off';
+    const badgeText = mode === 'one' ? '1' : (mode === 'all' ? '∞' : '');
+    const isEn = (localStorage.getItem('aurasound_lang') || 'id') === 'en';
+    const title = mode === 'one'
+      ? (isEn ? 'Repeat One Song (Active)' : 'Ulangi 1 Lagu Ini (Aktif)')
+      : (mode === 'all'
+          ? (isEn ? 'Repeat All Songs (Active)' : 'Ulangi Semua Lagu (Aktif)')
+          : (isEn ? 'Repeat Song / Queue' : 'Ulangi Lagu (Repeat)'));
+
+    [
+      [this.repeatBtn, this.repeatBadge],
+      [this.cinemaRepeatBtn, this.cinemaRepeatBadge]
+    ].forEach(([btn, badge]) => {
+      if (btn) {
+        btn.classList.toggle('active', isActive);
+        btn.title = title;
+      }
+      if (badge) badge.textContent = badgeText;
+    });
+  }
+
   toggleRepeat() {
     if (this.repeatMode === 'off') {
-      this.repeatMode = 'all';
-      if (this.repeatBtn) this.repeatBtn.classList.add('active');
-      if (this.repeatBadge) this.repeatBadge.textContent = '';
-      this.showToast('Ulangi Semua Lagu (Repeat All) 🔁', 'info');
-    } else if (this.repeatMode === 'all') {
       this.repeatMode = 'one';
-      if (this.repeatBtn) this.repeatBtn.classList.add('active');
-      if (this.repeatBadge) this.repeatBadge.textContent = '1';
       this.showToast('Ulangi 1 Lagu Ini (Repeat One) 🔂', 'info');
+    } else if (this.repeatMode === 'one') {
+      this.repeatMode = 'all';
+      this.showToast('Ulangi Semua Lagu (Repeat All) 🔁', 'info');
     } else {
       this.repeatMode = 'off';
-      if (this.repeatBtn) this.repeatBtn.classList.remove('active');
-      if (this.repeatBadge) this.repeatBadge.textContent = '';
       this.showToast('Ulangi Lagu Dinonaktifkan', 'info');
     }
+    this.syncRepeatUI();
     this.persistPlaybackState();
   }
 
@@ -9362,13 +9385,13 @@ class App {
   }
 
   async playNext() {
-    if (this.queue.length === 0) return;
-
-    // Repeat one single track
+    // Repeat one single track (works even if queue is empty / restored single track)
     if (this.repeatMode === 'one' && this.currentTrack) {
       this.playTrack(this.currentTrack);
       return;
     }
+
+    if (this.queue.length === 0) return;
 
     // Single-Track Auto-Radio mode: play curated same-artist-first -> related sequence & auto-extend
     if (this.queueMode === 'single-radio') {
