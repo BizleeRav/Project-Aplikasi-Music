@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/icons/icon.png">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.80.0">
+  <link rel="stylesheet" href="/css/style.css?v=4.80.2">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
   <style>
     /* 100% Standalone Cross-Engine Clear Button Elimination (NEVER comma-separated to prevent syntax dropping) */
@@ -239,18 +239,16 @@
       </ul>
 
       <div class="sidebar-footer">
-        <div class="audio-enhancer-pill" title="Audio diselaraskan untuk diproses oleh Dolby Access dan Nahimic">
-          <div class="pill-glow-dot"></div>
-          <div>
-            <div class="pill-text">Dolby & Nahimic DSP</div>
-            <div style="font-size: 0.68rem; color: #94a3b8;">Audio Enhancer Siap</div>
+        <div class="sidebar-about-card" id="sidebar-about-card">
+          <div class="about-header-row">
+            <div class="about-title-group">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span class="about-title">About</span>
+            </div>
+            <span class="about-version-badge" id="about-app-version">v1.1.16</span>
           </div>
+          <div class="about-credit">Made By Deverick A.K.A Bizlee</div>
         </div>
-
-        <button class="btn-sidebar-action btn-connect-mobile" id="btn-open-connect">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
-          Buka di Handphone
-        </button>
 
         <button class="btn-sidebar-action" id="btn-pwa-install" style="display: none;">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1820,6 +1818,6 @@
   <script src="/js/taste-engine.js?v=4.73.0"></script>
   <script src="/js/suno-studio.js?v=4.69.0"></script>
   <script src="/js/motion-lyrics.js?v=1.0.3"></script>
-  <script src="/js/app.js?v=4.80.1"></script>
+  <script src="/js/app.js?v=4.80.2"></script>
 </body>
 </html>

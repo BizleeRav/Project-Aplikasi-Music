@@ -1104,15 +1104,7 @@ class App {
       setNodeText('.mobile-nav-item[data-tab="search"]', 'Cari', 'Search');
       setNodeText('.mobile-nav-item[onclick*="modal-connect"]', 'HP Sync', 'Phone Sync');
       setNodeText('.nav-section-title', 'Menu Utama', 'Main Menu');
-      setNodeText('#btn-open-connect', 'Buka di Handphone', 'Connect Phone');
       setNodeText('#btn-pwa-install', 'Pasang Aplikasi', 'Install App');
-
-      const audioPill = document.querySelector('.audio-enhancer-pill');
-      if (audioPill) {
-        audioPill.title = isEn ? 'Audio tuned for Dolby Access and Nahimic processing' : 'Audio diselaraskan untuk diproses oleh Dolby Access dan Nahimic';
-        const pillSub = audioPill.querySelector('div div:last-child');
-        if (pillSub) pillSub.textContent = isEn ? 'Audio Enhancer Ready' : 'Audio Enhancer Siap';
-      }
 
       // 2. Search Bar & Top Bar
       const searchInput = document.getElementById('search-input');
@@ -1787,19 +1779,30 @@ class App {
     }
 
     // Modal Triggers
-    const openConnectBtn = document.getElementById('btn-open-connect');
     const topConnectBtn = document.getElementById('btn-top-connect');
     const closeConnectBtn = document.getElementById('btn-close-connect');
     const connectModal = document.getElementById('modal-connect');
 
-    if (openConnectBtn && connectModal) {
-      openConnectBtn.addEventListener('click', () => connectModal.classList.add('active'));
-    }
     if (topConnectBtn && connectModal) {
       topConnectBtn.addEventListener('click', () => connectModal.classList.add('active'));
     }
     if (closeConnectBtn && connectModal) {
       closeConnectBtn.addEventListener('click', () => connectModal.classList.remove('active'));
+    }
+
+    const aboutVersionEl = document.getElementById('about-app-version');
+    if (aboutVersionEl) {
+      fetch('/version.json?_t=' + Date.now())
+        .then(r => (r.ok ? r.json() : null))
+        .then(data => {
+          if (!data) return;
+          const isNativeAndroid = !!(window.AuraSoundAndroid || (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()));
+          const ver = isNativeAndroid
+            ? (data.android && data.android.versionName)
+            : (data.desktop && data.desktop.version) || data.version;
+          if (ver) aboutVersionEl.textContent = 'v' + String(ver).replace(/^v/i, '');
+        })
+        .catch(() => {});
     }
 
     // Studio Cinema Fullscreen Modal Triggers

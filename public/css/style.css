@@ -126,7 +126,7 @@ body::after {
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  padding: 24px 18px;
+  padding: 24px 18px calc(var(--player-height) + 18px);
   z-index: 20;
   flex-shrink: 0;
 }
@@ -262,36 +262,59 @@ body::after {
   border-top: 1px solid var(--border-subtle);
 }
 
-/* Audio Status Pill */
-.audio-enhancer-pill {
+/* Sidebar About Card */
+.sidebar-about-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.about-header-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: rgba(139, 92, 246, 0.08);
-  border: 1px solid rgba(139, 92, 246, 0.22);
-  border-radius: var(--radius-md);
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.about-title-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-main);
+}
+
+.about-title-group svg {
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+
+.about-title {
   font-size: 0.78rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
-.pill-glow-dot {
-  width: 7px;
-  height: 7px;
-  background: #a855f7;
-  border-radius: 50%;
-  box-shadow: 0 0 8px #a855f7;
-  animation: pulse-dot 2.4s infinite;
-}
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.85); }
-}
-
-.pill-text {
+.about-version-badge {
+  font-size: 0.68rem;
   font-weight: 600;
-  color: #d8b4fe;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.about-credit {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #94a3b8;
+  line-height: 1.35;
 }
 
 /* Mobile Connect & Install Button */
@@ -634,7 +657,7 @@ input::-ms-reveal {
 .views-container {
   flex: 1;
   overflow-y: auto;
-  padding: 28px 32px 40px;
+  padding: 28px 32px 12px;
 }
 
 .view-tab {
@@ -1429,7 +1452,7 @@ input::-ms-reveal {
   justify-content: space-between;
   padding: 0 32px;
   z-index: 50;
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.09);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -6182,6 +6205,11 @@ input::-ms-reveal {
   margin-bottom: 42px;
 }
 
+.aura-section-wrap:last-child,
+.aura-bento-section:last-child {
+  margin-bottom: 0;
+}
+
 .aura-pill-btn-primary {
   display: inline-flex;
   align-items: center;
@@ -6373,7 +6401,7 @@ input::-ms-reveal {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
   gap: 26px 20px;
-  padding: 8px 6px 22px;
+  padding: 8px 6px 8px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -6752,7 +6780,7 @@ input::-ms-reveal {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
   gap: 22px 18px;
-  padding: 6px 4px 18px;
+  padding: 6px 4px 4px;
   width: 100%;
   box-sizing: border-box;
 }
