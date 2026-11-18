@@ -1,0 +1,2410 @@
+/* ==========================================================================
+   AuraSound - Android & Mobile-First UI/UX Redesign
+   Clean, Minimalist, High-Ergonomics Dark Streaming Experience (<= 768px)
+   Desktop (> 768px) remains 100% unaffected.
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  :root {
+    --mobile-nav-height: 56px;
+    --player-height: 54px;
+    --mobile-safe-top: env(safe-area-inset-top, 0px);
+    --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --mobile-surface: rgba(14, 20, 34, 0.88);
+    --mobile-surface-elevated: rgba(20, 28, 46, 0.94);
+    --mobile-border: rgba(255, 255, 255, 0.075);
+    --mobile-accent: #10b981;
+    --mobile-accent-soft: rgba(16, 185, 129, 0.14);
+    --mobile-blue: #38bdf8;
+  }
+
+  /* ------------------------------------------------------------------------
+     1. GLOBAL VIEWPORT, SAFE AREAS & SINGLE SCROLL ARCHITECTURE
+     ------------------------------------------------------------------------ */
+  html,
+  body {
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    overflow-x: hidden !important;
+    background-color: #070b13 !important;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
+
+  /* Soften heavy ambient blur orbs on mobile for cleaner look & smooth 60fps */
+  body::before,
+  body::after {
+    opacity: 0.35 !important;
+    filter: blur(110px) !important;
+  }
+
+  .app-container {
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .sidebar {
+    display: none !important;
+  }
+
+  /* Single smooth scroll container for all mobile pages */
+  .main-content {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .views-container {
+    flex: 1 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    padding: 12px 14px calc(var(--player-height) + var(--mobile-nav-height) + var(--mobile-safe-bottom) + 26px) !important;
+    box-sizing: border-box !important;
+  }
+
+  body.mobile-keyboard-open .views-container {
+    padding-bottom: 24px !important;
+  }
+
+  .view-tab {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     2. MOBILE TOP HEADER BAR (Clean, Safe-Area Aware, Never Overlaps Status Bar)
+     ------------------------------------------------------------------------ */
+  .top-bar {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 50 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 52px !important;
+    padding: max(8px, var(--mobile-safe-top)) 14px 8px !important;
+    background: rgba(7, 11, 19, 0.92) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+  }
+
+  .mobile-top-brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .mobile-brand-icon {
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 9px !important;
+    background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%) !important;
+    box-shadow: 0 2px 10px rgba(16, 185, 129, 0.25) !important;
+  }
+
+  .mobile-brand-icon svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .mobile-brand-title {
+    font-size: 1rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.3px !important;
+    background: linear-gradient(135deg, #f8fafc 40%, #7dd3fc 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+  }
+
+  .top-bar-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .btn-top-mobile-search,
+  .btn-top-taste {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+    color: #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+
+  .btn-top-mobile-search svg,
+  .btn-top-taste svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  #btn-google-login {
+    height: 32px !important;
+    padding: 0 10px !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: none !important;
+  }
+
+  .ytm-profile-badge {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    border: 1.5px solid rgba(56, 189, 248, 0.4) !important;
+    box-shadow: none !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     3. HOME PAGE (Compact Greeting, Clean Sonic Pods, Proportional Grids)
+     ------------------------------------------------------------------------ */
+  .ytm-chips-container {
+    margin: 0 -14px 12px !important;
+    padding: 2px 14px 8px !important;
+    gap: 7px !important;
+  }
+
+  .ytm-chip {
+    height: 32px !important;
+    padding: 0 13px !important;
+    font-size: 0.76rem !important;
+    font-weight: 600 !important;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, 0.055) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    color: #cbd5e1 !important;
+  }
+
+  .ytm-chip.active {
+    background: #10b981 !important;
+    color: #03261d !important;
+    border-color: #10b981 !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+  }
+
+  .ytm-home-sections {
+    gap: 22px !important;
+  }
+
+  /* Compact Hero Greeting Card */
+  .aura-hero-soundstage {
+    border-radius: 16px !important;
+    margin-bottom: 4px !important;
+    background: linear-gradient(145deg, rgba(17, 25, 42, 0.94) 0%, rgba(10, 15, 27, 0.96) 100%) !important;
+    border: 1px solid var(--mobile-border) !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .aura-hero-mesh-glow,
+  .aura-hero-right {
+    display: none !important;
+  }
+
+  .aura-hero-inner {
+    padding: 14px 14px 15px !important;
+    gap: 0 !important;
+  }
+
+  .aura-hero-left {
+    gap: 8px !important;
+  }
+
+  .aura-greeting-capsule {
+    padding: 3px 9px !important;
+    gap: 6px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    max-width: 100% !important;
+  }
+
+  .aura-greeting-tag {
+    font-size: 0.62rem !important;
+    letter-spacing: 0.7px !important;
+    color: #94a3b8 !important;
+    -webkit-text-fill-color: #cbd5e1 !important;
+    background: none !important;
+  }
+
+  .aura-dsp-hi-res-tag {
+    font-size: 0.6rem !important;
+    color: #38bdf8 !important;
+    white-space: nowrap !important;
+  }
+
+  .aura-hero-title {
+    font-size: 1.3rem !important;
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+    letter-spacing: -0.35px !important;
+  }
+
+  .aura-title-glow {
+    background: linear-gradient(120deg, #38bdf8 0%, #34d399 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    filter: none !important;
+  }
+
+  .aura-hero-desc {
+    font-size: 0.78rem !important;
+    line-height: 1.45 !important;
+    color: #94a3b8 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  /* Single-line Related / Taste DNA strip */
+  .aura-dna-bar {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin-top: 2px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .aura-dna-tag {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 5px 10px !important;
+    border-radius: 10px !important;
+    font-size: 0.71rem !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    overflow: hidden !important;
+  }
+
+  .aura-dna-tag svg {
+    flex-shrink: 0 !important;
+    width: 13px !important;
+    height: 13px !important;
+    color: #10b981 !important;
+  }
+
+  .aura-dna-tag span {
+    display: block !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .aura-dna-match-tag {
+    display: none !important;
+  }
+
+  /* Clean 1 + 2 Hero Action Row */
+  .aura-hero-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+    margin-top: 6px !important;
+    width: 100% !important;
+  }
+
+  .aura-btn-hero-primary {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    height: 40px !important;
+    padding: 0 16px !important;
+    font-size: 0.84rem !important;
+    font-weight: 700 !important;
+    border-radius: 11px !important;
+    background: linear-gradient(135deg, #10b981 0%, #0d9488 100%) !important;
+    color: #03261d !important;
+    border: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    justify-content: center !important;
+  }
+
+  .aura-btn-hero-primary svg {
+    width: 16px !important;
+    height: 16px !important;
+    color: #03261d !important;
+  }
+
+  .aura-btn-hero-glass,
+  .aura-btn-hero-outline {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 36px !important;
+    padding: 0 10px !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    background: rgba(255, 255, 255, 0.055) !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+    color: #e2e8f0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .aura-btn-hero-glass svg,
+  .aura-btn-hero-outline svg {
+    width: 14px !important;
+    height: 14px !important;
+    flex-shrink: 0 !important;
+    color: #38bdf8 !important;
+  }
+
+  /* Section Headers (Mobile-Clean) */
+  .aura-section-wrap,
+  .aura-bento-section {
+    margin-bottom: 0 !important;
+    gap: 10px !important;
+  }
+
+  .aura-section-header-wrap {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .aura-section-title-box {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    gap: 2px !important;
+  }
+
+  .aura-kicker-tag {
+    font-size: 0.62rem !important;
+    letter-spacing: 0.9px !important;
+    color: #10b981 !important;
+  }
+
+  .aura-modern-section-title {
+    font-size: 1.08rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.25px !important;
+    line-height: 1.25 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .aura-section-subtext {
+    display: none !important;
+  }
+
+  .aura-section-meta-badge {
+    padding: 4px 10px !important;
+    font-size: 0.68rem !important;
+    flex-shrink: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .ytm-section-actions {
+    flex-shrink: 0 !important;
+  }
+
+  .ytm-carousel-btn {
+    display: none !important;
+  }
+
+  .aura-pill-btn-primary {
+    padding: 5px 11px !important;
+    font-size: 0.72rem !important;
+    gap: 4px !important;
+    background: rgba(16, 185, 129, 0.14) !important;
+    border-color: rgba(16, 185, 129, 0.3) !important;
+    color: #34d399 !important;
+  }
+
+  /* Smart Sonic Pods (Compact Mobile Cards — no 230px bloat) */
+  .aura-bento-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .aura-bento-card {
+    min-height: 0 !important;
+    padding: 13px 14px !important;
+    border-radius: 14px !important;
+    background: var(--mobile-surface) !important;
+    border: 1px solid var(--mobile-border) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    justify-content: flex-start !important;
+  }
+
+  .aura-bento-supermix {
+    border-color: rgba(16, 185, 129, 0.25) !important;
+  }
+
+  .aura-bento-bg {
+    opacity: 0.16 !important;
+  }
+
+  .aura-bento-mesh,
+  .aura-bento-mesh-ruby,
+  .aura-bento-mesh-dsp {
+    opacity: 0.55 !important;
+  }
+
+  .aura-bento-top {
+    margin-bottom: 0 !important;
+  }
+
+  .aura-pill-badge {
+    font-size: 0.62rem !important;
+    padding: 3px 8px !important;
+  }
+
+  .aura-bento-stat-num {
+    font-size: 1.05rem !important;
+  }
+
+  .aura-bento-body {
+    margin-top: 8px !important;
+    gap: 3px !important;
+  }
+
+  .aura-bento-subtitle {
+    font-size: 0.68rem !important;
+  }
+
+  .aura-bento-title {
+    font-size: 1.05rem !important;
+    font-weight: 800 !important;
+  }
+
+  .aura-bento-desc {
+    font-size: 0.76rem !important;
+    line-height: 1.38 !important;
+    margin-bottom: 4px !important;
+    color: #94a3b8 !important;
+  }
+
+  .aura-bento-actions {
+    gap: 10px !important;
+    margin-top: 4px !important;
+  }
+
+  .aura-btn-circle-play {
+    width: 34px !important;
+    height: 34px !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .aura-btn-circle-play svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .aura-bento-action-label {
+    font-size: 0.76rem !important;
+    color: #cbd5e1 !important;
+  }
+
+  .aura-dsp-pills-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    margin-top: 4px !important;
+  }
+
+  .aura-dsp-pill {
+    padding: 7px 8px !important;
+    font-size: 0.72rem !important;
+    border-radius: 8px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  }
+
+  .aura-dsp-pill.active {
+    background: rgba(56, 189, 248, 0.16) !important;
+    border-color: rgba(56, 189, 248, 0.45) !important;
+    box-shadow: none !important;
+  }
+
+  /* Home Recommendation Track Tiles */
+  .aura-resonance-grid {
+    grid-template-rows: repeat(3, auto) !important;
+    grid-auto-columns: minmax(260px, 84vw) !important;
+    gap: 7px 10px !important;
+    margin: 0 -14px !important;
+    padding: 2px 14px 8px !important;
+  }
+
+  .aura-resonance-tile {
+    padding: 7px 10px !important;
+    gap: 10px !important;
+    border-radius: 12px !important;
+    background: rgba(15, 22, 36, 0.72) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    min-width: 0 !important;
+  }
+
+  .aura-resonance-num {
+    width: 18px !important;
+    font-size: 0.72rem !important;
+  }
+
+  .aura-resonance-thumb-box {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+  }
+
+  .aura-resonance-title {
+    font-size: 0.84rem !important;
+    font-weight: 700 !important;
+  }
+
+  .aura-resonance-meta {
+    font-size: 0.72rem !important;
+  }
+
+  .aura-resonance-right {
+    gap: 6px !important;
+  }
+
+  .aura-resonance-duration {
+    font-size: 0.7rem !important;
+  }
+
+  /* Vinyl Shelf & Mixed Harmonies (Strict 2-col, zero horizontal bleed) */
+  .aura-vinyl-shelf,
+  .aura-mix-carousel {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px 10px !important;
+    padding: 2px 0 4px !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .aura-vinyl-card,
+  .aura-mix-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 7px !important;
+    overflow: hidden !important;
+  }
+
+  .aura-vinyl-card:hover,
+  .aura-mix-card:hover {
+    transform: none !important;
+  }
+
+  .aura-vinyl-disc-slide {
+    display: none !important;
+  }
+
+  .aura-vinyl-jacket {
+    border-radius: 12px !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  .aura-vinyl-badge {
+    top: 7px !important;
+    left: 7px !important;
+    font-size: 0.6rem !important;
+    padding: 2px 6px !important;
+  }
+
+  .aura-vinyl-play-trigger,
+  .aura-mix-play-btn {
+    opacity: 0.94 !important;
+    transform: none !important;
+    width: 32px !important;
+    height: 32px !important;
+    right: 7px !important;
+    bottom: 7px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  .aura-vinyl-play-trigger svg,
+  .aura-mix-play-btn svg {
+    width: 15px !important;
+    height: 15px !important;
+  }
+
+  .aura-vinyl-title,
+  .aura-mix-title {
+    font-size: 0.82rem !important;
+    font-weight: 700 !important;
+  }
+
+  .aura-vinyl-artist,
+  .aura-mix-sub {
+    font-size: 0.71rem !important;
+  }
+
+  .aura-vinyl-footer-row {
+    gap: 4px !important;
+  }
+
+  .aura-vinyl-flac-tag,
+  .aura-vinyl-link {
+    font-size: 0.64rem !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     4. SEARCH PAGE (Ergonomic Bar, Clean Filters, Compact Track Rows)
+     ------------------------------------------------------------------------ */
+  .search-page-hero {
+    display: block !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin-bottom: 14px !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .search-page-box {
+    height: 44px !important;
+    padding: 2px 4px 2px 14px !important;
+    border-radius: 12px !important;
+    background: rgba(16, 23, 38, 0.92) !important;
+    border: 1px solid rgba(255, 255, 255, 0.11) !important;
+    gap: 8px !important;
+  }
+
+  .search-page-box:focus-within {
+    border-color: var(--mobile-accent) !important;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.18) !important;
+  }
+
+  .search-page-box svg {
+    width: 18px !important;
+    height: 18px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .search-page-box input {
+    font-size: 16px !important;
+    padding: 6px 2px !important;
+  }
+
+  .search-page-box input::placeholder {
+    font-size: 0.84rem !important;
+  }
+
+  .search-page-submit-btn {
+    height: 36px !important;
+    padding: 0 13px !important;
+    font-size: 0.78rem !important;
+    border-radius: 9px !important;
+    background: #10b981 !important;
+    color: #03261d !important;
+    box-shadow: none !important;
+  }
+
+  .search-page-submit-btn svg {
+    display: none !important;
+  }
+
+  .search-view-header {
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  #search-query-display.section-title {
+    font-size: 1.12rem !important;
+  }
+
+  .search-meta-subtitle {
+    font-size: 0.74rem !important;
+  }
+
+  .search-filter-pills {
+    gap: 6px !important;
+    padding-bottom: 2px !important;
+  }
+
+  .search-filter-pill {
+    padding: 6px 12px !important;
+    font-size: 0.74rem !important;
+    font-weight: 600 !important;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  }
+
+  .search-filter-pill.active {
+    background: rgba(16, 185, 129, 0.16) !important;
+    border-color: rgba(16, 185, 129, 0.45) !important;
+    color: #34d399 !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     5. TRACK LISTS (Shared across Search, Favorites, Album/Playlist Detail)
+     ------------------------------------------------------------------------ */
+  .track-list {
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  .track-row {
+    padding: 7px 8px !important;
+    gap: 10px !important;
+    border-radius: 12px !important;
+    min-height: 56px !important;
+    background: rgba(15, 22, 36, 0.65) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .track-row:hover {
+    transform: none !important;
+  }
+
+  .track-row.active {
+    background: rgba(16, 185, 129, 0.11) !important;
+    border-color: rgba(16, 185, 129, 0.35) !important;
+  }
+
+  .track-row-thumb {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 8px !important;
+  }
+
+  .track-row-title {
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+
+  .track-tag-badge {
+    font-size: 0.58rem !important;
+    padding: 1px 5px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .track-row-artist {
+    font-size: 0.73rem !important;
+  }
+
+  .track-row-actions {
+    gap: 2px !important;
+  }
+
+  .track-row-actions .icon-btn {
+    width: 34px !important;
+    height: 34px !important;
+    padding: 6px !important;
+  }
+
+  .track-row-actions .icon-btn svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     6. SUNO AI STUDIO (Compact Account, Horizontal Genre Strip, Clean Form & Library)
+     ------------------------------------------------------------------------ */
+  #view-suno,
+  #suno-subview-create,
+  #suno-subview-library {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  #suno-account-card.suno-account-card {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "left credits"
+      "actions actions" !important;
+    align-items: center !important;
+    gap: 10px 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    padding: 12px !important;
+    border-radius: 14px !important;
+    margin-bottom: 12px !important;
+    background: var(--mobile-surface) !important;
+    border: 1px solid var(--mobile-border) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .suno-card-left {
+    grid-area: left !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    gap: 10px !important;
+  }
+
+  .suno-avatar-glow {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 10px !important;
+    box-shadow: none !important;
+  }
+
+  .suno-avatar-glow svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .suno-account-info-wrap {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .suno-user-name {
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .suno-account-row-2 {
+    font-size: 0.7rem !important;
+    gap: 5px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .suno-account-row-2 .status-dot {
+    flex-shrink: 0 !important;
+  }
+
+  #suno-connection-status-text {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .suno-card-right {
+    display: contents !important;
+  }
+
+  #suno-credits-pill.suno-credits-pill {
+    grid-area: credits !important;
+    padding: 4px 9px !important;
+    font-size: 0.68rem !important;
+    font-weight: 700 !important;
+    border-radius: 999px !important;
+    justify-self: end !important;
+  }
+
+  /* Second row buttons inside Suno account card */
+  #btn-suno-connect,
+  #btn-suno-disconnect {
+    grid-row: 2 !important;
+    height: 34px !important;
+    padding: 0 12px !important;
+    font-size: 0.74rem !important;
+    border-radius: 9px !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+  }
+
+  #btn-suno-connect {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    background: rgba(56, 189, 248, 0.12) !important;
+    border: 1px solid rgba(56, 189, 248, 0.28) !important;
+    color: #7dd3fc !important;
+  }
+
+  #suno-account-card.has-disconnect #btn-suno-connect,
+  #suno-account-card:has(#btn-suno-disconnect:not([style*="display: none"])) #btn-suno-connect {
+    grid-column: 1 / 2 !important;
+  }
+
+  #btn-suno-disconnect {
+    grid-column: 2 / 3 !important;
+    justify-self: end !important;
+  }
+
+  /* Segmented Sub-Tab Bar */
+  .suno-subtabs-bar {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    padding: 3px !important;
+    border-radius: 11px !important;
+    margin-bottom: 12px !important;
+    background: rgba(255, 255, 255, 0.045) !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    gap: 4px !important;
+  }
+
+  .suno-subtab-chip {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    padding: 8px 6px !important;
+    font-size: 0.74rem !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+    gap: 5px !important;
+  }
+
+  .suno-subtab-chip span:first-child {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .suno-subtab-chip.active {
+    background: rgba(16, 185, 129, 0.16) !important;
+    border-color: rgba(16, 185, 129, 0.35) !important;
+    color: #34d399 !important;
+    box-shadow: none !important;
+  }
+
+  /* Form Panel (minmax(0, 1fr) + min-width: 0 prevents horizontal chip strip from stretching page) */
+  .suno-generator-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .suno-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    padding: 14px !important;
+    border-radius: 14px !important;
+    background: var(--mobile-surface) !important;
+    border: 1px solid var(--mobile-border) !important;
+  }
+
+  #suno-form,
+  #suno-form .form-group {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .suno-panel-title {
+    font-size: 1.02rem !important;
+    font-weight: 800 !important;
+    margin-bottom: 4px !important;
+  }
+
+  .suno-panel-subtitle {
+    font-size: 0.75rem !important;
+    line-height: 1.4 !important;
+    margin-bottom: 14px !important;
+  }
+
+  #suno-form .form-group {
+    margin-bottom: 12px !important;
+  }
+
+  #suno-form .form-label {
+    font-size: 0.76rem !important;
+    margin-bottom: 5px !important;
+  }
+
+  #suno-form .form-input,
+  #suno-form .form-textarea {
+    font-size: 16px !important;
+    padding: 10px 12px !important;
+    border-radius: 10px !important;
+    background: rgba(7, 11, 19, 0.75) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  #suno-form .form-input::placeholder,
+  #suno-form .form-textarea::placeholder {
+    font-size: 0.82rem !important;
+  }
+
+  #suno-form .form-textarea {
+    min-height: 86px !important;
+  }
+
+  /* Single-row horizontal genre chips (No messy 3-row pile, strictly contained) */
+  .quick-tags-wrapper {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 6px !important;
+    margin-top: 8px !important;
+    padding-bottom: 2px !important;
+    box-sizing: border-box !important;
+  }
+
+  .quick-tags-wrapper::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .tag-chip {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    padding: 5px 11px !important;
+    font-size: 0.72rem !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.09) !important;
+  }
+
+  .suno-engine-status-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    gap: 8px !important;
+    padding: 8px 10px !important;
+    margin-bottom: 12px !important;
+    border-radius: 10px !important;
+    box-sizing: border-box !important;
+  }
+
+  .suno-engine-status-card > div {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .suno-engine-status-card > div > div {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
+  }
+
+  #suno-engine-label {
+    font-size: 0.76rem !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  #suno-engine-sublabel {
+    font-size: 0.66rem !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  #suno-generate-btn.btn-generate-ai {
+    height: 44px !important;
+    padding: 0 16px !important;
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    border-radius: 11px !important;
+    background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%) !important;
+    color: #032018 !important;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25) !important;
+  }
+
+  /* Compact Recent Generated Preview Card */
+  .recent-preview-panel {
+    min-height: 0 !important;
+  }
+
+  .suno-recent-preview-card {
+    display: grid !important;
+    grid-template-columns: 74px minmax(0, 1fr) !important;
+    grid-template-areas:
+      "thumb info"
+      "actions actions" !important;
+    gap: 10px 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    padding: 12px !important;
+    border-radius: 12px !important;
+    background: rgba(10, 15, 27, 0.72) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+  }
+
+  .suno-recent-thumb-wrapper {
+    grid-area: thumb !important;
+    width: 74px !important;
+    height: 74px !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: 10px !important;
+  }
+
+  .suno-recent-play-btn {
+    width: 34px !important;
+    height: 34px !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  .suno-recent-play-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .suno-recent-info {
+    grid-area: info !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    gap: 4px !important;
+  }
+
+  .suno-recent-title {
+    font-size: 0.92rem !important;
+  }
+
+  .suno-recent-tags {
+    font-size: 0.72rem !important;
+    -webkit-line-clamp: 2 !important;
+  }
+
+  .suno-recent-meta {
+    font-size: 0.68rem !important;
+    margin-top: 2px !important;
+  }
+
+  .suno-recent-actions {
+    grid-area: actions !important;
+    margin-top: 2px !important;
+    gap: 8px !important;
+  }
+
+  .suno-recent-actions button,
+  .suno-recent-actions a {
+    height: 36px !important;
+    min-width: 0 !important;
+    padding: 0 10px !important;
+    font-size: 0.75rem !important;
+    border-radius: 9px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .suno-pagination-bar {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 12px 0 !important;
+  }
+
+  /* Suno Library Sub-View */
+  .suno-library-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .suno-library-search-wrap {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .suno-library-search-wrap input {
+    font-size: 16px !important;
+  }
+
+  #btn-suno-sync-feed {
+    width: 100% !important;
+    justify-content: center !important;
+    height: 36px !important;
+    padding: 0 12px !important;
+    font-size: 0.76rem !important;
+    border-radius: 10px !important;
+  }
+
+  .suno-library-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .suno-creations-card {
+    min-width: 0 !important;
+    width: 100% !important;
+    padding: 8px !important;
+    border-radius: 13px !important;
+    background: var(--mobile-surface) !important;
+    border: 1px solid var(--mobile-border) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .suno-creations-card:hover {
+    transform: none !important;
+  }
+
+  .suno-card-title {
+    font-size: 0.82rem !important;
+  }
+
+  .suno-card-tags {
+    font-size: 0.69rem !important;
+  }
+
+  .suno-card-footer {
+    padding-top: 8px !important;
+    gap: 4px !important;
+  }
+
+  .suno-action-play {
+    padding: 5px 6px !important;
+    font-size: 0.69rem !important;
+  }
+
+  .suno-btn-icon {
+    width: 26px !important;
+    height: 26px !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     7. PLAYLISTS PAGE (Fixes Right-Edge Overflow + Clean 2-Col Square Grid)
+     ------------------------------------------------------------------------ */
+  #view-playlists .section-header {
+    gap: 10px !important;
+    margin-bottom: 14px !important;
+  }
+
+  #view-playlists .section-title,
+  #view-favorites .section-title {
+    font-size: 1.24rem !important;
+    font-weight: 800 !important;
+  }
+
+  #view-playlists .section-header p {
+    font-size: 0.76rem !important;
+    line-height: 1.4 !important;
+    margin-top: 3px !important;
+  }
+
+  .playlist-header-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  #btn-open-import-playlist,
+  .playlist-create-btn,
+  .playlist-header-actions button {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 38px !important;
+    padding: 0 8px !important;
+    font-size: 0.74rem !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    box-shadow: none !important;
+    gap: 5px !important;
+  }
+
+  #btn-open-import-playlist svg {
+    width: 15px !important;
+    height: 15px !important;
+    flex-shrink: 0 !important;
+  }
+
+  #btn-open-import-playlist {
+    background: linear-gradient(135deg, #10b981 0%, #0d9488 100%) !important;
+    color: #03261d !important;
+    border: none !important;
+  }
+
+  .playlist-create-btn {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: #e2e8f0 !important;
+  }
+
+  /* CRITICAL FIX: minmax(0, 1fr) + min-width: 0 stops nowrap children from pushing grid past screen */
+  .music-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .music-card {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    padding: 8px !important;
+    border-radius: 14px !important;
+    background: var(--mobile-surface) !important;
+    border: 1px solid var(--mobile-border) !important;
+    box-sizing: border-box !important;
+  }
+
+  .music-card:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .card-thumb-wrapper {
+    width: 100% !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: 10px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .card-play-btn {
+    opacity: 0.94 !important;
+    transform: none !important;
+    width: 32px !important;
+    height: 32px !important;
+    right: 6px !important;
+    bottom: 6px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+    border: none !important;
+  }
+
+  .card-play-btn svg {
+    width: 15px !important;
+    height: 15px !important;
+  }
+
+  .card-duration {
+    left: 6px !important;
+    bottom: 6px !important;
+    font-size: 0.64rem !important;
+    padding: 2px 6px !important;
+    border-radius: 6px !important;
+  }
+
+  .card-title {
+    font-size: 0.83rem !important;
+    font-weight: 700 !important;
+    line-height: 1.28 !important;
+    margin-bottom: 3px !important;
+    -webkit-line-clamp: 1 !important;
+  }
+
+  .card-artist {
+    font-size: 0.7rem !important;
+    color: #94a3b8 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* Playlist Detail & Home Album Detail Banners */
+  .playlist-banner,
+  .home-album-banner {
+    padding: 14px 12px !important;
+    gap: 10px !important;
+    border-radius: 16px !important;
+    background: var(--mobile-surface) !important;
+    border: 1px solid var(--mobile-border) !important;
+    box-shadow: none !important;
+  }
+
+  .playlist-banner-thumb,
+  .home-album-thumb-wrap {
+    width: 118px !important;
+    height: 118px !important;
+    border-radius: 14px !important;
+  }
+
+  .playlist-banner-title,
+  .home-album-title {
+    font-size: 1.18rem !important;
+  }
+
+  .playlist-action-btns,
+  .home-album-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .playlist-action-btns button:first-child,
+  .home-album-actions button:first-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  .playlist-action-btns button,
+  .home-album-actions button {
+    width: 100% !important;
+    height: 38px !important;
+    padding: 0 12px !important;
+    font-size: 0.78rem !important;
+    border-radius: 10px !important;
+    justify-content: center !important;
+  }
+
+  .detail-tracklist-toolbar,
+  .home-album-tracklist-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    margin: 14px 0 10px !important;
+  }
+
+  .detail-search-bar-wrap {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .detail-search-input {
+    font-size: 16px !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     8. MINI MUSIC PLAYER (Slim, Refined, Consistent Palette)
+     ------------------------------------------------------------------------ */
+  #master-player-bar.player-bar {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    bottom: calc(var(--mobile-nav-height) + var(--mobile-safe-bottom) + 6px) !important;
+    height: var(--player-height) !important;
+    padding: 0 8px !important;
+    background: rgba(13, 19, 32, 0.96) !important;
+    backdrop-filter: blur(22px) !important;
+    -webkit-backdrop-filter: blur(22px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55) !important;
+    gap: 6px !important;
+    transition: transform 0.22s ease, opacity 0.2s ease !important;
+  }
+
+  #master-player-bar .player-glow-beam {
+    height: 2px !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: 0 !important;
+    border-radius: 999px !important;
+    background: linear-gradient(90deg, #10b981 0%, #38bdf8 100%) !important;
+    filter: none !important;
+    animation: none !important;
+    opacity: 0.75 !important;
+  }
+
+  #master-player-bar .player-left {
+    gap: 9px !important;
+  }
+
+  #master-player-bar .player-thumb-wrap {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    max-width: 38px !important;
+    border-radius: 9px !important;
+    box-shadow: none !important;
+  }
+
+  #master-player-bar .player-thumb-img {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 9px !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  #master-player-bar .player-title {
+    font-size: 0.82rem !important;
+    font-weight: 700 !important;
+  }
+
+  #master-player-bar .player-artist {
+    font-size: 0.7rem !important;
+  }
+
+  #master-player-bar .player-controls {
+    gap: 2px !important;
+  }
+
+  #master-player-bar .btn-play-orb {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    background: #10b981 !important;
+    color: #03261d !important;
+    box-shadow: none !important;
+  }
+
+  #master-player-bar .btn-play-orb svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  #master-player-bar #next-btn {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+  }
+
+  #master-player-bar #next-btn svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  /* Understated Soft-Blue/Teal Cinema Pill (No jarring neon pink border) */
+  #master-player-bar #btn-open-cinema,
+  #master-player-bar #btn-open-cinema.mobile-bar-cinema-tab {
+    height: 30px !important;
+    padding: 0 9px !important;
+    border-radius: 999px !important;
+    gap: 4px !important;
+    background: rgba(56, 189, 248, 0.12) !important;
+    border: 1px solid rgba(56, 189, 248, 0.28) !important;
+    color: #7dd3fc !important;
+    box-shadow: none !important;
+  }
+
+  #master-player-bar #btn-open-cinema svg {
+    width: 13px !important;
+    height: 13px !important;
+    color: #38bdf8 !important;
+  }
+
+  #master-player-bar #btn-open-cinema .cinema-btn-label {
+    font-size: 0.69rem !important;
+    font-weight: 700 !important;
+    color: #e0f2fe !important;
+    letter-spacing: 0.1px !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     9. BOTTOM NAVIGATION BAR (Eliminates Desktop .nav-link.active Box Leak!)
+     ------------------------------------------------------------------------ */
+  .mobile-bottom-nav {
+    display: flex !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    height: calc(var(--mobile-nav-height) + var(--mobile-safe-bottom)) !important;
+    padding: 0 4px var(--mobile-safe-bottom) !important;
+    background: rgba(7, 11, 19, 0.96) !important;
+    backdrop-filter: blur(22px) !important;
+    -webkit-backdrop-filter: blur(22px) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+    z-index: 55 !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+    transition: transform 0.22s ease, opacity 0.2s ease !important;
+  }
+
+  /* Reset leaked desktop .nav-link & .nav-link.active styles completely */
+  .mobile-bottom-nav .mobile-nav-item,
+  .mobile-bottom-nav .nav-link,
+  .mobile-bottom-nav .mobile-nav-item:hover,
+  .mobile-bottom-nav .nav-link:hover,
+  .mobile-bottom-nav .mobile-nav-item.active,
+  .mobile-bottom-nav .nav-link.active {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    padding: 4px 2px !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    animation: none !important;
+    position: relative !important;
+    color: #64748b !important;
+    font-size: 0.66rem !important;
+    font-weight: 600 !important;
+  }
+
+  .mobile-bottom-nav .mobile-nav-item svg {
+    width: 20px !important;
+    height: 20px !important;
+    padding: 3px 12px !important;
+    box-sizing: content-box !important;
+    border-radius: 999px !important;
+    stroke: currentColor !important;
+    color: #64748b !important;
+    transform: none !important;
+    filter: none !important;
+    transition: background 0.2s ease, color 0.2s ease !important;
+  }
+
+  .mobile-bottom-nav .mobile-nav-item span {
+    line-height: 1.1 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 100% !important;
+  }
+
+  .mobile-bottom-nav .mobile-nav-item.active {
+    color: #10b981 !important;
+    font-weight: 700 !important;
+  }
+
+  .mobile-bottom-nav .mobile-nav-item.active::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 22px !important;
+    height: 2.5px !important;
+    border-radius: 0 0 4px 4px !important;
+    background: #10b981 !important;
+  }
+
+  .mobile-bottom-nav .mobile-nav-item.active svg {
+    color: #10b981 !important;
+    stroke: #10b981 !important;
+    background: rgba(16, 185, 129, 0.13) !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  /* Hide fixed bars cleanly when soft keyboard is active */
+  body.mobile-keyboard-open #master-player-bar.player-bar,
+  body.mobile-keyboard-open .mobile-bottom-nav {
+    transform: translateY(150%) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     10. MODALS, EQ DRAWER & ARTIST SHOWCASE ON MOBILE
+     ------------------------------------------------------------------------ */
+  .eq-drawer,
+  .cinema-eq-drawer {
+    width: 100% !important;
+    max-width: 100vw !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    padding: 12px 14px max(20px, var(--mobile-safe-bottom)) !important;
+  }
+
+  .modal-overlay {
+    padding: 12px !important;
+  }
+
+  .modal-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 86dvh !important;
+    padding: 20px 16px !important;
+    border-radius: 18px !important;
+  }
+
+  .artist-hero-card {
+    padding: 18px 14px !important;
+    border-radius: 16px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .artist-hero-avatar {
+    width: 92px !important;
+    height: 92px !important;
+  }
+
+  .artist-hero-name {
+    font-size: 1.45rem !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     11. STUDIO CINEMA FULLSCREEN PLAYER (Clean Header, Motion Bar, & Dock)
+     ------------------------------------------------------------------------ */
+  .studio-cinema-overlay,
+  .cinema-modal {
+    background: #070b13 !important;
+    padding: 0 !important;
+  }
+
+  .cinema-header {
+    min-height: 48px !important;
+    padding: max(8px, var(--mobile-safe-top)) 14px 6px !important;
+    background: rgba(7, 11, 19, 0.92) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  }
+
+  .cinema-brand {
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    color: #e2e8f0 !important;
+  }
+
+  #btn-close-cinema.cinema-close-btn {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #e2e8f0 !important;
+  }
+
+  #btn-close-cinema.cinema-close-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .cinema-stage {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 6px 12px 6px !important;
+    gap: 8px !important;
+  }
+
+  /* Compact Horizontal Now-Playing Row (Normal Mode) */
+  .cinema-turntable-deck {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    gap: 12px !important;
+    padding: 2px 2px 4px !important;
+    margin: 0 !important;
+  }
+
+  .cinema-vinyl-wrap {
+    width: 52px !important;
+    height: 52px !important;
+    min-width: 52px !important;
+    min-height: 52px !important;
+    max-width: 52px !important;
+    max-height: 52px !important;
+    margin: 0 !important;
+  }
+
+  .cinema-vinyl-disc {
+    width: 50px !important;
+    height: 50px !important;
+    min-width: 50px !important;
+    min-height: 50px !important;
+    max-width: 50px !important;
+    max-height: 50px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  .cinema-vinyl-disc .vinyl-center-label {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    max-width: 30px !important;
+    max-height: 30px !important;
+    border: 1.5px solid rgba(56, 189, 248, 0.7) !important;
+    box-shadow: none !important;
+  }
+
+  .cinema-track-details {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    align-items: flex-start !important;
+    gap: 2px !important;
+    margin: 0 !important;
+  }
+
+  .cinema-title {
+    order: 1 !important;
+    font-size: 0.96rem !important;
+    font-weight: 800 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .cinema-badge-row {
+    order: 2 !important;
+    justify-content: flex-start !important;
+    margin-bottom: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .cinema-live-badge {
+    font-size: 0.56rem !important;
+    padding: 1px 6px !important;
+  }
+
+  #cinema-track-artist {
+    font-size: 0.74rem !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Motion Active Header: Clean centered Title + Artist (No empty floating gap) */
+  .studio-cinema-overlay.cinema-motion-active .cinema-turntable-deck {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    padding: 0 4px 2px !important;
+    margin: 0 !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-track-details {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 2px !important;
+    width: 100% !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-title {
+    font-size: 0.94rem !important;
+    max-width: 88vw !important;
+    text-align: center !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-badge-row {
+    display: flex !important;
+    justify-content: center !important;
+  }
+
+  .studio-cinema-overlay.cinema-motion-active .cinema-live-badge,
+  .studio-cinema-overlay.cinema-motion-active .cinema-badge-dot {
+    display: none !important;
+  }
+
+  .cinema-visual-lyrics-split {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  .cinema-lyrics-panel {
+    border-radius: 16px !important;
+    background: rgba(12, 18, 32, 0.82) !important;
+    border: 1px solid rgba(255, 255, 255, 0.075) !important;
+    padding: 10px 12px 8px !important;
+    box-shadow: none !important;
+  }
+
+  .cinema-lyrics-header {
+    padding-bottom: 8px !important;
+    margin-bottom: 6px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    gap: 6px !important;
+  }
+
+  .cinema-lyrics-header-left {
+    text-transform: none !important;
+    font-size: 0.72rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0 !important;
+    color: #94a3b8 !important;
+  }
+
+  .cinema-lyrics-header-left svg {
+    width: 14px !important;
+    height: 14px !important;
+    color: #10b981 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .cinema-lyrics-badge {
+    display: none !important;
+  }
+
+  .cinema-motion-chip {
+    height: 26px !important;
+    padding: 0 10px !important;
+    font-size: 0.68rem !important;
+    font-weight: 700 !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #cbd5e1 !important;
+    box-shadow: none !important;
+  }
+
+  .cinema-motion-chip.active {
+    background: rgba(16, 185, 129, 0.18) !important;
+    border-color: rgba(16, 185, 129, 0.45) !important;
+    color: #34d399 !important;
+    box-shadow: none !important;
+  }
+
+  .cinema-romaji-chip {
+    height: 26px !important;
+    padding: 0 9px !important;
+    font-size: 0.67rem !important;
+    font-weight: 600 !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #94a3b8 !important;
+    box-shadow: none !important;
+  }
+
+  .cinema-romaji-chip.active {
+    background: rgba(56, 189, 248, 0.16) !important;
+    border-color: rgba(56, 189, 248, 0.4) !important;
+    color: #7dd3fc !important;
+    box-shadow: none !important;
+  }
+
+  .cinema-motion-bar {
+    border-bottom: none !important;
+    padding: 2px 0 6px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .motion-style-pill {
+    padding: 4px 10px !important;
+    font-size: 0.68rem !important;
+    background: rgba(255, 255, 255, 0.045) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    color: #94a3b8 !important;
+  }
+
+  .motion-style-pill.active {
+    background: rgba(56, 189, 248, 0.16) !important;
+    border-color: rgba(56, 189, 248, 0.45) !important;
+    color: #e0f2fe !important;
+  }
+
+  .cinema-motion-stage {
+    border-radius: 12px !important;
+    background: rgba(7, 11, 19, 0.5) !important;
+  }
+
+  .cinema-dock-wrap {
+    padding: 4px 12px max(10px, var(--mobile-safe-bottom)) !important;
+  }
+
+  .cinema-dock {
+    padding: 10px 14px !important;
+    border-radius: 16px !important;
+    background: rgba(13, 19, 32, 0.94) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+  }
+
+  .cinema-seek-container {
+    margin-bottom: 6px !important;
+  }
+
+  .cinema-controls-row {
+    justify-content: space-between !important;
+    gap: 4px !important;
+  }
+
+  .cinema-play-orb {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    background: #10b981 !important;
+    color: #03261d !important;
+    box-shadow: none !important;
+  }
+
+  /* ------------------------------------------------------------------------
+     12. SMOOTH MOTION, ANIMATIONS & INTERACTIVE MICRO-INTERACTIONS
+     ------------------------------------------------------------------------ */
+  .main-content,
+  .ytm-chips-container,
+  .quick-tags-wrapper,
+  .cinema-motion-pills,
+  .cinema-lyrics-stream {
+    scroll-behavior: smooth !important;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Smooth Tab & Sub-View Entrances (GPU transform + opacity only) */
+  @keyframes auraMobileFadeSlideUp {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, 10px, 0);
+    }
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes auraModalPop {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, 14px, 0) scale(0.96);
+    }
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+  }
+
+  @keyframes auraSheetSlideUp {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes auraBeamFlow {
+    0% {
+      background-position: 0% 50%;
+    }
+    100% {
+      background-position: 200% 50%;
+    }
+  }
+
+  @keyframes auraTapRipple {
+    0% {
+      opacity: 0.42;
+      transform: translate3d(-50%, -50%, 0) scale(0.15);
+    }
+    100% {
+      opacity: 0;
+      transform: translate3d(-50%, -50%, 0) scale(2.6);
+    }
+  }
+
+  .view-tab.active {
+    animation: auraMobileFadeSlideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+  }
+
+  .suno-subview.active {
+    animation: auraMobileFadeSlideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+  }
+
+  /* Staggered Home Feed Section Cascade */
+  .aura-hero-soundstage {
+    animation: auraMobileFadeSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+  }
+
+  .aura-bento-section {
+    animation: auraMobileFadeSlideUp 0.34s cubic-bezier(0.22, 1, 0.36, 1) 0.04s both !important;
+  }
+
+  .aura-section-wrap {
+    animation: auraMobileFadeSlideUp 0.36s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both !important;
+  }
+
+  /* Smooth Modal & Bottom Sheet Entrances */
+  .modal-overlay.active .modal-card {
+    animation: auraModalPop 0.26s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+  }
+
+  .eq-drawer.active,
+  .cinema-eq-drawer.active {
+    animation: auraSheetSlideUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+  }
+
+  /* Interactive Tactile Cards & Rows (Spring Press Feedback + Ripple Host) */
+  .music-card,
+  .aura-vinyl-card,
+  .aura-mix-card,
+  .aura-bento-card,
+  .aura-resonance-tile,
+  .track-row,
+  .suno-creations-card,
+  .suno-recent-preview-card {
+    position: relative !important;
+    overflow: hidden !important;
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+                background-color 0.2s ease,
+                border-color 0.2s ease !important;
+    will-change: transform;
+  }
+
+  .music-card:active,
+  .aura-vinyl-card:active,
+  .aura-mix-card:active,
+  .aura-bento-card:active,
+  .aura-resonance-tile:active,
+  .track-row:active,
+  .suno-creations-card:active,
+  .suno-recent-preview-card:active {
+    transform: scale(0.972) !important;
+  }
+
+  /* Interactive Buttons, Chips & Pills (Snappy Spring Bounce) */
+  .ytm-chip,
+  .search-filter-pill,
+  .tag-chip,
+  .aura-dsp-pill,
+  .aura-btn-hero-primary,
+  .aura-btn-hero-glass,
+  .aura-btn-hero-outline,
+  .aura-pill-btn-primary,
+  .btn-play-orb,
+  .cinema-play-orb,
+  .cinema-ctrl-btn,
+  .cinema-motion-chip,
+  .cinema-romaji-chip,
+  .motion-style-pill,
+  .suno-subtab-chip,
+  .suno-act-btn,
+  #suno-generate-btn,
+  #btn-open-import-playlist,
+  .playlist-create-btn,
+  .icon-btn,
+  .btn-top-mobile-search,
+  .btn-top-taste,
+  #btn-open-cinema,
+  #btn-close-cinema.cinema-close-btn {
+    position: relative !important;
+    overflow: hidden !important;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+                background-color 0.2s ease,
+                border-color 0.2s ease,
+                color 0.2s ease,
+                opacity 0.2s ease !important;
+    will-change: transform;
+  }
+
+  .ytm-chip:active,
+  .search-filter-pill:active,
+  .tag-chip:active,
+  .aura-dsp-pill:active,
+  .aura-btn-hero-primary:active,
+  .aura-btn-hero-glass:active,
+  .aura-btn-hero-outline:active,
+  .aura-pill-btn-primary:active,
+  .btn-play-orb:active,
+  .cinema-play-orb:active,
+  .cinema-ctrl-btn:active,
+  .cinema-motion-chip:active,
+  .cinema-romaji-chip:active,
+  .motion-style-pill:active,
+  .suno-subtab-chip:active,
+  .suno-act-btn:active,
+  #suno-generate-btn:active,
+  #btn-open-import-playlist:active,
+  .playlist-create-btn:active,
+  .icon-btn:active,
+  .btn-top-mobile-search:active,
+  .btn-top-taste:active,
+  #btn-open-cinema:active,
+  #btn-close-cinema.cinema-close-btn:active {
+    transform: scale(0.92) !important;
+  }
+
+  /* Tap Ripple Element */
+  .aura-tap-ripple {
+    position: absolute !important;
+    width: 90px !important;
+    height: 90px !important;
+    border-radius: 50% !important;
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.28) 0%, rgba(16, 185, 129, 0.14) 45%, transparent 72%) !important;
+    pointer-events: none !important;
+    z-index: 4 !important;
+    animation: auraTapRipple 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  }
+
+  /* Bottom Nav Active Indicator Spring */
+  .mobile-bottom-nav .mobile-nav-item {
+    overflow: hidden !important;
+    transition: color 0.2s ease !important;
+  }
+
+  .mobile-bottom-nav .mobile-nav-item::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 50% !important;
+    width: 22px !important;
+    height: 2.5px !important;
+    border-radius: 0 0 4px 4px !important;
+    background: #10b981 !important;
+    opacity: 0 !important;
+    transform: translateX(-50%) scaleX(0.2) !important;
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease !important;
+  }
+
+  .mobile-bottom-nav .mobile-nav-item.active::before {
+    opacity: 1 !important;
+    transform: translateX(-50%) scaleX(1) !important;
+  }
+
+  .mobile-bottom-nav .mobile-nav-item svg {
+    transition: transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1),
+                background-color 0.22s ease,
+                color 0.2s ease !important;
+  }
+
+  .mobile-bottom-nav .mobile-nav-item.active svg {
+    transform: translateY(-1px) scale(1.06) !important;
+  }
+
+  /* Live Mini Player Animations & Gesture Slide Feedback */
+  #master-player-bar.player-bar {
+    transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease !important;
+  }
+
+  #master-player-bar .player-track-info {
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease !important;
+  }
+
+  #master-player-bar.is-swiping .player-track-info {
+    transition: none !important;
+  }
+
+  body.music-playing #master-player-bar .player-glow-beam {
+    background: linear-gradient(90deg, #10b981 0%, #38bdf8 50%, #10b981 100%) !important;
+    background-size: 200% 100% !important;
+    animation: auraBeamFlow 3.5s linear infinite !important;
+  }
+
+  body.music-playing #master-player-bar .player-thumb-img {
+    border-color: rgba(16, 185, 129, 0.45) !important;
+  }
+
+  /* Studio Cinema Smooth Slide, Swipe-Down Drag & Vinyl Rotation */
+  .studio-cinema-overlay,
+  .cinema-modal {
+    transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.26s ease !important;
+  }
+
+  .studio-cinema-overlay.cinema-dragging {
+    transition: none !important;
+  }
+
+  body.music-playing .cinema-vinyl-disc {
+    animation: auraVinylSpin 9s linear infinite !important;
+  }
+
+  body:not(.music-playing) .cinema-vinyl-disc {
+    animation-play-state: paused !important;
+  }
+
+  .cinema-lyric-line {
+    transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+                color 0.25s ease,
+                background-color 0.25s ease,
+                transform 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
+  }
+
+  .cinema-lyric-line.active {
+    transform: translate3d(3px, 0, 0) !important;
+  }
+}
+
+@media (max-width: 768px) and (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Extra-Small Android Phones (< 380px width) */
+@media (max-width: 380px) {
+  .views-container {
+    padding: 10px 12px calc(var(--player-height) + var(--mobile-nav-height) + var(--mobile-safe-bottom) + 24px) !important;
+  }
+
+  .aura-hero-title {
+    font-size: 1.18rem !important;
+  }
+
+  .aura-btn-hero-glass,
+  .aura-btn-hero-outline {
+    font-size: 0.72rem !important;
+    padding: 0 6px !important;
+  }
+}
+
+/* Ultra-Narrow Viewports (< 330px) fall back to 1-col grids */
+@media (max-width: 330px) {
+  .music-grid,
+  .aura-vinyl-shelf,
+  .aura-mix-carousel,
+  .suno-library-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  #master-player-bar #btn-open-cinema .cinema-btn-label {
+    display: none !important;
+  }
+
+  #master-player-bar #btn-open-cinema {
+    width: 32px !important;
+    padding: 0 !important;
+  }
+}

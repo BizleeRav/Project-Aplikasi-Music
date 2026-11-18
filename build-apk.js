@@ -72,8 +72,10 @@ fs.writeFileSync(path.join(BUILD_DIR, 'res', 'values', 'styles.xml'), `<?xml ver
 // 5. Buat layout activity_main.xml
 fs.writeFileSync(path.join(BUILD_DIR, 'res', 'layout', 'activity_main.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     android:background="#070a12">
 
     <com.aurasound.musichub.BackgroundAudioWebView
@@ -924,6 +926,28 @@ public class MainActivity extends Activity {
 
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
         setContentView(R.layout.activity_main);
+
+        View rootContainer = findViewById(R.id.root_container);
+        if (rootContainer != null && Build.VERSION.SDK_INT >= 20) {
+            rootContainer.setOnApplyWindowInsetsListener((v, insets) -> {
+                if (Build.VERSION.SDK_INT >= 30) {
+                    android.graphics.Insets sb = insets.getInsets(
+                        android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout()
+                    );
+                    android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
+                    v.setPadding(sb.left, sb.top, sb.right, Math.max(sb.bottom, ime.bottom));
+                    return android.view.WindowInsets.CONSUMED;
+                } else {
+                    v.setPadding(
+                        insets.getSystemWindowInsetLeft(),
+                        insets.getSystemWindowInsetTop(),
+                        insets.getSystemWindowInsetRight(),
+                        insets.getSystemWindowInsetBottom()
+                    );
+                    return insets.consumeSystemWindowInsets();
+                }
+            });
+        }
 
         webView = findViewById(R.id.webview);
         initWebView();

@@ -226,6 +226,7 @@ class App {
     try { this.restorePlaybackState(); } catch (e) { console.error('Error restoring playback state:', e); }
     try { this.initAudioElement(); } catch (e) { console.error('Error initializing audio element:', e); }
     try { this.initEventListeners(); } catch (e) { console.error('Error initializing event listeners:', e); }
+    try { this.initMobileUX(); } catch (e) { console.error('Error initializing mobile UX:', e); }
     try { this.initTasteOnboarding(); } catch (e) { console.error('Error initializing taste onboarding:', e); }
     try { this.loadYTMHome('all'); } catch (e) { console.error('Error loading YTM Home:', e); }
     try { this.syncPlaylistsFromServer(); } catch (e) { console.error('Error syncing playlists:', e); }
@@ -1258,9 +1259,9 @@ class App {
       }
 
       // Search Filter Pills
-      setText('.search-filter-pill[data-filter="all"] .filter-pill-label', 'Semua Versi', 'All Versions');
-      setText('.search-filter-pill[data-filter="official"] .filter-pill-label', 'Official Saja', 'Official Only');
-      setText('.search-filter-pill[data-filter="nonofficial"] .filter-pill-label', 'Bukan Official (Cover, Remix, Lyrics, Live, Dance)', 'Non-Official (Covers, Remixes, Lyrics, Live, Dance)');
+      setText('.search-filter-pill[data-filter="all"] .filter-pill-label', 'Semua', 'All');
+      setText('.search-filter-pill[data-filter="official"] .filter-pill-label', 'Official', 'Official');
+      setText('.search-filter-pill[data-filter="nonofficial"] .filter-pill-label', 'Cover & Remix', 'Covers & Remixes');
 
       // 6. Favorites View
       const favTitle = document.querySelector('#view-favorites .section-title');
@@ -4476,8 +4477,223 @@ class App {
     }).join('');
   }
 
+  initMobileUX() {
+    const isAndroid = !!window.AuraSoundAndroid || /Android/i.test(navigator.userAgent);
+    document.documentElement.classList.toggle('is-android', isAndroid);
+
+    let kbTimer = null;
+    const isTextInput = (el) => {
+      if (!el || !el.tagName) return false;
+      const tag = el.tagName.toUpperCase();
+      if (tag === 'TEXTAREA') return true;
+      if (tag === 'INPUT') {
+        const t = (el.type || 'text').toLowerCase();
+        return !['range', 'checkbox', 'radio', 'button', 'submit', 'file', 'hidden'].includes(t);
+      }
+      return false;
+    };
+
+    const setKeyboardOpen = (open) => {
+      const mobile = window.innerWidth <= 768;
+      document.body.classList.toggle('mobile-keyboard-open', mobile && open);
+    };
+
+    document.addEventListener('focusin', (e) => {
+      if (window.innerWidth <= 768 && isTextInput(e.target)) {
+        clearTimeout(kbTimer);
+        setKeyboardOpen(true);
+      }
+    });
+
+    document.addEventListener('focusout', () => {
+      clearTimeout(kbTimer);
+      kbTimer = setTimeout(() => {
+        if (!isTextInput(document.activeElement)) {
+          setKeyboardOpen(false);
+        }
+      }, 140);
+    });
+
+    if (window.visualViewport) {
+      const baseHeight = window.innerHeight;
+      window.visualViewport.addEventListener('resize', () => {
+        if (window.innerWidth > 768) {
+          setKeyboardOpen(false);
+          return;
+        }
+        const shrunk = (baseHeight - window.visualViewport.height) > 140;
+        if (shrunk || isTextInput(document.activeElement)) {
+          setKeyboardOpen(shrunk);
+        } else {
+          setKeyboardOpen(false);
+        }
+      });
+    }
+
+    // 1. Tactile Tap Ripple on Mobile Interactive Cards & Buttons
+    const rippleSelector = '.music-card, .aura-vinyl-card, .aura-mix-card, .aura-bento-card, .aura-resonance-tile, .track-row, .suno-creations-card, .mobile-nav-item, .ytm-chip, .search-filter-pill, .tag-chip, .aura-dsp-pill, .aura-btn-hero-primary, .aura-btn-hero-glass, .aura-btn-hero-outline, .aura-pill-btn-primary, #suno-generate-btn, #btn-open-import-playlist, .playlist-create-btn, .cinema-motion-chip, .cinema-romaji-chip, .motion-style-pill';
+    document.addEventListener('pointerdown', (e) => {
+      if (window.innerWidth > 768 || e.button > 0) return;
+      const target = e.target && e.target.closest ? e.target.closest(rippleSelector) : null;
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      if (!rect || rect.width < 16 || rect.height < 16) return;
+      const oldRipple = target.querySelector('.aura-tap-ripple');
+      if (oldRipple) oldRipple.remove();
+      const ripple = document.createElement('span');
+      ripple.className = 'aura-tap-ripple';
+      ripple.style.left = `${e.clientX - rect.left}px`;
+      ripple.style.top = `${e.clientY - rect.top}px`;
+      target.appendChild(ripple);
+      setTimeout(() => {
+        try { ripple.remove(); } catch (err) {}
+      }, 480);
+    }, { passive: true });
+
+    // 2. Smooth Auto-Center Scroll for Horizontal Filter & Preset Chips
+    document.addEventListener('click', (e) => {
+      if (window.innerWidth > 768) return;
+      const chip = e.target && e.target.closest ? e.target.closest('.ytm-chip, .motion-style-pill, .tag-chip, .search-filter-pill') : null;
+      if (chip && typeof chip.scrollIntoView === 'function') {
+        try {
+          chip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        } catch (err) {}
+      }
+    }, { passive: true });
+
+    // 3. Interactive Mini Player Swipe Gestures (Swipe Left/Right = Next/Prev, Swipe Up = Open Cinema)
+    const miniPlayer = document.getElementById('master-player-bar');
+    if (miniPlayer) {
+      let mpStartX = 0;
+      let mpStartY = 0;
+      let mpStartTime = 0;
+      let mpSwiping = false;
+      const trackInfo = miniPlayer.querySelector('.player-track-info');
+
+      miniPlayer.addEventListener('touchstart', (e) => {
+        if (window.innerWidth > 768 || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        mpStartX = t.clientX;
+        mpStartY = t.clientY;
+        mpStartTime = Date.now();
+        mpSwiping = false;
+      }, { passive: true });
+
+      miniPlayer.addEventListener('touchmove', (e) => {
+        if (window.innerWidth > 768 || e.touches.length !== 1 || !trackInfo) return;
+        const t = e.touches[0];
+        const dx = t.clientX - mpStartX;
+        const dy = t.clientY - mpStartY;
+        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          mpSwiping = true;
+          miniPlayer.classList.add('is-swiping');
+          const clamped = Math.max(-44, Math.min(44, dx * 0.45));
+          trackInfo.style.transform = `translate3d(${clamped}px, 0, 0)`;
+          trackInfo.style.opacity = String(Math.max(0.55, 1 - Math.abs(clamped) / 70));
+        }
+      }, { passive: true });
+
+      const resetMiniPlayerSwipe = () => {
+        miniPlayer.classList.remove('is-swiping');
+        if (trackInfo) {
+          trackInfo.style.transform = '';
+          trackInfo.style.opacity = '';
+        }
+      };
+
+      miniPlayer.addEventListener('touchend', (e) => {
+        if (window.innerWidth > 768 || !e.changedTouches || e.changedTouches.length === 0) {
+          resetMiniPlayerSwipe();
+          return;
+        }
+        const t = e.changedTouches[0];
+        const dx = t.clientX - mpStartX;
+        const dy = t.clientY - mpStartY;
+        const dt = Date.now() - mpStartTime;
+        resetMiniPlayerSwipe();
+
+        if (dt < 550) {
+          if (dy < -42 && Math.abs(dy) > Math.abs(dx) * 1.35) {
+            this.openStudioCinema();
+            return;
+          }
+          if (mpSwiping && Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+            if (dx < 0) this.playNext();
+            else this.playPrev();
+          }
+        }
+      }, { passive: true });
+
+      miniPlayer.addEventListener('touchcancel', resetMiniPlayerSwipe, { passive: true });
+    }
+
+    // 4. Interactive Studio Cinema Swipe-Down Gesture to Dismiss
+    const cinemaOverlay = document.getElementById('modal-studio-cinema');
+    if (cinemaOverlay) {
+      let cStartX = 0;
+      let cStartY = 0;
+      let cStartTime = 0;
+      let cDragging = false;
+      let cCurrentDy = 0;
+
+      cinemaOverlay.addEventListener('touchstart', (e) => {
+        if (window.innerWidth > 768 || e.touches.length !== 1 || !cinemaOverlay.classList.contains('active')) return;
+        const handle = e.target && e.target.closest ? e.target.closest('.cinema-header, .cinema-turntable-deck, .cinema-lyrics-header') : null;
+        if (!handle || (e.target.closest && e.target.closest('button, input, a'))) return;
+        cStartX = e.touches[0].clientX;
+        cStartY = e.touches[0].clientY;
+        cStartTime = Date.now();
+        cDragging = false;
+        cCurrentDy = 0;
+      }, { passive: true });
+
+      cinemaOverlay.addEventListener('touchmove', (e) => {
+        if (!cStartTime || window.innerWidth > 768 || e.touches.length !== 1) return;
+        const dy = e.touches[0].clientY - cStartY;
+        const dx = e.touches[0].clientX - cStartX;
+        if (!cDragging) {
+          if (dy > 10 && dy > Math.abs(dx) * 1.25) {
+            cDragging = true;
+            cinemaOverlay.classList.add('cinema-dragging');
+          } else if (Math.abs(dx) > 14 || dy < -10) {
+            cStartTime = 0;
+            return;
+          }
+        }
+        if (cDragging) {
+          cCurrentDy = Math.max(0, dy);
+          cinemaOverlay.style.transform = `translate3d(0, ${cCurrentDy}px, 0)`;
+          cinemaOverlay.style.opacity = String(Math.max(0.45, 1 - cCurrentDy / 420));
+        }
+      }, { passive: true });
+
+      const finishCinemaDrag = () => {
+        if (!cStartTime && !cDragging) return;
+        const dt = Date.now() - cStartTime;
+        const wasDragging = cDragging;
+        const dy = cCurrentDy;
+        cStartTime = 0;
+        cDragging = false;
+        cCurrentDy = 0;
+        cinemaOverlay.classList.remove('cinema-dragging');
+        cinemaOverlay.style.transform = '';
+        cinemaOverlay.style.opacity = '';
+        if (wasDragging && (dy > 95 || (dy > 48 && dt < 240))) {
+          this.closeStudioCinema();
+        }
+      };
+
+      cinemaOverlay.addEventListener('touchend', finishCinemaDrag, { passive: true });
+      cinemaOverlay.addEventListener('touchcancel', finishCinemaDrag, { passive: true });
+    }
+  }
+
   switchTab(tabName) {
     this.activeTab = tabName;
+    if (window.innerWidth <= 768) {
+      const mc = document.querySelector('.main-content');
+      if (mc) mc.scrollTop = 0;
+    }
     document.querySelectorAll('.nav-link').forEach(link => {
       link.classList.toggle('active', link.getAttribute('data-tab') === tabName);
     });
@@ -10880,7 +11096,44 @@ window.openAppUpdateModal = function(androidInfo) {
   }
 };
 
+function initElectronWindowControls() {
+  if (!window.electronAPI || !window.electronAPI.isElectron) return;
+
+  document.body.classList.add('electron-frameless');
+
+  const btnMin = document.getElementById('btn-win-minimize');
+  const btnMax = document.getElementById('btn-win-maximize');
+  const btnClose = document.getElementById('btn-win-close');
+
+  const applyMaximizedState = (isMax) => {
+    document.body.classList.toggle('electron-maximized', Boolean(isMax));
+    if (btnMax) {
+      const label = isMax ? 'Restore Down' : 'Maximize';
+      btnMax.title = label;
+      btnMax.setAttribute('aria-label', label);
+    }
+  };
+
+  if (btnMin && typeof window.electronAPI.minimizeWindow === 'function') {
+    btnMin.addEventListener('click', () => window.electronAPI.minimizeWindow());
+  }
+  if (btnMax && typeof window.electronAPI.maximizeWindow === 'function') {
+    btnMax.addEventListener('click', () => window.electronAPI.maximizeWindow());
+  }
+  if (btnClose && typeof window.electronAPI.closeWindow === 'function') {
+    btnClose.addEventListener('click', () => window.electronAPI.closeWindow());
+  }
+
+  if (typeof window.electronAPI.isWindowMaximized === 'function') {
+    window.electronAPI.isWindowMaximized().then(applyMaximizedState).catch(() => {});
+  }
+  if (typeof window.electronAPI.onWindowMaximizedChange === 'function') {
+    window.electronAPI.onWindowMaximizedChange(applyMaximizedState);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  initElectronWindowControls();
   window.app = new App();
   initAppUpdateCheck();
 });

@@ -127,40 +127,47 @@ async function syncOfficialFeed(rawToken, deviceId = null) {
   isSyncingFeed = true;
   try {
     let cleanJwt = (rawToken || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
-    if (!cleanJwt || cleanJwt.length < 20) {
-      const cfg = getConfig();
-      cleanJwt = (cfg.suno_api_key || '').trim();
+    if (!isSunoJwtFresh(cleanJwt)) {
+      cleanJwt = '';
     }
-    if ((!cleanJwt || cleanJwt.length < 20) && typeof global.getWarmEngineSessionToken === 'function') {
+    if (!cleanJwt && typeof global.getWarmEngineSessionToken === 'function') {
       try {
         const warmTok = await global.getWarmEngineSessionToken();
-        if (warmTok && warmTok.length > 20) cleanJwt = warmTok;
+        if (isSunoJwtFresh(warmTok)) cleanJwt = warmTok;
       } catch (e) {}
+    }
+    if (!cleanJwt && typeof global.getFreshSunoToken === 'function') {
+      try {
+        const freshTok = await global.getFreshSunoToken();
+        if (isSunoJwtFresh(freshTok)) cleanJwt = freshTok;
+      } catch (e) {}
+    }
+    if (!cleanJwt) {
+      const cfg = getConfig();
+      const cfgTok = (cfg.suno_api_key || '').trim();
+      if (isSunoJwtFresh(cfgTok)) cleanJwt = cfgTok;
     }
     if (!cleanJwt || cleanJwt.length < 20) return [];
 
     let clips = [];
-    const headers = {
-      'Authorization': `Bearer ${cleanJwt}`,
-      'Cookie': `__session=${cleanJwt}`,
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-      'Origin': 'https://suno.com',
-      'Referer': 'https://suno.com/'
-    };
+    const headers = buildSunoOfficialHeaders(cleanJwt);
 
     // 1. Try feed/v3 (POST)
-    try {
-      const res = await axios.post('https://studio-api.prod.suno.com/api/feed/v3', {
-        cursor: null,
-        limit: 30
-      }, {
-        headers,
-        timeout: 9000
-      });
-      if (Array.isArray(res.data?.clips) && res.data.clips.length > 0) {
-        clips = res.data.clips;
-      }
-    } catch (e1) {}
+    for (const v3Url of ['https://studio-api.prod.suno.com/api/feed/v3', 'https://suno.com/a/api/feed/v3']) {
+      try {
+        const res = await axios.post(v3Url, {
+          cursor: null,
+          limit: 30
+        }, {
+          headers,
+          timeout: 9000
+        });
+        if (Array.isArray(res.data?.clips) && res.data.clips.length > 0) {
+          clips = res.data.clips;
+          break;
+        }
+      } catch (e1) {}
+    }
 
     // 2. Try feed/v2 (GET) fallback
     if (!clips || clips.length === 0) {
@@ -1476,7 +1483,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
         console.warn('[Suno Generate] Browser generation error:', browserErr.message);
         // Emergency recovery: Check if Suno cloud successfully processed the song and sync immediately
         try {
-          const synced = await syncOfficialFeed(officialToken, deviceId);
+          const synced = await syncOfficialFeed(null, deviceId);
           if (Array.isArray(synced) && synced.length > 0) {
             // ONLY accept clips created during or right after this generation request (within last 2.5 min)
             const freshClips = synced.filter(c => {
@@ -1515,7 +1522,7 @@ async function generateSunoSong({ prompt, tags, title, make_instrumental = false
 
       // Safety recovery: sync official feed before declaring error
       try {
-        const synced = await syncOfficialFeed(officialToken, deviceId);
+        const synced = await syncOfficialFeed(null, deviceId);
         if (Array.isArray(synced) && synced.length > 0) {
           const freshClips = synced.filter(c => {
             if (!c || !c.id) return false;

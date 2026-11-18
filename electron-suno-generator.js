@@ -221,6 +221,20 @@ function deriveTagsFromPrompt(prompt, userTags) {
   return 'Indonesian Pop, Catchy Melodic Chorus, Emotional Warm Vocal';
 }
 
+function isJwtFresh(jwt, minRemainingSec = 3) {
+  if (!jwt || typeof jwt !== 'string' || jwt.trim().length <= 20) return false;
+  try {
+    const parts = jwt.trim().split('.');
+    if (parts.length < 2) return false;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+    if (!payload?.exp) return true;
+    return payload.exp > ((Date.now() / 1000) + minRemainingSec);
+  } catch (e) {
+    return false;
+  }
+}
+
 /**
  * Read the freshest live __session JWT directly from persist:suno_auth_session cookies
  */
@@ -231,31 +245,31 @@ async function readLiveSessionJwt(sunoSession) {
       .filter(c => c && (c.name === '__session' || c.name.startsWith('__session')) && c.value && c.value.length > 20)
       .sort((a, b) => (a.name === '__session' ? -1 : b.name === '__session' ? 1 : 0));
 
-    const nowSec = Date.now() / 1000;
     for (const sc of candidates) {
-      try {
-        const parts = sc.value.split('.');
-        if (parts.length >= 2) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-          if (!payload?.exp || payload.exp > (nowSec + 3)) {
-            return sc.value;
-          }
-        }
-      } catch (e) {}
+      if (isJwtFresh(sc.value, 3)) {
+        return sc.value;
+      }
     }
-    if (candidates[0]?.value) return candidates[0].value;
   } catch (e) {}
+
+  if (typeof global.getWarmEngineSessionToken === 'function') {
+    try {
+      const warmTok = await global.getWarmEngineSessionToken();
+      if (isJwtFresh(warmTok, 3)) return warmTok;
+    } catch (e) {}
+  }
 
   if (typeof global.getFreshSunoToken === 'function') {
     try {
       const tok = await global.getFreshSunoToken();
-      if (tok) return tok;
+      if (isJwtFresh(tok, 3)) return tok;
     } catch (e) {}
   }
+
   try {
     const sunoService = require('./suno-service');
     const cfgTok = sunoService.getConfig()?.suno_api_key;
-    if (cfgTok && cfgTok.length > 20) return cfgTok;
+    if (isJwtFresh(cfgTok, 3)) return cfgTok;
   } catch (e) {}
   return null;
 }
@@ -269,7 +283,10 @@ global.getWarmEngineSessionToken = async () => {
           (async () => {
             try {
               if (window.Clerk && window.Clerk.session) {
-                const t = await window.Clerk.session.getToken({ skipCache: true });
+                const t = await Promise.race([
+                  window.Clerk.session.getToken({ skipCache: true }),
+                  new Promise(r => setTimeout(() => r(null), 2000))
+                ]);
                 if (t && typeof t === 'string' && t.length > 20) return t;
               }
               const m = document.cookie.match(/(?:^|;\\s*)__session=([^;]+)/);
@@ -278,7 +295,7 @@ global.getWarmEngineSessionToken = async () => {
             } catch (e) { return null; }
           })()
         `).catch(() => null);
-        if (liveTok && typeof liveTok === 'string' && liveTok.length > 20) {
+        if (isJwtFresh(liveTok, 3)) {
           return liveTok;
         }
       }
@@ -307,8 +324,17 @@ global.fetchSunoClipsByIds = async (ids) => {
           const inPageClips = await sunoEngineWin.webContents.executeJavaScript(`
             (async () => {
               try {
-                const m = document.cookie.match(/(?:^|;\\s*)__session=([^;]+)/);
-                const tok = (m && m[1]) ? m[1] : ${JSON.stringify(token || '')};
+                let tok = '';
+                try {
+                  if (window.Clerk && window.Clerk.session && typeof window.Clerk.session.getToken === 'function') {
+                    const ct = await Promise.race([
+                      window.Clerk.session.getToken(),
+                      new Promise(r => setTimeout(() => r(null), 1500))
+                    ]);
+                    if (ct && typeof ct === 'string' && ct.length > 20) tok = ct;
+                  }
+                } catch (ce) {}
+                if (!tok) tok = ${JSON.stringify(token || '')};
                 const headers = { 'Accept': 'application/json' };
                 if (tok) headers['Authorization'] = 'Bearer ' + tok;
                 const r = await fetch('/a/api/feed/v2?ids=' + encodeURIComponent(${JSON.stringify(idArray.join(','))}), {
@@ -889,62 +915,73 @@ function isSunoPreviewClip(c) {
  */
 async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, cleanUa) {
   let liveJwt = await readLiveSessionJwt(sunoSession);
-  if (!liveJwt || liveJwt.length < 20) {
-    try {
-      const sunoService = require('./suno-service');
-      liveJwt = sunoService.getConfig()?.suno_api_key;
-    } catch (e) {}
-  }
 
   // 1. Same-origin in-page fetch on suno.com/create (automatically carries live Clerk session)
   if (genWin && !genWin.isDestroyed()) {
     try {
-      const pageClips = await genWin.webContents.executeJavaScript(`
+      const pagePoll = await genWin.webContents.executeJavaScript(`
         (async () => {
           try {
-            const m = document.cookie.match(/(?:^|;\\s*)__session=([^;]+)/);
-            const tok = (m && m[1]) ? m[1] : ${JSON.stringify(liveJwt || '')};
+            let tok = '';
+            try {
+              if (window.Clerk && window.Clerk.session && typeof window.Clerk.session.getToken === 'function') {
+                const ct = await Promise.race([
+                  window.Clerk.session.getToken(),
+                  new Promise(r => setTimeout(() => r(null), 1500))
+                ]);
+                if (ct && typeof ct === 'string' && ct.length > 20) tok = ct;
+              }
+            } catch (ce) {}
+            if (!tok) tok = ${JSON.stringify(liveJwt || '')};
             const headers = { 'Content-Type': 'application/json' };
             if (tok) headers['Authorization'] = 'Bearer ' + tok;
 
-            // Try feed/v3 (POST) first
-            for (const ep of ['/a/api/feed/v3', '/api/feed/v3']) {
+            // Try feed/v3 (POST) first (studio-api + same-origin)
+            for (const ep of ['https://studio-api.prod.suno.com/api/feed/v3', '/a/api/feed/v3', '/api/feed/v3']) {
               try {
+                const isExternal = ep.startsWith('http');
+                if (isExternal && !tok) continue;
                 const r3 = await fetch(ep, {
                   method: 'POST',
-                  credentials: 'include',
+                  credentials: isExternal ? 'omit' : 'include',
                   headers,
                   body: JSON.stringify({ cursor: null, limit: 15 })
                 });
                 if (r3.ok) {
                   const d3 = await r3.json();
-                  if (Array.isArray(d3?.clips) && d3.clips.length > 0) return d3.clips;
+                  if (Array.isArray(d3?.clips) && d3.clips.length > 0) return { clips: d3.clips, tok };
                 }
               } catch (e3) {}
             }
 
             // Try feed/v2 (GET)
-            for (const ep of ['/a/api/feed/v2', '/api/feed/v2', '/a/api/feed/', '/api/feed/']) {
+            for (const ep of ['https://studio-api.prod.suno.com/api/feed/v2', '/a/api/feed/v2', '/a/api/feed/', '/api/feed/']) {
               try {
+                const isExternal = ep.startsWith('http');
+                if (isExternal && !tok) continue;
                 const r2 = await fetch(ep, {
                   method: 'GET',
-                  credentials: 'include',
+                  credentials: isExternal ? 'omit' : 'include',
                   headers
                 });
                 if (r2.ok) {
                   const d2 = await r2.json();
-                  if (Array.isArray(d2?.clips) && d2.clips.length > 0) return d2.clips;
-                  if (Array.isArray(d2) && d2.length > 0) return d2;
+                  if (Array.isArray(d2?.clips) && d2.clips.length > 0) return { clips: d2.clips, tok };
+                  if (Array.isArray(d2) && d2.length > 0) return { clips: d2, tok };
                 }
               } catch (e2) {}
             }
 
-            return null;
+            return { clips: null, tok };
           } catch (e) {
             return null;
           }
         })()
       `);
+      if (pagePoll?.tok && isJwtFresh(pagePoll.tok, 3)) {
+        liveJwt = pagePoll.tok;
+      }
+      const pageClips = pagePoll?.clips;
       if (Array.isArray(pageClips) && pageClips.length > 0) {
         const fresh = pageClips.filter(c => {
           if (!c || !c.id || existingClipIds.has(c.id)) return false;
@@ -960,8 +997,11 @@ async function pollNewClips(genWin, sunoSession, existingClipIds, clickTimeMs, c
     } catch (e) {}
   }
 
-  // 2. Direct HTTP fallback via studio-api
-  if (liveJwt && liveJwt.length > 20) {
+  // 2. Direct HTTP fallback via studio-api (ensure JWT is fresh)
+  if (!isJwtFresh(liveJwt, 3)) {
+    liveJwt = await readLiveSessionJwt(sunoSession);
+  }
+  if (isJwtFresh(liveJwt, 1)) {
     try {
       const feedRes = await axios.post('https://studio-api.prod.suno.com/api/feed/v3', {
         cursor: null,
@@ -1070,24 +1110,67 @@ async function generateWithSunoBrowser({
     const mintedFastTok = await genWin.webContents.executeJavaScript(`
       (async () => {
         try {
+          const oldModal = Array.from(document.querySelectorAll('div.fixed.inset-0')).find(el => String(el.className || '').includes('z-[1000]'));
+          if (oldModal) {
+            oldModal.click();
+          }
           if (window.Clerk && window.Clerk.session && typeof window.Clerk.session.getToken === 'function') {
             const freshTok = await Promise.race([
-              window.Clerk.session.getToken(),
-              new Promise(r => setTimeout(() => r(null), 1800))
+              window.Clerk.session.getToken({ skipCache: true }),
+              new Promise(r => setTimeout(() => r(null), 2000))
             ]);
             if (freshTok && typeof freshTok === 'string' && freshTok.length > 20) {
-              document.cookie = '__session=' + freshTok + '; path=/; secure; samesite=lax';
               return freshTok;
             }
           }
         } catch (e) {}
-        const oldModal = Array.from(document.querySelectorAll('div.fixed.inset-0')).find(el => String(el.className || '').includes('z-[1000]'));
-        if (oldModal) {
-          oldModal.click();
-        }
         return null;
       })()
     `).catch(() => null);
+
+    if (isJwtFresh(mintedFastTok, 3)) {
+      await sunoSession.cookies.set({
+        url: 'https://suno.com',
+        name: '__session',
+        value: mintedFastTok,
+        domain: '.suno.com',
+        path: '/',
+        secure: true,
+        httpOnly: false,
+        sameSite: 'lax'
+      }).catch(() => {});
+    }
+
+    // Snapshot existing clip IDs BEFORE attempting Fast-Path or DOM Create so a slow/aborted
+    // Fast-Path request can never pollute existingClipIds and hide the 1st generated song!
+    const snapshotExistingClips = async () => {
+      try {
+        const snap = await pollNewClips(genWin, sunoSession, new Set(), 0, cleanUa);
+        if (Array.isArray(snap.clips)) {
+          snap.clips.forEach(c => { if (c && c.id) existingClipIds.add(c.id); });
+        }
+      } catch (e) {}
+      if (existingClipIds.size === 0) {
+        const tok = await readLiveSessionJwt(sunoSession);
+        if (isJwtFresh(tok, 1)) {
+          try {
+            const res = await axios.post('https://studio-api.prod.suno.com/api/feed/v3', { cursor: null, limit: 30 }, {
+              headers: {
+                'Authorization': `Bearer ${tok}`,
+                'Cookie': `__session=${tok}`,
+                'Content-Type': 'application/json',
+                'Origin': 'https://suno.com',
+                'Referer': 'https://suno.com/',
+                'User-Agent': cleanUa
+              },
+              timeout: 4500
+            });
+            (res.data?.clips || []).forEach(c => { if (c && c.id) existingClipIds.add(c.id); });
+          } catch (e) {}
+        }
+      }
+    };
+    const existingClipsPromise = snapshotExistingClips();
 
     // Cleanly resolve clean user inputs without fake tags/titles
     const cleanPromptText = (rawPrompt !== undefined ? rawPrompt : (prompt || '')).trim();
@@ -1105,9 +1188,12 @@ async function generateWithSunoBrowser({
 
     const targetMode = useCustomLyricsMode ? 'custom_lyrics' : 'simple';
 
+    // Ensure pre-generation clip snapshot completes before any /api/generate/v2/ call
+    await existingClipsPromise;
+
     // Same-origin fast-path inside Electron Chromium (runs before requiring DOM Create controls)
-    const fastTok = mintedFastTok || await readLiveSessionJwt(sunoSession);
-    if (fastTok && fastTok.length > 20) {
+    const fastTok = isJwtFresh(mintedFastTok, 3) ? mintedFastTok : await readLiveSessionJwt(sunoSession);
+    if (isJwtFresh(fastTok, 3)) {
       const mRaw = String(model || 'v6-mini').trim().toLowerCase();
       const mvKey = mRaw === 'v6' || mRaw === 'chirp-hawk' ? 'chirp-hawk'
         : (mRaw === 'v4' || mRaw === 'chirp-v4' ? 'chirp-v4'
@@ -1125,12 +1211,14 @@ async function generateWithSunoBrowser({
         genBody = { prompt: cleanLyricsText || cleanPromptText, tags: cleanTagsText.slice(0, 950), title: cleanTitleText, mv: mvKey, make_instrumental: false };
       }
 
+      const fastAttemptStartMs = Date.now();
       const fastOutcome = await genWin.webContents.executeJavaScript(`
         (async () => {
+          let sentGenerate = false;
           try {
             const tok = ${JSON.stringify(fastTok)};
             const chkCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-            const chkTimer = chkCtrl ? setTimeout(() => chkCtrl.abort(), 2500) : null;
+            const chkTimer = chkCtrl ? setTimeout(() => chkCtrl.abort(), 3500) : null;
             const chkRes = await fetch('https://studio-api.prod.suno.com/api/c/check', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
@@ -1138,12 +1226,13 @@ async function generateWithSunoBrowser({
               body: JSON.stringify({ ctype: 'generation' })
             });
             if (chkTimer) clearTimeout(chkTimer);
-            if (!chkRes.ok) return { skipped: true };
+            if (!chkRes.ok) return { skipped: true, sentGenerate: false };
             const chkData = await chkRes.json();
-            if (!chkData || chkData.required !== false) return { skipped: true };
+            if (!chkData || chkData.required !== false) return { skipped: true, sentGenerate: false };
 
+            sentGenerate = true;
             const genCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-            const genTimer = genCtrl ? setTimeout(() => genCtrl.abort(), 8000) : null;
+            const genTimer = genCtrl ? setTimeout(() => genCtrl.abort(), 15000) : null;
             const genRes = await fetch('https://studio-api.prod.suno.com/api/generate/v2/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
@@ -1151,16 +1240,16 @@ async function generateWithSunoBrowser({
               body: JSON.stringify(${JSON.stringify(genBody)})
             });
             if (genTimer) clearTimeout(genTimer);
-            if (genRes.status === 402) return { creditError: true };
-            if (!genRes.ok) return { skipped: true };
+            if (genRes.status === 402) return { creditError: true, sentGenerate: true, status: 402 };
+            if (!genRes.ok) return { skipped: true, sentGenerate: true, status: genRes.status };
             const gd = await genRes.json();
             const gClips = gd?.clips || gd?.data?.clips || [];
-            return { clips: Array.isArray(gClips) ? gClips : [] };
+            return { clips: Array.isArray(gClips) ? gClips : [], sentGenerate: true, status: genRes.status };
           } catch (e) {
-            return { skipped: true };
+            return { skipped: true, sentGenerate, aborted: true };
           }
         })()
-      `).catch(() => ({ skipped: true }));
+      `).catch(() => ({ skipped: true, sentGenerate: false }));
 
       if (fastOutcome?.creditError) {
         throw new Error('Kuota kredit akun Suno Anda untuk hari ini telah habis.');
@@ -1178,6 +1267,27 @@ async function generateWithSunoBrowser({
             clips: cleanFastClips.slice(0, 2),
             targetMode
           };
+        }
+      }
+
+      // If /api/generate/v2/ was dispatched but timed out/failed with 5xx, check feed before falling back to DOM
+      // so we never double-submit or miss an already-accepted generation!
+      if (fastOutcome?.sentGenerate && (fastOutcome?.aborted || !fastOutcome?.status || fastOutcome.status >= 500)) {
+        for (let recoveryTry = 0; recoveryTry < 2; recoveryTry++) {
+          if (recoveryTry > 0) await new Promise(r => setTimeout(r, 1500));
+          const recoveredSnap = await pollNewClips(genWin, sunoSession, existingClipIds, fastAttemptStartMs, cleanUa);
+          if (Array.isArray(recoveredSnap.clips) && recoveredSnap.clips.length > 0) {
+            console.log(`[Suno Warm Engine] Recovered ${recoveredSnap.clips.length} clips from fast-path feed!`);
+            try {
+              const sunoService = require('./suno-service');
+              sunoService.saveConfig({ suno_api_key: recoveredSnap.jwt || fastTok, suno_provider: 'suno_official' });
+            } catch (e) {}
+            return {
+              success: true,
+              clips: recoveredSnap.clips.slice(0, 2),
+              targetMode
+            };
+          }
         }
       }
     }
@@ -1202,33 +1312,6 @@ async function generateWithSunoBrowser({
       }
     }
 
-    // Snapshot existing clip IDs IN PARALLEL while filling the form
-    const existingClipsPromise = (async () => {
-      try {
-        const snap = await pollNewClips(genWin, sunoSession, new Set(), 0, cleanUa);
-        if (Array.isArray(snap.clips)) {
-          snap.clips.forEach(c => { if (c && c.id) existingClipIds.add(c.id); });
-        }
-      } catch (e) {}
-      const tok = await readLiveSessionJwt(sunoSession);
-      if (tok && existingClipIds.size === 0) {
-        try {
-          const res = await axios.post('https://studio-api.prod.suno.com/api/feed/v3', { cursor: null, limit: 30 }, {
-            headers: {
-              'Authorization': `Bearer ${tok}`,
-              'Cookie': `__session=${tok}`,
-              'Content-Type': 'application/json',
-              'Origin': 'https://suno.com',
-              'Referer': 'https://suno.com/',
-              'User-Agent': cleanUa
-            },
-            timeout: 4500
-          });
-          (res.data?.clips || []).forEach(c => { if (c && c.id) existingClipIds.add(c.id); });
-        } catch (e) {}
-      }
-    })();
-
     const formFillOpts = {
       targetMode,
       cleanTitleText,
@@ -1241,11 +1324,8 @@ async function generateWithSunoBrowser({
 
     await fillSunoCreateForm(genWin, formFillOpts);
 
-    // Wait for existingClipIds snapshot & React input state commit
-    await Promise.all([
-      existingClipsPromise,
-      new Promise(r => setTimeout(r, 250))
-    ]);
+    // Give React input state a brief commit window before clicking Create
+    await new Promise(r => setTimeout(r, 250));
 
     // Locate Create button coordinates for trusted click activation
     const locateCreateBtn = () => genWin.webContents.executeJavaScript(`

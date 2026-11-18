@@ -12,8 +12,9 @@
   <link rel="apple-touch-icon" href="/icons/icon.png">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.80.5">
+  <link rel="stylesheet" href="/css/style.css?v=4.80.6">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
+  <link rel="stylesheet" href="/css/mobile-redesign.css?v=1.0.3">
   <style>
     /* 100% Standalone Cross-Engine Clear Button Elimination (NEVER comma-separated to prevent syntax dropping) */
     input::-webkit-search-cancel-button {
@@ -245,7 +246,7 @@
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
               <span class="about-title">About</span>
             </div>
-            <span class="about-version-badge" id="about-app-version">v1.1.20</span>
+            <span class="about-version-badge" id="about-app-version">v1.1.21</span>
           </div>
           <div class="about-credit">Made By Deverick A.K.A Bizlee</div>
         </div>
@@ -312,6 +313,20 @@
           <div class="ytm-profile-badge" id="btn-profile-badge" title="Profil Akun" onclick="window.app.handleProfileBadgeClick()">
             <img id="top-user-avatar" src="/images/avatar.jpg" alt="User Avatar" class="ytm-avatar-circle" onerror="this.src='/images/avatar.jpg'">
             <div id="google-verified-badge" class="google-badge-dot" title="Akun Google Terhubung" style="display: none;"></div>
+          </div>
+
+          <!-- Custom Frameless Desktop Window Controls (Electron only) -->
+          <div class="electron-window-controls" id="electron-window-controls" aria-label="Kontrol Jendela">
+            <button type="button" class="win-ctrl-btn win-ctrl-min" id="btn-win-minimize" title="Minimize" aria-label="Minimize">
+              <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="6" x2="10" y2="6"/></svg>
+            </button>
+            <button type="button" class="win-ctrl-btn win-ctrl-max" id="btn-win-maximize" title="Maximize" aria-label="Maximize">
+              <svg class="icon-win-max" viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.75" y="1.75" width="8.5" height="8.5" rx="1.2"/></svg>
+              <svg class="icon-win-restore" viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.75" y="3.5" width="6.75" height="6.75" rx="1"/><path d="M3.5 3.5V2.5A1 1 0 0 1 4.5 1.5h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H8.5"/></svg>
+            </button>
+            <button type="button" class="win-ctrl-btn win-ctrl-close" id="btn-win-close" title="Close" aria-label="Close">
+              <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2.5" y1="2.5" x2="9.5" y2="9.5"/><line x1="9.5" y1="2.5" x2="2.5" y2="9.5"/></svg>
+            </button>
           </div>
         </div>
       </header>
@@ -473,7 +488,7 @@
                     <textarea id="suno-prompt" class="form-textarea" placeholder="Tulis lirik Anda sendiri atau beri tahu AI: 'Lagu tenang tentang kenangan masa kecil di tengah hujan rintik-rintik...'"></textarea>
                   </div>
 
-                  <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; margin-bottom: 16px;">
+                  <div class="suno-engine-status-card" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; margin-bottom: 16px;">
                     <div style="display: flex; align-items: center; gap: 10px;">
                       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#10b981" stroke-width="2"><path d="M12 2v20M17 5v14M7 9v6M2 12v0M22 12v0"/></svg>
                       <div>
@@ -578,7 +593,7 @@
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 + Impor Playlist & Album
               </button>
-              <button class="btn-sidebar-action" onclick="document.getElementById('modal-create-playlist').classList.add('active')" style="font-size: 0.82rem;">
+              <button class="btn-sidebar-action playlist-create-btn" onclick="document.getElementById('modal-create-playlist').classList.add('active')" style="font-size: 0.82rem;">
                 + Buat Playlist Baru
               </button>
             </div>
@@ -1835,8 +1850,8 @@
   <script src="/js/audio-engine.js?v=4.74.0"></script>
   <script src="/js/yt-player.js?v=4.73.1"></script>
   <script src="/js/taste-engine.js?v=4.73.0"></script>
-  <script src="/js/suno-studio.js?v=4.69.0"></script>
+  <script src="/js/suno-studio.js?v=4.70.0"></script>
   <script src="/js/motion-lyrics.js?v=1.0.3"></script>
-  <script src="/js/app.js?v=4.80.5"></script>
+  <script src="/js/app.js?v=4.82.1"></script>
 </body>
 </html>

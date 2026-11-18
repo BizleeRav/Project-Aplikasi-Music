@@ -25,6 +25,7 @@ class SunoStudio {
     this.isLoadingLibrary = false;
     this.creations = [];
     this.librarySearchQuery = '';
+    this._lastLibrarySyncAt = 0;
 
     setTimeout(() => {
       this.init();
@@ -186,6 +187,7 @@ class SunoStudio {
     if (isConnected) {
       card.classList.add('connected');
       card.classList.remove('disconnected');
+      card.classList.add('has-disconnect');
       if (dot) dot.className = isLowCredit ? 'status-dot warning' : 'status-dot active';
 
       if (userNameEl) {
@@ -219,7 +221,7 @@ class SunoStudio {
       if (formEngineSublabel) formEngineSublabel.textContent = isOfficial ? `Generasi lagu AI resmi Suno • ${info.credits || '50 kredit'} aktif` : 'Generasi audio AI resmi • Sesuai prompt & lirik Anda';
     } else if (isAuto) {
       card.classList.add('connected');
-      card.classList.remove('disconnected');
+      card.classList.remove('disconnected', 'has-disconnect');
       if (dot) dot.className = 'status-dot active';
 
       if (userNameEl) {
@@ -242,7 +244,7 @@ class SunoStudio {
         disconnectBtn.style.display = 'none';
       }
     } else {
-      card.classList.remove('connected');
+      card.classList.remove('connected', 'has-disconnect');
       card.classList.add('disconnected');
       if (dot) dot.className = 'status-dot offline';
 
@@ -708,7 +710,9 @@ class SunoStudio {
     }
 
     if (tabName === 'library') {
-      this.fetchCreations(this.currentPage, false);
+      const shouldAutoSync = this.getActiveProvider() === 'suno_official' &&
+        (Date.now() - (this._lastLibrarySyncAt || 0)) > 5000;
+      this.fetchCreations(this.currentPage, false, shouldAutoSync);
     } else if (tabName === 'create') {
       this.renderRecentPreview();
     }
@@ -743,6 +747,9 @@ class SunoStudio {
       const data = await res.json();
 
       if (data.success && Array.isArray(data.clips)) {
+        if (forceSync) {
+          this._lastLibrarySyncAt = Date.now();
+        }
         const cleanServerClips = data.clips.filter(c => c && !this.isPreviewTrack(c));
         const stored = localStorage.getItem('aurasound_local_creations');
         let localList = stored ? JSON.parse(stored) : [];
@@ -1482,6 +1489,9 @@ class SunoStudio {
       console.error('Suno generation error:', err);
       if (window.app && window.app.showToast) {
         window.app.showToast(err.message, 'error');
+      }
+      if (activeProvider === 'suno_official') {
+        this.fetchCreations(1, false, true).catch(() => {});
       }
     } finally {
       this.isGenerating = false;

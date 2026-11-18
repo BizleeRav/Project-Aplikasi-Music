@@ -13264,3 +13264,91 @@ body.music-playing .cinema-turntable-arm {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   Custom Electron Frameless Window Controls & Drag Region
+   ========================================================================== */
+.electron-window-controls {
+  display: none;
+}
+
+body.electron-frameless .sidebar .brand,
+body.electron-frameless .top-bar {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+body.electron-frameless .top-bar {
+  padding-right: 16px;
+}
+
+body.electron-frameless .top-bar .search-box-wrapper,
+body.electron-frameless .top-bar .search-box-wrapper *,
+body.electron-frameless .top-bar .top-bar-right,
+body.electron-frameless .top-bar .top-bar-right *,
+body.electron-frameless .top-bar .mobile-top-brand,
+body.electron-frameless .top-bar button,
+body.electron-frameless .top-bar input,
+body.electron-frameless .top-bar a {
+  -webkit-app-region: no-drag;
+}
+
+body.electron-frameless .top-bar .search-box-wrapper {
+  min-width: 160px;
+}
+
+body.electron-frameless .top-bar .top-bar-right {
+  flex-shrink: 0;
+}
+
+body.electron-frameless .electron-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.win-ctrl-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease, transform 0.12s ease;
+  padding: 0;
+}
+
+.win-ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.win-ctrl-btn:active {
+  transform: scale(0.94);
+}
+
+.win-ctrl-close:hover {
+  background: rgba(239, 68, 68, 0.88);
+  border-color: rgba(248, 113, 113, 0.6);
+  color: #ffffff;
+}
+
+.win-ctrl-max .icon-win-restore {
+  display: none;
+}
+
+body.electron-maximized .win-ctrl-max .icon-win-max {
+  display: none;
+}
+
+body.electron-maximized .win-ctrl-max .icon-win-restore {
+  display: block;
+}

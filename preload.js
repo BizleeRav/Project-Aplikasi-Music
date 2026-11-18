@@ -12,5 +12,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateDownloaded: (callback) => {
     ipcRenderer.on('update-downloaded', (_event, info) => callback(info));
   },
-  restartAndInstallUpdate: () => ipcRenderer.send('restart-app')
+  restartAndInstallUpdate: () => ipcRenderer.send('restart-app'),
+  minimizeWindow: () => ipcRenderer.send('window-minimize'),
+  maximizeWindow: () => ipcRenderer.send('window-maximize-toggle'),
+  closeWindow: () => ipcRenderer.send('window-close'),
+  isWindowMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+  onWindowMaximizedChange: (callback) => {
+    ipcRenderer.on('window-maximized-changed', (_event, isMaximized) => callback(isMaximized));
+  }
 });

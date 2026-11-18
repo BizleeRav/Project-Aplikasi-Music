@@ -116,6 +116,7 @@ async function createMainWindow() {
     height: 860,
     minWidth: 960,
     minHeight: 640,
+    frame: false,
     title: 'AuraSound Music Hub',
     backgroundColor: '#070a12',
     icon: path.join(__dirname, 'public', 'icons', 'icon.png'),
@@ -127,6 +128,17 @@ async function createMainWindow() {
     }
   });
   logCrash('mainWindow created successfully!');
+
+  mainWindow.on('maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximized-changed', true);
+    }
+  });
+  mainWindow.on('unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximized-changed', false);
+    }
+  });
 
   // Clean User-Agent globally and on window so no service detects Electron/AuraSound
   try {
@@ -234,6 +246,26 @@ function getCleanNativeUserAgent() {
   return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome || '134.0.0.0'} Safari/537.36`;
 }
 global.getCleanNativeUserAgent = getCleanNativeUserAgent;
+
+// IPC: Custom Frameless Window Controls (Minimize, Maximize/Restore, Close)
+ipcMain.on('window-minimize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+});
+
+ipcMain.on('window-maximize-toggle', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+});
+
+ipcMain.handle('window-is-maximized', () => {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isMaximized());
+});
 
 // IPC: Automatic Suno Login Window & Token Extraction (In-App Google OAuth Anti-Block!)
 ipcMain.handle('open-suno-login', async () => {
@@ -515,7 +547,8 @@ global.getFreshSunoToken = async () => {
       try {
         const parts = jwt.split('.');
         if (parts.length >= 2) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+          const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
           return Boolean(payload?.exp && (payload.exp - 10) > Date.now() / 1000);
         }
       } catch (e) {}
@@ -542,6 +575,17 @@ global.getFreshSunoToken = async () => {
         const warmTok = await global.getWarmEngineSessionToken();
         if (isJwtNonExpired(warmTok)) {
           token = warmTok;
+          await sunoSession.cookies.set({
+            url: 'https://suno.com',
+            name: '__session',
+            value: warmTok,
+            domain: '.suno.com',
+            path: '/',
+            secure: true,
+            httpOnly: false,
+            sameSite: 'lax'
+          }).catch(() => {});
+          await sunoSession.cookies.flushStore().catch(() => {});
         }
       } catch (e) {}
     }
