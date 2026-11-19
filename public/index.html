@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/icons/icon.png">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.81.4">
+  <link rel="stylesheet" href="/css/style.css?v=4.81.5">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
   <link rel="stylesheet" href="/css/mobile-redesign.css?v=1.0.3">
   <style>
@@ -1570,11 +1570,68 @@
           <span class="vis-toggle-label">Visualizer: ON</span>
         </button>
 
+        <!-- Ambient Mode Header Controls (Desktop Only, Visible when Ambient is active) -->
+        <div class="cinema-ambient-header-pills" id="cinema-ambient-header-pills" style="display: none;">
+          <button id="btn-ambient-to-motion" class="cinema-motion-chip" type="button" title="Beralih ke Mode Lirik Motion">
+            <span class="motion-chip-label">Motion</span>
+          </button>
+          <button id="btn-exit-cinema-ambient" class="cinema-motion-chip cinema-ambient-chip active" type="button" title="Keluar dari Mode Ambient">
+            <span class="motion-chip-label">Ambient</span>
+          </button>
+        </div>
+
         <button class="cinema-close-btn" id="btn-close-cinema" title="Tutup Studio Cinema (ESC)">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
     </header>
+
+    <!-- Ambient Mode Control Bar & Fullscreen Weyv Stage (Desktop / Laptop Only) -->
+    <div id="cinema-ambient-bar" class="cinema-ambient-bar" style="display: none;" aria-label="Pengaturan Mode Ambient">
+      <div class="amb-bar-group" role="group" aria-label="Animasi Lirik">
+        <span class="amb-bar-label">Lirik</span>
+        <button type="button" class="amb-pill active" data-amb-lyric="stack">Stack</button>
+        <button type="button" class="amb-pill" data-amb-lyric="rise">Rise</button>
+        <button type="button" class="amb-pill" data-amb-lyric="pop">Pop</button>
+        <button type="button" class="amb-pill" data-amb-lyric="karaoke">Karaoke</button>
+        <button type="button" class="amb-pill" data-amb-lyric="scatter">Scatter</button>
+      </div>
+      <span class="amb-bar-sep"></span>
+      <div class="amb-bar-group" role="group" aria-label="Visualizer">
+        <span class="amb-bar-label">Visual</span>
+        <button type="button" class="amb-pill active" data-amb-viz="ring">Ring</button>
+        <button type="button" class="amb-pill" data-amb-viz="aurora">Aurora</button>
+        <button type="button" class="amb-pill" data-amb-viz="orb">Orb</button>
+        <button type="button" class="amb-pill" data-amb-viz="waterfall">Waterfall</button>
+        <button type="button" class="amb-pill" data-amb-viz="terrain">Terrain</button>
+        <button type="button" class="amb-pill" data-amb-viz="scope">Scope</button>
+        <button type="button" class="amb-pill" data-amb-viz="mirror">Mirror</button>
+      </div>
+      <span class="amb-bar-sep"></span>
+      <div class="amb-bar-group amb-bar-swatches" role="group" aria-label="Tema Warna">
+        <button type="button" class="amb-swatch amb-swatch-mood active" data-amb-theme="mood" title="Mood Sync (Otomatis dari Cover Lagu)">Mood</button>
+        <button type="button" class="amb-swatch" data-amb-theme="nebula" title="Nebula" style="--sw: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);"></button>
+        <button type="button" class="amb-swatch" data-amb-theme="ember" title="Ember" style="--sw: linear-gradient(135deg, #f59e0b, #f43f5e, #c026d3);"></button>
+        <button type="button" class="amb-swatch" data-amb-theme="mint" title="Mint" style="--sw: linear-gradient(135deg, #22d3ee, #2dd4bf, #a3e635);"></button>
+        <button type="button" class="amb-swatch" data-amb-theme="ice" title="Ice" style="--sw: linear-gradient(135deg, #93c5fd, #60a5fa, #818cf8);"></button>
+        <button type="button" class="amb-swatch" data-amb-theme="sunset" title="Sunset" style="--sw: linear-gradient(135deg, #fbbf24, #fb7185, #8b5cf6);"></button>
+        <button type="button" class="amb-swatch" data-amb-theme="mono" title="Mono" style="--sw: linear-gradient(135deg, #f8fafc, #cbd5e1, #94a3b8);"></button>
+      </div>
+      <span class="amb-bar-sep"></span>
+      <button type="button" id="btn-ambient-clock-toggle" class="amb-pill active" title="Tampilkan / Sembunyikan Jam Desktop">Clock</button>
+      <button type="button" id="btn-ambient-romaji-toggle" class="amb-pill active" style="display: none;" title="Tampilkan / Sembunyikan Romaji">文A</button>
+    </div>
+
+    <div id="cinema-ambient-stage" class="cinema-ambient-stage" style="display: none;">
+      <div id="cinema-ambient-cover-bg" class="cinema-ambient-cover-bg"></div>
+      <div class="cinema-ambient-vignette"></div>
+      <canvas id="cinema-ambient-bg-canvas" class="cinema-ambient-bg-canvas"></canvas>
+      <div id="cinema-ambient-clock" class="cinema-ambient-clock"></div>
+      <div id="cinema-ambient-lyrics" class="cinema-ambient-lyrics"></div>
+      <div id="cinema-ambient-wheel-wrap" class="cinema-ambient-wheel-wrap" title="Lagu Sekarang & Selanjutnya (Klik lagu di antrean untuk memutar)">
+        <canvas id="cinema-ambient-wheel-canvas" class="cinema-ambient-wheel-canvas"></canvas>
+      </div>
+    </div>
 
     <!-- Cinema Main Stage -->
     <div class="cinema-stage">
@@ -1625,6 +1682,11 @@
               <!-- Motion Lyrics Mode Toggle (Clean Text Pill) -->
               <button id="btn-toggle-cinema-motion" class="cinema-motion-chip" type="button" title="Beralih ke Mode Lirik Motion">
                 <span class="motion-chip-label">Motion</span>
+              </button>
+
+              <!-- Ambient Mode Toggle (Desktop / Laptop Only, Weyv-inspired Stage) -->
+              <button id="btn-toggle-cinema-ambient" class="cinema-motion-chip cinema-ambient-chip" type="button" title="Beralih ke Mode Ambient (Khusus Laptop/Desktop)">
+                <span class="motion-chip-label">Ambient</span>
               </button>
 
               <!-- Single Romaji Toggle Chip (Better Lyrics Style) -->
@@ -1856,6 +1918,7 @@
   <script src="/js/taste-engine.js?v=4.73.0"></script>
   <script src="/js/suno-studio.js?v=4.70.2"></script>
   <script src="/js/motion-lyrics.js?v=1.0.6"></script>
-  <script src="/js/app.js?v=4.82.4"></script>
+  <script src="/js/ambient-mode.js?v=1.0.0"></script>
+  <script src="/js/app.js?v=4.82.5"></script>
 </body>
 </html>

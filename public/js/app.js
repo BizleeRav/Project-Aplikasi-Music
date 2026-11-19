@@ -322,6 +322,34 @@ class App {
           onSeek: (t) => this.seekToTimestamp(t)
         })
       : null;
+
+    // Cinema Ambient Stage Mode (Desktop / Laptop Only, Weyv-inspired)
+    this.btnToggleCinemaAmbient = document.getElementById('btn-toggle-cinema-ambient');
+    this.btnExitCinemaAmbient = document.getElementById('btn-exit-cinema-ambient');
+    this.btnAmbientToMotion = document.getElementById('btn-ambient-to-motion');
+    this.cinemaAmbientHeaderPills = document.getElementById('cinema-ambient-header-pills');
+    this.cinemaAmbientBar = document.getElementById('cinema-ambient-bar');
+    this.cinemaAmbientStage = document.getElementById('cinema-ambient-stage');
+    this.btnAmbientClockToggle = document.getElementById('btn-ambient-clock-toggle');
+    this.btnAmbientRomajiToggle = document.getElementById('btn-ambient-romaji-toggle');
+    this.isCinemaAmbientMode = (typeof window !== 'undefined' && window.innerWidth > 768)
+      && localStorage.getItem('aurasound_cinema_ambient_mode') === 'true';
+    this.ambientStageEngine = (typeof window.AmbientStageEngine === 'function')
+      ? new window.AmbientStageEngine({
+          stageEl: this.cinemaAmbientStage,
+          coverBgEl: document.getElementById('cinema-ambient-cover-bg'),
+          bgCanvas: document.getElementById('cinema-ambient-bg-canvas'),
+          wheelCanvas: document.getElementById('cinema-ambient-wheel-canvas'),
+          lyricsEl: document.getElementById('cinema-ambient-lyrics'),
+          clockEl: document.getElementById('cinema-ambient-clock'),
+          getPlaybackTime: () => this.getCurrentPlaybackTime(),
+          getPlaybackDuration: () => this.getAmbientTrackDuration(),
+          getIsPlaying: () => this.isPlayingState(),
+          getQueueSongs: () => this.getAmbientQueueTracks(),
+          onSelectSong: (song) => this.playAmbientWheelSong(song),
+          onSeek: (t) => this.seekToTimestamp(t)
+        })
+      : null;
   }
 
   checkCleanReset() {
@@ -1959,7 +1987,80 @@ class App {
           showRomaji: this.isRomajiEnabled
         });
       }
+      if (this.isCinemaAmbientMode) {
+        if (window.innerWidth <= 768) {
+          this.applyCinemaMotionUI();
+        } else if (this.ambientStageEngine) {
+          this.ambientStageEngine.resizeCanvases();
+        }
+      }
     });
+
+    // Cinema Ambient Stage Mode Controls (Desktop Only)
+    if (this.btnToggleCinemaAmbient) {
+      this.btnToggleCinemaAmbient.addEventListener('click', () => this.toggleCinemaAmbientMode(true));
+    }
+    if (this.btnExitCinemaAmbient) {
+      this.btnExitCinemaAmbient.addEventListener('click', () => this.toggleCinemaAmbientMode(false));
+    }
+    if (this.btnAmbientToMotion) {
+      this.btnAmbientToMotion.addEventListener('click', () => {
+        this.isCinemaAmbientMode = false;
+        try { localStorage.setItem('aurasound_cinema_ambient_mode', 'false'); } catch (e) {}
+        this.isCinemaMotionMode = true;
+        try { localStorage.setItem('aurasound_cinema_motion_mode', 'true'); } catch (e) {}
+        this.applyCinemaMotionUI();
+        if (this.motionLyricsEngine) {
+          this.motionLyricsEngine.setTrack(this.currentTrack, this.currentLyricsData);
+          if (this.isPlaying && !this._lyricsSyncRaf && !this._isAppInBackground) {
+            this.startLyricsSyncLoop();
+          }
+          requestAnimationFrame(() => {
+            if (!this.motionLyricsEngine) return;
+            this.motionLyricsEngine.resizeCanvas();
+            this.updateActiveLyricsLine(this.getCurrentPlaybackTime());
+          });
+        }
+      });
+    }
+    document.querySelectorAll('[data-amb-lyric]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-amb-lyric');
+        if (id && this.ambientStageEngine) {
+          this.ambientStageEngine.setLyricStyle(id);
+          this.syncAmbientControlPills();
+        }
+      });
+    });
+    document.querySelectorAll('[data-amb-viz]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-amb-viz');
+        if (id && this.ambientStageEngine) {
+          this.ambientStageEngine.setVizStyle(id);
+          this.syncAmbientControlPills();
+        }
+      });
+    });
+    document.querySelectorAll('[data-amb-theme]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-amb-theme');
+        if (id && this.ambientStageEngine) {
+          this.ambientStageEngine.setTheme(id);
+          this.syncAmbientControlPills();
+        }
+      });
+    });
+    if (this.btnAmbientClockToggle) {
+      this.btnAmbientClockToggle.addEventListener('click', () => {
+        if (this.ambientStageEngine) {
+          this.ambientStageEngine.toggleClock();
+          this.syncAmbientControlPills();
+        }
+      });
+    }
+    if (this.btnAmbientRomajiToggle) {
+      this.btnAmbientRomajiToggle.addEventListener('click', () => this.toggleRomaji());
+    }
 
     if (this.btnLyricsRefresh) {
       this.btnLyricsRefresh.addEventListener('click', () => {
@@ -2789,6 +2890,9 @@ class App {
             showRomaji: this.isRomajiEnabled
           });
         }
+        if (this.isCinemaAmbientMode && this.ambientStageEngine) {
+          this.ambientStageEngine.resizeCanvases();
+        }
       }, 420);
 
       // Sync active DSP preset label & buttons
@@ -2836,6 +2940,9 @@ class App {
     if (!this.cinemaModal) return;
     this.cinemaModal.classList.remove('active');
     document.body.classList.remove('cinema-mode-active');
+    if (this.ambientStageEngine) {
+      this.ambientStageEngine.stop();
+    }
     const cinemaEqDrawer = document.getElementById('cinema-eq-drawer');
     if (cinemaEqDrawer) cinemaEqDrawer.classList.remove('active');
 
@@ -2901,10 +3008,21 @@ class App {
         showRomaji: this.isRomajiEnabled
       });
     }
+    if (this.ambientStageEngine) {
+      this.ambientStageEngine.showRomaji = this.isRomajiEnabled;
+      this.ambientStageEngine._lastLyricsSig = '';
+    }
+    if (this.btnAmbientRomajiToggle) {
+      this.btnAmbientRomajiToggle.classList.toggle('active', this.isRomajiEnabled);
+    }
   }
 
   toggleCinemaMotionMode() {
     this.isCinemaMotionMode = !this.isCinemaMotionMode;
+    if (this.isCinemaMotionMode && this.isCinemaAmbientMode) {
+      this.isCinemaAmbientMode = false;
+      try { localStorage.setItem('aurasound_cinema_ambient_mode', 'false'); } catch (e) {}
+    }
     try {
       localStorage.setItem('aurasound_cinema_motion_mode', String(this.isCinemaMotionMode));
     } catch (e) {}
@@ -2947,6 +3065,7 @@ class App {
       localStorage.setItem('aurasound_cinema_motion_full', String(this.isMotionFullStage));
     } catch (e) {}
     this.applyCinemaMotionUI();
+
     if (this.isCinemaMotionMode && this.motionLyricsEngine) {
       setTimeout(() => {
         if (!this.motionLyricsEngine) return;
@@ -2958,15 +3077,150 @@ class App {
     }
   }
 
+  toggleCinemaAmbientMode(forceState) {
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) return;
+    const nextState = typeof forceState === 'boolean' ? forceState : !this.isCinemaAmbientMode;
+    this.isCinemaAmbientMode = nextState;
+    if (nextState && this.isCinemaMotionMode) {
+      this.isCinemaMotionMode = false;
+      try { localStorage.setItem('aurasound_cinema_motion_mode', 'false'); } catch (e) {}
+    }
+    try {
+      localStorage.setItem('aurasound_cinema_ambient_mode', String(this.isCinemaAmbientMode));
+    } catch (e) {}
+    this.applyCinemaMotionUI();
+    if (this.isCinemaAmbientMode && this.ambientStageEngine) {
+      this.ambientStageEngine.showRomaji = this.isRomajiEnabled;
+      this.ambientStageEngine.setTrack(this.currentTrack, this.currentLyricsData);
+      requestAnimationFrame(() => {
+        if (this.ambientStageEngine && this.isCinemaAmbientMode) {
+          this.ambientStageEngine.resizeCanvases();
+          this.ambientStageEngine.start();
+        }
+      });
+    } else if (this.ambientStageEngine) {
+      this.ambientStageEngine.stop();
+    }
+  }
+
+  syncAmbientControlPills() {
+    if (!this.ambientStageEngine) return;
+    const eng = this.ambientStageEngine;
+    document.querySelectorAll('[data-amb-lyric]').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-amb-lyric') === eng.lyricStyle);
+    });
+    document.querySelectorAll('[data-amb-viz]').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-amb-viz') === eng.vizStyle);
+    });
+    document.querySelectorAll('[data-amb-theme]').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-amb-theme') === eng.themeId);
+    });
+    if (this.btnAmbientClockToggle) {
+      this.btnAmbientClockToggle.classList.toggle('active', Boolean(eng.showClock));
+    }
+    if (this.btnAmbientRomajiToggle) {
+      this.btnAmbientRomajiToggle.style.display = this.currentHasRomaji ? 'inline-flex' : 'none';
+      this.btnAmbientRomajiToggle.classList.toggle('active', Boolean(this.isRomajiEnabled));
+    }
+  }
+
+  getAmbientTrackDuration() {
+    const isNative = (this.currentAudioMode === 'native' || this.currentTrack?.type === 'suno' || this.currentTrack?.type === 'local');
+    if (isNative && this.nativeAudio && isFinite(this.nativeAudio.duration) && this.nativeAudio.duration > 0) {
+      return this.nativeAudio.duration;
+    }
+    if (!isNative && window.ytPlayer?.player && typeof window.ytPlayer.player.getDuration === 'function') {
+      try {
+        const d = window.ytPlayer.player.getDuration();
+        if (isFinite(d) && d > 0) return d;
+      } catch (e) {}
+    }
+    return Number(this.currentTrack?.seconds) || this.parseDuration(this.currentTrack?.duration) || 180;
+  }
+
+  getAmbientQueueTracks() {
+    const out = [];
+    if (this.currentTrack) {
+      out.push({
+        id: this.currentTrack.id || this.currentTrack.videoId || '',
+        title: this.currentTrack.title || 'AuraSound Music',
+        artist: this.cleanArtistName(this.currentTrack.artist || 'AuraSound'),
+        thumbnail: this.currentTrack.thumbnail || '/images/supermix.jpg',
+        queueIdx: this.queueIndex,
+        key: 'now_' + (this.currentTrack.id || this.currentTrack.title || ''),
+        now: true
+      });
+    }
+    const q = Array.isArray(this.queue) ? this.queue : [];
+    if (q.length > 1) {
+      const baseIdx = (typeof this.queueIndex === 'number' && this.queueIndex >= 0 && this.queueIndex < q.length) ? this.queueIndex : 0;
+      const limit = Math.min(3, q.length - 1);
+      for (let offset = 1; offset <= limit; offset++) {
+        const idx = (baseIdx + offset) % q.length;
+        const item = q[idx];
+        if (!item) continue;
+        out.push({
+          id: item.id || item.videoId || '',
+          title: item.title || 'Track',
+          artist: this.cleanArtistName(item.artist || ''),
+          thumbnail: item.thumbnail || '/images/supermix.jpg',
+          queueIdx: idx,
+          key: 'q_' + idx + '_' + (item.id || item.title || ''),
+          now: false
+        });
+      }
+    }
+    return out;
+  }
+
+  playAmbientWheelSong(song) {
+    if (!song || song.now) return;
+    const q = Array.isArray(this.queue) ? this.queue : [];
+    if (typeof song.queueIdx === 'number' && q[song.queueIdx]) {
+      this.queueIndex = song.queueIdx;
+      const nextTrack = q[this.queueIndex];
+      this.playTrack(nextTrack);
+      if (this.queueMode === 'single-radio' && q.length - 1 - this.queueIndex <= 2 && nextTrack && nextTrack.type !== 'suno' && nextTrack.type !== 'local') {
+        this.fetchAndPopulateRelatedQueue(nextTrack, this._radioFetchSeq, { extend: true });
+      }
+    }
+  }
+
   applyCinemaMotionUI() {
+    const isDesktop = typeof window === 'undefined' || window.innerWidth > 768;
+    const cinemaOpen = Boolean(this.cinemaModal && this.cinemaModal.classList.contains('active'));
+    const ambientOn = isDesktop && Boolean(this.isCinemaAmbientMode);
     const hasLyrics = Array.isArray(this.currentLyricsData) && this.currentLyricsData.length > 0;
-    const motionOn = Boolean(this.isCinemaMotionMode);
+    const motionOn = !ambientOn && Boolean(this.isCinemaMotionMode);
     const showStage = motionOn && hasLyrics;
 
     if (this.cinemaModal) {
+      this.cinemaModal.classList.toggle('cinema-ambient-active', ambientOn);
       this.cinemaModal.classList.toggle('cinema-motion-active', motionOn);
       this.cinemaModal.classList.toggle('cinema-motion-stage-open', showStage);
       this.cinemaModal.classList.toggle('cinema-motion-full', motionOn && this.isMotionFullStage);
+    }
+    if (this.btnToggleCinemaAmbient) {
+      this.btnToggleCinemaAmbient.classList.toggle('active', ambientOn);
+      this.btnToggleCinemaAmbient.setAttribute('aria-pressed', String(ambientOn));
+    }
+    if (this.cinemaAmbientHeaderPills) {
+      this.cinemaAmbientHeaderPills.style.display = ambientOn ? 'inline-flex' : 'none';
+    }
+    if (this.cinemaAmbientBar) {
+      this.cinemaAmbientBar.style.display = ambientOn ? 'flex' : 'none';
+    }
+    if (this.cinemaAmbientStage) {
+      this.cinemaAmbientStage.style.display = ambientOn ? 'block' : 'none';
+    }
+    if (this.ambientStageEngine) {
+      if (ambientOn && cinemaOpen) {
+        this.ambientStageEngine.showRomaji = this.isRomajiEnabled;
+        this.syncAmbientControlPills();
+        this.ambientStageEngine.start();
+      } else {
+        this.ambientStageEngine.stop();
+      }
     }
     if (this.btnToggleCinemaMotion) {
       this.btnToggleCinemaMotion.classList.toggle('active', motionOn);
@@ -3068,6 +3322,9 @@ class App {
         svg.setAttribute('fill', isFav ? '#10b981' : 'none');
         svg.setAttribute('stroke', isFav ? '#10b981' : 'currentColor');
       }
+    }
+    if (this.ambientStageEngine) {
+      this.ambientStageEngine.setTrack(this.currentTrack, this.currentLyricsData);
     }
     this.renderCinemaLyrics(this.currentTrack);
   }
@@ -3891,6 +4148,11 @@ class App {
     if (this.motionLyricsEngine) {
       this.motionLyricsEngine.setTrack(this.currentTrack, lines);
     }
+    if (this.ambientStageEngine) {
+      this.ambientStageEngine.showRomaji = this.isRomajiEnabled;
+      this.ambientStageEngine.setTrack(this.currentTrack, lines);
+      this.syncAmbientControlPills();
+    }
     this.applyCinemaMotionUI();
   }
 
@@ -4065,6 +4327,15 @@ class App {
         }
         low = mid + 1;
       }
+    }
+
+    if (this.isCinemaAmbientMode && window.innerWidth > 768 && this.ambientStageEngine) {
+      if (activeIdx !== this.activeLyricIdx) {
+        this.activeLyricIdx = activeIdx;
+        this._lastLyricProgressHalf = false;
+        this.syncLyricsToMediaNotification(syncTime);
+      }
+      return;
     }
 
     if (this.isCinemaMotionMode && this.motionLyricsEngine) {
