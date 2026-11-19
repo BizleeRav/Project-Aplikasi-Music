@@ -2706,8 +2706,26 @@ class App {
     const cardSelectors = '.aura-spotlight-card, .aura-bento-card, .aura-vinyl-card, .aura-cinema-card, .aura-mix-modern-card, .aura-resonance-tile, .modern-card, .quick-card, .explore-genre-card';
     let currentTiltedCard = null;
     let tiltRaf = null;
+    let isScrollingView = false;
+    let scrollPauseTimer = null;
+
+    const viewsContainer = document.querySelector('.views-container');
+    if (viewsContainer) {
+      viewsContainer.addEventListener('scroll', () => {
+        isScrollingView = true;
+        if (currentTiltedCard) {
+          currentTiltedCard.style.transform = '';
+          currentTiltedCard.style.removeProperty('--glare-x');
+          currentTiltedCard.style.removeProperty('--glare-y');
+          currentTiltedCard = null;
+        }
+        clearTimeout(scrollPauseTimer);
+        scrollPauseTimer = setTimeout(() => { isScrollingView = false; }, 160);
+      }, { passive: true });
+    }
 
     document.addEventListener('mousemove', (e) => {
+      if (isScrollingView) return;
       const card = e.target.closest(cardSelectors);
       if (!card) {
         if (currentTiltedCard) {
@@ -4986,6 +5004,9 @@ class App {
 
   switchTab(tabName) {
     this.activeTab = tabName;
+    if (this.cinemaModal && !this.cinemaModal.classList.contains('active')) {
+      document.body.classList.remove('cinema-mode-active');
+    }
     if (window.innerWidth <= 768) {
       const mc = document.querySelector('.main-content');
       if (mc) mc.scrollTop = 0;
