@@ -331,6 +331,7 @@ class App {
     this.cinemaAmbientBar = document.getElementById('cinema-ambient-bar');
     this.cinemaAmbientStage = document.getElementById('cinema-ambient-stage');
     this.btnAmbientClockToggle = document.getElementById('btn-ambient-clock-toggle');
+    this.btnAmbientEdgeToggle = document.getElementById('btn-ambient-edge-toggle');
     this.btnAmbientRomajiToggle = document.getElementById('btn-ambient-romaji-toggle');
     this.isCinemaAmbientMode = (typeof window !== 'undefined' && window.innerWidth > 768)
       && localStorage.getItem('aurasound_cinema_ambient_mode') === 'true';
@@ -2058,6 +2059,14 @@ class App {
         }
       });
     }
+    if (this.btnAmbientEdgeToggle) {
+      this.btnAmbientEdgeToggle.addEventListener('click', () => {
+        if (this.ambientStageEngine) {
+          this.ambientStageEngine.toggleEdgeGlow();
+          this.syncAmbientControlPills();
+        }
+      });
+    }
     if (this.btnAmbientRomajiToggle) {
       this.btnAmbientRomajiToggle.addEventListener('click', () => this.toggleRomaji());
     }
@@ -3135,6 +3144,9 @@ class App {
     });
     if (this.btnAmbientClockToggle) {
       this.btnAmbientClockToggle.classList.toggle('active', Boolean(eng.showClock));
+    }
+    if (this.btnAmbientEdgeToggle) {
+      this.btnAmbientEdgeToggle.classList.toggle('active', Boolean(eng.showEdgeGlow));
     }
     if (this.btnAmbientRomajiToggle) {
       this.btnAmbientRomajiToggle.style.display = this.currentHasRomaji ? 'inline-flex' : 'none';

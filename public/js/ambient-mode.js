@@ -278,6 +278,7 @@
       this.vizStyle = this.loadPref('aurasound_ambient_viz_style', VIZ_STYLES, 'ring');
       this.themeId = this.loadPref('aurasound_ambient_theme', THEMES, 'mood');
       this.showClock = this.loadBoolPref('aurasound_ambient_clock', true);
+      this.showEdgeGlow = this.loadBoolPref('aurasound_ambient_edge_glow', true);
       this.showRomaji = true;
 
       this.track = null;
@@ -406,6 +407,12 @@
         this.clockEl.style.display = this.showClock ? '' : 'none';
       }
       return this.showClock;
+    }
+
+    toggleEdgeGlow() {
+      this.showEdgeGlow = !this.showEdgeGlow;
+      try { localStorage.setItem('aurasound_ambient_edge_glow', String(this.showEdgeGlow)); } catch (e) {}
+      return this.showEdgeGlow;
     }
 
     getActiveTheme() {
@@ -746,6 +753,92 @@
           this.drawBgRing(f);
           break;
       }
+
+      if (this.showEdgeGlow) {
+        this.drawEdgeGlow(f);
+      }
+    }
+
+    drawEdgeGlow(f) {
+      const { ctx, width: w, height: h, theme, bass, mid, treble, level, beat, time } = f;
+      const t = time * 0.00075;
+      const pulse = Math.min(1, 0.28 + bass * 0.48 + beat * 0.44 + level * 0.18);
+      const topDepth = Math.round(76 + bass * 68 + beat * 46);
+      const sideDepth = Math.round(52 + mid * 44 + beat * 30);
+      const botDepth = Math.round(42 + bass * 34 + beat * 24);
+
+      const c0 = theme.stops[0];
+      const c1 = theme.stops[1] || theme.stops[0];
+      const c2 = theme.stops[2] || theme.stops[1] || theme.stops[0];
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+
+      // 1. Top edge atmospheric light spill (strongest, like Weyv screen glow)
+      const topGrad = ctx.createLinearGradient(0, 0, 0, topDepth);
+      topGrad.addColorStop(0, rgba('#ffffff', 0.22 + beat * 0.22));
+      topGrad.addColorStop(0.14, rgba(theme.glow, 0.36 * pulse + 0.14));
+      topGrad.addColorStop(0.45, rgba(c1, 0.16 * pulse));
+      topGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = topGrad;
+      ctx.fillRect(0, 0, w, topDepth);
+
+      // Sweeping multi-color highlight along top rim
+      const rimGrad = ctx.createLinearGradient(0, 0, w, 0);
+      const shift = 0.5 + 0.35 * Math.sin(t);
+      rimGrad.addColorStop(0, rgba(c0, 0.35 + pulse * 0.3));
+      rimGrad.addColorStop(Math.max(0.15, Math.min(0.85, shift)), rgba('#ffffff', 0.3 + beat * 0.32));
+      rimGrad.addColorStop(1, rgba(c2, 0.35 + pulse * 0.3));
+
+      const topRimFade = ctx.createLinearGradient(0, 0, 0, 18 + beat * 12);
+      topRimFade.addColorStop(0, 'rgba(255,255,255,1)');
+      topRimFade.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.save();
+      ctx.globalAlpha = 0.42 + beat * 0.28;
+      ctx.fillStyle = rimGrad;
+      ctx.fillRect(0, 0, w, 4 + beat * 3);
+      ctx.restore();
+
+      // 2. Top-left & top-right corner blooms
+      const cornerR = Math.min(w, h) * (0.28 + bass * 0.08 + beat * 0.06);
+      const tl = ctx.createRadialGradient(0, 0, 0, 0, 0, cornerR);
+      tl.addColorStop(0, rgba('#ffffff', 0.24 + beat * 0.2));
+      tl.addColorStop(0.28, rgba(c0, 0.28 * pulse + 0.08));
+      tl.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = tl;
+      ctx.fillRect(0, 0, cornerR, cornerR);
+
+      const tr = ctx.createRadialGradient(w, 0, 0, w, 0, cornerR);
+      tr.addColorStop(0, rgba('#ffffff', 0.2 + beat * 0.18));
+      tr.addColorStop(0.28, rgba(c2, 0.26 * pulse + 0.08));
+      tr.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = tr;
+      ctx.fillRect(w - cornerR, 0, cornerR, cornerR);
+
+      // 3. Left & right edge gradients
+      const leftGrad = ctx.createLinearGradient(0, 0, sideDepth, 0);
+      leftGrad.addColorStop(0, rgba('#ffffff', 0.16 + beat * 0.14));
+      leftGrad.addColorStop(0.2, rgba(c0, 0.24 * pulse + 0.06));
+      leftGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = leftGrad;
+      ctx.fillRect(0, 0, sideDepth, h);
+
+      const rightGrad = ctx.createLinearGradient(w, 0, w - sideDepth, 0);
+      rightGrad.addColorStop(0, rgba('#ffffff', 0.14 + treble * 0.14));
+      rightGrad.addColorStop(0.2, rgba(c2, 0.22 * pulse + 0.06));
+      rightGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = rightGrad;
+      ctx.fillRect(w - sideDepth, 0, sideDepth, h);
+
+      // 4. Bottom subtle rim glow
+      const botGrad = ctx.createLinearGradient(0, h, 0, h - botDepth);
+      botGrad.addColorStop(0, rgba(c1, 0.18 * pulse + 0.04));
+      botGrad.addColorStop(0.45, rgba(theme.glow, 0.08 * pulse));
+      botGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = botGrad;
+      ctx.fillRect(0, h - botDepth, w, botDepth);
+
+      ctx.restore();
     }
 
     drawBgFlow(f) {
