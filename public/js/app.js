@@ -2699,14 +2699,15 @@ class App {
     }
 
     // 1. Fluid Ambient Aurora Mesh Cursor Parallax on Beranda
+    const ambientMeshEl = document.getElementById('aura-ambient-mesh');
     let mouseMoveRaf = null;
     window.addEventListener('mousemove', (e) => {
-      if (mouseMoveRaf) return;
+      if (!ambientMeshEl || mouseMoveRaf) return;
       mouseMoveRaf = requestAnimationFrame(() => {
         const xPct = (e.clientX / window.innerWidth) * 100;
         const yPct = (e.clientY / window.innerHeight) * 100;
-        document.documentElement.style.setProperty('--mouse-x', `${xPct.toFixed(1)}%`);
-        document.documentElement.style.setProperty('--mouse-y', `${yPct.toFixed(1)}%`);
+        ambientMeshEl.style.setProperty('--mouse-x', `${xPct.toFixed(1)}%`);
+        ambientMeshEl.style.setProperty('--mouse-y', `${yPct.toFixed(1)}%`);
         mouseMoveRaf = null;
       });
     }, { passive: true });
@@ -2970,6 +2971,7 @@ class App {
     if (this.ambientStageEngine) {
       this.ambientStageEngine.stop();
     }
+    this.applyCinemaMotionUI();
     const cinemaEqDrawer = document.getElementById('cinema-eq-drawer');
     if (cinemaEqDrawer) cinemaEqDrawer.classList.remove('active');
 
@@ -3219,10 +3221,14 @@ class App {
   applyCinemaMotionUI() {
     const isDesktop = typeof window === 'undefined' || window.innerWidth > 768;
     const cinemaOpen = Boolean(this.cinemaModal && this.cinemaModal.classList.contains('active'));
-    const ambientOn = isDesktop && Boolean(this.isCinemaAmbientMode);
+    const ambientOn = isDesktop && cinemaOpen && Boolean(this.isCinemaAmbientMode);
     const hasLyrics = Array.isArray(this.currentLyricsData) && this.currentLyricsData.length > 0;
     const motionOn = !ambientOn && Boolean(this.isCinemaMotionMode);
     const showStage = motionOn && hasLyrics;
+
+    if (!cinemaOpen) {
+      document.body.classList.remove('cinema-mode-active');
+    }
 
     if (this.cinemaModal) {
       this.cinemaModal.classList.toggle('cinema-ambient-active', ambientOn);
@@ -5436,13 +5442,19 @@ class App {
       // so the new track & related tracks recommendations appear immediately!
       if (this.activeTab === 'home') {
         clearTimeout(this._refreshHomeDebounce);
-        this._refreshHomeDebounce = setTimeout(() => {
+        this._refreshHomeDebounce = setTimeout(async () => {
           if (this.activeTab === 'home') {
+            const vc = document.querySelector('.views-container');
+            const mc = document.querySelector('.main-content');
+            const prevVcTop = vc ? vc.scrollTop : 0;
+            const prevMcTop = mc ? mc.scrollTop : 0;
             if (!this.hasChosenTaste()) {
-              this.renderHomeForSkippedUser();
+              await this.renderHomeForSkippedUser();
             } else {
-              this.loadYTMHome('all');
+              await this.loadYTMHome('all', { silent: true });
             }
+            if (vc && prevVcTop > 0) vc.scrollTop = prevVcTop;
+            if (mc && prevMcTop > 0) mc.scrollTop = prevMcTop;
           }
         }, 800);
       }
@@ -5641,16 +5653,18 @@ class App {
   // ==========================================
   // YOUTUBE MUSIC HOME FEED CONTROLLER
   // ==========================================
-  async loadYTMHome(mood = 'all') {
+  async loadYTMHome(mood = 'all', options = {}) {
     const container = document.getElementById('ytm-home-sections');
     if (!container) return;
 
     const isEn = (this.userProfile?.lang === 'en');
-    container.innerHTML = this.renderLoadingState(
-      isEn ? 'Loading YouTube Music Home Feed...' : 'Memuat beranda YouTube Music...',
-      true,
-      4
-    );
+    if (!options.silent || !container.children.length) {
+      container.innerHTML = this.renderLoadingState(
+        isEn ? 'Loading YouTube Music Home Feed...' : 'Memuat beranda YouTube Music...',
+        true,
+        4
+      );
+    }
 
     try {
       // 1. If mood is 'all', check for user's personalized taste profile vs skipped/dynamic home
