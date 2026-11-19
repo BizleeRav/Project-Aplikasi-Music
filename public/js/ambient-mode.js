@@ -761,8 +761,8 @@
 
       const count = Math.max(32, Math.min(180, Math.round(w / 10)));
       const dx = w / (count - 1);
-      const mid = h * 0.48;
-      const swell = 0.45 + bass * 0.85 + level * 0.4;
+      const mid = h * 0.335;
+      const swell = 0.42 + bass * 0.78 + level * 0.36;
       const reach = w * 0.5;
       const bump = Math.max(60, w * 0.075);
 
@@ -773,10 +773,10 @@
         const ys = this._flowLines[r];
         const p = r / (RIBBONS - 1);
         const dir = r % 2 ? -1 : 1;
-        const amp = h * (0.075 + 0.06 * Math.sin(p * Math.PI)) * swell;
+        const amp = h * (0.06 + 0.048 * Math.sin(p * Math.PI)) * swell;
         const k = (TAU / w) * (1.15 + p * 0.9);
         const speed = (0.4 + p * 0.28) * dir;
-        const lift = (p - 0.5) * h * 0.24;
+        const lift = (p - 0.5) * h * 0.18;
 
         for (let i = 0; i < count; i++) {
           const x = i * dx;
@@ -843,9 +843,9 @@
     drawBgRing(f) {
       const { ctx, width: w, height: h, theme, bass, beat, level, step, beatAt } = f;
       const cx = w * 0.5;
-      const cy = h * 0.45;
-      const radius = Math.min(w, h) * 0.23;
-      const maxSpoke = Math.min(w, h) * 0.14;
+      const cy = h * 0.335;
+      const radius = Math.min(w, h) * 0.15;
+      const maxSpoke = Math.min(w, h) * 0.085;
 
       this._spin += (0.00022 + level * 0.0012) * 16.667 * step;
 
@@ -1008,8 +1008,8 @@
       this._orbKick *= Math.pow(0.9, step);
 
       const cx = w * 0.5;
-      const cy = h * 0.45;
-      const radius = Math.min(w, h) * 0.24;
+      const cy = h * 0.335;
+      const radius = Math.min(w, h) * 0.165;
       const tiltCos = Math.cos(0.38);
       const tiltSin = Math.sin(0.38);
       const cos = Math.cos(this._orbTurn);
@@ -1184,8 +1184,8 @@
     drawBgScope(f) {
       const { ctx, width: w, height: h, theme, wave, level, beat } = f;
       const cx = w * 0.5;
-      const cy = h * 0.45;
-      const r = Math.min(w, h) * 0.26 * (0.7 + level * 0.45);
+      const cy = h * 0.335;
+      const r = Math.min(w, h) * 0.175 * (0.7 + level * 0.45);
       const len = wave.length;
       const offset = Math.floor(len * 0.25);
 
@@ -1219,14 +1219,25 @@
     drawBgMirror(f) {
       const { ctx, width: w, height: h, theme, bands, peaks, beat } = f;
       const padX = w * 0.08;
-      const cy = h * 0.48;
+      const cy = h * 0.335;
       const usable = w - padX * 2;
-      const count = Math.max(24, Math.min(96, Math.round(usable / 11)));
-      const values = resample(bands, count);
-      const pVals = resample(peaks, count);
+      const count = Math.max(24, Math.min(88, Math.round(usable / 12)));
+      // Use the active musical range (~82% of bands) mirrored symmetrically so both edges match
+      const halfCount = Math.ceil(count / 2);
+      const activeSpan = Math.max(8, Math.floor(bands.length * 0.82));
+      const halfVals = resample(bands.subarray(0, activeSpan), halfCount);
+      const halfPeaks = resample(peaks.subarray(0, activeSpan), halfCount);
+      const values = new Float32Array(count);
+      const pVals = new Float32Array(count);
+      for (let i = 0; i < count; i++) {
+        const distFromCenter = Math.abs(i - (count - 1) / 2) / Math.max(1, (count - 1) / 2);
+        const si = Math.min(halfCount - 1, Math.floor(distFromCenter * (halfCount - 1)));
+        values[i] = halfVals[si];
+        pVals[i] = halfPeaks[si];
+      }
       const slot = usable / count;
       const barW = Math.max(2.5, slot * 0.56);
-      const maxReach = h * 0.32;
+      const maxReach = h * 0.165;
 
       const grad = ctx.createLinearGradient(padX, 0, w - padX, 0);
       theme.stops.forEach((s, i) => grad.addColorStop(i / (theme.stops.length - 1), s));
@@ -1342,9 +1353,9 @@
       }
       this._wheelRoll += (0 - this._wheelRoll) * ease(0.085);
 
-      const radius = Math.max(48, Math.min(h * 0.4, w * 0.235));
+      const radius = Math.max(46, Math.min(h * 0.39, w * 0.22));
       const cx = radius * 1.15;
-      const cy = h * 0.53;
+      const cy = h * 0.48;
 
       // Ambient glow halo behind vinyl disc
       const halo = ctx.createRadialGradient(cx, cy, radius * 0.72, cx, cy, radius * 1.42);
@@ -1377,7 +1388,7 @@
       }
 
       const GAP = 0.42;
-      const START = -0.46;
+      const START = -0.42;
       const ringDist = radius * 1.13;
       const accent = theme.stops[theme.stops.length - 1];
       const titleSize = Math.max(11, Math.min(14, radius * 0.138));
@@ -1391,7 +1402,7 @@
       ctx.save();
       ctx.textBaseline = 'middle';
 
-      for (let i = Math.min(songs.length - 1, 3); i >= 0; i--) {
+      for (let i = Math.min(songs.length - 1, 2); i >= 0; i--) {
         const song = songs[i];
         const turn = START + (i - this._wheelRoll) * GAP;
         const away = Math.abs(turn);
@@ -1470,20 +1481,20 @@
         ctx.shadowBlur = 5;
 
         if (song.now) {
-          ctx.font = `800 ${Math.max(8.5, artistSize * 0.8)}px ${FONT}`;
+          ctx.font = `800 ${Math.max(8, artistSize * 0.78)}px ${FONT}`;
           ctx.fillStyle = accent;
-          ctx.fillText(live ? 'NOW PLAYING' : 'PAUSED', tx, -titleSize * 1.05);
+          ctx.fillText(live ? 'NOW PLAYING' : 'PAUSED', tx, -titleSize * 1.18);
 
-          ctx.font = `700 ${titleSize * 1.06}px ${FONT}`;
+          ctx.font = `700 ${titleSize * 1.04}px ${FONT}`;
           ctx.fillStyle = '#ffffff';
-          ctx.fillText(fitText(ctx, song.title, room), tx, 1);
+          ctx.fillText(fitText(ctx, song.title, room), tx, -1.5);
 
-          ctx.font = `500 ${artistSize}px ${FONT}`;
+          ctx.font = `500 ${artistSize * 0.96}px ${FONT}`;
           ctx.fillStyle = 'rgba(226, 232, 240, 0.72)';
-          ctx.fillText(fitText(ctx, song.artist || 'AuraSound', room), tx, titleSize * 1.02);
+          ctx.fillText(fitText(ctx, song.artist || 'AuraSound', room), tx, titleSize * 0.85);
 
-          // Subtle progress bar under Now Playing
-          const barY = thumbSize / 2 - 1;
+          // Subtle progress bar cleanly below artist line
+          const barY = thumbSize / 2 + 2;
           const barW = Math.min(room, 110);
           ctx.shadowBlur = 0;
           ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
@@ -1891,9 +1902,9 @@
           const h1 = hashString(`${seedBase}_x_${i}`);
           const h2 = hashString(`${seedBase}_y_${i}`);
           const h3 = hashString(`${seedBase}_r_${i}`);
-          const dx = ((h1 % 34) - 17);
-          const dy = ((h2 % 40) - 20);
-          const rot = ((h3 % 12) - 6) * 0.7;
+          const dx = ((h1 % 9) - 4);
+          const dy = ((h2 % 20) - 10);
+          const rot = ((h3 % 9) - 4) * 0.5;
           return `<span class="amb-word ${spaceCls}" style="--sx:${dx}px;--sy:${dy}px;--sr:${rot.toFixed(1)}deg;">${escapeHtml(w.text)}</span>`;
         }
         return `<span class="amb-word ${spaceCls}">${escapeHtml(w.text)}</span>`;
