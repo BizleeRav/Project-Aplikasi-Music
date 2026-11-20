@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session, screen } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -57,6 +57,133 @@ try {
 let mainWindow = null;
 global.getMainWindow = () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
 let sunoLoginWin = null;
+let dynamicIslandWindow = null;
+let lastDynamicIslandState = null;
+
+const ISLAND_WIDTH = 460;
+const ISLAND_HEIGHT = 270;
+
+function getDynamicIslandConfigPath() {
+  try {
+    return path.join(app.getPath('userData'), 'dynamic-island-config.json');
+  } catch (e) {
+    return path.join(__dirname, 'dynamic-island-config.json');
+  }
+}
+
+function readDynamicIslandEnabled() {
+  try {
+    const cfgPath = getDynamicIslandConfigPath();
+    if (fs.existsSync(cfgPath)) {
+      const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      if (typeof parsed.enabled === 'boolean') return parsed.enabled;
+    }
+  } catch (e) {}
+  return true;
+}
+
+function writeDynamicIslandEnabled(enabled) {
+  try {
+    const cfgPath = getDynamicIslandConfigPath();
+    fs.writeFileSync(cfgPath, JSON.stringify({ enabled: Boolean(enabled) }, null, 2));
+  } catch (e) {}
+}
+
+function positionDynamicIslandWindow() {
+  if (!dynamicIslandWindow || dynamicIslandWindow.isDestroyed()) return;
+  try {
+    const primary = screen.getPrimaryDisplay();
+    const bounds = primary.bounds || primary.workArea;
+    const x = Math.round(bounds.x + (bounds.width - ISLAND_WIDTH) / 2);
+    const y = Math.round(bounds.y + 6);
+    dynamicIslandWindow.setBounds({ x, y, width: ISLAND_WIDTH, height: ISLAND_HEIGHT });
+  } catch (e) {}
+}
+
+function createDynamicIslandWindow() {
+  if (dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+    return dynamicIslandWindow;
+  }
+
+  const primary = screen.getPrimaryDisplay();
+  const bounds = primary.bounds || primary.workArea;
+  const x = Math.round(bounds.x + (bounds.width - ISLAND_WIDTH) / 2);
+  const y = Math.round(bounds.y + 6);
+
+  dynamicIslandWindow = new BrowserWindow({
+    width: ISLAND_WIDTH,
+    height: ISLAND_HEIGHT,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    focusable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    show: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    }
+  });
+
+  dynamicIslandWindow.setMenuBarVisibility(false);
+  if (typeof dynamicIslandWindow.removeMenu === 'function') {
+    dynamicIslandWindow.removeMenu();
+  }
+  try {
+    dynamicIslandWindow.setAlwaysOnTop(true, 'screen-saver');
+    dynamicIslandWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    dynamicIslandWindow.setIgnoreMouseEvents(true, { forward: true });
+  } catch (e) {}
+
+  dynamicIslandWindow.loadURL('http://localhost:3000/dynamic-island.html').catch((err) => {
+    console.warn('[DynamicIsland] Failed to load overlay URL:', err?.message || err);
+  });
+
+  dynamicIslandWindow.webContents.on('did-finish-load', () => {
+    if (lastDynamicIslandState && dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+      dynamicIslandWindow.webContents.send('dynamic-island-state', lastDynamicIslandState);
+    }
+    if (readDynamicIslandEnabled() && dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+      dynamicIslandWindow.showInactive();
+    }
+  });
+
+  dynamicIslandWindow.on('closed', () => {
+    dynamicIslandWindow = null;
+  });
+
+  return dynamicIslandWindow;
+}
+
+function setDynamicIslandVisible(visible) {
+  writeDynamicIslandEnabled(visible);
+  if (visible) {
+    const win = createDynamicIslandWindow();
+    positionDynamicIslandWindow();
+    if (win && !win.isDestroyed()) {
+      win.showInactive();
+      if (lastDynamicIslandState) {
+        win.webContents.send('dynamic-island-state', lastDynamicIslandState);
+      }
+    }
+  } else if (dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+    dynamicIslandWindow.hide();
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('dynamic-island-visibility-changed', Boolean(visible));
+  }
+  return Boolean(visible);
+}
 
 // Ensure local server is running on port 3000
 function ensureServerRunning() {
@@ -194,11 +321,27 @@ async function createMainWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    if (dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+      dynamicIslandWindow.destroy();
+      dynamicIslandWindow = null;
+    }
     if (typeof global.destroyWarmSunoEngine === 'function') {
       global.destroyWarmSunoEngine();
     }
     app.quit();
   });
+
+  // Initialize Desktop Dynamic Island Overlay once main server & window are ready
+  if (readDynamicIslandEnabled()) {
+    setTimeout(() => {
+      createDynamicIslandWindow();
+    }, 900);
+  }
+  try {
+    screen.on('display-metrics-changed', positionDynamicIslandWindow);
+    screen.on('display-added', positionDynamicIslandWindow);
+    screen.on('display-removed', positionDynamicIslandWindow);
+  } catch (e) {}
 
   // Check for updates if electron-updater is installed and running in packaged .exe
   if (app.isPackaged) {
@@ -265,6 +408,61 @@ ipcMain.on('window-close', () => {
 
 ipcMain.handle('window-is-maximized', () => {
   return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isMaximized());
+});
+
+// IPC: Desktop Dynamic Island Overlay
+ipcMain.on('dynamic-island-sync', (_event, state) => {
+  lastDynamicIslandState = state;
+  if (dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+    dynamicIslandWindow.webContents.send('dynamic-island-state', state);
+  }
+});
+
+ipcMain.on('dynamic-island-request-state', () => {
+  if (lastDynamicIslandState && dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+    dynamicIslandWindow.webContents.send('dynamic-island-state', lastDynamicIslandState);
+  }
+});
+
+ipcMain.on('dynamic-island-ignore-mouse', (_event, ignore) => {
+  if (!dynamicIslandWindow || dynamicIslandWindow.isDestroyed()) return;
+  try {
+    if (ignore) {
+      dynamicIslandWindow.setIgnoreMouseEvents(true, { forward: true });
+    } else {
+      dynamicIslandWindow.setIgnoreMouseEvents(false);
+    }
+  } catch (e) {}
+});
+
+ipcMain.on('dynamic-island-control-from-ui', (_event, payload) => {
+  if (!payload || !payload.action) return;
+  if (payload.action === 'hide') {
+    setDynamicIslandVisible(false);
+    return;
+  }
+  if (payload.action === 'focus-app') {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    return;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('dynamic-island-control', payload);
+  }
+});
+
+ipcMain.handle('dynamic-island-toggle', () => {
+  const currentlyVisible = Boolean(
+    dynamicIslandWindow && !dynamicIslandWindow.isDestroyed() && dynamicIslandWindow.isVisible()
+  );
+  return setDynamicIslandVisible(!currentlyVisible);
+});
+
+ipcMain.handle('dynamic-island-get-enabled', () => {
+  return readDynamicIslandEnabled();
 });
 
 // IPC: Automatic Suno Login Window & Token Extraction (In-App Google OAuth Anti-Block!)

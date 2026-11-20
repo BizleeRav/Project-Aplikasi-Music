@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/icons/icon.png">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="stylesheet" href="/css/style.css?v=4.81.8">
+  <link rel="stylesheet" href="/css/style.css?v=4.81.9">
   <link rel="stylesheet" href="/css/better-lyrics.css?v=1.16.14">
   <link rel="stylesheet" href="/css/mobile-redesign.css?v=1.0.4">
   <style>
@@ -246,7 +246,7 @@
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
               <span class="about-title">About</span>
             </div>
-            <span class="about-version-badge" id="about-app-version">v1.1.29</span>
+            <span class="about-version-badge" id="about-app-version">v1.1.35</span>
           </div>
           <div class="about-credit">Made By Deverick A.K.A Bizlee</div>
         </div>
@@ -314,6 +314,15 @@
             <img id="top-user-avatar" src="/images/avatar.jpg" alt="User Avatar" class="ytm-avatar-circle" onerror="this.src='/images/avatar.jpg'">
             <div id="google-verified-badge" class="google-badge-dot" title="Akun Google Terhubung" style="display: none;"></div>
           </div>
+
+          <!-- Dynamic Island Desktop Overlay Toggle (Electron only) -->
+          <button type="button" class="btn-dynamic-island-toggle" id="btn-dynamic-island" title="Aktifkan/Matikan Dynamic Island di Layar Laptop" aria-label="Dynamic Island">
+            <span class="di-pill-icon" aria-hidden="true">
+              <span class="di-pill-dot"></span>
+              <span class="di-pill-wave"></span>
+            </span>
+            <span class="di-btn-label">Island</span>
+          </button>
 
           <!-- Custom Frameless Desktop Window Controls (Electron only) -->
           <div class="electron-window-controls" id="electron-window-controls" aria-label="Kontrol Jendela">
@@ -1920,6 +1929,6 @@
   <script src="/js/suno-studio.js?v=4.70.2"></script>
   <script src="/js/motion-lyrics.js?v=1.0.6"></script>
   <script src="/js/ambient-mode.js?v=1.0.2"></script>
-  <script src="/js/app.js?v=4.82.8"></script>
+  <script src="/js/app.js?v=4.82.9"></script>
 </body>
 </html>

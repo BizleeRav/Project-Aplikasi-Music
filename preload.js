@@ -19,5 +19,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isWindowMaximized: () => ipcRenderer.invoke('window-is-maximized'),
   onWindowMaximizedChange: (callback) => {
     ipcRenderer.on('window-maximized-changed', (_event, isMaximized) => callback(isMaximized));
-  }
+  },
+  // Desktop Dynamic Island Overlay IPC
+  syncDynamicIsland: (state) => ipcRenderer.send('dynamic-island-sync', state),
+  toggleDynamicIsland: () => ipcRenderer.invoke('dynamic-island-toggle'),
+  isDynamicIslandEnabled: () => ipcRenderer.invoke('dynamic-island-get-enabled'),
+  onDynamicIslandControl: (callback) => {
+    ipcRenderer.on('dynamic-island-control', (_event, payload) => callback(payload));
+  },
+  onDynamicIslandVisibilityChanged: (callback) => {
+    ipcRenderer.on('dynamic-island-visibility-changed', (_event, visible) => callback(visible));
+  },
+  onDynamicIslandState: (callback) => {
+    ipcRenderer.on('dynamic-island-state', (_event, state) => callback(state));
+  },
+  sendDynamicIslandControl: (action, value) => ipcRenderer.send('dynamic-island-control-from-ui', { action, value }),
+  setDynamicIslandIgnoreMouse: (ignore) => ipcRenderer.send('dynamic-island-ignore-mouse', Boolean(ignore)),
+  requestDynamicIslandState: () => ipcRenderer.send('dynamic-island-request-state')
 });

@@ -4190,6 +4190,7 @@ class App {
       this.syncAmbientControlPills();
     }
     this.applyCinemaMotionUI();
+    this.syncDynamicIsland(true);
   }
 
   getCurrentPlaybackTime() {
@@ -10041,6 +10042,8 @@ class App {
       this.syncLyricsToMediaNotification();
     }
 
+    this.syncDynamicIsland(true);
+
     if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.updatePlaybackState === 'function') {
       const tr = this.currentTrack || {};
       window.AuraSoundAndroid.updatePlaybackState(
@@ -10172,6 +10175,12 @@ class App {
       if (this._isAppInBackground || !this._lastRafLyricsTick || (now - this._lastRafLyricsTick > 250)) {
         this.updateActiveLyricsLine(current);
       }
+    }
+
+    const diNow = Date.now();
+    if (!this._lastDynamicIslandProgressSync || (diNow - this._lastDynamicIslandProgressSync > 380)) {
+      this._lastDynamicIslandProgressSync = diNow;
+      this.syncDynamicIsland(false, current, dur);
     }
   }
 
@@ -11064,6 +11073,8 @@ class App {
         cSvg.setAttribute('stroke', isFav ? '#10b981' : 'currentColor');
       }
     }
+
+    this.syncDynamicIsland(true);
   }
 
   renderFavorites() {
@@ -11286,6 +11297,67 @@ class App {
         }
       } catch (e) {}
     }
+
+    // 3. Desktop Dynamic Island Overlay (Electron)
+    this.syncDynamicIsland(true, currentSecs);
+  }
+
+  syncDynamicIsland(force = false, currentTimeOverride = null, durationOverride = null) {
+    if (!window.electronAPI || typeof window.electronAPI.syncDynamicIsland !== 'function') return;
+
+    const tr = this.currentTrack || null;
+    const isNative = (this.currentAudioMode === 'native' || tr?.type === 'suno' || tr?.type === 'local');
+    let cur = typeof currentTimeOverride === 'number' ? currentTimeOverride : 0;
+    let dur = typeof durationOverride === 'number' ? durationOverride : 0;
+
+    if (typeof currentTimeOverride !== 'number') {
+      if (isNative && this.nativeAudio) {
+        cur = this.nativeAudio.currentTime || 0;
+      } else if (window.ytPlayer && typeof window.ytPlayer.getCurrentTime === 'function') {
+        cur = window.ytPlayer.getCurrentTime() || 0;
+      }
+    }
+
+    if (!dur || dur <= 0 || !isFinite(dur)) {
+      if (isNative && this.nativeAudio && this.nativeAudio.duration && isFinite(this.nativeAudio.duration)) {
+        dur = this.nativeAudio.duration;
+      } else if (tr) {
+        dur = Number(tr.seconds) || this.parseDuration(tr.duration) || 0;
+      }
+    }
+
+    const lyrics = Array.isArray(this.currentLyricsData) ? this.currentLyricsData : [];
+    const idx = typeof this.activeLyricIdx === 'number' ? this.activeLyricIdx : -1;
+    const activeObj = (idx >= 0 && idx < lyrics.length) ? lyrics[idx] : null;
+    const prevObj = (idx > 0 && idx - 1 < lyrics.length) ? lyrics[idx - 1] : null;
+    const nextObj = (idx >= -1 && idx + 1 < lyrics.length) ? lyrics[idx + 1] : null;
+
+    const activeText = activeObj?.text ? activeObj.text.trim() : '';
+    const activeRomaji = (this.isRomajiEnabled && activeObj?.romaji && activeObj.romaji.trim() !== activeText)
+      ? activeObj.romaji.trim()
+      : '';
+
+    const payload = {
+      track: tr ? {
+        id: tr.id || tr.videoId || '',
+        title: tr.title || 'AuraSound Music',
+        artist: this.cleanArtistName(tr.artist || 'AuraSound'),
+        thumbnail: tr.thumbnail || '/images/supermix.jpg'
+      } : null,
+      isPlaying: Boolean(this.isPlaying),
+      isFavorited: Boolean(tr && this.isFavorited(tr.id)),
+      currentTime: Number(cur) || 0,
+      duration: Number(dur) || 0,
+      lyric: {
+        hasLyrics: lyrics.length > 0,
+        prev: prevObj?.text ? prevObj.text.trim() : '',
+        active: activeText,
+        romaji: activeRomaji,
+        next: nextObj?.text ? nextObj.text.trim() : ''
+      }
+    };
+
+    window.electronAPI.syncDynamicIsland(payload);
   }
 
   showToast(message, type = 'info') {
@@ -11472,6 +11544,62 @@ function initElectronWindowControls() {
   }
   if (typeof window.electronAPI.onWindowMaximizedChange === 'function') {
     window.electronAPI.onWindowMaximizedChange(applyMaximizedState);
+  }
+
+  // Desktop Dynamic Island Overlay toggle & remote playback controls
+  const btnIsland = document.getElementById('btn-dynamic-island');
+  const applyIslandBtnState = (visible) => {
+    if (!btnIsland) return;
+    btnIsland.classList.toggle('active', Boolean(visible));
+    btnIsland.title = visible
+      ? 'Dynamic Island Aktif (Klik untuk sembunyikan)'
+      : 'Tampilkan Dynamic Island di Layar Laptop';
+  };
+
+  if (btnIsland && typeof window.electronAPI.toggleDynamicIsland === 'function') {
+    btnIsland.addEventListener('click', () => {
+      window.electronAPI.toggleDynamicIsland().then((visible) => {
+        applyIslandBtnState(visible);
+        if (visible && window.app && typeof window.app.syncDynamicIsland === 'function') {
+          window.app.syncDynamicIsland(true);
+        }
+      }).catch(() => {});
+    });
+  }
+
+  if (typeof window.electronAPI.isDynamicIslandEnabled === 'function') {
+    window.electronAPI.isDynamicIslandEnabled().then(applyIslandBtnState).catch(() => {});
+  }
+
+  if (typeof window.electronAPI.onDynamicIslandVisibilityChanged === 'function') {
+    window.electronAPI.onDynamicIslandVisibilityChanged(applyIslandBtnState);
+  }
+
+  if (typeof window.electronAPI.onDynamicIslandControl === 'function') {
+    window.electronAPI.onDynamicIslandControl((payload) => {
+      if (!window.app || !payload || !payload.action) return;
+      switch (payload.action) {
+        case 'toggle-play':
+          window.app.togglePlay();
+          break;
+        case 'next':
+          window.app.playNext();
+          break;
+        case 'prev':
+          window.app.playPrev();
+          break;
+        case 'seek':
+          if (typeof payload.value === 'number' && !isNaN(payload.value)) {
+            window.app.seekToTimestamp(payload.value);
+          }
+          break;
+        case 'toggle-fav':
+          if (window.app.currentTrack) {
+            window.app.toggleFavorite(window.app.currentTrack);
+          }
+          break;
+      }
+    });
   }
 }
 

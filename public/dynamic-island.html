@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>AuraSound Dynamic Island</title>
+  <style>
+    :root {
+      --c1: #ec4899;
+      --c2: #8b5cf6;
+      --c3: #38bdf8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent !important;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+      color: #ffffff;
+    }
+
+    .stage {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding-top: 2px;
+      pointer-events: none;
+    }
+
+    #island {
+      pointer-events: auto;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      cursor: pointer;
+      background: rgba(9, 10, 15, 0.93);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow:
+        0 18px 42px -10px rgba(0, 0, 0, 0.88),
+        0 0 26px -6px color-mix(in srgb, var(--c1) 42%, transparent),
+        inset 0 1px 0 rgba(255, 255, 255, 0.10);
+      transition:
+        width 0.48s cubic-bezier(0.22, 1, 0.36, 1),
+        height 0.48s cubic-bezier(0.22, 1, 0.36, 1),
+        border-radius 0.48s cubic-bezier(0.22, 1, 0.36, 1),
+        padding 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 0.6s ease;
+    }
+
+    #island.mode-compact {
+      width: 184px;
+      height: 36px;
+      border-radius: 9999px;
+      padding: 5px 12px;
+    }
+
+    #island.mode-lyricbar {
+      width: 388px;
+      height: 40px;
+      border-radius: 9999px;
+      padding: 6px 14px;
+    }
+
+    #island.mode-expanded {
+      width: 416px;
+      height: 216px;
+      border-radius: 28px;
+      padding: 15px 18px;
+    }
+
+    /* Dynamic Mesh Aura Blobs */
+    .aura-blob {
+      position: absolute;
+      border-radius: 9999px;
+      pointer-events: none;
+      filter: blur(30px);
+      transition: background 0.8s ease, opacity 0.5s ease;
+    }
+    .aura-1 {
+      width: 170px;
+      height: 170px;
+      top: -65px;
+      left: -45px;
+      background: var(--c1);
+      opacity: 0.34;
+      animation: auraFloat 7s ease-in-out infinite;
+    }
+    .aura-2 {
+      width: 185px;
+      height: 185px;
+      bottom: -75px;
+      right: -45px;
+      background: var(--c2);
+      opacity: 0.28;
+      animation: auraFloat 8.5s ease-in-out infinite reverse;
+    }
+
+    @keyframes auraFloat {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(10px, -6px) scale(1.1); }
+    }
+
+    /* Vinyl Spin & Equalizer Animations */
+    @keyframes spinDisc {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes eq1 { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+    @keyframes eq2 { 0%, 100% { height: 13px; } 35% { height: 5px; } 70% { height: 16px; } }
+    @keyframes eq3 { 0%, 100% { height: 7px; } 45% { height: 16px; } 85% { height: 4px; } }
+    @keyframes eq4 { 0%, 100% { height: 11px; } 25% { height: 4px; } 75% { height: 14px; } }
+
+    .vinyl-spin { animation: spinDisc 9s linear infinite; }
+    .paused .vinyl-spin { animation-play-state: paused !important; }
+
+    .eq-group {
+      display: flex;
+      align-items: center;
+      gap: 2.5px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+    .eq-bar {
+      width: 2.5px;
+      border-radius: 9999px;
+      transition: height 0.25s ease;
+    }
+    .eq-b1 { background: var(--c1); animation: eq1 0.8s ease-in-out infinite; }
+    .eq-b2 { background: var(--c2); animation: eq2 0.65s ease-in-out infinite; }
+    .eq-b3 { background: var(--c1); animation: eq3 0.9s ease-in-out infinite; }
+    .eq-b4 { background: var(--c3); animation: eq4 0.72s ease-in-out infinite; }
+    .paused .eq-bar {
+      animation-play-state: paused !important;
+      height: 4px !important;
+      opacity: 0.45;
+    }
+
+    .view {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      display: none;
+    }
+    #island.mode-compact #view-compact { display: flex; }
+    #island.mode-lyricbar #view-lyricbar { display: flex; }
+    #island.mode-expanded #view-expanded { display: flex; }
+
+    /* Mode 1: Mini Vinyl Pill */
+    #view-compact {
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .mini-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+    }
+    .mini-disc {
+      width: 22px;
+      height: 22px;
+      border-radius: 9999px;
+      padding: 2px;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, var(--c1), var(--c2));
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mini-disc img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 9999px;
+    }
+    .mini-disc-hole {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 9999px;
+      background: #090a0f;
+      border: 1px solid rgba(255,255,255,0.45);
+    }
+    .mini-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.94);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: -0.01em;
+    }
+
+    /* Mode 2: Floating Karaoke Bar */
+    #view-lyricbar {
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .lb-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-shrink: 0;
+      max-width: 112px;
+    }
+    .lb-title {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.62);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .lb-lyric-wrap {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+    }
+    .lb-lyric {
+      font-size: 12.5px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: linear-gradient(90deg, #ffffff 0%, var(--c1) 65%, var(--c3) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 0 8px color-mix(in srgb, var(--c1) 40%, transparent));
+    }
+
+    /* Mode 3: Expanded Aura + Synced Lyrics */
+    #view-expanded {
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .exp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .exp-track {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      flex: 1;
+    }
+    .cover-vinyl-wrap {
+      position: relative;
+      width: 50px;
+      height: 44px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+    }
+    .peek-vinyl {
+      position: absolute;
+      right: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 9999px;
+      background: radial-gradient(circle, #27272a 30%, #09090b 75%);
+      border: 1px solid rgba(255,255,255,0.22);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.65);
+    }
+    .peek-vinyl-ring {
+      width: 26px;
+      height: 26px;
+      border-radius: 9999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .peek-vinyl-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 9999px;
+      background: var(--c1);
+      border: 1.5px solid #090a0f;
+    }
+    .front-cover {
+      position: relative;
+      z-index: 2;
+      width: 42px;
+      height: 42px;
+      border-radius: 11px;
+      overflow: hidden;
+      background: linear-gradient(135deg, var(--c1), var(--c2));
+      border: 1px solid rgba(255,255,255,0.22);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .front-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .exp-meta {
+      min-width: 0;
+      flex: 1;
+    }
+    .exp-title-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .exp-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: -0.01em;
+    }
+    .exp-badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 1.5px 6px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--c3);
+      flex-shrink: 0;
+    }
+    .exp-artist {
+      font-size: 11.5px;
+      color: rgba(255,255,255,0.60);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+
+    .exp-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .chip-btn {
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 9999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.82);
+      font-size: 10.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease;
+    }
+    .chip-btn:hover {
+      background: rgba(255,255,255,0.18);
+      color: #ffffff;
+    }
+    .chip-btn.active {
+      background: color-mix(in srgb, var(--c1) 28%, transparent);
+      border-color: color-mix(in srgb, var(--c1) 65%, transparent);
+      color: #ffffff;
+    }
+    .icon-pill-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 9999px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.07);
+      color: rgba(255,255,255,0.72);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.18s ease, color 0.18s ease;
+    }
+    .icon-pill-btn:hover {
+      background: rgba(255,255,255,0.18);
+      color: #ffffff;
+    }
+    .icon-pill-btn.close-btn:hover {
+      background: rgba(239, 68, 68, 0.72);
+      border-color: rgba(248, 113, 113, 0.6);
+    }
+
+    /* Glass Karaoke Lyrics Box */
+    .lyrics-stage {
+      margin: 4px 0;
+      padding: 8px 12px;
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.36);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 2px;
+      min-height: 64px;
+      overflow: hidden;
+    }
+    .lyric-line {
+      width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .lyric-prev {
+      font-size: 11px;
+      color: rgba(255,255,255,0.32);
+    }
+    .lyric-curr {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+      text-shadow: 0 0 14px color-mix(in srgb, var(--c1) 75%, transparent);
+    }
+    .lyric-romaji {
+      font-size: 10.5px;
+      font-weight: 500;
+      color: color-mix(in srgb, var(--c3) 85%, #ffffff);
+      opacity: 0.85;
+    }
+    .lyric-next {
+      font-size: 11px;
+      color: rgba(255,255,255,0.40);
+    }
+
+    /* Progress & Controls */
+    .bottom-dock {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .scrubber-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .time-txt {
+      font-size: 10.5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: rgba(255,255,255,0.48);
+      width: 34px;
+      flex-shrink: 0;
+    }
+    .time-txt.right { text-align: right; }
+    .scrubber-track {
+      flex: 1;
+      height: 12px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    .scrubber-rail {
+      width: 100%;
+      height: 4px;
+      border-radius: 9999px;
+      background: rgba(255,255,255,0.16);
+      position: relative;
+      overflow: visible;
+    }
+    .scrubber-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 9999px;
+      background: linear-gradient(90deg, var(--c1), var(--c2), var(--c3));
+      box-shadow: 0 0 10px color-mix(in srgb, var(--c1) 70%, transparent);
+      position: relative;
+      transition: width 0.2s linear;
+    }
+    .scrubber-thumb {
+      position: absolute;
+      right: -4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 9px;
+      height: 9px;
+      border-radius: 9999px;
+      background: #ffffff;
+      box-shadow: 0 0 6px rgba(0,0,0,0.6);
+    }
+
+    .controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2px;
+    }
+    .ctrl-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.72);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 9999px;
+      transition: color 0.16s ease, transform 0.14s ease, background 0.16s ease;
+    }
+    .ctrl-btn:hover {
+      color: #ffffff;
+      transform: scale(1.1);
+    }
+    .ctrl-btn.fav-active {
+      color: #fb7185;
+    }
+    .transport-center {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .play-orb {
+      width: 32px;
+      height: 32px;
+      border-radius: 9999px;
+      border: none;
+      background: #ffffff;
+      color: #090a0f;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 16px rgba(255,255,255,0.38);
+      transition: transform 0.15s ease;
+    }
+    .play-orb:hover { transform: scale(1.07); }
+    .play-orb:active { transform: scale(0.95); }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div id="island" class="mode-compact paused">
+      <div class="aura-blob aura-1"></div>
+      <div class="aura-blob aura-2"></div>
+
+      <!-- MODE 1: MINI VINYL PILL -->
+      <div id="view-compact" class="view">
+        <div class="mini-left">
+          <div class="mini-disc vinyl-spin">
+            <img id="c-img" src="/images/supermix.jpg" alt="" onerror="this.style.display='none'" />
+            <div class="mini-disc-hole"></div>
+          </div>
+          <span id="c-title" class="mini-title">AuraSound</span>
+        </div>
+        <div class="eq-group">
+          <span class="eq-bar eq-b1"></span>
+          <span class="eq-bar eq-b2"></span>
+          <span class="eq-bar eq-b3"></span>
+          <span class="eq-bar eq-b4"></span>
+        </div>
+      </div>
+
+      <!-- MODE 2: FLOATING KARAOKE BAR -->
+      <div id="view-lyricbar" class="view">
+        <div class="lb-left">
+          <div class="mini-disc vinyl-spin">
+            <img id="lb-img" src="/images/supermix.jpg" alt="" onerror="this.style.display='none'" />
+            <div class="mini-disc-hole"></div>
+          </div>
+          <span id="lb-title" class="lb-title">AuraSound</span>
+        </div>
+        <div class="lb-lyric-wrap">
+          <div id="lb-lyric" class="lb-lyric">♪ Pilih lagu di AuraSound</div>
+        </div>
+        <div class="eq-group">
+          <span class="eq-bar eq-b1"></span>
+          <span class="eq-bar eq-b2"></span>
+          <span class="eq-bar eq-b3"></span>
+        </div>
+      </div>
+
+      <!-- MODE 3: EXPANDED AURA + SYNCED LYRICS -->
+      <div id="view-expanded" class="view">
+        <div class="exp-header">
+          <div class="exp-track" onclick="focusMainApp()" title="Klik untuk membuka jendela AuraSound">
+            <div class="cover-vinyl-wrap">
+              <div class="peek-vinyl vinyl-spin">
+                <div class="peek-vinyl-ring">
+                  <div class="peek-vinyl-dot"></div>
+                </div>
+              </div>
+              <div class="front-cover">
+                <img id="e-img" src="/images/supermix.jpg" alt="" onerror="this.style.display='none'" />
+              </div>
+            </div>
+            <div class="exp-meta">
+              <div class="exp-title-row">
+                <span id="e-title" class="exp-title">AuraSound Music</span>
+                <span id="e-badge" class="exp-badge">LIVE LYRICS</span>
+              </div>
+              <div id="e-artist" class="exp-artist">Putar musik untuk mulai</div>
+            </div>
+          </div>
+
+          <div class="exp-actions" onclick="event.stopPropagation()">
+            <button id="btn-base-mode" class="chip-btn" onclick="togglePreferredCollapsedMode()" title="Ganti mode kecil default (Bar Lirik / Mini Pill)">
+              Bar Lirik
+            </button>
+            <button id="btn-pin" class="icon-pill-btn" onclick="togglePinExpanded()" title="Tahan tampilan terbuka (Pin)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+            </button>
+            <button class="icon-pill-btn" onclick="collapseNow()" title="Kecilkan">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+            <button class="icon-pill-btn close-btn" onclick="hideIsland()" title="Sembunyikan Dynamic Island">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Synchronized Lyrics Stage -->
+        <div class="lyrics-stage" onclick="event.stopPropagation(); focusMainApp();" title="Klik untuk membuka AuraSound">
+          <div id="l-prev" class="lyric-line lyric-prev"></div>
+          <div id="l-curr" class="lyric-line lyric-curr">♪ Menunggu lagu diputar...</div>
+          <div id="l-romaji" class="lyric-line lyric-romaji" style="display:none;"></div>
+          <div id="l-next" class="lyric-line lyric-next"></div>
+        </div>
+
+        <!-- Scrubber & Playback Transport -->
+        <div class="bottom-dock" onclick="event.stopPropagation()">
+          <div class="scrubber-row">
+            <span id="e-curr" class="time-txt right">0:00</span>
+            <div class="scrubber-track" onclick="seekAt(event)">
+              <div class="scrubber-rail">
+                <div id="e-prog" class="scrubber-fill">
+                  <span class="scrubber-thumb"></span>
+                </div>
+              </div>
+            </div>
+            <span id="e-total" class="time-txt">0:00</span>
+          </div>
+
+          <div class="controls-row">
+            <button id="btn-fav" class="ctrl-btn" onclick="sendControl('toggle-fav')" title="Favorit">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            </button>
+
+            <div class="transport-center">
+              <button class="ctrl-btn" onclick="sendControl('prev')" title="Lagu Sebelumnya">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+              </button>
+              <button class="play-orb" onclick="sendControl('toggle-play')" title="Play / Pause">
+                <svg id="ic-pause" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                <svg id="ic-play" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="margin-left:1.5px;"><path d="M8 5v14l11-7z"/></svg>
+              </button>
+              <button class="ctrl-btn" onclick="sendControl('next')" title="Lagu Selanjutnya">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+              </button>
+            </div>
+
+            <div class="eq-group" title="Audio Reactive">
+              <span class="eq-bar eq-b1"></span>
+              <span class="eq-bar eq-b2"></span>
+              <span class="eq-bar eq-b3"></span>
+              <span class="eq-bar eq-b4"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const island = document.getElementById('island');
+    const AURA_PALETTES = [
+      ['#ec4899', '#8b5cf6', '#38bdf8'],
+      ['#10b981', '#06b6d4', '#34d399'],
+      ['#f59e0b', '#ef4444', '#fde047'],
+      ['#6366f1', '#3b82f6', '#22d3ee'],
+      ['#f43f5e', '#fb923c', '#fda4af']
+    ];
+
+    let preferredCollapsedMode = localStorage.getItem('aurasound_island_base_mode') || 'lyricbar';
+    let isPinnedExpanded = false;
+    let isHovering = false;
+    let hoverExpandTimer = null;
+    let leaveCollapseTimer = null;
+    let currentState = {
+      track: null,
+      isPlaying: false,
+      isFavorited: false,
+      currentTime: 0,
+      duration: 0,
+      lyric: null
+    };
+    let lastArtUrl = '';
+
+    function formatTime(secs) {
+      if (!secs || isNaN(secs) || secs < 0) return '0:00';
+      const m = Math.floor(secs / 60);
+      const s = Math.floor(secs % 60);
+      return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    function applyPalette(c1, c2, c3) {
+      const root = document.documentElement.style;
+      root.setProperty('--c1', c1);
+      root.setProperty('--c2', c2);
+      root.setProperty('--c3', c3);
+    }
+
+    function fallbackPaletteForTitle(title) {
+      let hash = 0;
+      const str = String(title || 'AuraSound');
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      const pal = AURA_PALETTES[Math.abs(hash) % AURA_PALETTES.length];
+      applyPalette(pal[0], pal[1], pal[2]);
+    }
+
+    function rgbToHex(r, g, b) {
+      return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+    }
+
+    function boostVibrant(r, g, b) {
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      if (max < 45) return null;
+      const scale = max < 180 ? (210 / Math.max(1, max)) : 1;
+      const nr = Math.min(255, r * scale);
+      const ng = Math.min(255, g * scale);
+      const nb = Math.min(255, b * scale);
+      if (max - min < 22) return null;
+      return rgbToHex(nr, ng, nb);
+    }
+
+    function extractCoverAura(url, fallbackTitle) {
+      if (!url || url.includes('/icons/') || url.includes('supermix')) {
+        fallbackPaletteForTitle(fallbackTitle);
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 12;
+          canvas.height = 12;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, 12, 12);
+          const data = ctx.getImageData(0, 0, 12, 12).data;
+          let r1 = 0, g1 = 0, b1 = 0, cnt1 = 0;
+          let r2 = 0, g2 = 0, b2 = 0, cnt2 = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const idx = i / 4;
+            if (idx < 72) {
+              r1 += data[i]; g1 += data[i + 1]; b1 += data[i + 2]; cnt1++;
+            } else {
+              r2 += data[i]; g2 += data[i + 1]; b2 += data[i + 2]; cnt2++;
+            }
+          }
+          const c1 = boostVibrant(r1 / Math.max(1, cnt1), g1 / Math.max(1, cnt1), b1 / Math.max(1, cnt1));
+          const c2 = boostVibrant(r2 / Math.max(1, cnt2), g2 / Math.max(1, cnt2), b2 / Math.max(1, cnt2));
+          if (c1) {
+            applyPalette(c1, c2 || '#8b5cf6', '#e2e8f0');
+          } else {
+            fallbackPaletteForTitle(fallbackTitle);
+          }
+        } catch (e) {
+          fallbackPaletteForTitle(fallbackTitle);
+        }
+      };
+      img.onerror = () => fallbackPaletteForTitle(fallbackTitle);
+      img.src = url;
+    }
+
+    function applyIslandMode(mode) {
+      island.classList.remove('mode-compact', 'mode-lyricbar', 'mode-expanded');
+      island.classList.add('mode-' + mode);
+    }
+
+    function updateCollapsedModeLabel() {
+      const btn = document.getElementById('btn-base-mode');
+      if (btn) {
+        btn.textContent = preferredCollapsedMode === 'lyricbar' ? 'Mode: Bar Lirik' : 'Mode: Mini Pill';
+        btn.classList.toggle('active', preferredCollapsedMode === 'lyricbar');
+      }
+    }
+
+    function resolveCollapsedMode() {
+      if (preferredCollapsedMode === 'lyricbar' && currentState.track) {
+        return 'lyricbar';
+      }
+      return 'compact';
+    }
+
+    function togglePreferredCollapsedMode() {
+      preferredCollapsedMode = preferredCollapsedMode === 'lyricbar' ? 'compact' : 'lyricbar';
+      try { localStorage.setItem('aurasound_island_base_mode', preferredCollapsedMode); } catch (e) {}
+      updateCollapsedModeLabel();
+    }
+
+    function togglePinExpanded() {
+      isPinnedExpanded = !isPinnedExpanded;
+      const btn = document.getElementById('btn-pin');
+      if (btn) btn.classList.toggle('active', isPinnedExpanded);
+      if (isPinnedExpanded) {
+        applyIslandMode('expanded');
+      }
+    }
+
+    function collapseNow() {
+      isPinnedExpanded = false;
+      const btn = document.getElementById('btn-pin');
+      if (btn) btn.classList.remove('active');
+      applyIslandMode(resolveCollapsedMode());
+    }
+
+    function hideIsland() {
+      sendControl('hide');
+    }
+
+    function focusMainApp() {
+      sendControl('focus-app');
+    }
+
+    function sendControl(action, value) {
+      if (window.electronAPI && typeof window.electronAPI.sendDynamicIslandControl === 'function') {
+        window.electronAPI.sendDynamicIslandControl(action, value);
+      }
+    }
+
+    function seekAt(e) {
+      if (!currentState.duration || currentState.duration <= 0) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const targetSec = ratio * currentState.duration;
+      sendControl('seek', targetSec);
+    }
+
+    function renderState(state) {
+      if (!state) return;
+      currentState = state;
+      const tr = state.track;
+      const playing = Boolean(state.isPlaying);
+
+      island.classList.toggle('paused', !playing);
+      document.getElementById('ic-pause').style.display = playing ? 'block' : 'none';
+      document.getElementById('ic-play').style.display = playing ? 'none' : 'block';
+
+      const title = tr?.title || 'AuraSound';
+      const artist = tr?.artist || 'Putar musik untuk mulai';
+      const thumb = tr?.thumbnail || '/images/supermix.jpg';
+
+      document.getElementById('c-title').textContent = title;
+      document.getElementById('lb-title').textContent = title;
+      document.getElementById('e-title').textContent = title;
+      document.getElementById('e-artist').textContent = artist;
+
+      if (thumb !== lastArtUrl) {
+        lastArtUrl = thumb;
+        ['c-img', 'lb-img', 'e-img'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) {
+            el.style.display = 'block';
+            el.src = thumb;
+          }
+        });
+        extractCoverAura(thumb, title);
+      }
+
+      // Favorite Heart
+      const favBtn = document.getElementById('btn-fav');
+      if (favBtn) favBtn.classList.toggle('fav-active', Boolean(state.isFavorited));
+
+      // Progress
+      const cur = Number(state.currentTime) || 0;
+      const dur = Number(state.duration) || 0;
+      const pct = dur > 0 ? Math.min(100, Math.max(0, (cur / dur) * 100)) : 0;
+      document.getElementById('e-curr').textContent = formatTime(cur);
+      document.getElementById('e-total').textContent = formatTime(dur);
+      document.getElementById('e-prog').style.width = pct.toFixed(2) + '%';
+
+      // Lyrics
+      const lyr = state.lyric || {};
+      const activeTxt = (lyr.active || '').trim();
+      const prevTxt = (lyr.prev || '').trim();
+      const nextTxt = (lyr.next || '').trim();
+      const romajiTxt = (lyr.romaji || '').trim();
+
+      const badge = document.getElementById('e-badge');
+      if (lyr.hasLyrics) {
+        badge.textContent = 'LIVE LYRICS';
+      } else {
+        badge.textContent = tr ? 'NOW PLAYING' : 'STANDBY';
+      }
+
+      if (activeTxt) {
+        document.getElementById('lb-lyric').textContent = '♪ ' + (romajiTxt || activeTxt);
+        document.getElementById('l-prev').textContent = prevTxt;
+        document.getElementById('l-curr').textContent = '♪ ' + activeTxt;
+        const romajiEl = document.getElementById('l-romaji');
+        if (romajiTxt && romajiTxt !== activeTxt) {
+          romajiEl.textContent = romajiTxt;
+          romajiEl.style.display = 'block';
+        } else {
+          romajiEl.style.display = 'none';
+        }
+        document.getElementById('l-next').textContent = nextTxt;
+      } else if (tr) {
+        document.getElementById('lb-lyric').textContent = lyr.hasLyrics ? '♪ • • •' : (title + ' — ' + artist);
+        document.getElementById('l-prev').textContent = '';
+        document.getElementById('l-curr').textContent = lyr.hasLyrics ? '♪ • • • (Intro / Instrumental)' : title;
+        document.getElementById('l-romaji').style.display = 'none';
+        document.getElementById('l-next').textContent = nextTxt || artist;
+      } else {
+        document.getElementById('lb-lyric').textContent = '♪ Pilih lagu di AuraSound';
+        document.getElementById('l-prev').textContent = '';
+        document.getElementById('l-curr').textContent = '♪ Menunggu lagu diputar...';
+        document.getElementById('l-romaji').style.display = 'none';
+        document.getElementById('l-next').textContent = '';
+      }
+
+      // Keep collapsed view aligned with preferred mode when not expanded
+      if (!isHovering && !isPinnedExpanded) {
+        applyIslandMode(resolveCollapsedMode());
+      }
+    }
+
+    // Smart Click-Through & Hover Expand Mechanics
+    let lastIgnoreState = null;
+    function setIgnoreMouse(ignore) {
+      if (lastIgnoreState === ignore) return;
+      lastIgnoreState = ignore;
+      if (window.electronAPI && typeof window.electronAPI.setDynamicIslandIgnoreMouse === 'function') {
+        window.electronAPI.setDynamicIslandIgnoreMouse(ignore);
+      }
+    }
+
+    document.addEventListener('mousemove', (e) => {
+      const rect = island.getBoundingClientRect();
+      const inside = e.clientX >= rect.left - 4 && e.clientX <= rect.right + 4 &&
+                     e.clientY >= rect.top - 4 && e.clientY <= rect.bottom + 4;
+      setIgnoreMouse(!inside);
+    });
+
+    island.addEventListener('mouseenter', () => {
+      isHovering = true;
+      setIgnoreMouse(false);
+      clearTimeout(leaveCollapseTimer);
+      clearTimeout(hoverExpandTimer);
+      hoverExpandTimer = setTimeout(() => {
+        applyIslandMode('expanded');
+      }, 95);
+    });
+
+    island.addEventListener('mouseleave', () => {
+      isHovering = false;
+      clearTimeout(hoverExpandTimer);
+      clearTimeout(leaveCollapseTimer);
+      setIgnoreMouse(true);
+      if (!isPinnedExpanded) {
+        leaveCollapseTimer = setTimeout(() => {
+          applyIslandMode(resolveCollapsedMode());
+        }, 420);
+      }
+    });
+
+    island.addEventListener('click', () => {
+      if (!island.classList.contains('mode-expanded')) {
+        applyIslandMode('expanded');
+      }
+    });
+
+    updateCollapsedModeLabel();
+    applyIslandMode(resolveCollapsedMode());
+
+    if (window.electronAPI) {
+      if (typeof window.electronAPI.onDynamicIslandState === 'function') {
+        window.electronAPI.onDynamicIslandState(renderState);
+      }
+      if (typeof window.electronAPI.requestDynamicIslandState === 'function') {
+        window.electronAPI.requestDynamicIslandState();
+      }
+    }
+  </script>
+</body>
+</html>

@@ -13727,6 +13727,80 @@ body.electron-frameless .electron-window-controls {
   border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.btn-dynamic-island-toggle {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+body.electron-frameless .btn-dynamic-island-toggle {
+  display: inline-flex;
+}
+
+.btn-dynamic-island-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.btn-dynamic-island-toggle.active {
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.48);
+  color: #6ee7b7;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.22);
+}
+
+.di-pill-icon {
+  width: 22px;
+  height: 11px;
+  border-radius: 9999px;
+  background: #090a0f;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 3px;
+}
+
+.di-pill-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: #64748b;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-dynamic-island-toggle.active .di-pill-dot {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
+.di-pill-wave {
+  width: 6px;
+  height: 3px;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.75;
+}
+
+@media (max-width: 1120px) {
+  .btn-dynamic-island-toggle .di-btn-label {
+    display: none;
+  }
+  .btn-dynamic-island-toggle {
+    padding: 0 8px;
+  }
+}
+
 .win-ctrl-btn {
   width: 32px;
   height: 32px;
