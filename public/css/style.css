@@ -4218,23 +4218,9 @@ input::-ms-reveal {
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
 
-.ytm-cast-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: transparent;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: var(--transition);
-}
-
-.ytm-cast-btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+.ytm-cast-btn,
+#btn-top-connect {
+  display: none !important;
 }
 
 .ytm-profile-badge {
