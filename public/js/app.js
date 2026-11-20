@@ -11548,20 +11548,28 @@ function initElectronWindowControls() {
 
   // Desktop Dynamic Island Overlay toggle & remote playback controls
   const btnIsland = document.getElementById('btn-dynamic-island');
-  const applyIslandBtnState = (visible) => {
+  const applyIslandBtnState = (enabled) => {
     if (!btnIsland) return;
-    btnIsland.classList.toggle('active', Boolean(visible));
-    btnIsland.title = visible
-      ? 'Dynamic Island Aktif (Klik untuk sembunyikan)'
-      : 'Tampilkan Dynamic Island di Layar Laptop';
+    btnIsland.classList.toggle('active', Boolean(enabled));
+    btnIsland.title = enabled
+      ? 'Dynamic Island Aktif (muncul saat aplikasi di-minimize)'
+      : 'Dynamic Island Nonaktif (klik untuk aktifkan)';
   };
 
   if (btnIsland && typeof window.electronAPI.toggleDynamicIsland === 'function') {
     btnIsland.addEventListener('click', () => {
-      window.electronAPI.toggleDynamicIsland().then((visible) => {
-        applyIslandBtnState(visible);
-        if (visible && window.app && typeof window.app.syncDynamicIsland === 'function') {
+      window.electronAPI.toggleDynamicIsland().then((enabled) => {
+        applyIslandBtnState(enabled);
+        if (enabled && window.app && typeof window.app.syncDynamicIsland === 'function') {
           window.app.syncDynamicIsland(true);
+        }
+        if (window.app && typeof window.app.showToast === 'function') {
+          window.app.showToast(
+            enabled
+              ? 'Dynamic Island aktif — otomatis muncul saat aplikasi di-minimize'
+              : 'Dynamic Island dinonaktifkan',
+            'info'
+          );
         }
       }).catch(() => {});
     });

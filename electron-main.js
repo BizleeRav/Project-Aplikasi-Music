@@ -153,7 +153,9 @@ function createDynamicIslandWindow() {
     if (lastDynamicIslandState && dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
       dynamicIslandWindow.webContents.send('dynamic-island-state', lastDynamicIslandState);
     }
-    if (readDynamicIslandEnabled() && dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+    const shouldShowNow = readDynamicIslandEnabled() && isMainWindowMinimizedOrHidden();
+    if (shouldShowNow && dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+      positionDynamicIslandWindow();
       dynamicIslandWindow.showInactive();
     }
   });
@@ -165,24 +167,45 @@ function createDynamicIslandWindow() {
   return dynamicIslandWindow;
 }
 
-function setDynamicIslandVisible(visible) {
-  writeDynamicIslandEnabled(visible);
-  if (visible) {
-    const win = createDynamicIslandWindow();
-    positionDynamicIslandWindow();
-    if (win && !win.isDestroyed()) {
-      win.showInactive();
-      if (lastDynamicIslandState) {
-        win.webContents.send('dynamic-island-state', lastDynamicIslandState);
-      }
+function isMainWindowMinimizedOrHidden() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  return mainWindow.isMinimized() || !mainWindow.isVisible();
+}
+
+function showDynamicIslandOverlay() {
+  if (!readDynamicIslandEnabled()) return;
+  const win = createDynamicIslandWindow();
+  positionDynamicIslandWindow();
+  if (win && !win.isDestroyed()) {
+    win.showInactive();
+    if (lastDynamicIslandState) {
+      win.webContents.send('dynamic-island-state', lastDynamicIslandState);
     }
-  } else if (dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
+  }
+}
+
+function hideDynamicIslandOverlay() {
+  if (dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
     dynamicIslandWindow.hide();
   }
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('dynamic-island-visibility-changed', Boolean(visible));
+}
+
+function setDynamicIslandVisible(enabled) {
+  writeDynamicIslandEnabled(enabled);
+  if (enabled) {
+    if (isMainWindowMinimizedOrHidden()) {
+      showDynamicIslandOverlay();
+    } else {
+      createDynamicIslandWindow();
+      hideDynamicIslandOverlay();
+    }
+  } else {
+    hideDynamicIslandOverlay();
   }
-  return Boolean(visible);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('dynamic-island-visibility-changed', Boolean(enabled));
+  }
+  return Boolean(enabled);
 }
 
 // Ensure local server is running on port 3000
@@ -264,6 +287,27 @@ async function createMainWindow() {
   mainWindow.on('unmaximize', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('window-maximized-changed', false);
+    }
+  });
+
+  // Auto-show Dynamic Island when AuraSound is minimized/hidden; auto-hide when opened/restored
+  mainWindow.on('minimize', () => {
+    showDynamicIslandOverlay();
+  });
+  mainWindow.on('hide', () => {
+    showDynamicIslandOverlay();
+  });
+  mainWindow.on('restore', () => {
+    hideDynamicIslandOverlay();
+  });
+  mainWindow.on('show', () => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
+      hideDynamicIslandOverlay();
+    }
+  });
+  mainWindow.on('focus', () => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
+      hideDynamicIslandOverlay();
     }
   });
 
@@ -438,7 +482,7 @@ ipcMain.on('dynamic-island-ignore-mouse', (_event, ignore) => {
 ipcMain.on('dynamic-island-control-from-ui', (_event, payload) => {
   if (!payload || !payload.action) return;
   if (payload.action === 'hide') {
-    setDynamicIslandVisible(false);
+    hideDynamicIslandOverlay();
     return;
   }
   if (payload.action === 'focus-app') {
@@ -447,6 +491,7 @@ ipcMain.on('dynamic-island-control-from-ui', (_event, payload) => {
       mainWindow.show();
       mainWindow.focus();
     }
+    hideDynamicIslandOverlay();
     return;
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -455,10 +500,8 @@ ipcMain.on('dynamic-island-control-from-ui', (_event, payload) => {
 });
 
 ipcMain.handle('dynamic-island-toggle', () => {
-  const currentlyVisible = Boolean(
-    dynamicIslandWindow && !dynamicIslandWindow.isDestroyed() && dynamicIslandWindow.isVisible()
-  );
-  return setDynamicIslandVisible(!currentlyVisible);
+  const nextEnabled = !readDynamicIslandEnabled();
+  return setDynamicIslandVisible(nextEnabled);
 });
 
 ipcMain.handle('dynamic-island-get-enabled', () => {
