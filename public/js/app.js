@@ -11337,12 +11337,16 @@ class App {
       ? activeObj.romaji.trim()
       : '';
 
+    const resolvedThumb = (tr && this.playerThumb && this.playerThumb.complete && this.playerThumb.naturalWidth > 0 && this.playerThumb.src && !this.playerThumb.src.endsWith('/'))
+      ? this.playerThumb.src
+      : (tr?.thumbnail || '/images/supermix.jpg');
+
     const payload = {
       track: tr ? {
         id: tr.id || tr.videoId || '',
         title: tr.title || 'AuraSound Music',
         artist: this.cleanArtistName(tr.artist || 'AuraSound'),
-        thumbnail: tr.thumbnail || '/images/supermix.jpg'
+        thumbnail: resolvedThumb
       } : null,
       isPlaying: Boolean(this.isPlaying),
       isFavorited: Boolean(tr && this.isFavorited(tr.id)),
