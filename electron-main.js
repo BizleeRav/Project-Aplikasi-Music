@@ -60,8 +60,8 @@ let sunoLoginWin = null;
 let dynamicIslandWindow = null;
 let lastDynamicIslandState = null;
 
-const ISLAND_WIDTH = 460;
-const ISLAND_HEIGHT = 270;
+const ISLAND_WIDTH = 560;
+const ISLAND_HEIGHT = 290;
 
 function getDynamicIslandConfigPath() {
   try {
