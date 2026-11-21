@@ -960,7 +960,7 @@ public class MainActivity extends Activity {
 
         startPeriodicBridgeSync();
         startSunoTokenAutoRefresh();
-        bridgeHandler.postDelayed(() -> prewarmSunoIfLoggedIn(), 1000);
+        // Lazy pre-warm: only load hidden Suno desktop WebView when user opens the Suno AI tab or generates a song (saves ~15MB data & RAM on startup)
     }
 
     private void requestAudioFocus() {

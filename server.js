@@ -2000,7 +2000,13 @@ app.get('/api/stream-audio', async (req, res) => {
     if (rangeHeader && contentLength > 0) {
       const parts = rangeHeader.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : contentLength - 1;
+      const rawEnd = parts[1] ? parseInt(parts[1], 10) : contentLength - 1;
+      const end = Number.isFinite(rawEnd) ? Math.min(rawEnd, contentLength - 1) : contentLength - 1;
+
+      if (!Number.isFinite(start) || start < 0 || start >= contentLength || end < start) {
+        return res.status(416).set('Content-Range', `bytes */${contentLength}`).end();
+      }
+
       const chunksize = (end - start) + 1;
 
       res.writeHead(206, {

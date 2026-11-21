@@ -5046,6 +5046,9 @@ class App {
     // Specific tab triggers
     if (tabName === 'suno') {
       window.sunoStudio.renderHistory();
+      if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.prewarmSuno === 'function') {
+        try { window.AuraSoundAndroid.prewarmSuno(); } catch (e) {}
+      }
     } else if (tabName === 'favorites') {
       this.renderFavorites();
     } else if (tabName === 'playlists') {
@@ -5439,9 +5442,9 @@ class App {
         window.tasteEngine.recordTrackStart(track);
       }
 
-      // If user is currently viewing Home, dynamically update the home screen
-      // so the new track & related tracks recommendations appear immediately!
-      if (this.activeTab === 'home') {
+      // Only auto-refresh Home immediately after the very first song played when skipped taste setup
+      // (avoids re-fetching full recommendations & thumbnails on every track change)
+      if (this.activeTab === 'home' && !this.hasChosenTaste() && history.length <= 1) {
         clearTimeout(this._refreshHomeDebounce);
         this._refreshHomeDebounce = setTimeout(async () => {
           if (this.activeTab === 'home') {
@@ -5449,11 +5452,7 @@ class App {
             const mc = document.querySelector('.main-content');
             const prevVcTop = vc ? vc.scrollTop : 0;
             const prevMcTop = mc ? mc.scrollTop : 0;
-            if (!this.hasChosenTaste()) {
-              await this.renderHomeForSkippedUser();
-            } else {
-              await this.loadYTMHome('all', { silent: true });
-            }
+            await this.renderHomeForSkippedUser();
             if (vc && prevVcTop > 0) vc.scrollTop = prevVcTop;
             if (mc && prevMcTop > 0) mc.scrollTop = prevMcTop;
           }
@@ -8849,9 +8848,9 @@ class App {
       };
       localStorage.setItem('aurasound_playback_state', JSON.stringify(state));
 
-      // Also persist to server disk asynchronously (throttled)
-      if (this.currentTrack) {
-        if (!this._lastServerStateSave || Date.now() - this._lastServerStateSave > 2000) {
+      // Persist to server disk ONLY on Desktop Electron (mobile/web uses localStorage to save data & battery)
+      if (this.currentTrack && window.electronAPI && window.electronAPI.isElectron) {
+        if (!this._lastServerStateSave || Date.now() - this._lastServerStateSave > 4000) {
           this._lastServerStateSave = Date.now();
           fetch('/api/user/playback-state', {
             method: 'POST',
@@ -9468,7 +9467,7 @@ class App {
       if (typeof window.AuraSoundAndroid === 'undefined') {
         this.setAppBackgroundState(document.hidden);
       }
-      if (!document.hidden && this.isOnWifiConnection()) {
+      if (!document.hidden && this.isWifiPreCacheEnabled() && this.isOnWifiConnection()) {
         this.scheduleWifiPreCache(3000);
       }
     });
@@ -9476,25 +9475,26 @@ class App {
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     if (conn && typeof conn.addEventListener === 'function') {
       conn.addEventListener('change', () => {
-        if (this.isOnWifiConnection()) {
-          console.log('[SmartPreCache] 📶 Wi-Fi detected! Scheduling Rolling Pre-Cache...');
+        if (this.isWifiPreCacheEnabled() && this.isOnWifiConnection()) {
           this.scheduleWifiPreCache(2500);
         } else {
-          console.log('[SmartPreCache] 📱 Switched to Cellular/Save-Data. Stopping background pre-cache.');
           this.cancelWifiPreCache();
         }
       });
     }
 
     window.addEventListener('online', () => {
-      if (this.isOnWifiConnection()) {
+      if (this.isWifiPreCacheEnabled() && this.isOnWifiConnection()) {
         this.scheduleWifiPreCache(3000);
       }
     });
+  }
 
-    // Initial check after home feed has loaded
-    if (this.isOnWifiConnection()) {
-      this.scheduleWifiPreCache(7000);
+  isWifiPreCacheEnabled() {
+    try {
+      return localStorage.getItem('aurasound_wifi_precache') === 'true';
+    } catch (_) {
+      return false;
     }
   }
 
@@ -9523,12 +9523,11 @@ class App {
     if (!conn) return false;
     if (conn.saveData) return false;
     if (conn.type === 'wifi' || conn.type === 'ethernet') return true;
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (!isMobile && !conn.type && conn.effectiveType === '4g') return true;
     return false;
   }
 
   scheduleWifiPreCache(delayMs = 3000) {
+    if (!this.isWifiPreCacheEnabled()) return;
     if (this._wifiPreCacheTimer) clearTimeout(this._wifiPreCacheTimer);
     if (!this.isOnWifiConnection() || !window.audioCache) return;
     this._wifiPreCacheTimer = setTimeout(() => {
@@ -9549,7 +9548,7 @@ class App {
   }
 
   async runWifiPreCache() {
-    if (this._isWifiPreCaching || !this.isOnWifiConnection() || !window.audioCache) return;
+    if (!this.isWifiPreCacheEnabled() || this._isWifiPreCaching || !this.isOnWifiConnection() || !window.audioCache) return;
     this._isWifiPreCaching = true;
     this._wifiPreCacheAbort = new AbortController();
     const signal = this._wifiPreCacheAbort.signal;
@@ -9615,12 +9614,15 @@ class App {
     this._activeStreamAbortController = abortCtrl;
     this._isSingleStreamActive = true;
 
-    const fallbackStandardAudio = () => {
+    const fallbackStandardAudio = (resumeAt = 0) => {
       if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
       this._isSingleStreamActive = false;
       if (this._currentBlobUrl) {
         try { URL.revokeObjectURL(this._currentBlobUrl); } catch (_) {}
         this._currentBlobUrl = null;
+      }
+      if (resumeAt > 0) {
+        this._pendingSeekTime = resumeAt;
       }
       this.nativeAudio.src = streamUrl;
       const p = this.nativeAudio.play();
@@ -9638,93 +9640,110 @@ class App {
       };
     };
 
+    // If MSE Opus is unsupported (e.g. iOS Safari), use native progressive Range streaming directly (never download 100% upfront)
+    const canUseMseOpus = typeof window.MediaSource !== 'undefined' && MediaSource.isTypeSupported('audio/webm; codecs="opus"');
+    if (!canUseMseOpus) {
+      fallbackStandardAudio();
+      return;
+    }
+
+    const INITIAL_RANGE_BYTES = 655360; // ~640 KB (~35-45s of Opus audio)
+    const CHUNK_RANGE_BYTES = 524288;   // ~512 KB (~30s per progressive slice)
+    const BUFFER_AHEAD_TARGET_SEC = 25; // Buffer 25s ahead so skipping tracks wastes minimal data
+
     try {
-      const resp = await fetch(streamUrl, { signal: abortCtrl.signal });
+      const resp = await fetch(streamUrl, {
+        headers: { Range: `bytes=0-${INITIAL_RANGE_BYTES - 1}` },
+        signal: abortCtrl.signal
+      });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
+      if (abortCtrl.signal.aborted || this.currentTrack !== track) {
+        try { resp.body?.cancel(); } catch (_) {}
+        return;
+      }
+
+      const resolvedStudioId = resp.headers.get('X-Resolved-Studio-Id');
+      if (resolvedStudioId && !track.resolvedStudioId) {
+        track.resolvedStudioId = resolvedStudioId;
+      }
 
       let contentType = resp.headers.get('content-type') || 'audio/webm; codecs="opus"';
       if (contentType.trim().toLowerCase() === 'audio/webm') {
         contentType = 'audio/webm; codecs="opus"';
       }
 
-      // Path A: Native MediaSource (MSE) Progressive Streaming + Single-Stream Capture (0 double-download!)
-      if (typeof window.MediaSource !== 'undefined' && MediaSource.isTypeSupported(contentType) && resp.body) {
-        const mediaSource = new MediaSource();
-        const msUrl = URL.createObjectURL(mediaSource);
-        this._currentBlobUrl = msUrl;
-        this.nativeAudio.src = msUrl;
+      if (!MediaSource.isTypeSupported(contentType) || !resp.body) {
+        try { resp.body?.cancel(); } catch (_) {}
+        fallbackStandardAudio();
+        return;
+      }
 
-        this.nativeAudio.onerror = (e) => {
-          if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
-          console.warn('[SingleStream MSE] Media element error, switching to standard stream:', e);
-          try { abortCtrl.abort(); } catch (_) {}
-          fallbackStandardAudio();
-        };
+      const mediaSource = new MediaSource();
+      const msUrl = URL.createObjectURL(mediaSource);
+      this._currentBlobUrl = msUrl;
+      this.nativeAudio.src = msUrl;
 
-        await new Promise((resolve, reject) => {
-          mediaSource.addEventListener('sourceopen', resolve, { once: true });
-          mediaSource.addEventListener('error', reject, { once: true });
-        });
-
+      this.nativeAudio.onerror = (e) => {
         if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
-
-        const sb = mediaSource.addSourceBuffer(contentType);
-        const reader = resp.body.getReader();
-        const capturedChunks = [];
-        let playStarted = false;
-
-        const appendChunk = (chunk) => new Promise((resolve, reject) => {
-          if (abortCtrl.signal.aborted || mediaSource.readyState !== 'open') return resolve();
-          const doAppend = () => {
-            try {
-              sb.addEventListener('updateend', resolve, { once: true });
-              sb.addEventListener('error', reject, { once: true });
-              sb.appendBuffer(chunk);
-            } catch (err) {
-              reject(err);
-            }
-          };
-          if (sb.updating) {
-            sb.addEventListener('updateend', doAppend, { once: true });
-          } else {
-            doAppend();
-          }
+        console.warn('[SingleStream MSE] Media element error, switching to standard stream:', e);
+        const curPos = this.nativeAudio.currentTime || 0;
+        try { abortCtrl.abort(); } catch (_) {}
+        // Re-enable playback on standard progressive audio without abort guard blocking it
+        this._isSingleStreamActive = false;
+        if (this._currentBlobUrl) {
+          try { URL.revokeObjectURL(this._currentBlobUrl); } catch (_) {}
+          this._currentBlobUrl = null;
+        }
+        if (curPos > 1) this._pendingSeekTime = curPos;
+        this.nativeAudio.src = streamUrl;
+        this.nativeAudio.play().catch(err => {
+          if (err.name !== 'AbortError') this.fallbackToYouTube(track, err);
         });
+      };
 
+      await new Promise((resolve, reject) => {
+        mediaSource.addEventListener('sourceopen', resolve, { once: true });
+        mediaSource.addEventListener('error', reject, { once: true });
+      });
+
+      if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
+
+      const sb = mediaSource.addSourceBuffer(contentType);
+      const capturedChunks = [];
+      let playStarted = false;
+
+      const appendChunk = (chunk) => new Promise((resolve, reject) => {
+        if (abortCtrl.signal.aborted || mediaSource.readyState !== 'open') return resolve();
+        const doAppend = () => {
+          try {
+            sb.addEventListener('updateend', resolve, { once: true });
+            sb.addEventListener('error', reject, { once: true });
+            sb.appendBuffer(chunk);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        if (sb.updating) {
+          sb.addEventListener('updateend', doAppend, { once: true });
+        } else {
+          doAppend();
+        }
+      });
+
+      const readBodyIntoSourceBuffer = async (body) => {
+        const reader = body.getReader();
+        let bytesRead = 0;
         while (true) {
           const { done, value } = await reader.read();
           if (abortCtrl.signal.aborted || this.currentTrack !== track) {
             try { reader.cancel(); } catch (_) {}
-            return;
+            return { aborted: true, bytesRead };
           }
-
           if (done) {
-            if (!sb.updating && mediaSource.readyState === 'open') {
-              try { mediaSource.endOfStream(); } catch (_) {}
-            } else if (mediaSource.readyState === 'open') {
-              sb.addEventListener('updateend', () => {
-                if (mediaSource.readyState === 'open') {
-                  try { mediaSource.endOfStream(); } catch (_) {}
-                }
-              }, { once: true });
-            }
-
-            if (capturedChunks.length > 0 && window.audioCache) {
-              const fullBlob = new Blob(capturedChunks, { type: contentType });
-              if (fullBlob.size > 10000) {
-                this._isPlayingFromCache = true;
-                this.currentTrack._cacheTriggered = true;
-                window.audioCache.saveAudioBlob(track.id, fullBlob, {
-                  title: track.title,
-                  artist: track.artist
-                }).catch(() => {});
-              }
-            }
-            break;
+            return { aborted: false, bytesRead };
           }
-
           if (value && value.byteLength > 0) {
+            bytesRead += value.byteLength;
             capturedChunks.push(value);
             await appendChunk(value);
             if (!playStarted) {
@@ -9740,33 +9759,133 @@ class App {
             }
           }
         }
-        return;
-      }
+      };
 
-      // Path B: Non-MSE codec (e.g. MP4/AAC fallback) -> Single-fetch Blob + Play + Cache (still 1x download!)
-      const blob = await resp.blob();
-      if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
-      if (blob && blob.size > 10000) {
-        if (window.audioCache) {
-          this._isPlayingFromCache = true;
-          this.currentTrack._cacheTriggered = true;
-          window.audioCache.saveAudioBlob(track.id, blob, {
-            title: track.title,
-            artist: track.artist
-          }).catch(() => {});
+      const getBufferedAheadSec = () => {
+        try {
+          const cur = this.nativeAudio.currentTime || 0;
+          const buf = this.nativeAudio.buffered;
+          for (let i = 0; i < buf.length; i++) {
+            if (cur >= buf.start(i) - 0.5 && cur <= buf.end(i)) {
+              return Math.max(0, buf.end(i) - cur);
+            }
+          }
+          if (buf.length > 0) {
+            return Math.max(0, buf.end(buf.length - 1) - cur);
+          }
+        } catch (_) {}
+        return 0;
+      };
+
+      const waitForBufferWindow = () => new Promise((resolve) => {
+        if (abortCtrl.signal.aborted || this.currentTrack !== track) return resolve();
+        const shouldFetchNow = () => {
+          if (this.nativeAudio.seeking) return true;
+          const ahead = getBufferedAheadSec();
+          if (this.nativeAudio.paused && playStarted) {
+            return ahead < 8;
+          }
+          return ahead < BUFFER_AHEAD_TARGET_SEC;
+        };
+        if (shouldFetchNow()) return resolve();
+
+        let settled = false;
+        const cleanup = () => {
+          if (settled) return;
+          settled = true;
+          clearInterval(pollId);
+          abortCtrl.signal.removeEventListener('abort', cleanup);
+          this.nativeAudio.removeEventListener('seeking', checkWake);
+          this.nativeAudio.removeEventListener('waiting', checkWake);
+          this.nativeAudio.removeEventListener('play', checkWake);
+          resolve();
+        };
+        const checkWake = () => {
+          if (abortCtrl.signal.aborted || this.currentTrack !== track || shouldFetchNow()) {
+            cleanup();
+          }
+        };
+        const pollId = setInterval(checkWake, 500);
+        abortCtrl.signal.addEventListener('abort', cleanup, { once: true });
+        this.nativeAudio.addEventListener('seeking', checkWake);
+        this.nativeAudio.addEventListener('waiting', checkWake);
+        this.nativeAudio.addEventListener('play', checkWake);
+      });
+
+      const finishAndSaveCache = () => {
+        if (abortCtrl.signal.aborted || this.currentTrack !== track) return;
+        if (!sb.updating && mediaSource.readyState === 'open') {
+          try { mediaSource.endOfStream(); } catch (_) {}
+        } else if (mediaSource.readyState === 'open') {
+          sb.addEventListener('updateend', () => {
+            if (mediaSource.readyState === 'open') {
+              try { mediaSource.endOfStream(); } catch (_) {}
+            }
+          }, { once: true });
         }
-        this._currentBlobUrl = URL.createObjectURL(blob);
-        this.nativeAudio.src = this._currentBlobUrl;
-        const p = this.nativeAudio.play();
-        if (p !== undefined) {
-          p.then(() => this.updatePlayState(true)).catch(err => {
-            if (err.name !== 'AbortError') this.fallbackToYouTube(track, err);
+
+        if (capturedChunks.length > 0 && window.audioCache) {
+          const fullBlob = new Blob(capturedChunks, { type: contentType });
+          if (fullBlob.size > 10000) {
+            this._isPlayingFromCache = true;
+            this.currentTrack._cacheTriggered = true;
+            window.audioCache.saveAudioBlob(track.id, fullBlob, {
+              title: track.title,
+              artist: track.artist
+            }).catch(() => {});
+          }
+        }
+      };
+
+      const contentRange = resp.headers.get('content-range') || '';
+      const rangeMatch = contentRange.match(/bytes\s+(\d+)-(\d+)\/(\d+)/i);
+
+      if (resp.status === 206 && rangeMatch) {
+        const totalBytes = parseInt(rangeMatch[3], 10);
+        const initialRes = await readBodyIntoSourceBuffer(resp.body);
+        if (initialRes.aborted) return;
+
+        let nextOffset = initialRes.bytesRead;
+        while (nextOffset < totalBytes) {
+          await waitForBufferWindow();
+          if (abortCtrl.signal.aborted || this.currentTrack !== track || mediaSource.readyState !== 'open') {
+            return;
+          }
+
+          const rangeEnd = Math.min(nextOffset + CHUNK_RANGE_BYTES - 1, totalBytes - 1);
+          const nextResp = await fetch(streamUrl, {
+            headers: { Range: `bytes=${nextOffset}-${rangeEnd}` },
+            signal: abortCtrl.signal
           });
+          if (abortCtrl.signal.aborted || this.currentTrack !== track) {
+            try { nextResp.body?.cancel(); } catch (_) {}
+            return;
+          }
+
+          const nextCr = nextResp.headers.get('content-range') || '';
+          const nextMatch = nextCr.match(/bytes\s+(\d+)-(\d+)\/(\d+)/i);
+          const nextTotal = nextMatch ? parseInt(nextMatch[3], 10) : 0;
+
+          if (nextResp.status !== 206 || !nextResp.body || (nextTotal > 0 && nextTotal !== totalBytes)) {
+            try { nextResp.body?.cancel(); } catch (_) {}
+            fallbackStandardAudio(this.nativeAudio.currentTime || 0);
+            return;
+          }
+
+          const sliceRes = await readBodyIntoSourceBuffer(nextResp.body);
+          if (sliceRes.aborted) return;
+          if (sliceRes.bytesRead <= 0) break;
+          nextOffset += sliceRes.bytesRead;
         }
+
+        finishAndSaveCache();
         return;
       }
 
-      fallbackStandardAudio();
+      // Server returned 200 (full stream without Range) -> stream continuously & cache once
+      const fullRes = await readBodyIntoSourceBuffer(resp.body);
+      if (fullRes.aborted) return;
+      finishAndSaveCache();
     } catch (err) {
       if (err.name === 'AbortError' || this.currentTrack !== track) return;
       console.warn('[SingleStream] Stream error, trying fallback:', err.message);

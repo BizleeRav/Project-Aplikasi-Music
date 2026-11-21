@@ -35,9 +35,6 @@ class SunoStudio {
   init() {
     this.checkApiStatus();
     this.fetchCreations(1, false);
-    if (window.AuraSoundAndroid && typeof window.AuraSoundAndroid.prewarmSuno === 'function') {
-      try { window.AuraSoundAndroid.prewarmSuno(); } catch (e) {}
-    }
 
     // Listen for automatic token capture from Electron
     if (window.electronAPI && window.electronAPI.onSunoTokenCaptured) {
@@ -55,9 +52,12 @@ class SunoStudio {
       });
     }
 
-    // Auto-detect when account becomes connected from Chrome
+    // Auto-detect when account becomes connected from Chrome (only while Suno tab or Connect modal is open)
     setInterval(() => {
-      if (!this.hasApiKey) {
+      if (this.hasApiKey || document.hidden) return;
+      const sunoTabActive = document.getElementById('view-suno')?.classList.contains('active');
+      const tokenModalActive = document.getElementById('modal-token')?.classList.contains('active');
+      if (sunoTabActive || tokenModalActive) {
         this.checkApiStatus();
       }
     }, 3000);
