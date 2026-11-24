@@ -2701,9 +2701,10 @@ class App {
 
     // 1. Fluid Ambient Aurora Mesh Cursor Parallax on Beranda
     const ambientMeshEl = document.getElementById('aura-ambient-mesh');
+    const cinemaModalEl = this.cinemaModal;
     let mouseMoveRaf = null;
     window.addEventListener('mousemove', (e) => {
-      if (!ambientMeshEl || mouseMoveRaf) return;
+      if (!ambientMeshEl || mouseMoveRaf || (cinemaModalEl && cinemaModalEl.classList.contains('active'))) return;
       mouseMoveRaf = requestAnimationFrame(() => {
         const xPct = (e.clientX / window.innerWidth) * 100;
         const yPct = (e.clientY / window.innerHeight) * 100;
@@ -2716,6 +2717,7 @@ class App {
     // 2. Interactive 3D Card Tilt with Specular Dynamic Reflection
     const cardSelectors = '.aura-spotlight-card, .aura-bento-card, .aura-vinyl-card, .aura-cinema-card, .aura-mix-modern-card, .aura-resonance-tile, .modern-card, .quick-card, .explore-genre-card';
     let currentTiltedCard = null;
+    let currentTiltedRect = null;
     let tiltRaf = null;
     let isScrollingView = false;
     let scrollPauseTimer = null;
@@ -2729,6 +2731,7 @@ class App {
           currentTiltedCard.style.removeProperty('--glare-x');
           currentTiltedCard.style.removeProperty('--glare-y');
           currentTiltedCard = null;
+          currentTiltedRect = null;
         }
         clearTimeout(scrollPauseTimer);
         scrollPauseTimer = setTimeout(() => { isScrollingView = false; }, 160);
@@ -2736,7 +2739,7 @@ class App {
     }
 
     document.addEventListener('mousemove', (e) => {
-      if (isScrollingView) return;
+      if (isScrollingView || (cinemaModalEl && cinemaModalEl.classList.contains('active'))) return;
       const card = e.target.closest(cardSelectors);
       if (!card) {
         if (currentTiltedCard) {
@@ -2744,23 +2747,29 @@ class App {
           currentTiltedCard.style.removeProperty('--glare-x');
           currentTiltedCard.style.removeProperty('--glare-y');
           currentTiltedCard = null;
+          currentTiltedRect = null;
         }
         return;
       }
 
-      if (currentTiltedCard && currentTiltedCard !== card) {
-        currentTiltedCard.style.transform = '';
-        currentTiltedCard.style.removeProperty('--glare-x');
-        currentTiltedCard.style.removeProperty('--glare-y');
+      if (currentTiltedCard !== card) {
+        if (currentTiltedCard) {
+          currentTiltedCard.style.transform = '';
+          currentTiltedCard.style.removeProperty('--glare-x');
+          currentTiltedCard.style.removeProperty('--glare-y');
+        }
+        currentTiltedCard = card;
+        currentTiltedRect = card.getBoundingClientRect();
       }
-      currentTiltedCard = card;
 
       if (tiltRaf) return;
+      const latestX = e.clientX;
+      const latestY = e.clientY;
       tiltRaf = requestAnimationFrame(() => {
-        if (currentTiltedCard) {
-          const rect = currentTiltedCard.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
+        if (currentTiltedCard && currentTiltedRect && currentTiltedRect.width > 0 && currentTiltedRect.height > 0) {
+          const rect = currentTiltedRect;
+          const x = latestX - rect.left;
+          const y = latestY - rect.top;
           const centerX = rect.width / 2;
           const centerY = rect.height / 2;
           const rotX = ((y - centerY) / centerY) * -5.5;

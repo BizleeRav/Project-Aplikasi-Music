@@ -142,7 +142,7 @@ function createDynamicIslandWindow() {
   try {
     dynamicIslandWindow.setAlwaysOnTop(true, 'screen-saver');
     dynamicIslandWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    dynamicIslandWindow.setIgnoreMouseEvents(true, { forward: true });
+    dynamicIslandWindow.setIgnoreMouseEvents(false);
   } catch (e) {}
 
   dynamicIslandWindow.loadURL('http://localhost:3000/dynamic-island.html').catch((err) => {
@@ -177,6 +177,9 @@ function showDynamicIslandOverlay() {
   const win = createDynamicIslandWindow();
   positionDynamicIslandWindow();
   if (win && !win.isDestroyed()) {
+    try {
+      win.setIgnoreMouseEvents(true, { forward: true });
+    } catch (e) {}
     win.showInactive();
     if (lastDynamicIslandState) {
       win.webContents.send('dynamic-island-state', lastDynamicIslandState);
@@ -186,7 +189,13 @@ function showDynamicIslandOverlay() {
 
 function hideDynamicIslandOverlay() {
   if (dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
-    dynamicIslandWindow.hide();
+    // Release WH_MOUSE_LL forwarding hook immediately so Windows mouse cursor never stutters
+    try {
+      dynamicIslandWindow.setIgnoreMouseEvents(false);
+    } catch (e) {}
+    if (dynamicIslandWindow.isVisible()) {
+      dynamicIslandWindow.hide();
+    }
   }
 }
 
@@ -196,7 +205,6 @@ function setDynamicIslandVisible(enabled) {
     if (isMainWindowMinimizedOrHidden()) {
       showDynamicIslandOverlay();
     } else {
-      createDynamicIslandWindow();
       hideDynamicIslandOverlay();
     }
   } else {
@@ -375,12 +383,7 @@ async function createMainWindow() {
     app.quit();
   });
 
-  // Initialize Desktop Dynamic Island Overlay once main server & window are ready
-  if (readDynamicIslandEnabled()) {
-    setTimeout(() => {
-      createDynamicIslandWindow();
-    }, 900);
-  }
+  // Dynamic Island overlay is created lazily on minimize/hide so no WH_MOUSE_LL hook runs while mainWindow is active
   try {
     screen.on('display-metrics-changed', positionDynamicIslandWindow);
     screen.on('display-added', positionDynamicIslandWindow);
@@ -471,7 +474,7 @@ ipcMain.on('dynamic-island-request-state', () => {
 ipcMain.on('dynamic-island-ignore-mouse', (_event, ignore) => {
   if (!dynamicIslandWindow || dynamicIslandWindow.isDestroyed()) return;
   try {
-    if (ignore) {
+    if (ignore && dynamicIslandWindow.isVisible()) {
       dynamicIslandWindow.setIgnoreMouseEvents(true, { forward: true });
     } else {
       dynamicIslandWindow.setIgnoreMouseEvents(false);

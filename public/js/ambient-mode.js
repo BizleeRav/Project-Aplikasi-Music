@@ -341,8 +341,15 @@
       this._trackLyricsKey = '';
       this._cachedLineWordEls = [];
       this._lastClockSec = -1;
-      this._edgePulse = 0.25;
+      this._edgePulse = 0.22;
       this._edgeBass = 0.1;
+      this._edgeBeatFlash = 0;
+      this._edgeBeatSeen = 0;
+      this._prevBassSample = 0;
+      this._kick = 0;
+      this._wheelStageCx = 120;
+      this._wheelStageCy = 0;
+      this._wheelStageR = 72;
 
       this._running = false;
       this._rafId = null;
@@ -586,34 +593,44 @@
     }
 
     resizeCanvases() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rawDpr = window.devicePixelRatio || 1;
+      const bgDpr = Math.min(rawDpr, 1.5);
+      const whDpr = Math.min(rawDpr, 2);
+      let stageRect = null;
       if (this.bgCanvas && this.stageEl) {
-        const rect = this.stageEl.getBoundingClientRect();
-        const w = Math.max(1, Math.round(rect.width));
-        const h = Math.max(1, Math.round(rect.height));
-        const tw = Math.round(w * dpr);
-        const th = Math.round(h * dpr);
+        stageRect = this.stageEl.getBoundingClientRect();
+        const w = Math.max(1, Math.round(stageRect.width));
+        const h = Math.max(1, Math.round(stageRect.height));
+        const tw = Math.round(w * bgDpr);
+        const th = Math.round(h * bgDpr);
         if (this.bgCanvas.width !== tw || this.bgCanvas.height !== th) {
           this.bgCanvas.width = tw;
           this.bgCanvas.height = th;
         }
         this._bgW = w;
         this._bgH = h;
-        this._bgDpr = dpr;
+        this._bgDpr = bgDpr;
       }
       if (this.wheelCanvas) {
         const rect = this.wheelCanvas.getBoundingClientRect();
         const w = Math.max(1, Math.round(rect.width));
         const h = Math.max(1, Math.round(rect.height));
-        const tw = Math.round(w * dpr);
-        const th = Math.round(h * dpr);
+        const tw = Math.round(w * whDpr);
+        const th = Math.round(h * whDpr);
         if (this.wheelCanvas.width !== tw || this.wheelCanvas.height !== th) {
           this.wheelCanvas.width = tw;
           this.wheelCanvas.height = th;
         }
         this._whW = w;
         this._whH = h;
-        this._whDpr = dpr;
+        this._whDpr = whDpr;
+
+        if (stageRect && rect.width > 0 && rect.height > 0) {
+          const r = Math.max(48, Math.min(h * 0.365, w * 0.215));
+          this._wheelStageCx = (rect.left - stageRect.left) + r * 1.18;
+          this._wheelStageCy = (rect.top - stageRect.top) + h * 0.49;
+          this._wheelStageR = r;
+        }
       }
     }
 
@@ -670,11 +687,14 @@
         this._treble += (targetTreble - this._treble) * 0.3;
         this._level = this._bass * 0.48 + this._mid * 0.34 + this._treble * 0.18;
 
-        const kickNow = isPlaying ? Math.max(state.kickImpulse, state.bassEnergy > 0.58 ? state.bassEnergy : 0) : 0;
-        if (kickNow > this._beat + 0.18 && nowMs - this._beatAt > 200) {
+        const kickNow = isPlaying ? Math.max(state.kickImpulse, state.bassEnergy > 0.55 ? (state.bassEnergy - 0.15) : 0) : 0;
+        const bassJump = isPlaying ? Math.max(0, state.bassEnergy - (this._prevBassSample || 0)) : 0;
+        this._prevBassSample = state.bassEnergy || 0;
+        if ((kickNow > this._beat + 0.15 || bassJump > 0.1) && nowMs - this._beatAt > 170) {
           this._beatAt = nowMs;
         }
-        this._beat = Math.max(this._beat * 0.88, kickNow);
+        this._beat = Math.max(this._beat * 0.86, kickNow);
+        this._kick = isPlaying ? Math.min(1, Math.max(state.kickImpulse || 0, bassJump * 2.6)) : 0;
       } else {
         // Fallback gentle ambient breathing if audioEngine unavailable
         for (let i = 0; i < bands.length; i++) {
@@ -691,6 +711,7 @@
         this._treble = 0.08;
         this._level = 0.1;
         this._beat *= 0.9;
+        this._kick = 0;
       }
 
       return {
@@ -702,6 +723,7 @@
         treble: this._treble,
         level: this._level,
         beat: this._beat,
+        kick: this._kick,
         beatAt: this._beatAt,
         time: nowMs,
         step: Math.min(3, Math.max(0.4, dtMs / 16.667)),
@@ -782,11 +804,12 @@
     }
 
     drawBgAmbientLight(f) {
-      const { ctx, width: w, height: h, theme, bass, mid, level, time } = f;
+      const { ctx, width: w, height: h, theme, bass, mid, level, beat, time } = f;
       const t = time * 0.00032;
       const c0 = theme.stops[0];
       const c1 = theme.stops[1] || c0;
       const c2 = theme.stops[2] || c1;
+      const beatPop = Math.max(beat, this._edgeBeatFlash || 0);
 
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -794,9 +817,9 @@
       // Center stage atmospheric bloom behind visualizer (kept soft so lyrics below stay high-contrast)
       const cx1 = w * (0.44 + Math.cos(t) * 0.08);
       const cy1 = h * (0.31 + Math.sin(t * 1.2) * 0.04);
-      const r1 = Math.min(w, h) * (0.44 + bass * 0.09);
+      const r1 = Math.min(w, h) * (0.44 + bass * 0.09 + beatPop * 0.05);
       const g1 = ctx.createRadialGradient(cx1, cy1, 0, cx1, cy1, r1);
-      g1.addColorStop(0, rgba(c0, 0.14 + level * 0.12));
+      g1.addColorStop(0, rgba(c0, 0.14 + level * 0.12 + beatPop * 0.06));
       g1.addColorStop(0.5, rgba(c1, 0.06 + bass * 0.05));
       g1.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = g1;
@@ -813,30 +836,46 @@
       ctx.fillStyle = g2;
       ctx.fillRect(0, 0, w, h);
 
-      // Bottom-left stage floor light pool connecting the spinning vinyl into the room
-      const vx = Math.min(w * 0.22, 165);
-      const vy = h * 0.85;
-      const vr = Math.min(w, h) * (0.30 + bass * 0.08);
-      const vg = ctx.createRadialGradient(vx, vy, 0, vx, vy, vr);
-      vg.addColorStop(0, rgba(theme.glow, 0.18 + bass * 0.14));
-      vg.addColorStop(0.45, rgba(c0, 0.08 + level * 0.06));
+      // Fullscreen unclipped volumetric aura centered right behind the bottom-left vinyl disc
+      const vx = this._wheelStageCx || Math.min(w * 0.14, 125);
+      const vy = this._wheelStageCy || (h - 135);
+      const vRadius = this._wheelStageR || 76;
+      const vr = Math.max(vRadius * (2.55 + bass * 0.48 + beatPop * 0.38), Math.min(w, h) * 0.34);
+      const vg = ctx.createRadialGradient(vx, vy, vRadius * 0.25, vx, vy, vr);
+      vg.addColorStop(0, rgba(theme.glow, 0.26 + bass * 0.22 + beatPop * 0.18));
+      vg.addColorStop(0.32, rgba(c0, 0.16 + bass * 0.14 + beatPop * 0.10));
+      vg.addColorStop(0.66, rgba(c2, 0.06 + level * 0.05));
       vg.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = vg;
-      ctx.fillRect(0, h * 0.45, Math.min(w, vr * 2.2), h * 0.55);
+      ctx.fillRect(0, 0, w, h);
 
       ctx.restore();
     }
 
     drawEdgeGlow(f) {
-      const { ctx, width: w, height: h, theme, bass, mid, treble, level, beat, time, step } = f;
+      const { ctx, width: w, height: h, theme, bass, mid, treble, level, beat, kick, beatAt, live, time, step } = f;
       const t = time * 0.00055;
-      const targetPulse = Math.min(1, 0.30 + bass * 0.44 + beat * 0.40 + level * 0.16);
-      const ease = 1 - Math.pow(1 - 0.16, step || 1);
-      this._edgePulse += (targetPulse - this._edgePulse) * ease;
-      this._edgeBass += (bass - this._edgeBass) * ease;
+      const s = step || 1;
+
+      if (beatAt && beatAt !== this._edgeBeatSeen && live > 0.5) {
+        this._edgeBeatSeen = beatAt;
+        this._edgeBeatFlash = Math.min(1, 0.65 + bass * 0.45);
+      }
+      if (live > 0.5 && kick > 0.32) {
+        this._edgeBeatFlash = Math.max(this._edgeBeatFlash, Math.min(1, kick * 0.95));
+      }
+      this._edgeBeatFlash *= Math.pow(0.84, s);
+
+      const rawTarget = live > 0.5
+        ? Math.min(1.35, 0.16 + bass * 0.55 + beat * 0.45 + this._edgeBeatFlash * 0.65 + level * 0.15)
+        : 0.22;
+      const atkEase = 1 - Math.pow(1 - (rawTarget > this._edgePulse ? 0.5 : 0.14), s);
+      this._edgePulse += (rawTarget - this._edgePulse) * atkEase;
+      this._edgeBass += (bass - this._edgeBass) * (1 - Math.pow(1 - 0.32, s));
 
       const pulse = this._edgePulse;
       const sBass = this._edgeBass;
+      const beatBurst = Math.max(beat * 0.85, this._edgeBeatFlash);
       const c0 = theme.stops[0];
       const c1 = theme.stops[1] || c0;
       const c2 = theme.stops[2] || c1;
@@ -844,76 +883,78 @@
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
 
-      // 1. Silky drifting radial light curtains hugging the top screen bezel
-      const topR = Math.max(w * 0.42, 340);
-      const topY = -topR * 0.62;
+      // 1. Silky drifting radial light curtains hugging the top screen bezel (expands smoothly with beat)
+      const topR = Math.max(w * 0.44, 360) * (1 + beatBurst * 0.16);
+      const topY = -topR * 0.60;
       const shiftX = Math.sin(t) * w * 0.12;
 
       const topLeftCurtain = ctx.createRadialGradient(w * 0.30 + shiftX, topY, 0, w * 0.30 + shiftX, topY, topR);
-      topLeftCurtain.addColorStop(0, rgba('#ffffff', 0.22 + beat * 0.16));
-      topLeftCurtain.addColorStop(0.56, rgba(c0, 0.28 + pulse * 0.24));
-      topLeftCurtain.addColorStop(0.78, rgba(c1, 0.12 + pulse * 0.10));
+      topLeftCurtain.addColorStop(0, rgba('#ffffff', 0.18 + beatBurst * 0.34));
+      topLeftCurtain.addColorStop(0.55, rgba(c0, 0.20 + pulse * 0.30));
+      topLeftCurtain.addColorStop(0.78, rgba(c1, 0.09 + pulse * 0.13));
       topLeftCurtain.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = topLeftCurtain;
-      ctx.fillRect(0, 0, w, Math.min(h * 0.42, topR * 0.46));
+      ctx.fillRect(0, 0, w, Math.min(h * 0.5, topR * 0.5));
 
       const topRightCurtain = ctx.createRadialGradient(w * 0.70 - shiftX, topY, 0, w * 0.70 - shiftX, topY, topR);
-      topRightCurtain.addColorStop(0, rgba('#ffffff', 0.18 + beat * 0.15));
-      topRightCurtain.addColorStop(0.56, rgba(c2, 0.26 + pulse * 0.22));
-      topRightCurtain.addColorStop(0.78, rgba(theme.glow, 0.11 + pulse * 0.09));
+      topRightCurtain.addColorStop(0, rgba('#ffffff', 0.15 + beatBurst * 0.30));
+      topRightCurtain.addColorStop(0.55, rgba(c2, 0.18 + pulse * 0.28));
+      topRightCurtain.addColorStop(0.78, rgba(theme.glow, 0.08 + pulse * 0.12));
       topRightCurtain.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = topRightCurtain;
-      ctx.fillRect(0, 0, w, Math.min(h * 0.42, topR * 0.46));
+      ctx.fillRect(0, 0, w, Math.min(h * 0.5, topR * 0.5));
 
-      // Ultra-soft feathered top rim highlight (zero hard box strip)
-      const topDepth = Math.round(52 + sBass * 48 + beat * 30);
+      // Feathered top atmospheric wash expanding inward on beat
+      const topDepth = Math.round(44 + sBass * 58 + beatBurst * 54);
       const topWash = ctx.createLinearGradient(0, 0, 0, topDepth);
-      topWash.addColorStop(0, rgba('#ffffff', 0.16 + beat * 0.14));
-      topWash.addColorStop(0.16, rgba(theme.glow, 0.22 * pulse + 0.08));
-      topWash.addColorStop(0.55, rgba(c1, 0.08 * pulse));
+      topWash.addColorStop(0, rgba('#ffffff', 0.10 + beatBurst * 0.28));
+      topWash.addColorStop(0.18, rgba(theme.glow, 0.16 * pulse + beatBurst * 0.22 + 0.06));
+      topWash.addColorStop(0.55, rgba(c1, 0.08 * pulse + beatBurst * 0.08));
       topWash.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = topWash;
       ctx.fillRect(0, 0, w, topDepth);
 
-      // 2. Organic corner blooms (Top-Left, Top-Right, plus subtle Bottom-Left & Bottom-Right)
-      const cornerR = Math.min(w, h) * (0.34 + sBass * 0.09 + beat * 0.05);
+      // 2. Beat-reactive organic corner blooms (drawn unclipped on full viewport bounds)
+      const cornerR = Math.min(w, h) * (0.30 + sBass * 0.11 + beatBurst * 0.13);
       const tl = ctx.createRadialGradient(0, 0, 0, 0, 0, cornerR);
-      tl.addColorStop(0, rgba('#ffffff', 0.22 + beat * 0.16));
-      tl.addColorStop(0.24, rgba(c0, 0.26 * pulse + 0.08));
-      tl.addColorStop(0.62, rgba(c1, 0.09 * pulse));
+      tl.addColorStop(0, rgba('#ffffff', 0.16 + beatBurst * 0.28));
+      tl.addColorStop(0.24, rgba(c0, 0.20 * pulse + beatBurst * 0.20 + 0.06));
+      tl.addColorStop(0.64, rgba(c1, 0.08 * pulse + beatBurst * 0.07));
       tl.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = tl;
-      ctx.fillRect(0, 0, cornerR, cornerR);
+      ctx.fillRect(0, 0, w, h);
 
       const tr = ctx.createRadialGradient(w, 0, 0, w, 0, cornerR);
-      tr.addColorStop(0, rgba('#ffffff', 0.18 + beat * 0.14));
-      tr.addColorStop(0.24, rgba(c2, 0.24 * pulse + 0.08));
-      tr.addColorStop(0.62, rgba(c1, 0.08 * pulse));
+      tr.addColorStop(0, rgba('#ffffff', 0.14 + beatBurst * 0.25));
+      tr.addColorStop(0.24, rgba(c2, 0.18 * pulse + beatBurst * 0.18 + 0.06));
+      tr.addColorStop(0.64, rgba(c1, 0.07 * pulse + beatBurst * 0.06));
       tr.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = tr;
-      ctx.fillRect(w - cornerR, 0, cornerR, cornerR);
+      ctx.fillRect(0, 0, w, h);
 
-      // 3. Soft side perimeter glows
-      const sideDepth = Math.round(64 + mid * 44 + beat * 24);
+      // 3. Soft side perimeter glows breathing with beat & mid/treble
+      const sideDepth = Math.round(54 + mid * 48 + beatBurst * 46);
       const leftGrad = ctx.createLinearGradient(0, 0, sideDepth, 0);
-      leftGrad.addColorStop(0, rgba(c0, 0.20 * pulse + 0.06));
-      leftGrad.addColorStop(0.35, rgba(c1, 0.08 * pulse));
+      leftGrad.addColorStop(0, rgba('#ffffff', beatBurst * 0.12));
+      leftGrad.addColorStop(0.14, rgba(c0, 0.16 * pulse + beatBurst * 0.16 + 0.04));
+      leftGrad.addColorStop(0.5, rgba(c1, 0.06 * pulse));
       leftGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = leftGrad;
       ctx.fillRect(0, 0, sideDepth, h);
 
       const rightGrad = ctx.createLinearGradient(w, 0, w - sideDepth, 0);
-      rightGrad.addColorStop(0, rgba(c2, 0.18 * pulse + 0.06 + treble * 0.06));
-      rightGrad.addColorStop(0.35, rgba(c1, 0.07 * pulse));
+      rightGrad.addColorStop(0, rgba('#ffffff', beatBurst * 0.10 + treble * 0.08));
+      rightGrad.addColorStop(0.14, rgba(c2, 0.15 * pulse + beatBurst * 0.15 + 0.04));
+      rightGrad.addColorStop(0.5, rgba(c1, 0.05 * pulse));
       rightGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = rightGrad;
       ctx.fillRect(w - sideDepth, 0, sideDepth, h);
 
-      // 4. Bottom-left vinyl edge spill & gentle bottom perimeter aura
-      const botDepth = Math.round(48 + sBass * 34 + beat * 20);
+      // 4. Bottom perimeter beat aura
+      const botDepth = Math.round(42 + sBass * 38 + beatBurst * 36);
       const botGrad = ctx.createLinearGradient(0, h, 0, h - botDepth);
-      botGrad.addColorStop(0, rgba(theme.glow, 0.16 * pulse + 0.04));
-      botGrad.addColorStop(0.5, rgba(c1, 0.06 * pulse));
+      botGrad.addColorStop(0, rgba(theme.glow, 0.13 * pulse + beatBurst * 0.16 + 0.04));
+      botGrad.addColorStop(0.5, rgba(c1, 0.06 * pulse + beatBurst * 0.05));
       botGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = botGrad;
       ctx.fillRect(0, h - botDepth, w, botDepth);
@@ -1105,16 +1146,16 @@
 
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.filter = 'blur(24px)';
       for (const blob of blobs) {
         const wobble = 0.16 + blob.energy * 0.28;
         const x = w * (0.5 + Math.cos(t * blob.speed + blob.phase) * wobble);
         const y = h * (0.46 + Math.sin(t * blob.speed * 1.3 + blob.phase) * wobble);
-        const r = Math.min(w, h) * blob.size * (0.5 + blob.energy * 0.55 + beat * 0.08);
+        const r = Math.min(w, h) * blob.size * (0.55 + blob.energy * 0.55 + beat * 0.08);
         const g = ctx.createRadialGradient(x, y, 0, x, y, r);
         const col = sampleStops(theme.stops, blob.stop);
         g.addColorStop(0, col.replace('rgb(', 'rgba(').replace(')', `, ${0.42 + blob.energy * 0.3})`));
-        g.addColorStop(0.55, col.replace('rgb(', 'rgba(').replace(')', ', 0.14)'));
+        g.addColorStop(0.38, col.replace('rgb(', 'rgba(').replace(')', `, ${0.22 + blob.energy * 0.12})`));
+        g.addColorStop(0.72, col.replace('rgb(', 'rgba(').replace(')', ', 0.06)'));
         g.addColorStop(1, col.replace('rgb(', 'rgba(').replace(')', ', 0)'));
         ctx.fillStyle = g;
         ctx.beginPath();
@@ -1554,40 +1595,31 @@
       const cx = radius * 1.18;
       const cy = h * 0.49;
 
-      // Rich multi-layered studio lighting behind the vinyl disc
+      // Tight inner platter rim glow strictly bounded inside wheelCanvas (wide room glow lives on full-screen bgCanvas -> zero clipped line)
+      const safeHaloR = Math.max(radius + 4, Math.min(cx - 2, cy - 2, h - cy - 2, radius * 1.24));
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const c0 = theme.stops[0];
-      const c2 = theme.stops[2] || theme.stops[1] || c0;
-
-      // Wide atmospheric vinyl stage bloom
-      const outerHalo = ctx.createRadialGradient(cx, cy, radius * 0.35, cx, cy, radius * 1.92);
-      outerHalo.addColorStop(0, rgba(c0, 0.22 + bass * 0.26 + this._wheelKick * 0.14));
-      outerHalo.addColorStop(0.45, rgba(c2, 0.12 + bass * 0.14));
-      outerHalo.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = outerHalo;
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius * 1.92, 0, TAU);
-      ctx.fill();
-
-      // Tight energetic platter rim glow
-      const innerHalo = ctx.createRadialGradient(cx, cy, radius * 0.78, cx, cy, radius * 1.32);
-      innerHalo.addColorStop(0, rgba('#ffffff', 0.12 + this._wheelKick * 0.14));
-      innerHalo.addColorStop(0.32, rgba(theme.glow, 0.34 + bass * 0.34 + this._wheelKick * 0.2));
+      const innerHalo = ctx.createRadialGradient(cx, cy, radius * 0.82, cx, cy, safeHaloR);
+      innerHalo.addColorStop(0, rgba('#ffffff', 0.10 + this._wheelKick * 0.16));
+      innerHalo.addColorStop(0.35, rgba(theme.glow, 0.32 + bass * 0.34 + this._wheelKick * 0.22));
+      innerHalo.addColorStop(0.74, rgba(theme.stops[0], 0.10 + bass * 0.08));
       innerHalo.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = innerHalo;
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * 1.32, 0, TAU);
+      ctx.arc(cx, cy, safeHaloR, 0, TAU);
       ctx.fill();
       ctx.restore();
 
-      // Soft physical drop shadow beneath the vinyl platter
-      const floorShadow = ctx.createRadialGradient(cx, cy + radius * 0.14, radius * 0.65, cx, cy + radius * 0.14, radius * 1.18);
-      floorShadow.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
+      // Soft physical drop shadow bounded cleanly inside wheelCanvas
+      const shadowCy = cy + radius * 0.08;
+      const safeShadowR = Math.max(radius + 2, Math.min(cx - 2, shadowCy - 2, h - shadowCy - 2, radius * 1.14));
+      const floorShadow = ctx.createRadialGradient(cx, shadowCy, radius * 0.65, cx, shadowCy, safeShadowR);
+      floorShadow.addColorStop(0, 'rgba(0, 0, 0, 0.52)');
+      floorShadow.addColorStop(0.75, 'rgba(0, 0, 0, 0.16)');
       floorShadow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = floorShadow;
       ctx.beginPath();
-      ctx.arc(cx, cy + radius * 0.14, radius * 1.18, 0, TAU);
+      ctx.arc(cx, shadowCy, safeShadowR, 0, TAU);
       ctx.fill();
 
       // Draw Vinyl Record at (cx, cy)

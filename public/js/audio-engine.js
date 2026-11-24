@@ -873,7 +873,10 @@ class AudioEngine {
         return;
       }
       this.drawVisualizer();
-      this.drawCinemaVisualizer();
+      const cinemaEl = window.app?.cinemaModal;
+      if (cinemaEl && cinemaEl.classList.contains('active') && !cinemaEl.classList.contains('cinema-ambient-active')) {
+        this.drawCinemaVisualizer();
+      }
       this.animationFrameId = requestAnimationFrame(render);
     };
 
