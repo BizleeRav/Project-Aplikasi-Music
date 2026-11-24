@@ -348,6 +348,7 @@ class App {
           getIsPlaying: () => this.isPlayingState(),
           getQueueSongs: () => this.getAmbientQueueTracks(),
           onSelectSong: (song) => this.playAmbientWheelSong(song),
+          onTogglePlay: () => this.togglePlay(),
           onSeek: (t) => this.seekToTimestamp(t)
         })
       : null;
@@ -3581,16 +3582,19 @@ class App {
     if (!this.cinemaLyricsStream || !track) return;
     this.hydrateSunoTrack(track);
 
-    this.activeLyricIdx = -1;
-    this.lastScrolledLyricIdx = -1;
-    this.currentLyricsData = [];
-    this.lyricsAlignPending = false;
-    this.applyCinemaMotionUI();
+    const trackId = track.id || track.videoId || track.title;
+    const isSameTrack = Boolean(this.currentLyricsTrackId && this.currentLyricsTrackId === trackId);
+    if (!isSameTrack) {
+      this.activeLyricIdx = -1;
+      this.lastScrolledLyricIdx = -1;
+      this.currentLyricsData = [];
+      this.lyricsAlignPending = false;
+      this.applyCinemaMotionUI();
+    }
     if (this.cinemaLeadInDots) {
       this.cinemaLeadInDots.style.display = 'none';
     }
 
-    const trackId = track.id || track.videoId || track.title;
     if (this.sunoAlignRetryTimer) {
       clearInterval(this.sunoAlignRetryTimer);
       this.sunoAlignRetryTimer = null;

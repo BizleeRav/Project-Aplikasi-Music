@@ -272,6 +272,7 @@
       this.getIsPlaying = typeof options.getIsPlaying === 'function' ? options.getIsPlaying : () => false;
       this.getQueueSongs = typeof options.getQueueSongs === 'function' ? options.getQueueSongs : () => [];
       this.onSelectSong = typeof options.onSelectSong === 'function' ? options.onSelectSong : null;
+      this.onTogglePlay = typeof options.onTogglePlay === 'function' ? options.onTogglePlay : null;
       this.onSeek = typeof options.onSeek === 'function' ? options.onSeek : null;
 
       this.lyricStyle = this.loadPref('aurasound_ambient_lyric_style', LYRIC_STYLES, 'stack');
@@ -337,8 +338,11 @@
       this._wordCache = new WeakMap();
       this._romajiCache = new WeakMap();
       this._lastLyricsSig = '';
+      this._trackLyricsKey = '';
       this._cachedLineWordEls = [];
       this._lastClockSec = -1;
+      this._edgePulse = 0.25;
+      this._edgeBass = 0.1;
 
       this._running = false;
       this._rafId = null;
@@ -433,15 +437,31 @@
     }
 
     setTrack(track, lyrics) {
-      this.track = track || null;
-      this.lyrics = Array.isArray(lyrics) ? lyrics : [];
-      this._wordCache = new WeakMap();
-      this._romajiCache = new WeakMap();
-      this._lastLyricsSig = '';
-      this._cachedLineWordEls = [];
+      const nextTrack = track || null;
+      const nextLyrics = Array.isArray(lyrics) ? lyrics : [];
+      const firstLine = nextLyrics[0];
+      const lastLine = nextLyrics[nextLyrics.length - 1];
+      const nextKey = [
+        nextTrack ? (nextTrack.id || nextTrack.videoId || nextTrack.title || '') : '',
+        nextLyrics.length,
+        firstLine ? `${firstLine.time}|${firstLine.text || ''}` : '',
+        lastLine ? `${lastLine.time}|${lastLine.text || ''}` : ''
+      ].join('::');
 
-      const thumbUrl = (track && track.thumbnail) ? track.thumbnail : '/images/supermix.jpg';
-      if (this.coverBgEl) {
+      this.track = nextTrack;
+      this.lyrics = nextLyrics;
+
+      if (nextKey !== this._trackLyricsKey) {
+        this._trackLyricsKey = nextKey;
+        this._wordCache = new WeakMap();
+        this._romajiCache = new WeakMap();
+        this._lastLyricsSig = '';
+        this._cachedLineWordEls = [];
+      }
+
+      const thumbUrl = (nextTrack && nextTrack.thumbnail) ? nextTrack.thumbnail : '/images/supermix.jpg';
+      if (this.coverBgEl && this.coverBgEl.dataset.ambCover !== thumbUrl) {
+        this.coverBgEl.dataset.ambCover = thumbUrl;
         this.coverBgEl.style.backgroundImage = `url("${thumbUrl.replace(/"/g, '\\"')}")`;
       }
 
@@ -457,9 +477,9 @@
           if (this._coverUrl === thumbUrl) this._coverImg = null;
         };
         img.src = thumbUrl;
-        this.extractMoodFromCover(thumbUrl, track);
+        this.extractMoodFromCover(thumbUrl, nextTrack);
       } else if (!this.moodTheme) {
-        this.moodTheme = buildHueSweptTheme(hashString(track?.title || 'aurasound') % 360);
+        this.moodTheme = buildHueSweptTheme(hashString(nextTrack?.title || 'aurasound') % 360);
       }
 
       if (this.themeId === 'mood') {
@@ -728,6 +748,8 @@
 
       const f = Object.assign({}, frame, { ctx, width: w, height: h });
 
+      this.drawBgAmbientLight(f);
+
       switch (this.vizStyle) {
         case 'aurora':
           this.drawBgAurora(f);
@@ -759,81 +781,139 @@
       }
     }
 
-    drawEdgeGlow(f) {
-      const { ctx, width: w, height: h, theme, bass, mid, treble, level, beat, time } = f;
-      const t = time * 0.00075;
-      const pulse = Math.min(1, 0.28 + bass * 0.48 + beat * 0.44 + level * 0.18);
-      const topDepth = Math.round(76 + bass * 68 + beat * 46);
-      const sideDepth = Math.round(52 + mid * 44 + beat * 30);
-      const botDepth = Math.round(42 + bass * 34 + beat * 24);
-
+    drawBgAmbientLight(f) {
+      const { ctx, width: w, height: h, theme, bass, mid, level, time } = f;
+      const t = time * 0.00032;
       const c0 = theme.stops[0];
-      const c1 = theme.stops[1] || theme.stops[0];
-      const c2 = theme.stops[2] || theme.stops[1] || theme.stops[0];
+      const c1 = theme.stops[1] || c0;
+      const c2 = theme.stops[2] || c1;
 
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
 
-      // 1. Top edge atmospheric light spill (strongest, like Weyv screen glow)
-      const topGrad = ctx.createLinearGradient(0, 0, 0, topDepth);
-      topGrad.addColorStop(0, rgba('#ffffff', 0.22 + beat * 0.22));
-      topGrad.addColorStop(0.14, rgba(theme.glow, 0.36 * pulse + 0.14));
-      topGrad.addColorStop(0.45, rgba(c1, 0.16 * pulse));
-      topGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = topGrad;
+      // Center stage atmospheric bloom behind visualizer (kept soft so lyrics below stay high-contrast)
+      const cx1 = w * (0.44 + Math.cos(t) * 0.08);
+      const cy1 = h * (0.31 + Math.sin(t * 1.2) * 0.04);
+      const r1 = Math.min(w, h) * (0.44 + bass * 0.09);
+      const g1 = ctx.createRadialGradient(cx1, cy1, 0, cx1, cy1, r1);
+      g1.addColorStop(0, rgba(c0, 0.14 + level * 0.12));
+      g1.addColorStop(0.5, rgba(c1, 0.06 + bass * 0.05));
+      g1.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = g1;
+      ctx.fillRect(0, 0, w, h);
+
+      // Counter-drift secondary wash
+      const cx2 = w * (0.58 + Math.sin(t * 0.85) * 0.09);
+      const cy2 = h * (0.36 + Math.cos(t * 1.1) * 0.04);
+      const r2 = Math.min(w, h) * (0.40 + mid * 0.08);
+      const g2 = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, r2);
+      g2.addColorStop(0, rgba(c2, 0.12 + mid * 0.10));
+      g2.addColorStop(0.55, rgba(theme.glow, 0.05));
+      g2.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = g2;
+      ctx.fillRect(0, 0, w, h);
+
+      // Bottom-left stage floor light pool connecting the spinning vinyl into the room
+      const vx = Math.min(w * 0.22, 165);
+      const vy = h * 0.85;
+      const vr = Math.min(w, h) * (0.30 + bass * 0.08);
+      const vg = ctx.createRadialGradient(vx, vy, 0, vx, vy, vr);
+      vg.addColorStop(0, rgba(theme.glow, 0.18 + bass * 0.14));
+      vg.addColorStop(0.45, rgba(c0, 0.08 + level * 0.06));
+      vg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, h * 0.45, Math.min(w, vr * 2.2), h * 0.55);
+
+      ctx.restore();
+    }
+
+    drawEdgeGlow(f) {
+      const { ctx, width: w, height: h, theme, bass, mid, treble, level, beat, time, step } = f;
+      const t = time * 0.00055;
+      const targetPulse = Math.min(1, 0.30 + bass * 0.44 + beat * 0.40 + level * 0.16);
+      const ease = 1 - Math.pow(1 - 0.16, step || 1);
+      this._edgePulse += (targetPulse - this._edgePulse) * ease;
+      this._edgeBass += (bass - this._edgeBass) * ease;
+
+      const pulse = this._edgePulse;
+      const sBass = this._edgeBass;
+      const c0 = theme.stops[0];
+      const c1 = theme.stops[1] || c0;
+      const c2 = theme.stops[2] || c1;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+
+      // 1. Silky drifting radial light curtains hugging the top screen bezel
+      const topR = Math.max(w * 0.42, 340);
+      const topY = -topR * 0.62;
+      const shiftX = Math.sin(t) * w * 0.12;
+
+      const topLeftCurtain = ctx.createRadialGradient(w * 0.30 + shiftX, topY, 0, w * 0.30 + shiftX, topY, topR);
+      topLeftCurtain.addColorStop(0, rgba('#ffffff', 0.22 + beat * 0.16));
+      topLeftCurtain.addColorStop(0.56, rgba(c0, 0.28 + pulse * 0.24));
+      topLeftCurtain.addColorStop(0.78, rgba(c1, 0.12 + pulse * 0.10));
+      topLeftCurtain.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = topLeftCurtain;
+      ctx.fillRect(0, 0, w, Math.min(h * 0.42, topR * 0.46));
+
+      const topRightCurtain = ctx.createRadialGradient(w * 0.70 - shiftX, topY, 0, w * 0.70 - shiftX, topY, topR);
+      topRightCurtain.addColorStop(0, rgba('#ffffff', 0.18 + beat * 0.15));
+      topRightCurtain.addColorStop(0.56, rgba(c2, 0.26 + pulse * 0.22));
+      topRightCurtain.addColorStop(0.78, rgba(theme.glow, 0.11 + pulse * 0.09));
+      topRightCurtain.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = topRightCurtain;
+      ctx.fillRect(0, 0, w, Math.min(h * 0.42, topR * 0.46));
+
+      // Ultra-soft feathered top rim highlight (zero hard box strip)
+      const topDepth = Math.round(52 + sBass * 48 + beat * 30);
+      const topWash = ctx.createLinearGradient(0, 0, 0, topDepth);
+      topWash.addColorStop(0, rgba('#ffffff', 0.16 + beat * 0.14));
+      topWash.addColorStop(0.16, rgba(theme.glow, 0.22 * pulse + 0.08));
+      topWash.addColorStop(0.55, rgba(c1, 0.08 * pulse));
+      topWash.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = topWash;
       ctx.fillRect(0, 0, w, topDepth);
 
-      // Sweeping multi-color highlight along top rim
-      const rimGrad = ctx.createLinearGradient(0, 0, w, 0);
-      const shift = 0.5 + 0.35 * Math.sin(t);
-      rimGrad.addColorStop(0, rgba(c0, 0.35 + pulse * 0.3));
-      rimGrad.addColorStop(Math.max(0.15, Math.min(0.85, shift)), rgba('#ffffff', 0.3 + beat * 0.32));
-      rimGrad.addColorStop(1, rgba(c2, 0.35 + pulse * 0.3));
-
-      const topRimFade = ctx.createLinearGradient(0, 0, 0, 18 + beat * 12);
-      topRimFade.addColorStop(0, 'rgba(255,255,255,1)');
-      topRimFade.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.save();
-      ctx.globalAlpha = 0.42 + beat * 0.28;
-      ctx.fillStyle = rimGrad;
-      ctx.fillRect(0, 0, w, 4 + beat * 3);
-      ctx.restore();
-
-      // 2. Top-left & top-right corner blooms
-      const cornerR = Math.min(w, h) * (0.28 + bass * 0.08 + beat * 0.06);
+      // 2. Organic corner blooms (Top-Left, Top-Right, plus subtle Bottom-Left & Bottom-Right)
+      const cornerR = Math.min(w, h) * (0.34 + sBass * 0.09 + beat * 0.05);
       const tl = ctx.createRadialGradient(0, 0, 0, 0, 0, cornerR);
-      tl.addColorStop(0, rgba('#ffffff', 0.24 + beat * 0.2));
-      tl.addColorStop(0.28, rgba(c0, 0.28 * pulse + 0.08));
+      tl.addColorStop(0, rgba('#ffffff', 0.22 + beat * 0.16));
+      tl.addColorStop(0.24, rgba(c0, 0.26 * pulse + 0.08));
+      tl.addColorStop(0.62, rgba(c1, 0.09 * pulse));
       tl.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = tl;
       ctx.fillRect(0, 0, cornerR, cornerR);
 
       const tr = ctx.createRadialGradient(w, 0, 0, w, 0, cornerR);
-      tr.addColorStop(0, rgba('#ffffff', 0.2 + beat * 0.18));
-      tr.addColorStop(0.28, rgba(c2, 0.26 * pulse + 0.08));
+      tr.addColorStop(0, rgba('#ffffff', 0.18 + beat * 0.14));
+      tr.addColorStop(0.24, rgba(c2, 0.24 * pulse + 0.08));
+      tr.addColorStop(0.62, rgba(c1, 0.08 * pulse));
       tr.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = tr;
       ctx.fillRect(w - cornerR, 0, cornerR, cornerR);
 
-      // 3. Left & right edge gradients
+      // 3. Soft side perimeter glows
+      const sideDepth = Math.round(64 + mid * 44 + beat * 24);
       const leftGrad = ctx.createLinearGradient(0, 0, sideDepth, 0);
-      leftGrad.addColorStop(0, rgba('#ffffff', 0.16 + beat * 0.14));
-      leftGrad.addColorStop(0.2, rgba(c0, 0.24 * pulse + 0.06));
+      leftGrad.addColorStop(0, rgba(c0, 0.20 * pulse + 0.06));
+      leftGrad.addColorStop(0.35, rgba(c1, 0.08 * pulse));
       leftGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = leftGrad;
       ctx.fillRect(0, 0, sideDepth, h);
 
       const rightGrad = ctx.createLinearGradient(w, 0, w - sideDepth, 0);
-      rightGrad.addColorStop(0, rgba('#ffffff', 0.14 + treble * 0.14));
-      rightGrad.addColorStop(0.2, rgba(c2, 0.22 * pulse + 0.06));
+      rightGrad.addColorStop(0, rgba(c2, 0.18 * pulse + 0.06 + treble * 0.06));
+      rightGrad.addColorStop(0.35, rgba(c1, 0.07 * pulse));
       rightGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = rightGrad;
       ctx.fillRect(w - sideDepth, 0, sideDepth, h);
 
-      // 4. Bottom subtle rim glow
+      // 4. Bottom-left vinyl edge spill & gentle bottom perimeter aura
+      const botDepth = Math.round(48 + sBass * 34 + beat * 20);
       const botGrad = ctx.createLinearGradient(0, h, 0, h - botDepth);
-      botGrad.addColorStop(0, rgba(c1, 0.18 * pulse + 0.04));
-      botGrad.addColorStop(0.45, rgba(theme.glow, 0.08 * pulse));
+      botGrad.addColorStop(0, rgba(theme.glow, 0.16 * pulse + 0.04));
+      botGrad.addColorStop(0.5, rgba(c1, 0.06 * pulse));
       botGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = botGrad;
       ctx.fillRect(0, h - botDepth, w, botDepth);
@@ -1370,7 +1450,7 @@
       this.wheelCanvas.addEventListener('mousemove', (e) => {
         const hit = this.hitTestWheel(e);
         this._wheelHoverKey = hit ? hit.key : '';
-        this.wheelCanvas.style.cursor = (hit && !hit.now) ? 'pointer' : 'default';
+        this.wheelCanvas.style.cursor = (hit && (!hit.now || hit.isDisc)) ? 'pointer' : 'default';
       });
       this.wheelCanvas.addEventListener('mouseleave', () => {
         this._wheelHoverKey = '';
@@ -1378,7 +1458,12 @@
       });
       this.wheelCanvas.addEventListener('click', (e) => {
         const hit = this.hitTestWheel(e);
-        if (hit && !hit.now && this.onSelectSong) {
+        if (!hit) return;
+        if (hit.isDisc) {
+          if (this.onTogglePlay) this.onTogglePlay();
+          return;
+        }
+        if (!hit.now && this.onSelectSong) {
           this.onSelectSong(hit.song);
         }
       });
@@ -1387,11 +1472,30 @@
     hitTestWheel(e) {
       if (!this.wheelCanvas || !this._wheelHits.length) return null;
       const rect = this.wheelCanvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const scaleX = this._whW ? (this._whW / Math.max(1, rect.width)) : 1;
+      const scaleY = this._whH ? (this._whH / Math.max(1, rect.height)) : 1;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      // Test front-to-back in exact rotated & scaled local card coordinates
       for (let i = 0; i < this._wheelHits.length; i++) {
         const h = this._wheelHits[i];
-        if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) {
+        if (h.isDisc) {
+          const dx = x - h.cx;
+          const dy = y - h.cy;
+          if ((dx * dx + dy * dy) <= h.r * h.r) {
+            return h;
+          }
+          continue;
+        }
+        const dx = x - h.cx;
+        const dy = y - h.cy;
+        const cosA = Math.cos(-h.angle);
+        const sinA = Math.sin(-h.angle);
+        const invS = 1 / Math.max(0.2, h.scale || 1);
+        const lx = (dx * cosA - dy * sinA) * invS;
+        const ly = (dx * sinA + dy * cosA) * invS;
+        if (lx >= h.lx && lx <= h.lx + h.lw && ly >= h.ly && ly <= h.ly + h.lh) {
           return h;
         }
       }
@@ -1446,17 +1550,44 @@
       }
       this._wheelRoll += (0 - this._wheelRoll) * ease(0.085);
 
-      const radius = Math.max(46, Math.min(h * 0.39, w * 0.22));
-      const cx = radius * 1.15;
-      const cy = h * 0.48;
+      const radius = Math.max(48, Math.min(h * 0.365, w * 0.215));
+      const cx = radius * 1.18;
+      const cy = h * 0.49;
 
-      // Ambient glow halo behind vinyl disc
-      const halo = ctx.createRadialGradient(cx, cy, radius * 0.72, cx, cy, radius * 1.42);
-      halo.addColorStop(0, rgba(theme.glow, 0.22 + bass * 0.34 + this._wheelKick * 0.22));
-      halo.addColorStop(1, rgba(theme.glow, 0));
-      ctx.fillStyle = halo;
+      // Rich multi-layered studio lighting behind the vinyl disc
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const c0 = theme.stops[0];
+      const c2 = theme.stops[2] || theme.stops[1] || c0;
+
+      // Wide atmospheric vinyl stage bloom
+      const outerHalo = ctx.createRadialGradient(cx, cy, radius * 0.35, cx, cy, radius * 1.92);
+      outerHalo.addColorStop(0, rgba(c0, 0.22 + bass * 0.26 + this._wheelKick * 0.14));
+      outerHalo.addColorStop(0.45, rgba(c2, 0.12 + bass * 0.14));
+      outerHalo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = outerHalo;
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * 1.42, 0, TAU);
+      ctx.arc(cx, cy, radius * 1.92, 0, TAU);
+      ctx.fill();
+
+      // Tight energetic platter rim glow
+      const innerHalo = ctx.createRadialGradient(cx, cy, radius * 0.78, cx, cy, radius * 1.32);
+      innerHalo.addColorStop(0, rgba('#ffffff', 0.12 + this._wheelKick * 0.14));
+      innerHalo.addColorStop(0.32, rgba(theme.glow, 0.34 + bass * 0.34 + this._wheelKick * 0.2));
+      innerHalo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = innerHalo;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 1.32, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Soft physical drop shadow beneath the vinyl platter
+      const floorShadow = ctx.createRadialGradient(cx, cy + radius * 0.14, radius * 0.65, cx, cy + radius * 0.14, radius * 1.18);
+      floorShadow.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
+      floorShadow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = floorShadow;
+      ctx.beginPath();
+      ctx.arc(cx, cy + radius * 0.14, radius * 1.18, 0, TAU);
       ctx.fill();
 
       // Draw Vinyl Record at (cx, cy)
@@ -1469,8 +1600,9 @@
       this.drawVinylTonearm(ctx, cx, cy, radius, theme, bass);
 
       // Draw fanned song rows along the right arc of the vinyl ring
-      this._wheelHits = [];
+      const cardHits = [];
       if (!songs.length) {
+        this._wheelHits = [{ key: '__disc__', isDisc: true, now: true, cx, cy, r: radius * 1.04 }];
         ctx.save();
         ctx.font = `600 13px ${FONT}`;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
@@ -1480,9 +1612,9 @@
         return;
       }
 
-      const GAP = 0.42;
-      const START = -0.42;
-      const ringDist = radius * 1.13;
+      const GAP = 0.39;
+      const START = -0.38;
+      const ringDist = radius * 1.14;
       const accent = theme.stops[theme.stops.length - 1];
       const titleSize = Math.max(11, Math.min(14, radius * 0.138));
       const artistSize = Math.max(9.5, Math.min(11.5, radius * 0.11));
@@ -1502,44 +1634,50 @@
         if (away > 1.4) continue;
 
         const near = Math.cos(Math.min(1.4, away));
-        const scale = 0.68 + 0.32 * near;
+        const scale = 0.72 + 0.28 * near;
         const isHover = !song.now && this._wheelHoverKey === song.key;
-        const alpha = Math.max(0, Math.min(1, 1.35 - away * 0.72)) * (song.now ? 1 : (isHover ? 0.98 : 0.78));
+        const alpha = Math.max(0, Math.min(1, 1.35 - away * 0.72)) * (song.now ? 1 : (isHover ? 1 : 0.82));
         if (alpha <= 0.02) continue;
 
-        const reach = ringDist + radius * 0.12 * away;
+        const reach = ringDist + radius * 0.1 * away;
         const rx = cx + Math.cos(turn) * reach;
-        const ry = cy + Math.sin(turn) * reach * 0.94;
+        const ry = cy + Math.sin(turn) * reach * 0.92;
+        const angle = turn * 0.36;
 
-        const thumbSize = radius * (song.now ? 0.36 : 0.27);
-        const hitW = Math.max(140, w - rx - 8);
-        const hitH = thumbSize * scale + 10;
-        this._wheelHits.push({
+        const thumbSize = radius * (song.now ? 0.36 : 0.28);
+        const rowW = Math.max(128, (w - rx - 12) / scale);
+
+        // Front-to-back exact local hitbox with generous +8px clickable margin
+        cardHits.unshift({
           key: song.key,
           now: Boolean(song.now),
+          isDisc: false,
           song,
-          x: rx - 6,
-          y: ry - hitH / 2,
-          w: hitW,
-          h: hitH
+          cx: rx,
+          cy: ry,
+          angle,
+          scale,
+          lx: -12,
+          ly: -thumbSize / 2 - 11,
+          lw: rowW + 14,
+          lh: thumbSize + 22
         });
 
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.translate(rx, ry);
-        ctx.rotate(turn * 0.42);
+        ctx.rotate(angle);
         ctx.scale(scale, scale);
 
-        const rowW = Math.max(120, (w - rx - 10) / scale);
         // Subtle frosted backing pill for readability over busy backgrounds
         roundRectPath(ctx, -6, -thumbSize / 2 - 5, rowW, thumbSize + 10, 12);
         ctx.fillStyle = song.now
-          ? 'rgba(8, 13, 26, 0.56)'
-          : (isHover ? 'rgba(255, 255, 255, 0.12)' : 'rgba(8, 13, 26, 0.32)');
+          ? 'rgba(8, 13, 26, 0.58)'
+          : (isHover ? 'rgba(255, 255, 255, 0.16)' : 'rgba(8, 13, 26, 0.38)');
         ctx.fill();
         if (song.now || isHover) {
-          ctx.strokeStyle = song.now ? rgba(theme.glow, 0.42) : 'rgba(255, 255, 255, 0.24)';
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = song.now ? rgba(theme.glow, 0.48) : rgba(theme.stops[0], 0.58);
+          ctx.lineWidth = isHover ? 1.4 : 1;
           ctx.stroke();
         }
 
@@ -1614,19 +1752,23 @@
         ctx.restore();
       }
       ctx.restore();
+      // Keep queue cards prioritized over the vinyl disc hitbox
+      cardHits.push({ key: '__disc__', isDisc: true, now: true, cx, cy, r: radius * 1.04 });
+      this._wheelHits = cardHits;
     }
 
     drawVinylDisc(ctx, f, theme, radius) {
       const body = ctx.createRadialGradient(0, 0, radius * 0.3, 0, 0, radius);
-      body.addColorStop(0, '#18181f');
-      body.addColorStop(0.96, '#0b0b10');
-      body.addColorStop(1, '#262631');
+      body.addColorStop(0, '#1e1e29');
+      body.addColorStop(0.75, '#0e0f17');
+      body.addColorStop(0.97, '#090a10');
+      body.addColorStop(1, '#2d2e3d');
       ctx.fillStyle = body;
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, TAU);
       ctx.fill();
 
-      // Grooves: faint rings + audio-reactive lit arcs
+      // Grooves: subtle ambient tracks + audio-reactive lit arcs
       const GROOVES = 38;
       const inner = radius * 0.4;
       const outer = radius * 0.95;
@@ -1635,7 +1777,7 @@
 
       ctx.lineCap = 'round';
       ctx.lineWidth = Math.max(0.6, gap * 0.35);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.055)';
       ctx.beginPath();
       for (let i = 0; i < GROOVES; i++) {
         const r = inner + gap * (i + 0.5);
@@ -1646,30 +1788,32 @@
 
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.lineWidth = Math.max(0.9, gap * 0.62);
+      ctx.lineWidth = Math.max(0.9, gap * 0.65);
       for (let i = 0; i < GROOVES; i++) {
         const v = vals[GROOVES - 1 - i];
         if (v < 0.03) continue;
         const r = inner + gap * (i + 0.5);
         const start = this._wheelAngle + i * 0.61;
         ctx.strokeStyle = sampleStops(theme.stops, i / (GROOVES - 1));
-        ctx.globalAlpha = Math.min(1, 0.16 + v * 0.95);
+        ctx.globalAlpha = Math.min(1, 0.18 + v * 0.95);
         ctx.beginPath();
         ctx.arc(0, 0, r, start, start + 0.25 + v * TAU * 0.78);
         ctx.stroke();
       }
       ctx.restore();
 
-      // Fixed conic light sheen
+      // Studio dual-beam specular sheen across the lacquer surface
       const labelR = radius * 0.35;
       if (ctx.createConicGradient) {
-        const sheen = ctx.createConicGradient(-Math.PI / 4, 0, 0);
+        const sheen = ctx.createConicGradient(-Math.PI * 0.28, 0, 0);
         sheen.addColorStop(0, 'rgba(255,255,255,0)');
-        sheen.addColorStop(0.06, 'rgba(255,255,255,0.1)');
-        sheen.addColorStop(0.14, 'rgba(255,255,255,0)');
-        sheen.addColorStop(0.5, 'rgba(255,255,255,0)');
-        sheen.addColorStop(0.56, 'rgba(255,255,255,0.07)');
-        sheen.addColorStop(0.64, 'rgba(255,255,255,0)');
+        sheen.addColorStop(0.05, 'rgba(255,255,255,0.16)');
+        sheen.addColorStop(0.11, rgba(theme.stops[0], 0.10));
+        sheen.addColorStop(0.17, 'rgba(255,255,255,0)');
+        sheen.addColorStop(0.49, 'rgba(255,255,255,0)');
+        sheen.addColorStop(0.55, 'rgba(255,255,255,0.12)');
+        sheen.addColorStop(0.61, rgba(theme.stops[theme.stops.length - 1], 0.08));
+        sheen.addColorStop(0.67, 'rgba(255,255,255,0)');
         sheen.addColorStop(1, 'rgba(255,255,255,0)');
         ctx.fillStyle = sheen;
         ctx.beginPath();
@@ -1677,6 +1821,17 @@
         ctx.arc(0, 0, labelR * 1.06, 0, TAU, true);
         ctx.fill();
       }
+
+      // Outer luminous rim ring catching stage light
+      ctx.save();
+      ctx.strokeStyle = rgba(theme.glow, 0.36 + f.bass * 0.32);
+      ctx.lineWidth = 1.25;
+      ctx.shadowColor = rgba(theme.glow, 0.65);
+      ctx.shadowBlur = 8 + f.beat * 8;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius - 0.6, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
 
       // Rotating center album label
       ctx.save();
@@ -1697,18 +1852,32 @@
       }
       ctx.restore();
 
-      // Label rim + spindle hole
-      ctx.strokeStyle = rgba(theme.glow, 0.55);
-      ctx.lineWidth = Math.max(1.4, radius * 0.018);
+      // Glossy top-left dome reflection over center label
+      const dome = ctx.createLinearGradient(-labelR, -labelR, labelR * 0.6, labelR * 0.6);
+      dome.addColorStop(0, 'rgba(255, 255, 255, 0.24)');
+      dome.addColorStop(0.45, 'rgba(255, 255, 255, 0.04)');
+      dome.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = dome;
+      ctx.beginPath();
+      ctx.arc(0, 0, labelR, 0, TAU);
+      ctx.fill();
+
+      // Luminous label rim + spindle hole
+      ctx.save();
+      ctx.strokeStyle = rgba(theme.glow, 0.72 + f.bass * 0.25);
+      ctx.shadowColor = rgba(theme.glow, 0.7);
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = Math.max(1.5, radius * 0.02);
       ctx.beginPath();
       ctx.arc(0, 0, labelR, 0, TAU);
       ctx.stroke();
+      ctx.restore();
 
       ctx.fillStyle = '#0c0f18';
       ctx.beginPath();
       ctx.arc(0, 0, Math.max(3, radius * 0.055), 0, TAU);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
       ctx.lineWidth = 1;
       ctx.stroke();
     }
@@ -1726,7 +1895,7 @@
 
       // Pivot housing
       ctx.fillStyle = '#272732';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.strokeStyle = rgba(theme.glow, 0.35);
       ctx.lineWidth = 1.4;
       ctx.beginPath();
       ctx.arc(0, 0, Math.max(6, radius * 0.085), 0, TAU);
@@ -1746,7 +1915,7 @@
       // Brushed rod
       const rodGrad = ctx.createLinearGradient(0, 0, len, 0);
       rodGrad.addColorStop(0, '#a1a1aa');
-      rodGrad.addColorStop(0.6, '#f4f4f5');
+      rodGrad.addColorStop(0.6, '#ffffff');
       rodGrad.addColorStop(1, '#71717a');
       ctx.strokeStyle = rodGrad;
       ctx.lineWidth = Math.max(1.8, radius * 0.025);
@@ -1755,12 +1924,22 @@
       ctx.lineTo(len, 0);
       ctx.stroke();
 
-      // Glowing cartridge head
+      // Glowing cartridge head + stylus tip contact bloom
       const cw = Math.max(7, radius * 0.11);
       const ch = Math.max(4, radius * 0.06);
+      if (this._wheelInGroove) {
+        const tipGlow = ctx.createRadialGradient(len, 0, 0, len, 0, radius * 0.22);
+        tipGlow.addColorStop(0, rgba('#ffffff', 0.38 + bass * 0.32));
+        tipGlow.addColorStop(0.35, rgba(theme.glow, 0.36 + bass * 0.28));
+        tipGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = tipGlow;
+        ctx.beginPath();
+        ctx.arc(len, 0, radius * 0.22, 0, TAU);
+        ctx.fill();
+      }
       ctx.fillStyle = theme.stops[0];
-      ctx.shadowColor = rgba(theme.glow, 0.7 + bass * 0.3);
-      ctx.shadowBlur = 8 + this._wheelArmTouch * 12;
+      ctx.shadowColor = rgba(theme.glow, 0.75 + bass * 0.25);
+      ctx.shadowBlur = 10 + this._wheelArmTouch * 12;
       roundRectPath(ctx, len - cw * 0.4, -ch / 2, cw, ch, 2);
       ctx.fill();
       ctx.restore();
@@ -1953,7 +2132,7 @@
         return;
       }
 
-      // Per-frame 60fps word sweep / pop / scatter updates (zero DOM rebuilds)
+      // Per-frame 60fps word sweep / pop / scatter updates (dirty-checked to prevent style flicker)
       const words = this.getLineWords(activeIdx);
       const wordState = this.findActiveWord(words, syncTime);
       const els = this._cachedLineWordEls;
@@ -1963,14 +2142,27 @@
           const isPassed = wordState.index >= 0 && (i < wordState.index || (i === wordState.index && wordState.inGap));
           const isActive = i === wordState.index && !wordState.inGap;
           const pct = isPassed ? 100 : (isActive ? Math.round(easeInOutSine(wordState.progress) * 100) : 0);
-          el.classList.toggle('is-passed', isPassed);
-          el.classList.toggle('is-active', isActive);
-          el.style.setProperty('--wp', pct + '%');
+
+          if (el._ambPassed !== isPassed) {
+            el._ambPassed = isPassed;
+            el.classList.toggle('is-passed', isPassed);
+          }
+          if (el._ambActive !== isActive) {
+            el._ambActive = isActive;
+            el.classList.toggle('is-active', isActive);
+          }
+          if (el._ambPct !== pct) {
+            el._ambPct = pct;
+            el.style.setProperty('--wp', pct + '%');
+          }
           if (this.lyricStyle === 'pop') {
-            const popScale = isActive
+            const popScale = (isActive
               ? (1 + Math.sin(Math.min(1, wordState.progress) * Math.PI) * 0.16)
-              : (isPassed ? 1.02 : 0.96);
-            el.style.setProperty('--pop-scale', popScale.toFixed(3));
+              : (isPassed ? 1.02 : 0.96)).toFixed(3);
+            if (el._ambPopScale !== popScale) {
+              el._ambPopScale = popScale;
+              el.style.setProperty('--pop-scale', popScale);
+            }
           }
         }
       }
@@ -1978,10 +2170,13 @@
       if (this.lyricStyle === 'karaoke') {
         const progBar = this.lyricsEl.querySelector('.amb-karaoke-fill');
         if (progBar) {
-          const totalPct = words.length
+          const totalPct = (words.length
             ? Math.min(100, Math.max(0, ((Math.max(0, wordState.index) + (wordState.index >= 0 ? wordState.progress : 0)) / words.length) * 100))
-            : 0;
-          progBar.style.width = totalPct.toFixed(1) + '%';
+            : 0).toFixed(1);
+          if (progBar._ambTotalPct !== totalPct) {
+            progBar._ambTotalPct = totalPct;
+            progBar.style.width = totalPct + '%';
+          }
         }
       }
     }
@@ -1991,6 +2186,10 @@
       const seedBase = hashString(`${trackKey}_${activeIdx}`);
       return words.map((w, i) => {
         const spaceCls = w.trailingSpace ? 'has-space' : '';
+        const escaped = escapeHtml(w.text);
+        if (style === 'karaoke') {
+          return `<span class="amb-word amb-k-word ${spaceCls}"><span class="amb-k-base">${escaped}</span><span class="amb-k-fill" aria-hidden="true">${escaped}</span></span>`;
+        }
         if (style === 'scatter') {
           const h1 = hashString(`${seedBase}_x_${i}`);
           const h2 = hashString(`${seedBase}_y_${i}`);
@@ -1998,9 +2197,9 @@
           const dx = ((h1 % 9) - 4);
           const dy = ((h2 % 20) - 10);
           const rot = ((h3 % 9) - 4) * 0.5;
-          return `<span class="amb-word ${spaceCls}" style="--sx:${dx}px;--sy:${dy}px;--sr:${rot.toFixed(1)}deg;">${escapeHtml(w.text)}</span>`;
+          return `<span class="amb-word ${spaceCls}" style="--sx:${dx}px;--sy:${dy}px;--sr:${rot.toFixed(1)}deg;">${escaped}</span>`;
         }
-        return `<span class="amb-word ${spaceCls}">${escapeHtml(w.text)}</span>`;
+        return `<span class="amb-word ${spaceCls}">${escaped}</span>`;
       }).join('');
     }
 
